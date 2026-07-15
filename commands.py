@@ -1,0 +1,193 @@
+# -*- coding: utf-8 -*-
+"""commands.py -- commandes/icônes de la barre d'outils Atelier Laser.
+
+Chaque commande capture la sélection courante au moment du clic (même
+convention que l'ancienne macro : sélectionner AVANT de lancer), vérifie
+qu'elle est plausible pour ce mode, puis ouvre le panneau de tâches
+correspondant (task_panels.py). IsActive() grise l'icône tant qu'aucun
+document/sélection pertinent n'est disponible -- évite un clic dans le
+vide suivi d'une boîte d'erreur."""
+
+import os
+import FreeCAD
+import FreeCADGui as Gui
+from PySide6 import QtWidgets
+
+import task_panels
+
+_ICON_DIR = os.path.join(os.path.dirname(__file__), "resources", "icons")
+
+
+def _icon_path(name):
+    return os.path.join(_ICON_DIR, name)
+
+
+def _warn_selection(message):
+    QtWidgets.QMessageBox.warning(None, "Sélection", message)
+
+
+class HatchCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("hatch.svg"),
+            "MenuText": "Générer hachures 2D",
+            "ToolTip": "Génère un remplissage (parallèles / croisées / défocus) sur une face 2D sélectionnée",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
+
+    def Activated(self):
+        selection = Gui.Selection.getSelectionEx()
+        if not selection:
+            _warn_selection("Sélectionne le motif (face/sketch) avant de lancer ce mode.")
+            return
+        Gui.Control.showDialog(task_panels.TaskPanelHatch(selection))
+
+
+class ProjectCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("project.svg"),
+            "MenuText": "Projeter sur surface 3D",
+            "ToolTip": "Projette un ou plusieurs motifs 2D (hachures, texte) sur une surface 3D de référence par raycast vertical",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
+
+    def Activated(self):
+        selection = Gui.Selection.getSelectionEx()
+        if len(selection) < 2:
+            _warn_selection(
+                "Sélectionne un ou plusieurs motifs 2D (ShapeString, hachures...)\n"
+                "PUIS la surface 3D de référence, tous en même temps.")
+            return
+        Gui.Control.showDialog(task_panels.TaskPanelProject(selection))
+
+
+class KerfCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("kerf.svg"),
+            "MenuText": "Motif de calibration kerf",
+            "ToolTip": "Crée un carré test pour mesurer le kerf réel du laser (aucune sélection requise)",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelKerf())
+
+
+class TestGridCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("testgrid.svg"),
+            "MenuText": "Grille de test puissance/vitesse",
+            "ToolTip": "Génère en un seul job une grille de cellules gravure/découpe à puissance et vitesse variables (aucune sélection requise)",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelTestGrid())
+
+
+class CurvedCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("curved.svg"),
+            "MenuText": "Marquage sur surface courbe",
+            "ToolTip": "Génère le G-code de marquage sur une surface courbe (objets projetés par le mode Projection). "
+                       "Sélectionne le motif ET le modèle 3D ensemble pour que la gravure suive fidèlement ses courbes.",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
+
+    def Activated(self):
+        selection = Gui.Selection.getSelectionEx()
+        if not selection:
+            _warn_selection(
+                "Sélectionne les Hachures_3D (motif projeté) ET le modèle 3D\n"
+                "d'origine, TOUS LES DEUX EN MÊME TEMPS -- le modèle 3D permet\n"
+                "une sonde exacte du relief pour que la gravure suive\n"
+                "fidèlement ses courbes (sans lui, le Z n'est qu'interpolé\n"
+                "entre les points déjà projetés).")
+            return
+        Gui.Control.showDialog(task_panels.TaskPanelCurved(selection))
+
+
+class CurvedCutCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("curved_cut.svg"),
+            "MenuText": "Découpe multi-passes sur surface courbée",
+            "ToolTip": "Génère le G-code de découpe multi-passes qui suit le relief d'une surface courbe "
+                       "(objets projetés par le mode Projection). Sélectionne le motif ET le modèle 3D "
+                       "ensemble pour que la découpe suive fidèlement ses courbes.",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
+
+    def Activated(self):
+        selection = Gui.Selection.getSelectionEx()
+        if not selection:
+            _warn_selection(
+                "Sélectionne les Hachures_3D (motif projeté) ET le modèle 3D\n"
+                "d'origine, TOUS LES DEUX EN MÊME TEMPS -- le modèle 3D permet\n"
+                "une sonde exacte du relief pour que la découpe suive\n"
+                "fidèlement ses courbes.")
+            return
+        Gui.Control.showDialog(task_panels.TaskPanelCurvedCut(selection))
+
+
+class FlatCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("flat.svg"),
+            "MenuText": "Découpe multi-passes (matériau plat)",
+            "ToolTip": "Génère le G-code de découpe multi-passes sur matériau plat",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
+
+    def Activated(self):
+        selection = Gui.Selection.getSelectionEx()
+        if not selection:
+            _warn_selection("Sélectionne le(s) contour(s) à découper.")
+            return
+        Gui.Control.showDialog(task_panels.TaskPanelFlat(selection))
+
+
+class CombinedCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("combined.svg"),
+            "MenuText": "Job combiné (plusieurs opérations)",
+            "ToolTip": "Empile plusieurs opérations (Marquage courbe / Découpe multi-passes / Grille de test) "
+                       "dans un seul job avec un seul armement du laser (aucune sélection requise à l'ouverture -- "
+                       "la géométrie est sélectionnée puis capturée à chaque ajout d'opération)",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelCombined())
+
+
+def register_commands():
+    Gui.addCommand("LaserAtelier_Hatch", HatchCommand())
+    Gui.addCommand("LaserAtelier_Project", ProjectCommand())
+    Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
+    Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())
+    Gui.addCommand("LaserAtelier_Curved", CurvedCommand())
+    Gui.addCommand("LaserAtelier_CurvedCut", CurvedCutCommand())
+    Gui.addCommand("LaserAtelier_Flat", FlatCommand())
+    Gui.addCommand("LaserAtelier_Combined", CombinedCommand())
