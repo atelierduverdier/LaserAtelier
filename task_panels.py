@@ -903,6 +903,11 @@ class TaskPanelCurved:
     def __init__(self, selection):
         self.selection = selection
         self._edges, self._reference_shape = self._get_edges()
+        # Sonde Z gardée pour toute la durée de vie du panneau : la surface
+        # de référence ne change pas pendant que le panneau est ouvert, donc
+        # les raycasts d'un premier calcul (ouverture, aperçu durée...)
+        # profitent aux suivants au lieu d'être refaits à chaque fois.
+        self._probe = core.make_ray_probe(self._reference_shape) if self._reference_shape is not None else None
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
@@ -997,8 +1002,11 @@ class TaskPanelCurved:
             "vraie vitesse rapide de ta machine n'est pas connue ici.")
         form.addRow(self.lbl_duration)
 
+        # La puissance (S) n'affecte ni la géométrie ni la durée estimée
+        # (estimate_job_time_seconds ne lit que les distances/avances) --
+        # ne pas la brancher ici évite de relancer toute la sonde de
+        # surface (coûteuse sur un motif dense) à chaque frappe.
         schedule_duration_update = _make_debouncer(inner, self._update_duration_preview)
-        self.spn_power.valueChanged.connect(schedule_duration_update)
         self.spn_feed.valueChanged.connect(schedule_duration_update)
         self.spn_zfocus.valueChanged.connect(schedule_duration_update)
         self.spn_marge.valueChanged.connect(schedule_duration_update)
@@ -1113,7 +1121,7 @@ class TaskPanelCurved:
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
-            reference_shape=self._reference_shape, quiet=True,
+            reference_shape=self._reference_shape, quiet=True, probe=self._probe,
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -1136,7 +1144,7 @@ class TaskPanelCurved:
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
-            reference_shape=self._reference_shape, quiet=True,
+            reference_shape=self._reference_shape, quiet=True, probe=self._probe,
         )
         if not gcode:
             self.lbl_duration.setText("Durée estimée : --")
@@ -1151,7 +1159,7 @@ class TaskPanelCurved:
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
-            reference_shape=self._reference_shape, frame_only=True,
+            reference_shape=self._reference_shape, frame_only=True, probe=self._probe,
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -1178,6 +1186,7 @@ class TaskPanelCurved:
             reference_shape=self._reference_shape,
             pre_gcode=pre_text,
             post_gcode=post_text,
+            probe=self._probe,
         )
 
         cfg = core.load_config()
@@ -1612,6 +1621,10 @@ class TaskPanelCurvedCut:
     def __init__(self, selection):
         self.selection = selection
         self._edges, self._reference_shape = self._get_edges()
+        # Sonde Z gardée pour toute la durée de vie du panneau (cf.
+        # TaskPanelCurved) -- reference_shape ne change pas tant que le
+        # panneau reste ouvert.
+        self._probe = core.make_ray_probe(self._reference_shape) if self._reference_shape is not None else None
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
@@ -1764,8 +1777,11 @@ class TaskPanelCurvedCut:
             "de 6000mm/min.")
         form.addRow(self.lbl_duration)
 
+        # La puissance (S/power_end) n'affecte ni la géométrie ni la durée
+        # estimée (estimate_job_time_seconds ne lit que les distances/
+        # avances) -- ne pas la brancher ici évite de relancer toute la
+        # sonde de surface (coûteuse sur un motif dense) à chaque frappe.
         schedule_duration_update = _make_debouncer(inner, self._update_duration_preview)
-        self.spn_power.valueChanged.connect(schedule_duration_update)
         self.spn_feed.valueChanged.connect(schedule_duration_update)
         self.spn_zfocus.valueChanged.connect(schedule_duration_update)
         self.spn_marge.valueChanged.connect(schedule_duration_update)
@@ -1773,8 +1789,6 @@ class TaskPanelCurvedCut:
         self.spn_passes.valueChanged.connect(schedule_duration_update)
         self.chk_finish.toggled.connect(schedule_duration_update)
         self.spn_finish_feed.valueChanged.connect(schedule_duration_update)
-        self.chk_power_ramp.toggled.connect(schedule_duration_update)
-        self.spn_power_end.valueChanged.connect(schedule_duration_update)
         self.spn_kerf.valueChanged.connect(schedule_duration_update)
         self.chk_hole_first.toggled.connect(schedule_duration_update)
         self.chk_proximity.toggled.connect(schedule_duration_update)
@@ -1904,7 +1918,7 @@ class TaskPanelCurvedCut:
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_thickness.value(), self.spn_passes.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
-            reference_shape=self._reference_shape, quiet=True, **self._build_gcode_kwargs(),
+            reference_shape=self._reference_shape, quiet=True, probe=self._probe, **self._build_gcode_kwargs(),
         )
         if not gcode:
             self.lbl_duration.setText("Durée estimée : --")
@@ -1920,7 +1934,7 @@ class TaskPanelCurvedCut:
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_thickness.value(), self.spn_passes.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
-            reference_shape=self._reference_shape, frame_only=True, **self._build_gcode_kwargs(),
+            reference_shape=self._reference_shape, frame_only=True, probe=self._probe, **self._build_gcode_kwargs(),
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -1935,7 +1949,7 @@ class TaskPanelCurvedCut:
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_thickness.value(), self.spn_passes.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
-            reference_shape=self._reference_shape, quiet=True, **self._build_gcode_kwargs(),
+            reference_shape=self._reference_shape, quiet=True, probe=self._probe, **self._build_gcode_kwargs(),
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -1968,6 +1982,7 @@ class TaskPanelCurvedCut:
             self.spn_zfocus.value(), self.spn_marge.value(),
             reference_shape=self._reference_shape,
             pre_gcode=pre_text, post_gcode=post_text,
+            probe=self._probe,
             **self._build_gcode_kwargs(),
         )
 

@@ -204,6 +204,16 @@ DISCRETIZE_DISTANCE = 0.3      # mm : résolution de tracé (Distance, pas
                                 # aucune courbure à approximer, Deflection
                                 # ne donnerait que 2 points)
 TRANSIT_SAMPLE_STEP = 2.0      # mm : résolution du suivi de courbure en transit (mode courbe)
+RAY_PROBE_CACHE_GRID_MM = 0.5  # mm : résolution de mémoïsation de _RayProbe.z_at
+                                # (négligeable face au cône de 16mm du bec,
+                                # évite des dizaines de milliers de raycasts
+                                # OpenCascade quasi redondants sur un
+                                # remplissage dense -- voir _RayProbe)
+NOZZLE_CHECK_INTERVAL_MM = 1.5 # mm : espacement minimal entre deux contrôles
+                                # de dégagement du bec pendant la gravure
+                                # (indépendant de DISCRETIZE_DISTANCE -- un
+                                # contrôle tous les 0.3mm pour un cône de
+                                # 16mm de diamètre est un gaspillage pur)
 
 # --- Profil du bec (mesures fournies) ---
 NOZZLE_CONE_BOTTOM_RADIUS = 2.5   # mm, rayon au point le plus bas du cône (5mm de diamètre)
@@ -584,10 +594,34 @@ def split_projection_selection(selection):
 
 def drop_edges_to_surface(edges_2d, shape_3d):
     """Projette chaque point des lignes 2D sur la surface 3D (raycast Z,
-    'common' avec le solide -- plus fiable que distToShape pour ce cas)."""
+    'common' avec le solide -- plus fiable que distToShape pour ce cas).
+
+    Pas de mémoïsation ici (contrairement à _RayProbe.z_at, utilisé pour
+    le contrôle de dégagement du bec où une erreur d'arrondi de l'ordre
+    du mm est négligeable face à un cône de 16mm) : l'échantillonnage
+    est déjà grossier (PROJECTION_SAMPLE_DISTANCE = 1mm), donc le nombre
+    de raycasts reste raisonnable même sur un remplissage dense. Mémoïser
+    par position arrondie sur une cellule (0.5mm) plus large que
+    l'espacement des hachures (0.2mm) faisait retomber des lignes
+    voisines sur le Z d'une position différente -- tracé en dents de
+    scie au lieu de suivre la pente en douceur."""
     bb = shape_3d.BoundBox
     z_top = bb.ZMax + 10.0
     z_bot = bb.ZMin - 10.0
+
+    def probe(x, y):
+        vert_line = Part.LineSegment(
+            FreeCAD.Vector(x, y, z_top),
+            FreeCAD.Vector(x, y, z_bot)
+        ).toShape()
+        try:
+            intersection = vert_line.common(shape_3d)
+            if intersection and hasattr(intersection, 'Vertexes') and len(intersection.Vertexes) > 0:
+                z = max(intersection.Vertexes, key=lambda v: v.Point.z).Point.z
+                return FreeCAD.Vector(x, y, z)
+        except Exception:
+            pass
+        return None
 
     edges_3d = []
     for edge in edges_2d:
@@ -595,22 +629,15 @@ def drop_edges_to_surface(edges_2d, shape_3d):
         if len(pts) < 2:
             continue
 
-        pts_3d = []
-        for pt in pts:
-            vert_line = Part.LineSegment(
-                FreeCAD.Vector(pt.x, pt.y, z_top),
-                FreeCAD.Vector(pt.x, pt.y, z_bot)
-            ).toShape()
-            try:
-                intersection = vert_line.common(shape_3d)
-                if intersection and hasattr(intersection, 'Vertexes') and len(intersection.Vertexes) > 0:
-                    best_pt = max(intersection.Vertexes, key=lambda v: v.Point.z).Point
-                    pts_3d.append(best_pt)
-            except Exception:
-                pass
+        pts_3d = [p for p in (probe(pt.x, pt.y) for pt in pts) if p is not None]
 
         if len(pts_3d) >= 2:
             for i in range(len(pts_3d) - 1):
+                # Deux points consécutifs peuvent retomber sur le même point
+                # mémoïsé (positions proches -> même cellule de cache) :
+                # LineSegment refuse un segment de longueur nulle.
+                if pts_3d[i].isEqual(pts_3d[i + 1], 1e-7):
+                    continue
                 edges_3d.append(Part.LineSegment(pts_3d[i], pts_3d[i + 1]).toShape())
 
     return edges_3d
@@ -1171,7 +1198,17 @@ class _IDWHeight(object):
 class _RayProbe(object):
     """Sonde Z EXACTE par projection verticale sur l'objet 3D de référence
     (raycast via 'common', déjà validé sur un solide dans
-    Coller_hachures_sur_3D.fcmacro)."""
+    Coller_hachures_sur_3D.fcmacro).
+
+    Mémoïse par position arrondie (RAY_PROBE_CACHE_GRID_MM) : chaque
+    raycast est une intersection géométrique OpenCascade, coûteuse (de
+    l'ordre de la milliseconde). Sans cache, un remplissage dense (ex:
+    hachures à 0.2mm d'espacement, contrôle de dégagement du bec à
+    chaque point tous les ~0.3mm) déclenche des dizaines de milliers de
+    raycasts quasiment redondants (positions voisines à moins d'1mm les
+    unes des autres) -- plusieurs minutes de calcul pour rien. L'erreur
+    introduite par l'arrondi (une fraction de mm) est négligeable pour
+    un contrôle de dégagement pensé pour un cône de 16mm de diamètre."""
 
     def __init__(self, shape_3d, margin=10.0):
         bb = shape_3d.BoundBox
@@ -1180,8 +1217,17 @@ class _RayProbe(object):
         self.z_bot = bb.ZMin - margin
         self.last_z = bb.ZMax
         self.misses = 0
+        self._cache = {}
+
+    def matches(self, shape_3d):
+        return self.shape is shape_3d
 
     def z_at(self, x, y):
+        key = (round(x / RAY_PROBE_CACHE_GRID_MM), round(y / RAY_PROBE_CACHE_GRID_MM))
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
         vert_line = Part.LineSegment(
             FreeCAD.Vector(x, y, self.z_top),
             FreeCAD.Vector(x, y, self.z_bot)
@@ -1191,11 +1237,25 @@ class _RayProbe(object):
             if intersection and hasattr(intersection, 'Vertexes') and len(intersection.Vertexes) > 0:
                 best_pt = max(intersection.Vertexes, key=lambda v: v.Point.z).Point
                 self.last_z = best_pt.z
+                self._cache[key] = self.last_z
                 return self.last_z
         except Exception:
             pass
         self.misses += 1
+        # Un échec n'est PAS mémoïsé : self.last_z (le repli) évolue au
+        # fil du parcours, un échec mémoïsé figerait un repli obsolète.
         return self.last_z
+
+
+def make_ray_probe(shape_3d):
+    """Construit une sonde Z réutilisable pour `probe=` de
+    generate_gcode_curved(_cut) -- à garder d'un appel à l'autre dans un
+    panneau de tâches (aperçu durée/cadrage/trajet/génération finale) pour
+    ne pas relancer tous les raycasts de surface à chaque recalcul alors
+    que seul reference_shape en détermine le résultat (feed/z_focus/marge/
+    puissance n'affectent que l'usage qui en est fait, pas la sonde
+    elle-même)."""
+    return _RayProbe(shape_3d)
 
 
 def split_selection(selection):
@@ -1220,7 +1280,7 @@ def split_selection(selection):
 
 def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_shape=None,
                            pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
-                           min_safe_z=None):
+                           min_safe_z=None, probe=None):
     """frame_only : ne génère QUE le rectangle englobant (laser éteint),
     en réutilisant le même calcul de Z de sécurité que le job réel --
     pour un fichier de VÉRIFICATION DE CADRAGE SÉPARÉ du job (à lancer
@@ -1252,7 +1312,15 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     (gravure puis découpe sur un même dôme). generate_gcode_combined
     calcule ce plancher comme le maximum des hauteurs de sécurité de
     TOUTES les opérations du job avant de générer quoi que ce soit
-    (cf. _operation_intrinsic_safe_z)."""
+    (cf. _operation_intrinsic_safe_z).
+
+    probe : sonde make_ray_probe(reference_shape) déjà construite, à
+    réutiliser si l'appelant refait plusieurs appels successifs sur LE
+    MÊME reference_shape (ex: aperçu durée recalculé à chaque frappe dans
+    un panneau de tâches) -- évite de relancer tous les raycasts de
+    surface à chaque appel alors que seule la géométrie de référence en
+    détermine le résultat. Ignorée si son .shape ne correspond pas à
+    reference_shape (sécurité si l'appelant se trompe de sonde)."""
     if not edges:
         return None
 
@@ -1269,7 +1337,10 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         z_safe_start_end = max(z_safe_start_end, min_safe_z)
 
     if reference_shape is not None:
-        height_probe = _RayProbe(reference_shape)
+        if probe is not None and probe.matches(reference_shape):
+            height_probe = probe
+        else:
+            height_probe = _RayProbe(reference_shape)
         probe_kind = "sonde exacte sur l'objet 3D sélectionné"
         nozzle_check_active = True
     else:
@@ -1340,14 +1411,19 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
             state_armed = True
         lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power))
 
+        last_check_pos = p0
         for p in chain[1:]:
             # Pendant la gravure, le Z est imposé par le focus correct :
             # un désaccord avec le bec est seulement signalé, jamais
-            # corrigé (le corriger changerait le focus).
-            if nozzle_check_active:
+            # corrigé (le corriger changerait le focus). Contrôlé tous les
+            # NOZZLE_CHECK_INTERVAL_MM (pas à chaque point discrétisé --
+            # inutile pour un cône de 16mm, et ruineux en performance sur
+            # un remplissage dense).
+            if nozzle_check_active and math.hypot(p.x - last_check_pos.x, p.y - last_check_pos.y) >= NOZZLE_CHECK_INTERVAL_MM:
                 required = nozzle_clearance_z(p.x, p.y, p.z, height_probe.z_at, 0.0)
                 if required > p.z + 0.05:
                     nozzle_marking_warnings += 1
+                last_check_pos = p
             lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(p.x, p.y, to_machine_z(p.z), feed))
 
         lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
@@ -2089,7 +2165,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
                                reference_shape=None, finish_feed=None, power_end=None,
                                kerf_width=0.0, use_hole_first=False, use_proximity=False,
                                pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
-                               min_safe_z=None):
+                               min_safe_z=None, probe=None):
     """z_focus : même rôle que dans generate_gcode_curved -- Z natif du
     document qui met le laser au point (foyer) au niveau le plus bas du
     motif (1ère passe). Les passes suivantes reculent le foyer de
@@ -2108,7 +2184,10 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
     provenant du motif projeté).
 
     frame_only/quiet/body_only/min_safe_z : mêmes rôles que sur les
-    autres modes (cf. generate_gcode_curved / generate_gcode_flat_multipass)."""
+    autres modes (cf. generate_gcode_curved / generate_gcode_flat_multipass).
+
+    probe : cf. generate_gcode_curved -- sonde make_ray_probe(reference_shape)
+    à réutiliser entre appels successifs sur le même reference_shape."""
     if not edges:
         return None
 
@@ -2151,7 +2230,10 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
         z_safe = max(z_safe, min_safe_z)
 
     if reference_shape is not None:
-        height_probe = _RayProbe(reference_shape)
+        if probe is not None and probe.matches(reference_shape):
+            height_probe = probe
+        else:
+            height_probe = _RayProbe(reference_shape)
         probe_kind = "sonde exacte sur l'objet 3D sélectionné"
         nozzle_check_active = True
     else:
@@ -2233,8 +2315,12 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
                 state_armed = True
             lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=pass_power))
 
+            last_check_pos = p0
             for p in chain[1:]:
-                if nozzle_check_active:
+                # Contrôlé tous les NOZZLE_CHECK_INTERVAL_MM, pas à chaque
+                # point discrétisé -- voir la même optimisation dans
+                # generate_gcode_curved.
+                if nozzle_check_active and math.hypot(p.x - last_check_pos.x, p.y - last_check_pos.y) >= NOZZLE_CHECK_INTERVAL_MM:
                     # Chaque passe rapproche physiquement le bec de la
                     # surface D'ORIGINE (le foyer recule de pass_idx*z_step
                     # dans la matière) -- le dégagement requis se resserre
@@ -2242,6 +2328,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
                     required = nozzle_clearance_z(p.x, p.y, p.z, height_probe.z_at, 0.0)
                     if required > p.z - pass_idx * z_step + 0.05:
                         nozzle_cut_warnings += 1
+                    last_check_pos = p
                 lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
                     p.x, p.y, to_machine_z(p.z, pass_idx), pass_feed))
 
