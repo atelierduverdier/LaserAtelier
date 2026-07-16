@@ -62,25 +62,30 @@ def _scrollable(inner):
     return scroll
 
 
-def _make_debouncer(parent, callback, delay_ms=400):
-    """Renvoie une fonction à connecter à plusieurs signaux Qt (ex:
-    valueChanged de plusieurs champs) qui, au lieu d'appeler `callback`
-    immédiatement à chaque appel, retarde son exécution de `delay_ms` et
-    relance ce délai à chaque nouvel appel entre-temps -- pour un aperçu
-    "en direct" (ex: durée estimée recalculée quand on change les
-    paramètres) qui ne recalcule PAS à chaque frappe/incrémentation
-    individuelle (potentiellement coûteux -- ex: grille de test avec
-    beaucoup de cellules à hachurer), seulement une fois que
-    l'utilisateur s'est arrêté un court instant. `parent` (le QWidget du
-    panneau) garde le QTimer en vie tant que le panneau existe."""
-    timer = QtCore.QTimer(parent)
-    timer.setSingleShot(True)
-    timer.timeout.connect(callback)
-
-    def _trigger(*_args, **_kwargs):
-        timer.start(delay_ms)
-
-    return _trigger
+def _duration_row(form, callback, tooltip_extra=""):
+    """Ajoute à `form` (QFormLayout) une ligne label de durée estimée +
+    bouton "Actualiser", connecté à `callback`. Volontairement PAS
+    recalculé automatiquement au changement des champs (valueChanged) :
+    avec un recalcul en direct, taper une valeur au clavier (ex. "3"
+    puis "0" puis "0" puis "0" pour arriver à 3000) déclenche un calcul
+    intermédiaire sur une valeur transitoire non voulue. Un bouton
+    explicite laisse l'utilisateur finir sa saisie avant de
+    recalculer."""
+    row = QtWidgets.QWidget()
+    row_layout = QtWidgets.QHBoxLayout(row)
+    row_layout.setContentsMargins(0, 0, 0, 0)
+    lbl = QtWidgets.QLabel("Durée estimée : --")
+    lbl.setWordWrap(True)
+    lbl.setToolTip(
+        "Cliquer sur Actualiser pour recalculer avec les valeurs\n"
+        "actuelles des champs ci-dessus. " + tooltip_extra)
+    btn = QtWidgets.QPushButton("Actualiser")
+    btn.setToolTip("Recalcule la durée estimée.")
+    btn.clicked.connect(callback)
+    row_layout.addWidget(lbl, 1)
+    row_layout.addWidget(btn, 0)
+    form.addRow(row)
+    return lbl
 
 
 def _write_gcode_with_dialog(parent_widget, gcode, default_path):
@@ -653,36 +658,11 @@ class TaskPanelTestGrid:
         self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
         self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
 
-        self.lbl_duration = QtWidgets.QLabel("Durée estimée : --")
-        self.lbl_duration.setWordWrap(True)
-        self.lbl_duration.setToolTip(
-            "Recalculée en direct quand tu changes les paramètres de la\n"
-            "grille (léger délai pour éviter de recalculer à chaque frappe\n"
-            "-- une grille avec beaucoup de cellules en Gravure peut\n"
-            "prendre un instant à régénérer). Approximative : G1 selon\n"
-            "distance/avance programmée, G0 (transit) à une vitesse rapide\n"
-            "SUPPOSÉE de 6000mm/min -- la vraie vitesse rapide de ta\n"
-            "machine n'est pas connue ici.")
-        form.addRow(self.lbl_duration)
-
-        schedule_duration_update = _make_debouncer(inner, self._update_duration_preview)
-        self.combo_mode.currentIndexChanged.connect(schedule_duration_update)
-        self.combo_filltype.currentIndexChanged.connect(schedule_duration_update)
-        self.spn_power_min.valueChanged.connect(schedule_duration_update)
-        self.spn_power_max.valueChanged.connect(schedule_duration_update)
-        self.spn_power_steps.valueChanged.connect(schedule_duration_update)
-        self.spn_feed_min.valueChanged.connect(schedule_duration_update)
-        self.spn_feed_max.valueChanged.connect(schedule_duration_update)
-        self.spn_feed_steps.valueChanged.connect(schedule_duration_update)
-        self.spn_cell_size.valueChanged.connect(schedule_duration_update)
-        self.spn_gap.valueChanged.connect(schedule_duration_update)
-        self.spn_hatch_spacing.valueChanged.connect(schedule_duration_update)
-        self.spn_hatch_angle.valueChanged.connect(schedule_duration_update)
-        self.spn_zwork.valueChanged.connect(schedule_duration_update)
-        self.chk_proximity.toggled.connect(schedule_duration_update)
-        self.chk_labels.toggled.connect(schedule_duration_update)
-        self.spn_label_power.valueChanged.connect(schedule_duration_update)
-        self.spn_label_feed.valueChanged.connect(schedule_duration_update)
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
+            "Approximative : G1 selon distance/avance programmée, G0\n"
+            "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min -- la\n"
+            "vraie vitesse rapide de ta machine n'est pas connue ici.")
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -992,24 +972,11 @@ class TaskPanelCurved:
             "sinon interpolation.")
         form.addRow("Marge de sécurité (transit) :", self.spn_marge)
 
-        self.lbl_duration = QtWidgets.QLabel("Durée estimée : --")
-        self.lbl_duration.setWordWrap(True)
-        self.lbl_duration.setToolTip(
-            "Recalculée en direct quand tu changes puissance/vitesse/Z/\n"
-            "marge (léger délai pour éviter de recalculer à chaque frappe).\n"
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
             "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min -- la\n"
             "vraie vitesse rapide de ta machine n'est pas connue ici.")
-        form.addRow(self.lbl_duration)
-
-        # La puissance (S) n'affecte ni la géométrie ni la durée estimée
-        # (estimate_job_time_seconds ne lit que les distances/avances) --
-        # ne pas la brancher ici évite de relancer toute la sonde de
-        # surface (coûteuse sur un motif dense) à chaque frappe.
-        schedule_duration_update = _make_debouncer(inner, self._update_duration_preview)
-        self.spn_feed.valueChanged.connect(schedule_duration_update)
-        self.spn_zfocus.valueChanged.connect(schedule_duration_update)
-        self.spn_marge.valueChanged.connect(schedule_duration_update)
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -1390,30 +1357,11 @@ class TaskPanelFlat:
             "chaque palier trou/extérieur si les deux options sont actives.")
         form.addRow(self.chk_proximity)
 
-        self.lbl_duration = QtWidgets.QLabel("Durée estimée : --")
-        self.lbl_duration.setWordWrap(True)
-        self.lbl_duration.setToolTip(
-            "Recalculée en direct quand tu changes un des paramètres\n"
-            "ci-dessus (léger délai pour éviter de recalculer à chaque\n"
-            "frappe). Approximative : G1 selon distance/avance programmée,\n"
-            "G0 (transit) à une vitesse rapide SUPPOSÉE de 6000mm/min -- la\n"
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
+            "Approximative : G1 selon distance/avance programmée, G0\n"
+            "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min -- la\n"
             "vraie vitesse rapide de ta machine n'est pas connue ici.")
-        form.addRow(self.lbl_duration)
-
-        schedule_duration_update = _make_debouncer(inner, self._update_duration_preview)
-        self.spn_power.valueChanged.connect(schedule_duration_update)
-        self.spn_feed.valueChanged.connect(schedule_duration_update)
-        self.spn_thickness.valueChanged.connect(schedule_duration_update)
-        self.spn_passes.valueChanged.connect(schedule_duration_update)
-        self.chk_zoverride.toggled.connect(schedule_duration_update)
-        self.spn_zstart.valueChanged.connect(schedule_duration_update)
-        self.chk_finish.toggled.connect(schedule_duration_update)
-        self.spn_finish_feed.valueChanged.connect(schedule_duration_update)
-        self.chk_power_ramp.toggled.connect(schedule_duration_update)
-        self.spn_power_end.valueChanged.connect(schedule_duration_update)
-        self.spn_kerf.valueChanged.connect(schedule_duration_update)
-        self.chk_hole_first.toggled.connect(schedule_duration_update)
-        self.chk_proximity.toggled.connect(schedule_duration_update)
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -1768,30 +1716,10 @@ class TaskPanelCurvedCut:
         self.chk_proximity.setChecked(True)
         form.addRow(self.chk_proximity)
 
-        self.lbl_duration = QtWidgets.QLabel("Durée estimée : --")
-        self.lbl_duration.setWordWrap(True)
-        self.lbl_duration.setToolTip(
-            "Recalculée en direct quand tu changes un des paramètres\n"
-            "ci-dessus (léger délai). Approximative : G1 selon distance/\n"
-            "avance programmée, G0 (transit) à une vitesse rapide SUPPOSÉE\n"
-            "de 6000mm/min.")
-        form.addRow(self.lbl_duration)
-
-        # La puissance (S/power_end) n'affecte ni la géométrie ni la durée
-        # estimée (estimate_job_time_seconds ne lit que les distances/
-        # avances) -- ne pas la brancher ici évite de relancer toute la
-        # sonde de surface (coûteuse sur un motif dense) à chaque frappe.
-        schedule_duration_update = _make_debouncer(inner, self._update_duration_preview)
-        self.spn_feed.valueChanged.connect(schedule_duration_update)
-        self.spn_zfocus.valueChanged.connect(schedule_duration_update)
-        self.spn_marge.valueChanged.connect(schedule_duration_update)
-        self.spn_thickness.valueChanged.connect(schedule_duration_update)
-        self.spn_passes.valueChanged.connect(schedule_duration_update)
-        self.chk_finish.toggled.connect(schedule_duration_update)
-        self.spn_finish_feed.valueChanged.connect(schedule_duration_update)
-        self.spn_kerf.valueChanged.connect(schedule_duration_update)
-        self.chk_hole_first.toggled.connect(schedule_duration_update)
-        self.chk_proximity.toggled.connect(schedule_duration_update)
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
+            "Approximative : G1 selon distance/avance programmée, G0\n"
+            "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min.")
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
