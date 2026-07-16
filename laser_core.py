@@ -392,7 +392,18 @@ def get_faces_from_selection_for_hatch(selection):
 
 def generate_hatch_edges(faces, spacing, angle_deg):
     """Génère les lignes de hachure (Boustrophédon/zigzag), renvoie une
-    liste de Part.Edge."""
+    liste de Part.Edge.
+
+    Le découpage de chaque ligne par les faces (trous inclus) se fait par
+    tessellation des faces UNE FOIS puis clipping paramétrique 2D de la
+    ligne contre chaque triangle (intersection d'intervalles par
+    demi-plans, quelques flops par triangle) -- remplace l'ancienne
+    opération booléenne OpenCascade `common` PAR LIGNE ET PAR FACE
+    (mesurée au profileur à 90%+ du temps : des dizaines de milliers
+    d'appels sur un remplissage fin de texte). Les faces étant planes,
+    la tessellation est exacte sur le plan ; seule la polygonisation des
+    bords courbes introduit un écart, borné par MESH_PROBE_DEVIATION_MM
+    (négligeable face au kerf)."""
     if not faces:
         return []
 
@@ -417,45 +428,92 @@ def generate_hatch_edges(faces, spacing, angle_deg):
     dir_line = (math.cos(ang), math.sin(ang))
     dir_step = (-math.sin(ang), math.cos(ang))
 
+    # Tessellation des faces en triangles 2D (UV), orientés CCW
+    tris = []
+    for f in faces:
+        verts, facets = f.tessellate(MESH_PROBE_DEVIATION_MM)
+        uv = [_to_uv(p, origin, u_axis, v_axis) for p in verts]
+        for i1, i2, i3 in facets:
+            a, b, c = uv[i1], uv[i2], uv[i3]
+            det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])
+            if abs(det) < 1e-12:
+                continue
+            if det < 0:
+                b, c = c, b
+            tris.append((a, b, c))
+
+    # Index 1D : chaque triangle est rangé dans les bandes de hachures
+    # (indices i) que couvre sa projection sur dir_step -- chaque ligne ne
+    # teste ensuite que les triangles de sa propre bande.
     n_lines = int(diag / spacing) + 2
+    bands = defaultdict(list)
+    for idx, (a, b, c) in enumerate(tris):
+        offs = [(p[0] - cu) * dir_step[0] + (p[1] - cv) * dir_step[1] for p in (a, b, c)]
+        i0 = int(math.ceil((min(offs) - 1e-9) / spacing))
+        i1 = int(math.floor((max(offs) + 1e-9) / spacing))
+        for i in range(max(i0, -n_lines), min(i1, n_lines) + 1):
+            bands[i].append(idx)
+
     hatch_edges = []
+    half = diag / 2.0
 
     for i in range(-n_lines, n_lines + 1):
+        cands = bands.get(i)
+        if not cands:
+            continue
         offset = i * spacing
-        base_u = cu + dir_step[0] * offset
-        base_v = cv + dir_step[1] * offset
+        # Ligne paramétrée P(t) = p1 + dir_line * t, t dans [0, diag]
+        p1u = cu + dir_step[0] * offset - dir_line[0] * half
+        p1v = cv + dir_step[1] * offset - dir_line[1] * half
 
-        p1 = _to_xyz(base_u - dir_line[0] * diag / 2.0, base_v - dir_line[1] * diag / 2.0, origin, u_axis, v_axis)
-        p2 = _to_xyz(base_u + dir_line[0] * diag / 2.0, base_v + dir_line[1] * diag / 2.0, origin, u_axis, v_axis)
-
-        if p1.distanceToPoint(p2) < 1e-6:
-            continue
-
-        raw_line = Part.LineSegment(p1, p2).toShape()
-        line_dir = (p2 - p1).normalize()
-
-        segs = []
-        for f in faces:
-            try:
-                common = raw_line.common(f)
-            except Exception:
-                continue
-            for e in common.Edges:
-                if e.Length < 1e-6:
+        # Clipping de [0, diag] par les 3 demi-plans de chaque triangle
+        intervals = []
+        for idx in cands:
+            a, b, c = tris[idx]
+            t_lo, t_hi = 0.0, diag
+            for (ax, ay), (bx, by) in ((a, b), (b, c), (c, a)):
+                ex, ey = bx - ax, by - ay
+                c0 = ex * (p1v - ay) - ey * (p1u - ax)
+                c1 = ex * dir_line[1] - ey * dir_line[0]
+                if abs(c1) < 1e-15:
+                    if c0 < 0.0:
+                        t_lo, t_hi = 1.0, 0.0  # ligne entièrement dehors
+                        break
                     continue
-                a, b = e.Vertexes[0].Point, e.Vertexes[-1].Point
-                if (a - p1).dot(line_dir) > (b - p1).dot(line_dir):
-                    a, b = b, a
-                segs.append((a, b))
+                t_cross = -c0 / c1
+                if c1 > 0.0:
+                    if t_cross > t_lo:
+                        t_lo = t_cross
+                else:
+                    if t_cross < t_hi:
+                        t_hi = t_cross
+                if t_lo >= t_hi:
+                    break
+            if t_hi - t_lo > 1e-9:
+                intervals.append((t_lo, t_hi))
 
-        if not segs:
+        if not intervals:
             continue
-        segs.sort(key=lambda s: (s[0] - p1).dot(line_dir))
-        if i % 2 != 0:
-            segs = [(b, a) for (a, b) in reversed(segs)]
 
-        for a, b in segs:
-            hatch_edges.append(Part.LineSegment(a, b).toShape())
+        # Fusion des intervalles contigus (triangles adjacents d'une même
+        # face partagent leurs arêtes : leurs intervalles se touchent)
+        intervals.sort()
+        merged = [list(intervals[0])]
+        for t0, t1 in intervals[1:]:
+            if t0 <= merged[-1][1] + 1e-6:
+                if t1 > merged[-1][1]:
+                    merged[-1][1] = t1
+            else:
+                merged.append([t0, t1])
+
+        segs = [m for m in merged if m[1] - m[0] > 1e-6]
+        if i % 2 != 0:
+            segs = [(t1, t0) for (t0, t1) in reversed(segs)]
+
+        for t0, t1 in segs:
+            pa = _to_xyz(p1u + dir_line[0] * t0, p1v + dir_line[1] * t0, origin, u_axis, v_axis)
+            pb = _to_xyz(p1u + dir_line[0] * t1, p1v + dir_line[1] * t1, origin, u_axis, v_axis)
+            hatch_edges.append(Part.LineSegment(pa, pb).toShape())
 
     return hatch_edges
 
