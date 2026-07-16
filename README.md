@@ -53,6 +53,20 @@ Les hachures 2D bénéficient de la même approche (clipping paramétrique de ch
 
 La précision est préservée : l'écart Z entre le maillage et la vraie surface est borné à 0,05 mm (constante `MESH_PROBE_DEVIATION_MM`), validé contre l'ancien raycast exact sur 300 points aléatoires (erreur max mesurée : 0,046 mm) — négligeable face à la tolérance de focus du laser (~0,1 mm).
 
+## Matériel testé
+
+Cet atelier a été développé et testé avec le module laser **LT-80W-AA-PRO** (diode 10 W optiques). Les préréglages de hauteur de bec par épaisseur (`FOCUS_TABLE` dans `laser_core.py`) proviennent du tableau constructeur de ce module.
+
+**Modification matérielle importante** : la pièce carrée qui entoure le nez du laser a été **retirée**, afin de pouvoir suivre les surfaces courbes sans collision. Le contrôle de dégagement anti-collision intégré à l'atelier (modes marquage/découpe sur surface courbe) modélise donc uniquement le nez conique restant, avec les dimensions suivantes (constantes `NOZZLE_*` dans `laser_core.py`) :
+
+| Dimension | Valeur |
+|---|---|
+| Diamètre à la pointe du nez (point le plus bas) | 5 mm |
+| Diamètre au sommet du cône | 16 mm |
+| Hauteur du cône (cylindre de même diamètre au-dessus) | 18 mm |
+
+Si ton laser a un nez de géométrie différente, adapte ces constantes avant d'utiliser les modes sur surface courbe : le contrôle de dégagement en dépend directement.
+
 ## Prérequis
 
 - FreeCAD (testé sur la série 1.1)
