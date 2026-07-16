@@ -216,11 +216,58 @@ NOZZLE_CHECK_INTERVAL_MM = 1.5 # mm : espacement minimal entre deux contrôles
                                 # contrôle tous les 0.3mm pour un cône de
                                 # 16mm de diamètre est un gaspillage pur)
 
-# --- Profil du bec (mesures fournies) ---
+# --- Profil du bec (par défaut : LT-80W-AA-PRO, pièce carrée retirée) ---
+# Ces valeurs par défaut sont surchargeables SANS TOUCHER AU CODE dans
+# laser_atelier_config.json (dossier de configuration utilisateur de
+# FreeCAD), clé "nozzle" :
+#
+#   {"nozzle": {"bottom_diameter_mm": 5.0,
+#               "top_diameter_mm": 16.0,
+#               "height_mm": 18.0}}
+#
+# Pour un bec en TUBE DROIT (section constante jusqu'en bas, sans cône),
+# mettre bottom_diameter_mm = top_diameter_mm = diamètre du tube -- le
+# modèle conique dégénère alors correctement en cylindre : toute matière
+# plus haute que la pointe sous l'empreinte du tube déclenche le
+# relevage, ce qui est le comportement attendu. Pour un tube de section
+# RECTANGULAIRE, entrer la DIAGONALE de la section : le modèle est de
+# révolution, la diagonale couvre le pire cas quelle que soit
+# l'orientation du tube par rapport au déplacement.
 NOZZLE_CONE_BOTTOM_RADIUS = 2.5   # mm, rayon au point le plus bas du cône (5mm de diamètre)
 NOZZLE_CONE_TOP_RADIUS = 8.0      # mm, rayon au sommet du cône (16mm de diamètre)
 NOZZLE_CONE_HEIGHT = 18.0         # mm, hauteur du cône (cylindre au-dessus, même rayon)
 NOZZLE_CHECK_DIRECTIONS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def _apply_nozzle_config():
+    """Surcharge le profil du bec depuis la config JSON (clé "nozzle",
+    cf. commentaire ci-dessus). Valeurs invalides (diamètre bas > haut,
+    valeurs nulles ou négatives) : avertissement et retour aux valeurs
+    par défaut -- un profil de bec faux rendrait le contrôle
+    anti-collision silencieusement inopérant."""
+    global NOZZLE_CONE_BOTTOM_RADIUS, NOZZLE_CONE_TOP_RADIUS, NOZZLE_CONE_HEIGHT
+    noz = load_config().get("nozzle")
+    if not isinstance(noz, dict):
+        return
+    try:
+        bottom_r = float(noz.get("bottom_diameter_mm", NOZZLE_CONE_BOTTOM_RADIUS * 2)) / 2.0
+        top_r = float(noz.get("top_diameter_mm", NOZZLE_CONE_TOP_RADIUS * 2)) / 2.0
+        height = float(noz.get("height_mm", NOZZLE_CONE_HEIGHT))
+    except (TypeError, ValueError):
+        FreeCAD.Console.PrintWarning(
+            "Config 'nozzle' illisible dans {} -- profil de bec par défaut conservé.\n".format(CONFIG_FILE))
+        return
+    if bottom_r <= 0 or top_r < bottom_r or height <= 0:
+        FreeCAD.Console.PrintWarning(
+            "Config 'nozzle' incohérente (il faut 0 < bottom_diameter_mm <= top_diameter_mm "
+            "et height_mm > 0) -- profil de bec par défaut conservé.\n")
+        return
+    NOZZLE_CONE_BOTTOM_RADIUS = bottom_r
+    NOZZLE_CONE_TOP_RADIUS = top_r
+    NOZZLE_CONE_HEIGHT = height
+
+
+_apply_nozzle_config()
 
 
 def nozzle_h_min(radius):

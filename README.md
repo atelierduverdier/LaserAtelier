@@ -65,7 +65,23 @@ Cet atelier a été développé et testé avec le module laser **LT-80W-AA-PRO**
 | Diamètre au sommet du cône | 16 mm |
 | Hauteur du cône (cylindre de même diamètre au-dessus) | 18 mm |
 
-Si ton laser a un nez de géométrie différente, adapte ces constantes avant d'utiliser les modes sur surface courbe : le contrôle de dégagement en dépend directement.
+### Adapter à un autre laser
+
+Si ton laser a un nez de géométrie différente, **le contrôle anti-collision doit être adapté avant d'utiliser les modes sur surface courbe** — sinon il sous-estimera (ou surestimera) les collisions. Pas besoin de toucher au code : ajoute une clé `nozzle` dans le fichier de configuration `laser_atelier_config.json` (dossier de configuration utilisateur de FreeCAD) :
+
+```json
+{"nozzle": {"bottom_diameter_mm": 5.0, "top_diameter_mm": 16.0, "height_mm": 18.0}}
+```
+
+Cas fréquents :
+
+- **Nez conique** (comme le LT-80W modifié) : diamètre à la pointe, diamètre au sommet du cône, hauteur du cône.
+- **Tube droit jusqu'en bas** (pas de cône, section constante — fréquent sur d'autres modules) : mettre `bottom_diameter_mm` = `top_diameter_mm` = diamètre du tube. Le modèle devient alors un cylindre : toute matière plus haute que la pointe sous l'empreinte du tube déclenche le relevage, ce qui est le comportement attendu.
+- **Tube de section rectangulaire** : entrer la **diagonale** de la section comme diamètre. Le modèle étant de révolution, la diagonale couvre le pire cas quelle que soit l'orientation du tube par rapport au déplacement.
+
+Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ignorée avec un avertissement dans la vue Rapport, et les valeurs par défaut sont conservées.
+
+À noter également : le tableau `FOCUS_TABLE` (hauteur de bec par épaisseur pour la découpe à plat) provient du constructeur du LT-80W — à ajuster dans `laser_core.py` pour un autre module.
 
 ## Prérequis
 
