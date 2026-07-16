@@ -14,6 +14,17 @@ Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de 
 - **Job combiné** : empile plusieurs opérations (marquage, découpe, grille de test) dans un seul fichier G-code avec un seul armement du laser, transition de sécurité anti-collision entre opérations
 - Estimation de durée en direct, aperçu de trajet dans la vue 3D, aperçu de cadrage en fichier séparé pour vérifier le positionnement avant de lancer le job réel
 
+## Démo vidéo
+
+[Vidéo de démonstration sur YouTube](https://youtube.com/TODO) <!-- remplacer par le lien une fois la vidéo mise en ligne -->
+
+## Captures d'écran
+
+| | |
+|---|---|
+| ![Résultat coloré](docs/screenshots/resultat-colore.png) | ![Job combiné](docs/screenshots/job-combine.png) |
+| ![Réglages de marquage](docs/screenshots/parametres-marquage.png) | ![Grille de test puissance/vitesse](docs/screenshots/grille-test-puissance-vitesse.png) |
+
 ## Prérequis
 
 - FreeCAD (testé sur la série 1.1)
