@@ -37,6 +37,13 @@ Mesures sur une plaque ondulée 100×60 mm, hachures espacées de 0,5 mm (~48 00
 | G-code marquage courbe (1er calcul) | 107,0 s | 0,18 s | ×600 |
 | G-code marquage courbe (recalcul) | 11,8 s | 0,18 s | ×65 |
 
+Les hachures 2D bénéficient de la même approche (clipping paramétrique de chaque ligne sur la tessellation des faces, au lieu d'une opération booléenne par ligne et par face) :
+
+| Calcul | Avant | Après | Gain |
+|---|---:|---:|---:|
+| Hachures 0,2 mm sur 24 faces à trou | 2,6 s | 0,08 s | ×33 |
+| Grille de test 6×6, hachures 0,2 mm | 1,1 s | 0,06 s | ×17 |
+
 La précision est préservée : l'écart Z entre le maillage et la vraie surface est borné à 0,05 mm (constante `MESH_PROBE_DEVIATION_MM`), validé contre l'ancien raycast exact sur 300 points aléatoires (erreur max mesurée : 0,046 mm) — négligeable face à la tolérance de focus du laser (~0,1 mm).
 
 ## Prérequis
