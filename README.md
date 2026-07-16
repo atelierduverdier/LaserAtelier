@@ -5,10 +5,10 @@ Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de 
 ## Fonctionnalités
 
 - **Hachures 2D** : remplissage (parallèles / croisées / défocus) sur une face 2D
-- **Projection sur surface 3D** : projette un motif 2D sur une surface courbe par raycast vertical
+- **Projection sur surface 3D** : projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée même sur un remplissage dense)
 - **Calibration kerf** : génère un carré test pour mesurer le kerf réel du laser
 - **Grille de test puissance/vitesse** : job unique en grille de cellules à puissance/vitesse variables, avec étiquettes de repérage, optimisation du trajet par proximité et remplissage défocus
-- **Marquage sur surface courbe** : suit le relief d'un modèle 3D (sonde exacte par raycast, ou interpolation), avec préréglages matériau et aperçu du trajet directement dans la vue 3D
+- **Marquage sur surface courbe** : suit le relief d'un modèle 3D (sonde par tessellation, ou interpolation), avec préréglages matériau et aperçu du trajet directement dans la vue 3D
 - **Découpe multi-passes sur surface courbée** : combine le suivi de relief du marquage courbe avec la logique multi-passes/kerf/imbrication de la découpe à plat
 - **Découpe multi-passes (matériau plat)** : passes progressives, compensation de kerf, ordre trous-avant-contour, rampe de puissance, dernière passe ralentie
 - **Job combiné** : empile plusieurs opérations (marquage, découpe, grille de test) dans un seul fichier G-code avec un seul armement du laser, transition de sécurité anti-collision entre opérations
@@ -24,6 +24,20 @@ Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de 
 |---|---|
 | ![Résultat coloré](docs/screenshots/resultat-colore.png) | ![Job combiné](docs/screenshots/job-combine.png) |
 | ![Réglages de marquage](docs/screenshots/parametres-marquage.png) | ![Grille de test puissance/vitesse](docs/screenshots/grille-test-puissance-vitesse.png) |
+
+## Performances
+
+La sonde de hauteur Z (suivi de relief pour le marquage/découpe sur surface courbe et la projection de motifs) utilisait à l'origine une intersection géométrique OpenCascade **par point sondé** (~5 ms chacune) : sur un remplissage dense, cela représentait des dizaines de milliers d'intersections et plusieurs minutes de calcul. Elle repose maintenant sur une **tessellation unique** de la surface suivie d'une interpolation barycentrique par point (quelques microsecondes).
+
+Mesures sur une plaque ondulée 100×60 mm, hachures espacées de 0,5 mm (~48 000 points de trajectoire) :
+
+| Calcul | Avant | Après | Gain |
+|---|---:|---:|---:|
+| Projection du motif sur la surface 3D | 66,2 s | 0,06 s | ×1200 |
+| G-code marquage courbe (1er calcul) | 107,0 s | 0,18 s | ×600 |
+| G-code marquage courbe (recalcul) | 11,8 s | 0,18 s | ×65 |
+
+La précision est préservée : l'écart Z entre le maillage et la vraie surface est borné à 0,05 mm (constante `MESH_PROBE_DEVIATION_MM`), validé contre l'ancien raycast exact sur 300 points aléatoires (erreur max mesurée : 0,046 mm) — négligeable face à la tolérance de focus du laser (~0,1 mm).
 
 ## Prérequis
 
