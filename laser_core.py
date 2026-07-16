@@ -204,11 +204,12 @@ DISCRETIZE_DISTANCE = 0.3      # mm : résolution de tracé (Distance, pas
                                 # aucune courbure à approximer, Deflection
                                 # ne donnerait que 2 points)
 TRANSIT_SAMPLE_STEP = 2.0      # mm : résolution du suivi de courbure en transit (mode courbe)
-RAY_PROBE_CACHE_GRID_MM = 0.5  # mm : résolution de mémoïsation de _RayProbe.z_at
-                                # (négligeable face au cône de 16mm du bec,
-                                # évite des dizaines de milliers de raycasts
-                                # OpenCascade quasi redondants sur un
-                                # remplissage dense -- voir _RayProbe)
+MESH_PROBE_DEVIATION_MM = 0.05 # mm : écart max entre le maillage de sonde et
+                                # la vraie surface (tessellation OpenCascade,
+                                # voir _MeshZProbe) -- l'erreur Z introduite est
+                                # bornée par cette valeur, négligeable face à la
+                                # tolérance de focus du laser (~0.1mm) et au
+                                # cône de 16mm du bec
 NOZZLE_CHECK_INTERVAL_MM = 1.5 # mm : espacement minimal entre deux contrôles
                                 # de dégagement du bec pendant la gravure
                                 # (indépendant de DISCRETIZE_DISTANCE -- un
@@ -593,35 +594,20 @@ def split_projection_selection(selection):
 
 
 def drop_edges_to_surface(edges_2d, shape_3d):
-    """Projette chaque point des lignes 2D sur la surface 3D (raycast Z,
-    'common' avec le solide -- plus fiable que distToShape pour ce cas).
-
-    Pas de mémoïsation ici (contrairement à _RayProbe.z_at, utilisé pour
-    le contrôle de dégagement du bec où une erreur d'arrondi de l'ordre
-    du mm est négligeable face à un cône de 16mm) : l'échantillonnage
-    est déjà grossier (PROJECTION_SAMPLE_DISTANCE = 1mm), donc le nombre
-    de raycasts reste raisonnable même sur un remplissage dense. Mémoïser
-    par position arrondie sur une cellule (0.5mm) plus large que
-    l'espacement des hachures (0.2mm) faisait retomber des lignes
-    voisines sur le Z d'une position différente -- tracé en dents de
-    scie au lieu de suivre la pente en douceur."""
-    bb = shape_3d.BoundBox
-    z_top = bb.ZMax + 10.0
-    z_bot = bb.ZMin - 10.0
+    """Projette chaque point des lignes 2D sur la surface 3D via la sonde
+    par maillage (_MeshZProbe : tessellation une fois, puis interpolation
+    barycentrique par point -- remplace l'ancien raycast booléen
+    OpenCascade par point, ~5ms chacun, qui coûtait plus d'une minute sur
+    un remplissage dense). L'interpolation linéaire donne un Z continu :
+    pas de tracé en dents de scie, l'écart à la vraie surface est borné
+    par MESH_PROBE_DEVIATION_MM."""
+    mesh_probe = _MeshZProbe(shape_3d)
 
     def probe(x, y):
-        vert_line = Part.LineSegment(
-            FreeCAD.Vector(x, y, z_top),
-            FreeCAD.Vector(x, y, z_bot)
-        ).toShape()
-        try:
-            intersection = vert_line.common(shape_3d)
-            if intersection and hasattr(intersection, 'Vertexes') and len(intersection.Vertexes) > 0:
-                z = max(intersection.Vertexes, key=lambda v: v.Point.z).Point.z
-                return FreeCAD.Vector(x, y, z)
-        except Exception:
-            pass
-        return None
+        z = mesh_probe.z_at_or_none(x, y)
+        if z is None:
+            return None
+        return FreeCAD.Vector(x, y, z)
 
     edges_3d = []
     for edge in edges_2d:
@@ -1195,67 +1181,109 @@ class _IDWHeight(object):
         return sum(w * z for w, (_, z) in zip(weights, nearest)) / wsum
 
 
-class _RayProbe(object):
-    """Sonde Z EXACTE par projection verticale sur l'objet 3D de référence
-    (raycast via 'common', déjà validé sur un solide dans
-    Coller_hachures_sur_3D.fcmacro).
+class _MeshZProbe(object):
+    """Sonde Z par projection verticale sur l'objet 3D de référence.
 
-    Mémoïse par position arrondie (RAY_PROBE_CACHE_GRID_MM) : chaque
-    raycast est une intersection géométrique OpenCascade, coûteuse (de
-    l'ordre de la milliseconde). Sans cache, un remplissage dense (ex:
-    hachures à 0.2mm d'espacement, contrôle de dégagement du bec à
-    chaque point tous les ~0.3mm) déclenche des dizaines de milliers de
-    raycasts quasiment redondants (positions voisines à moins d'1mm les
-    unes des autres) -- plusieurs minutes de calcul pour rien. L'erreur
-    introduite par l'arrondi (une fraction de mm) est négligeable pour
-    un contrôle de dégagement pensé pour un cône de 16mm de diamètre."""
+    Remplace l'ancien raycast par opération booléenne OpenCascade
+    (`common` ligne/solide, ~5ms PAR POINT : sur un remplissage dense,
+    des dizaines de milliers de points = plusieurs MINUTES de calcul,
+    mesuré au profileur à 99% du temps total). Ici la surface est
+    tessellée UNE FOIS en triangles (C++ OpenCascade, rapide), indexés
+    dans une grille XY ; chaque requête Z se réduit alors à un test
+    barycentrique 2D sur les quelques triangles de la cellule --
+    quelques microsecondes, sans aucune opération géométrique.
 
-    def __init__(self, shape_3d, margin=10.0):
-        bb = shape_3d.BoundBox
+    L'erreur Z est bornée par MESH_PROBE_DEVIATION_MM (écart maximal
+    autorisé entre le maillage et la vraie surface), et l'interpolation
+    linéaire dans chaque triangle donne un Z continu -- pas de
+    mémoïsation par cellule, donc pas de tracé en dents de scie."""
+
+    def __init__(self, shape_3d, deviation=MESH_PROBE_DEVIATION_MM):
         self.shape = shape_3d
-        self.z_top = bb.ZMax + margin
-        self.z_bot = bb.ZMin - margin
-        self.last_z = bb.ZMax
+        self.last_z = shape_3d.BoundBox.ZMax
         self.misses = 0
-        self._cache = {}
+
+        verts, facets = shape_3d.tessellate(deviation)
+        tris = []
+        for i1, i2, i3 in facets:
+            p1, p2, p3 = verts[i1], verts[i2], verts[i3]
+            det = (p2.x - p1.x) * (p3.y - p1.y) - (p3.x - p1.x) * (p2.y - p1.y)
+            if abs(det) < 1e-12:
+                continue  # triangle vertical : invisible en projection Z
+            tris.append((p1.x, p1.y, p1.z,
+                         p2.x - p1.x, p2.y - p1.y, p2.z - p1.z,
+                         p3.x - p1.x, p3.y - p1.y, p3.z - p1.z,
+                         1.0 / det))
+        self._tris = tris
+
+        bb = shape_3d.BoundBox
+        area = max(bb.XLength * bb.YLength, 1e-9)
+        # ~4 triangles par cellule en moyenne : peu de candidats par
+        # requête sans exploser le coût d'indexation
+        self._cell = max(math.sqrt(area / max(len(tris), 1)) * 2.0, 1e-3)
+        grid = defaultdict(list)
+        for idx, t in enumerate(tris):
+            x1, y1 = t[0], t[1]
+            xs = (x1, x1 + t[3], x1 + t[6])
+            ys = (y1, y1 + t[4], y1 + t[7])
+            ix0 = int(math.floor(min(xs) / self._cell))
+            ix1 = int(math.floor(max(xs) / self._cell))
+            iy0 = int(math.floor(min(ys) / self._cell))
+            iy1 = int(math.floor(max(ys) / self._cell))
+            for ix in range(ix0, ix1 + 1):
+                for iy in range(iy0, iy1 + 1):
+                    grid[(ix, iy)].append(idx)
+        self._grid = dict(grid)
 
     def matches(self, shape_3d):
         return self.shape is shape_3d
 
-    def z_at(self, x, y):
-        key = (round(x / RAY_PROBE_CACHE_GRID_MM), round(y / RAY_PROBE_CACHE_GRID_MM))
-        cached = self._cache.get(key)
-        if cached is not None:
-            return cached
+    def z_at_or_none(self, x, y):
+        """Z de la surface sous (x,y), ou None hors de la silhouette.
+        En cas de recouvrements (surplombs), renvoie le Z le plus haut,
+        comme l'ancien raycast (max des intersections)."""
+        cands = self._grid.get((int(math.floor(x / self._cell)),
+                                int(math.floor(y / self._cell))))
+        if not cands:
+            return None
+        eps = 1e-9
+        best = None
+        tris = self._tris
+        for idx in cands:
+            (x1, y1, z1, ux, uy, uz, vx, vy, vz, inv_det) = tris[idx]
+            dx = x - x1
+            dy = y - y1
+            u = (dx * vy - dy * vx) * inv_det
+            if u < -eps or u > 1.0 + eps:
+                continue
+            v = (dy * ux - dx * uy) * inv_det
+            if v < -eps or u + v > 1.0 + eps:
+                continue
+            z = z1 + u * uz + v * vz
+            if best is None or z > best:
+                best = z
+        return best
 
-        vert_line = Part.LineSegment(
-            FreeCAD.Vector(x, y, self.z_top),
-            FreeCAD.Vector(x, y, self.z_bot)
-        ).toShape()
-        try:
-            intersection = vert_line.common(self.shape)
-            if intersection and hasattr(intersection, 'Vertexes') and len(intersection.Vertexes) > 0:
-                best_pt = max(intersection.Vertexes, key=lambda v: v.Point.z).Point
-                self.last_z = best_pt.z
-                self._cache[key] = self.last_z
-                return self.last_z
-        except Exception:
-            pass
-        self.misses += 1
-        # Un échec n'est PAS mémoïsé : self.last_z (le repli) évolue au
-        # fil du parcours, un échec mémoïsé figerait un repli obsolète.
-        return self.last_z
+    def z_at(self, x, y):
+        z = self.z_at_or_none(x, y)
+        if z is None:
+            self.misses += 1
+            # Repli identique à l'ancienne sonde : dernière hauteur
+            # connue (normal en bord de zone).
+            return self.last_z
+        self.last_z = z
+        return z
 
 
 def make_ray_probe(shape_3d):
     """Construit une sonde Z réutilisable pour `probe=` de
     generate_gcode_curved(_cut) -- à garder d'un appel à l'autre dans un
     panneau de tâches (aperçu durée/cadrage/trajet/génération finale) pour
-    ne pas relancer tous les raycasts de surface à chaque recalcul alors
-    que seul reference_shape en détermine le résultat (feed/z_focus/marge/
+    ne pas re-tesseller la surface à chaque recalcul alors que seul
+    reference_shape en détermine le résultat (feed/z_focus/marge/
     puissance n'affectent que l'usage qui en est fait, pas la sonde
     elle-même)."""
-    return _RayProbe(shape_3d)
+    return _MeshZProbe(shape_3d)
 
 
 def split_selection(selection):
@@ -1340,7 +1368,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         if probe is not None and probe.matches(reference_shape):
             height_probe = probe
         else:
-            height_probe = _RayProbe(reference_shape)
+            height_probe = _MeshZProbe(reference_shape)
         probe_kind = "sonde exacte sur l'objet 3D sélectionné"
         nozzle_check_active = True
     else:
@@ -2233,7 +2261,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
         if probe is not None and probe.matches(reference_shape):
             height_probe = probe
         else:
-            height_probe = _RayProbe(reference_shape)
+            height_probe = _MeshZProbe(reference_shape)
         probe_kind = "sonde exacte sur l'objet 3D sélectionné"
         nozzle_check_active = True
     else:
