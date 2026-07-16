@@ -16,7 +16,7 @@ Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de 
 
 ## Démo vidéo
 
-[Vidéo de démonstration sur YouTube](https://youtube.com/TODO) <!-- remplacer par le lien une fois la vidéo mise en ligne -->
+[Vidéo de démonstration sur YouTube](https://youtu.be/KP4F4Cd287A)
 
 ## Captures d'écran
 
