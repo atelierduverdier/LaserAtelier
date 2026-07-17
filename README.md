@@ -86,7 +86,20 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
 ## Prérequis
 
 - FreeCAD (testé sur la série 1.1)
-- Le laser doit accepter du G-code au format généré (voir `laser_core.py` : `G21`/`G90`/`G94`, armement par `M3`/désarmement par `M5`, arrêt de job propre au `M2`)
+- Le laser doit accepter du G-code au format généré (voir `laser_core.py`) :
+  en-tête `G21`/`G90`/`G94`/`G43 H100`, armement unique par `M3 $1`
+  (faisceau à zéro), puissance par segment `S… $1`, `S0 $1` sur les
+  rapides, désarmement `M5 $1`, arrêt de job propre au `M2`
+- **Prérequis machine avant de lancer un fichier généré** : avoir fait
+  `T100 M6` dans la session LinuxCNC. Le `G43 H100` de l'en-tête
+  applique les offsets X/Y et le Z palpé de l'outil laser (T100) à ce
+  moment-là ; sans lui, les coordonnées seraient interprétées en
+  position broche et non nez laser (focus faux, X/Y décalés). Le
+  prérequis est rappelé en commentaire dans chaque fichier généré.
+- Le sélecteur multi-broche `$1` et la compensation d'outil sont pensés
+  pour LinuxCNC (laser = spindle 1, outil T100). Pour un contrôleur qui
+  ne les supporte pas (GRBL...), adapter `SPINDLE_SELECT` et
+  `CMD_TOOL_COMP` dans `laser_core.py`
 
 ## Installation
 
