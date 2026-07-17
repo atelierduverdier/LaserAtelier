@@ -193,6 +193,11 @@ def save_config(data):
 # ==========================================================================
 SPINDLE_SELECT = "$1"
 ARM_DWELL_S = 2.0
+# Compensation d'outil laser : applique les offsets X/Y (tool.tbl) et
+# le Z palpé au dernier T100 M6. Sans elle, le Z de foyer et les XY
+# seraient interprétés en coordonnées broche, pas nez laser.
+# PRÉREQUIS MACHINE : avoir fait T100 M6 dans la session LinuxCNC.
+CMD_TOOL_COMP = "G43 H100 (compensation T100 - prerequis: T100 M6 fait dans la session)"
 CMD_ARM = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"
 CMD_DISARM = "S0 {sel}\nM5 {sel}"
 CMD_BEAM_ON = "S{power:.0f} {sel}"
@@ -1192,6 +1197,7 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        lines.append(CMD_TOOL_COMP)
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -1494,6 +1500,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        lines.append(CMD_TOOL_COMP)
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe_start_end))
 
@@ -2197,6 +2204,7 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        lines.append(CMD_TOOL_COMP)
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -2395,6 +2403,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        lines.append(CMD_TOOL_COMP)
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
