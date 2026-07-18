@@ -26,6 +26,61 @@ def _icon(name):
     return QtGui.QIcon(os.path.join(_ICON_DIR, name))
 
 
+def _icon_pixmap(name, size):
+    """Pixmap d'une icône SVG à la taille voulue, ou None si le rendu
+    échoue (Qt sans support SVG...) -- l'appelant se rabat alors sur le
+    texte seul, jamais de plantage."""
+    try:
+        pm = _icon(name).pixmap(size, size)
+        return pm if not pm.isNull() else None
+    except Exception:
+        return None
+
+
+def _panel_header(form, icon_name, title):
+    """Bandeau en tête de panneau : icône du mode + nom en gras/agrandi,
+    suivi d'un trait. Repère visuel immédiat du mode ouvert."""
+    row = QtWidgets.QWidget()
+    lay = QtWidgets.QHBoxLayout(row)
+    lay.setContentsMargins(0, 2, 0, 2)
+    pm = _icon_pixmap(icon_name, 28)
+    if pm is not None:
+        ico = QtWidgets.QLabel()
+        ico.setPixmap(pm)
+        lay.addWidget(ico, 0)
+    lbl = QtWidgets.QLabel(title)
+    lbl.setStyleSheet("font-weight: bold; font-size: 14px;")
+    lay.addWidget(lbl, 1)
+    form.addRow(row)
+    _hline(form)
+
+
+def _section(form, title, icon_name=None):
+    """Titre de section : petit picto (optionnel) + libellé gras, suivi
+    d'un trait fin -- pour regrouper visuellement les champs d'un panneau
+    dense."""
+    row = QtWidgets.QWidget()
+    lay = QtWidgets.QHBoxLayout(row)
+    lay.setContentsMargins(0, 6, 0, 0)
+    pm = _icon_pixmap(icon_name, 16) if icon_name else None
+    if pm is not None:
+        ico = QtWidgets.QLabel()
+        ico.setPixmap(pm)
+        lay.addWidget(ico, 0)
+    lbl = QtWidgets.QLabel(title)
+    lbl.setStyleSheet("font-weight: bold; color: #ff8a00;")
+    lay.addWidget(lbl, 1)
+    form.addRow(row)
+    _hline(form)
+
+
+def _hline(form):
+    line = QtWidgets.QFrame()
+    line.setFrameShape(QtWidgets.QFrame.HLine)
+    line.setFrameShadow(QtWidgets.QFrame.Sunken)
+    form.addRow(line)
+
+
 def _scrollable(inner):
     # setWidgetResizable(True) + une hauteur minimale forcée sur le
     # QScrollArea (voir plus bas) étirent "inner" pour remplir tout
@@ -144,6 +199,7 @@ class TaskPanelHatch:
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        _panel_header(form, "hatch.svg", "Hachures 2D")
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -305,6 +361,7 @@ class TaskPanelFilledEngraving:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
+        _panel_header(form, "filled.svg", "Gravure remplie (noir)")
         info = QtWidgets.QLabel(
             "Grave une forme/texte 2D en NOIR PLEIN : remplissage par\n"
             "hachures en défocus (point élargi, rentré pour ne pas déborder\n"
@@ -313,7 +370,7 @@ class TaskPanelFilledEngraving:
         info.setWordWrap(True)
         form.addRow(info)
 
-        # --- Préréglages nommés (par matériau), catégorie "filled" ---
+        _section(form, "Préréglage matériau", "sect_preset.svg")
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)
@@ -337,7 +394,7 @@ class TaskPanelFilledEngraving:
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
         form.addRow(self.btn_delete_preset)
 
-        # --- Remplissage ---
+        _section(form, "Remplissage", "sect_fill.svg")
         self.spn_spacing = QtWidgets.QDoubleSpinBox()
         self.spn_spacing.setRange(0.05, 100.0)
         self.spn_spacing.setDecimals(2)
@@ -378,7 +435,7 @@ class TaskPanelFilledEngraving:
             "obliques) : ce liseré la comble pour un noir plein jusqu'au contour.")
         form.addRow(self.chk_perimeter)
 
-        # --- Calibration du point (défocus) : mêmes champs que Hachures 2D ---
+        _section(form, "Calibration du point (défocus)", "sect_focus.svg")
         self.lbl_defocus_calib = QtWidgets.QLabel(
             "<b>Calibration du point laser</b> -- brûle 2 points test (au\n"
             "foyer, puis à un défocus connu) et mesure leur diamètre :")
@@ -417,7 +474,7 @@ class TaskPanelFilledEngraving:
         self.lbl_defocus_result.setWordWrap(True)
         form.addRow(self.lbl_defocus_result)
 
-        # --- Z de travail ---
+        _section(form, "Z de travail & transit", "sect_zheight.svg")
         self.spn_zwork = QtWidgets.QDoubleSpinBox()
         self.spn_zwork.setRange(-50, 200)
         self.spn_zwork.setDecimals(2)
@@ -441,7 +498,7 @@ class TaskPanelFilledEngraving:
             "N'augmenter que pour survoler des obstacles (brides, serre-flans).")
         form.addRow("Marge de survol (transit) :", self.spn_marge)
 
-        # --- Contour ---
+        _section(form, "Contour", "sect_contour.svg")
         self.chk_contour = QtWidgets.QCheckBox("Graver le contour (repassé après le remplissage)")
         self.chk_contour.setChecked(True)
         self.chk_contour.setToolTip(
@@ -514,7 +571,7 @@ class TaskPanelFilledEngraving:
         self.spn_dtest.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_contour_width.valueChanged.connect(lambda _v: _update_defocus_preview())
 
-        # --- G-code avant/après ---
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
         self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
@@ -780,6 +837,7 @@ class TaskPanelProject:
         self.selection = selection
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
+        _panel_header(form, "project.svg", "Projection sur surface 3D")
         lbl = QtWidgets.QLabel(
             "Sélectionne un ou plusieurs motifs 2D (ShapeString, hachures...)\n"
             "PUIS la surface 3D de référence (sphère, vague...), tous en\n"
@@ -813,6 +871,7 @@ class TaskPanelKerf:
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
 
+        _panel_header(form, "kerf.svg", "Calibration kerf")
         self.spn_size = QtWidgets.QDoubleSpinBox()
         self.spn_size.setRange(1.0, 200.0)
         self.spn_size.setValue(20.0)
@@ -865,8 +924,10 @@ class TaskPanelDefocusCalibration:
             "« point au défocus de test » (sa largeur). Zéro Z sur la\n"
             "surface. Aucune sélection requise.")
         info.setWordWrap(True)
+        _panel_header(form, "defocus.svg", "Bande de calibration défocus")
         form.addRow(info)
 
+        _section(form, "Balayage en hauteur (Z)", "sect_zheight.svg")
         self.spn_zstart = QtWidgets.QDoubleSpinBox()
         self.spn_zstart.setRange(-50, 200)
         self.spn_zstart.setDecimals(2)
@@ -896,6 +957,7 @@ class TaskPanelDefocusCalibration:
         self.spn_nmarks.setToolTip("Nombre de traits (donc de hauteurs testées).")
         form.addRow("Nombre de traits :", self.spn_nmarks)
 
+        _section(form, "Traits (puissance / vitesse)", "sect_power.svg")
         self.spn_length = QtWidgets.QDoubleSpinBox()
         self.spn_length.setRange(2.0, 200.0)
         self.spn_length.setValue(15.0)
@@ -940,6 +1002,7 @@ class TaskPanelDefocusCalibration:
         self.spn_feed.setToolTip("Vitesse d'avance FIXE des traits.")
         form.addRow("Vitesse des traits :", self.spn_feed)
 
+        _section(form, "Étiquettes", "sect_labels.svg")
         self.chk_labels = QtWidgets.QCheckBox("Graver la hauteur (mm) à gauche")
         self.chk_labels.setChecked(True)
         self.chk_labels.setToolTip(
@@ -988,6 +1051,7 @@ class TaskPanelDefocusCalibration:
         self.spn_zstep.valueChanged.connect(lambda _v: _update_range())
         self.spn_nmarks.valueChanged.connect(lambda _v: _update_range())
 
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
         self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
@@ -1111,12 +1175,12 @@ class TaskPanelTestGrid:
             "en Y) -- la grille complète est aussi imprimée dans la vue\n"
             "Rapport. Aucune sélection requise.")
         info.setWordWrap(True)
+        _panel_header(form, "testgrid.svg", "Grille de test puissance / vitesse")
         form.addRow(info)
 
-        # --- Préréglages nommés (par matériau) : même mécanique et même
-        # fichier de config que les modes Marquage courbe / Découpe
-        # multi-passes, catégorie "testgrid". Ici TOUS les réglages de la
-        # grille sont couverts (pas seulement puissance/vitesse). ---
+        # Préréglages nommés (par matériau), catégorie "testgrid" : TOUS les
+        # réglages de la grille sont couverts (pas seulement puissance/vitesse).
+        _section(form, "Préréglage matériau", "sect_preset.svg")
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)
@@ -1143,6 +1207,7 @@ class TaskPanelTestGrid:
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
         form.addRow(self.btn_delete_preset)
 
+        _section(form, "Mode & plages puissance/vitesse", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
         self.combo_mode.addItems(["Gravure (remplissage)", "Découpe (contour)"])
         # Même repli que le combo "Type de remplissage" du mode Hachures :
@@ -1210,6 +1275,7 @@ class TaskPanelTestGrid:
             "valeur min.")
         form.addRow("Nombre de vitesses :", self.spn_feed_steps)
 
+        _section(form, "Cellules", "sect_contour.svg")
         self.spn_cell_size = QtWidgets.QDoubleSpinBox()
         self.spn_cell_size.setRange(2.0, 100.0)
         self.spn_cell_size.setValue(10.0)
@@ -1230,6 +1296,7 @@ class TaskPanelTestGrid:
             "prononcé) ne déborde visuellement sur sa voisine.")
         form.addRow("Espacement cellules :", self.spn_gap)
 
+        _section(form, "Remplissage", "sect_fill.svg")
         self.combo_filltype = QtWidgets.QComboBox()
         self.combo_filltype.addItems(["Parallèles", "Croisées (grille)", "Défocus (noir)"])
         # Même repli que le combo "Type de remplissage" du mode Hachures :
@@ -1383,6 +1450,7 @@ class TaskPanelTestGrid:
         _update_visibility()
         _update_total_preview()
 
+        _section(form, "Options", "sect_options.svg")
         self.chk_proximity = QtWidgets.QCheckBox("Optimiser l'ordre par proximité")
         self.chk_proximity.setChecked(True)
         self.chk_proximity.setToolTip(
@@ -1393,6 +1461,7 @@ class TaskPanelTestGrid:
             "mélangées) afin de garder un minimum de changements de Z.")
         form.addRow(self.chk_proximity)
 
+        _section(form, "Étiquettes S/F", "sect_labels.svg")
         self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes S/F (colonnes/lignes)")
         self.chk_labels.setChecked(True)
         self.chk_labels.setToolTip(
@@ -1426,6 +1495,7 @@ class TaskPanelTestGrid:
         self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
         self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
 
+        _section(form, "Cadre net (contour des carrés)", "sect_contour.svg")
         self.chk_border = QtWidgets.QCheckBox("Cadre net autour de chaque carré (au foyer)")
         self.chk_border.setChecked(True)
         self.chk_border.setToolTip(
@@ -1470,6 +1540,7 @@ class TaskPanelTestGrid:
         self.chk_border.toggled.connect(self.spn_border_power.setEnabled)
         self.chk_border.toggled.connect(self.spn_border_feed.setEnabled)
 
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -1868,6 +1939,7 @@ class TaskPanelCurved:
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        _panel_header(form, "curved.svg", "Marquage sur surface courbe")
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -1949,6 +2021,7 @@ class TaskPanelCurved:
             "sinon interpolation.")
         form.addRow("Marge de sécurité (transit) :", self.spn_marge)
 
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -2163,6 +2236,7 @@ class TaskPanelFlat:
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        _panel_header(form, "flat.svg", "Découpe multi-passes (plat)")
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -2338,6 +2412,7 @@ class TaskPanelFlat:
             "chaque palier trou/extérieur si les deux options sont actives.")
         form.addRow(self.chk_proximity)
 
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -2562,6 +2637,7 @@ class TaskPanelCurvedCut:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
+        _panel_header(form, "curved_cut.svg", "Découpe multi-passes (courbe)")
         info = QtWidgets.QLabel(
             "Comme le marquage sur surface courbe, sélectionne à la fois\n"
             "le motif projeté (Hachures_3D, issu du mode Projection) ET le\n"
@@ -2700,6 +2776,7 @@ class TaskPanelCurvedCut:
         self.chk_proximity.setChecked(True)
         form.addRow(self.chk_proximity)
 
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -3334,6 +3411,7 @@ class TaskPanelCombined:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
+        _panel_header(form, "combined.svg", "Job combiné")
         info = QtWidgets.QLabel(
             "Empile plusieurs opérations (Marquage courbe / Découpe\n"
             "courbe / Découpe multi-passes / Grille de test) dans UN SEUL\n"
@@ -3623,7 +3701,9 @@ class TaskPanelSettings:
         settings = core.current_settings()
         nozzle = core.current_nozzle()
 
-        # --- Sauvegarde ---
+        _panel_header(form, "settings.svg", "Préférences Atelier Laser")
+
+        _section(form, "Sauvegarde & estimation", "sect_gcode.svg")
         self.edt_gcode_dir = QtWidgets.QLineEdit(settings["gcode_dir"])
         self.edt_gcode_dir.setToolTip(
             "Dossier proposé par défaut dans le dialogue de sauvegarde\n"
@@ -3689,7 +3769,7 @@ class TaskPanelSettings:
             "rectangle est facile à suivre à l'œil.")
         form.addRow("Vitesse de cadrage :", self.spn_frame_feed)
 
-        # --- G-code / machine ---
+        _section(form, "Machine / G-code", "sect_options.svg")
         self.edt_spindle = QtWidgets.QLineEdit(settings["spindle_select"])
         self.edt_spindle.setToolTip(
             "Sélecteur multi-broche ajouté aux commandes S/M3/M5 (LinuxCNC :\n"
@@ -3709,7 +3789,7 @@ class TaskPanelSettings:
             "premier trait.")
         form.addRow("Temporisation d'armement :", self.spn_dwell)
 
-        # --- Sécurité découpe ---
+        _section(form, "Sécurité découpe", "sect_safety.svg")
         self.spn_safe_height = QtWidgets.QDoubleSpinBox()
         self.spn_safe_height.setRange(0.0, 20.0)
         self.spn_safe_height.setDecimals(1)
@@ -3744,7 +3824,7 @@ class TaskPanelSettings:
             "déjà coupé). N'empêche pas de générer.")
         form.addRow("Pas Z max sans avertir :", self.spn_max_step)
 
-        # --- Profil du bec (anti-collision surfaces courbes) ---
+        _section(form, "Profil du bec (anti-collision)", "sect_focus.svg")
         lbl_nozzle = QtWidgets.QLabel(
             "Profil du bec (contrôle anti-collision des modes sur surface\n"
             "courbe). Tube droit : bas = haut = diamètre du tube. Section\n"

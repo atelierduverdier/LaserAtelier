@@ -44,17 +44,27 @@ class LaserAtelierWorkbench(Workbench):
         import commands
         commands.register_commands()
         self.command_list = [
+            # -- Gravure à plat --
             "LaserAtelier_Hatch",
             "LaserAtelier_FilledEngraving",
+            "Separator",
+            # -- Sur surface 3D --
             "LaserAtelier_Project",
+            "LaserAtelier_Curved",
+            "LaserAtelier_CurvedCut",
+            "Separator",
+            # -- Découpe --
+            "LaserAtelier_Flat",
+            "Separator",
+            # -- Tests & calibration --
             "LaserAtelier_Kerf",
             "LaserAtelier_TestGrid",
             "LaserAtelier_DefocusCalibration",
-            "LaserAtelier_Curved",
-            "LaserAtelier_CurvedCut",
-            "LaserAtelier_Flat",
+            "Separator",
+            # -- Assemblage --
             "LaserAtelier_Combined",
             "Separator",
+            # -- Réglages --
             "LaserAtelier_Settings",
         ]
         self.appendToolbar("Atelier Laser", self.command_list)
