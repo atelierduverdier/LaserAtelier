@@ -1020,6 +1020,7 @@ def build_test_grid_cells(mode, power_min, power_max, n_power,
                 "power": power, "feed": feed,
                 "x0": x0, "y0": y0,
                 "edges": edges,
+                "border_edges": square_edges,  # contour carré, pour le cadre net au foyer
             })
     return cells
 
@@ -1217,6 +1218,7 @@ def print_test_grid_legend(mode, cells, n_power, n_feed):
 
 def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0, label_feed=1500.0,
                               cell_z_offset=0.0, use_proximity=False,
+                              draw_border=False, z_border=8.5, border_power=300.0, border_feed=1000.0,
                               pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
                               min_safe_z=None):
     """G-code de la grille de test : chaque cellule est chaînée et
@@ -1254,6 +1256,14 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
     appliquée SÉPARÉMENT à chaque bande de Z (cellules, puis étiquettes)
     pour ne jamais mélanger les deux bandes et garder un minimum de
     changements de Z.
+
+    draw_border : grave le contour carré de chaque cellule (cadre net) à
+    z_border (foyer, indépendant du Z des cellules -- qui peut être
+    défocalisé), à border_power/border_feed. Utile surtout en remplissage
+    Défocus, où les cellules sont floues : le cadre au foyer délimite
+    nettement chaque carré. z_border partage le plus souvent le Z des
+    étiquettes (toutes deux au foyer) -- émis dans la foulée, sans
+    changement de Z superflu.
 
     frame_only : ne génère QUE le rectangle englobant de toute la grille
     (laser éteint), en réutilisant le même calcul de Z de sécurité que le
@@ -1320,11 +1330,22 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
             label_band.append((chain, label_power, label_feed, label_comment))
     label_band = _order_band(label_band)
 
-    if not cell_band and not label_band:
+    # Cadre net (contour carré au foyer) : même ordre de cellules que la
+    # bande de remplissage. Un seul commentaire d'en-tête pour toute la
+    # bande (pas un par cellule -- 100 lignes de commentaire en trop).
+    border_band = []  # [(chain, power, feed, comment), ...] à z_border
+    if draw_border:
+        border_comment = "(-- Cadre net au foyer autour de chaque carré : S={:.0f} F={:.0f} Z={:.4f} --)".format(
+            border_power, border_feed, z_border)
+        for cell in sorted(cells, key=lambda c: (c["row"], c["col"])):
+            for chain in chain_edges(cell["border_edges"]):
+                border_band.append((chain, border_power, border_feed, border_comment))
+
+    if not cell_band and not label_band and not border_band:
         return None
 
-    all_pts = [p for item in cell_band + label_band for p in item[0]]
-    z_safe = max(z_work, z_cells) + TRAVEL_CLEARANCE_MM
+    all_pts = [p for item in cell_band + label_band + border_band for p in item[0]]
+    z_safe = max(z_work, z_cells, z_border if draw_border else z_work) + TRAVEL_CLEARANCE_MM
     if min_safe_z is not None:
         z_safe = max(z_safe, min_safe_z)
 
@@ -1339,6 +1360,8 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
         lines.append("(Ordre : cellules par rangee du bas vers le haut, gauche a droite ; hachures optimisees dans chaque cellule)")
     else:
         lines.append("(Ordre : cellules par rangee du bas vers le haut, gauche a droite)")
+    if draw_border:
+        lines.append("(Cadre net : contour de chaque carre grave au foyer Z={:.4f}mm)".format(z_border))
     if not body_only:
         lines.append("G21")
         lines.append("G90")
@@ -1394,7 +1417,11 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
 
             lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
 
+    # Cellules d'abord (Z éventuellement défocalisé), puis les deux repères
+    # au foyer (cadre, étiquettes) : s'ils partagent le même Z, current_z
+    # évite tout retrait entre eux.
     _emit_band(cell_band, z_cells)
+    _emit_band(border_band, z_border)
     _emit_band(label_band, z_work)
 
     if current_z[0] is not None:

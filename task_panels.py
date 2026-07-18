@@ -710,6 +710,50 @@ class TaskPanelTestGrid:
         self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
         self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
 
+        self.chk_border = QtWidgets.QCheckBox("Cadre net autour de chaque carré (au foyer)")
+        self.chk_border.setChecked(True)
+        self.chk_border.setToolTip(
+            "Grave le contour carré de chaque cellule, NET AU FOYER, à un Z\n"
+            "propre (ci-dessous). Utile surtout en remplissage Défocus, où\n"
+            "les cellules sont volontairement floues : le cadre au foyer\n"
+            "délimite clairement chaque carré. Indépendant du Z des\n"
+            "cellules (qui peut être décalé par le défocus).")
+        form.addRow(self.chk_border)
+
+        self.spn_border_z = QtWidgets.QDoubleSpinBox()
+        self.spn_border_z.setRange(-50, 200)
+        self.spn_border_z.setDecimals(2)
+        self.spn_border_z.setValue(8.5)
+        self.spn_border_z.setSuffix(" mm")
+        self.spn_border_z.setToolTip(
+            "Z de foyer auquel le cadre est gravé (bec au point sur la\n"
+            "surface = trait le plus fin). Indépendant du « Z de travail »\n"
+            "des cellules : ainsi le cadre reste net même quand les\n"
+            "cellules sont gravées en défocus.")
+        form.addRow("Z du cadre (foyer) :", self.spn_border_z)
+
+        self.spn_border_power = QtWidgets.QDoubleSpinBox()
+        self.spn_border_power.setRange(0, 1000)
+        self.spn_border_power.setValue(300)
+        self.spn_border_power.setToolTip(
+            "Puissance (valeur S) FIXE du cadre -- séparée des puissances\n"
+            "en cours de test, pour un contour lisible quelle que soit la\n"
+            "plage testée.")
+        form.addRow("Puissance cadre :", self.spn_border_power)
+
+        self.spn_border_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_border_feed.setRange(1, 20000)
+        self.spn_border_feed.setValue(1000)
+        self.spn_border_feed.setSuffix(" mm/min")
+        self.spn_border_feed.setToolTip(
+            "Vitesse d'avance FIXE du cadre -- séparée des vitesses en\n"
+            "cours de test.")
+        form.addRow("Vitesse cadre :", self.spn_border_feed)
+
+        self.chk_border.toggled.connect(self.spn_border_z.setEnabled)
+        self.chk_border.toggled.connect(self.spn_border_power.setEnabled)
+        self.chk_border.toggled.connect(self.spn_border_feed.setEnabled)
+
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -792,7 +836,21 @@ class TaskPanelTestGrid:
         if values.get("labels", True):
             lines.append("Étiquettes S{:g} F{:g}".format(
                 values.get("label_power", 0), values.get("label_feed", 0)))
+        if values.get("border_enabled", True):
+            lines.append("Cadre au foyer S{:g} F{:g} Z{:g}".format(
+                values.get("border_power", 0), values.get("border_feed", 0),
+                values.get("border_z", 0)))
         return "\n".join(lines)
+
+    def _border_kwargs(self):
+        """Paramètres du cadre net passés au générateur (partagés par
+        accept, aperçu trajet et estimation de durée)."""
+        return {
+            "draw_border": self.chk_border.isChecked(),
+            "z_border": self.spn_border_z.value(),
+            "border_power": self.spn_border_power.value(),
+            "border_feed": self.spn_border_feed.value(),
+        }
 
     def _populate_preset_combo(self):
         self.combo_preset.blockSignals(True)
@@ -830,6 +888,10 @@ class TaskPanelTestGrid:
             "labels": self.chk_labels.isChecked(),
             "label_power": self.spn_label_power.value(),
             "label_feed": self.spn_label_feed.value(),
+            "border_enabled": self.chk_border.isChecked(),
+            "border_z": self.spn_border_z.value(),
+            "border_power": self.spn_border_power.value(),
+            "border_feed": self.spn_border_feed.value(),
         }
 
     def _on_preset_selected(self, index):
@@ -859,6 +921,10 @@ class TaskPanelTestGrid:
         self.chk_labels.setChecked(values.get("labels", self.chk_labels.isChecked()))
         self.spn_label_power.setValue(values.get("label_power", self.spn_label_power.value()))
         self.spn_label_feed.setValue(values.get("label_feed", self.spn_label_feed.value()))
+        self.chk_border.setChecked(values.get("border_enabled", self.chk_border.isChecked()))
+        self.spn_border_z.setValue(values.get("border_z", self.spn_border_z.value()))
+        self.spn_border_power.setValue(values.get("border_power", self.spn_border_power.value()))
+        self.spn_border_feed.setValue(values.get("border_feed", self.spn_border_feed.value()))
         self.lbl_preset_summary.setText(self._preset_summary(values))
         self.lbl_preset_summary.setVisible(True)
 
@@ -902,7 +968,7 @@ class TaskPanelTestGrid:
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
-            cell_z_offset=cell_z_offset, quiet=True,
+            cell_z_offset=cell_z_offset, quiet=True, **self._border_kwargs()
         )
         if not gcode:
             self.lbl_duration.setText("Durée estimée : --")
@@ -991,6 +1057,7 @@ class TaskPanelTestGrid:
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(), quiet=True,
+            **self._border_kwargs()
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -1035,6 +1102,7 @@ class TaskPanelTestGrid:
             cell_z_offset=cell_z_offset,
             use_proximity=self.chk_proximity.isChecked(),
             pre_gcode=pre_text, post_gcode=post_text,
+            **self._border_kwargs()
         )
 
         cfg = core.load_config()
