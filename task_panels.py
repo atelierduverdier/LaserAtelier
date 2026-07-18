@@ -90,12 +90,15 @@ def _duration_row(form, callback, tooltip_extra=""):
 
 def _write_gcode_with_dialog(parent_widget, gcode, default_path):
     """Estime la durée, propose un fichier de sauvegarde, écrit le G-code
-    si un chemin est choisi (silencieux si annulé -- même comportement
-    que l'ancienne macro). La durée est affichée à la fois dans la vue
-    Rapport ET dans une boîte de dialogue -- la vue Rapport n'est pas
-    toujours ouverte/visible (panneau optionnel de FreeCAD), donc s'y fier
-    seule rendait l'info invisible en pratique pour qui ne l'a pas
-    ouverte."""
+    si un chemin est choisi. Retourne True si le fichier a été écrit,
+    False si l'utilisateur a renoncé. Un clic sur Annuler dans le dialogue
+    de fichier propose une relance au lieu d'abandonner en silence : le
+    G-code généré n'existe nulle part ailleurs, le perdre sur un simple
+    Annuler (peut-être accidentel) forçait à refaire tous les réglages du
+    panneau. La durée est affichée à la fois dans la vue Rapport ET dans
+    une boîte de dialogue -- la vue Rapport n'est pas toujours
+    ouverte/visible (panneau optionnel de FreeCAD), donc s'y fier seule
+    rendait l'info invisible en pratique pour qui ne l'a pas ouverte."""
     # Dossier par défaut : GCODE_DIR (Préférences) ; repli sur le chemin
     # d'origine si le dossier (partage réseau...) n'est pas accessible.
     if os.path.isdir(core.GCODE_DIR):
@@ -105,17 +108,31 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path):
     FreeCAD.Console.PrintMessage(
         "Durée estimée (approximative, rapide supposé à {:.0f}mm/min) : {}\n".format(
             core.RAPID_FEED_MM_MIN, duration_text))
-    path, _ = QtWidgets.QFileDialog.getSaveFileName(
-        parent_widget, "Sauvegarder G-code", default_path, "G-code (*.ngc)")
-    if path:
-        with open(path, "w") as f:
-            f.write(gcode)
-        FreeCAD.Console.PrintMessage(
-            "Fichier écrit : {} (durée estimée {})\n".format(path, duration_text))
-        QtWidgets.QMessageBox.information(
-            parent_widget, "G-code généré",
-            "Fichier écrit :\n{}\n\nDurée estimée (approximative, rapide supposé à "
-            "{:.0f}mm/min) :\n{}".format(path, core.RAPID_FEED_MM_MIN, duration_text))
+    while True:
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            parent_widget, "Sauvegarder G-code", default_path, "G-code (*.ngc)")
+        if path:
+            break
+        retry = QtWidgets.QMessageBox.question(
+            parent_widget, "Sauvegarde annulée",
+            "Le G-code généré n'a pas été enregistré.\n\n"
+            "Rouvrir le dialogue de sauvegarde ?\n"
+            "(Non = abandonner ce fichier ; le panneau et ses réglages\n"
+            "restent ouverts pour re-générer.)",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.Yes)
+        if retry != QtWidgets.QMessageBox.Yes:
+            FreeCAD.Console.PrintMessage("Sauvegarde G-code abandonnée.\n")
+            return False
+    with open(path, "w") as f:
+        f.write(gcode)
+    FreeCAD.Console.PrintMessage(
+        "Fichier écrit : {} (durée estimée {})\n".format(path, duration_text))
+    QtWidgets.QMessageBox.information(
+        parent_widget, "G-code généré",
+        "Fichier écrit :\n{}\n\nDurée estimée (approximative, rapide supposé à "
+        "{:.0f}mm/min) :\n{}".format(path, core.RAPID_FEED_MM_MIN, duration_text))
+    return True
 
 
 # ==========================================================================
@@ -875,7 +892,16 @@ class TaskPanelTestGrid:
             return False
 
         FreeCAD.Console.PrintMessage("Succès : {} cellules créées.\n".format(len(objs)))
-        _write_gcode_with_dialog(self.form, gcode, "/tmp/grille_test.ngc")
+        if not _write_gcode_with_dialog(self.form, gcode, "/tmp/grille_test.ngc"):
+            # Sauvegarde abandonnée : accept() échoue pour que le panneau
+            # reste ouvert avec tous ses réglages. Les objets tout juste
+            # créés sont retirés du document -- re-cliquer OK regénère
+            # tout, les garder produirait des cellules en double.
+            doc = FreeCAD.ActiveDocument
+            for obj in objs + ([label_obj] if label_obj is not None else []):
+                doc.removeObject(obj.Name)
+            doc.recompute()
+            return False
         return True
 
     def reject(self):
@@ -1172,8 +1198,9 @@ class TaskPanelCurved:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
 
-        _write_gcode_with_dialog(self.form, gcode, "/tmp/marquage_courbe.ngc")
-        return True
+        # Renoncement à la sauvegarde : accept() échoue pour que le panneau
+        # reste ouvert avec tous ses réglages -- re-cliquer OK regénère.
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/marquage_courbe.ngc")
 
     def reject(self):
         return True
@@ -1563,8 +1590,8 @@ class TaskPanelFlat:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
 
-        _write_gcode_with_dialog(self.form, gcode, "/tmp/decoupe_multipasse.ngc")
-        return True
+        # Cf. marquage courbe : panneau conservé si la sauvegarde est abandonnée.
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/decoupe_multipasse.ngc")
 
     def reject(self):
         return True
@@ -1932,8 +1959,8 @@ class TaskPanelCurvedCut:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
 
-        _write_gcode_with_dialog(self.form, gcode, "/tmp/decoupe_courbe.ngc")
-        return True
+        # Cf. marquage courbe : panneau conservé si la sauvegarde est abandonnée.
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/decoupe_courbe.ngc")
 
     def reject(self):
         return True
@@ -2619,8 +2646,8 @@ class TaskPanelCombined:
                 self.form, "Erreur", "Aucun G-code généré (vérifie que les opérations contiennent de la géométrie).")
             return False
 
-        _write_gcode_with_dialog(self.form, gcode, "/tmp/job_combine.ngc")
-        return True
+        # Cf. marquage courbe : panneau conservé si la sauvegarde est abandonnée.
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/job_combine.ngc")
 
     def reject(self):
         return True
