@@ -397,6 +397,36 @@ class TaskPanelTestGrid:
         info.setWordWrap(True)
         form.addRow(info)
 
+        # --- Préréglages nommés (par matériau) : même mécanique et même
+        # fichier de config que les modes Marquage courbe / Découpe
+        # multi-passes, catégorie "testgrid". Ici TOUS les réglages de la
+        # grille sont couverts (pas seulement puissance/vitesse). ---
+        self.combo_preset = QtWidgets.QComboBox()
+        self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_preset.setMinimumContentsLength(14)
+        self.combo_preset.setToolTip(
+            "Recharge un jeu complet de réglages de grille sauvegardé sous\n"
+            "un nom (typiquement : un matériau). Survole un nom dans la\n"
+            "liste pour voir le résumé de ses réglages avant de choisir.")
+        form.addRow("Préréglage matériau :", self.combo_preset)
+        self.combo_preset.currentIndexChanged.connect(self._on_preset_selected)
+
+        self.lbl_preset_summary = QtWidgets.QLabel("")
+        self.lbl_preset_summary.setWordWrap(True)
+        self.lbl_preset_summary.setVisible(False)
+        form.addRow(self.lbl_preset_summary)
+
+        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        self.btn_save_preset.setToolTip(
+            "Sauvegarde les valeurs actuelles de TOUT le panneau sous un\n"
+            "nom de préréglage (un nom déjà existant est remplacé).")
+        self.btn_save_preset.clicked.connect(self._on_save_preset)
+        form.addRow(self.btn_save_preset)
+
+        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        self.btn_delete_preset.clicked.connect(self._on_delete_preset)
+        form.addRow(self.btn_delete_preset)
+
         self.combo_mode = QtWidgets.QComboBox()
         self.combo_mode.addItems(["Gravure (remplissage)", "Découpe (contour)"])
         # Même repli que le combo "Type de remplissage" du mode Hachures :
@@ -732,7 +762,130 @@ class TaskPanelTestGrid:
         self.form.setWindowTitle("Grille de test puissance/vitesse")
         self.form.setWindowIcon(_icon("testgrid.svg"))
 
+        self._populate_preset_combo()
         self._update_duration_preview()
+
+    # --- Préréglages nommés (catégorie "testgrid") ---
+    @staticmethod
+    def _preset_summary(values):
+        """Résumé lisible d'un préréglage -- affiché en infobulle de
+        chaque nom dans la liste ET sous le sélecteur une fois choisi,
+        pour comparer les préréglages sans avoir à les charger."""
+        mode = values.get("mode", 0)
+        lines = ["{} -- S {:g} à {:g} (x{}), F {:g} à {:g} mm/min (x{})".format(
+            "Découpe" if mode == 1 else "Gravure",
+            values.get("power_min", 0), values.get("power_max", 0),
+            values.get("power_steps", 0),
+            values.get("feed_min", 0), values.get("feed_max", 0),
+            values.get("feed_steps", 0))]
+        line2 = "Cellules {:g} mm, espace {:g} mm, Z {:g} mm".format(
+            values.get("cell_size", 0), values.get("gap", 0), values.get("zwork", 0))
+        if mode == 0:
+            filltypes = ("Parallèles", "Croisées", "Défocus")
+            filltype = values.get("filltype", 0)
+            line2 += ", {} {:g} mm @ {:g} deg".format(
+                filltypes[filltype] if 0 <= filltype < len(filltypes) else "?",
+                values.get("hatch_spacing", 0), values.get("hatch_angle", 0))
+        lines.append(line2)
+        if values.get("labels", True):
+            lines.append("Étiquettes S{:g} F{:g}".format(
+                values.get("label_power", 0), values.get("label_feed", 0)))
+        return "\n".join(lines)
+
+    def _populate_preset_combo(self):
+        self.combo_preset.blockSignals(True)
+        self.combo_preset.clear()
+        self.combo_preset.addItem("-- Choisir --")
+        presets = core.load_presets("testgrid")
+        for name in sorted(presets):
+            self.combo_preset.addItem(name)
+            self.combo_preset.setItemData(
+                self.combo_preset.count() - 1,
+                self._preset_summary(presets[name]),
+                QtCore.Qt.ToolTipRole)
+        self.combo_preset.blockSignals(False)
+        self.lbl_preset_summary.setVisible(False)
+
+    def _preset_values(self):
+        return {
+            "mode": self.combo_mode.currentIndex(),
+            "power_min": self.spn_power_min.value(),
+            "power_max": self.spn_power_max.value(),
+            "power_steps": self.spn_power_steps.value(),
+            "feed_min": self.spn_feed_min.value(),
+            "feed_max": self.spn_feed_max.value(),
+            "feed_steps": self.spn_feed_steps.value(),
+            "cell_size": self.spn_cell_size.value(),
+            "gap": self.spn_gap.value(),
+            "filltype": self.combo_filltype.currentIndex(),
+            "hatch_spacing": self.spn_hatch_spacing.value(),
+            "hatch_angle": self.spn_hatch_angle.value(),
+            "dfocus": self.spn_dfocus.value(),
+            "ztest": self.spn_ztest.value(),
+            "dtest": self.spn_dtest.value(),
+            "zwork": self.spn_zwork.value(),
+            "proximity": self.chk_proximity.isChecked(),
+            "labels": self.chk_labels.isChecked(),
+            "label_power": self.spn_label_power.value(),
+            "label_feed": self.spn_label_feed.value(),
+        }
+
+    def _on_preset_selected(self, index):
+        if index <= 0:
+            self.lbl_preset_summary.setVisible(False)
+            return
+        values = core.load_presets("testgrid").get(self.combo_preset.currentText())
+        if not values:
+            return
+        self.combo_mode.setCurrentIndex(values.get("mode", self.combo_mode.currentIndex()))
+        self.spn_power_min.setValue(values.get("power_min", self.spn_power_min.value()))
+        self.spn_power_max.setValue(values.get("power_max", self.spn_power_max.value()))
+        self.spn_power_steps.setValue(values.get("power_steps", self.spn_power_steps.value()))
+        self.spn_feed_min.setValue(values.get("feed_min", self.spn_feed_min.value()))
+        self.spn_feed_max.setValue(values.get("feed_max", self.spn_feed_max.value()))
+        self.spn_feed_steps.setValue(values.get("feed_steps", self.spn_feed_steps.value()))
+        self.spn_cell_size.setValue(values.get("cell_size", self.spn_cell_size.value()))
+        self.spn_gap.setValue(values.get("gap", self.spn_gap.value()))
+        self.combo_filltype.setCurrentIndex(values.get("filltype", self.combo_filltype.currentIndex()))
+        self.spn_hatch_spacing.setValue(values.get("hatch_spacing", self.spn_hatch_spacing.value()))
+        self.spn_hatch_angle.setValue(values.get("hatch_angle", self.spn_hatch_angle.value()))
+        self.spn_dfocus.setValue(values.get("dfocus", self.spn_dfocus.value()))
+        self.spn_ztest.setValue(values.get("ztest", self.spn_ztest.value()))
+        self.spn_dtest.setValue(values.get("dtest", self.spn_dtest.value()))
+        self.spn_zwork.setValue(values.get("zwork", self.spn_zwork.value()))
+        self.chk_proximity.setChecked(values.get("proximity", self.chk_proximity.isChecked()))
+        self.chk_labels.setChecked(values.get("labels", self.chk_labels.isChecked()))
+        self.spn_label_power.setValue(values.get("label_power", self.spn_label_power.value()))
+        self.spn_label_feed.setValue(values.get("label_feed", self.spn_label_feed.value()))
+        self.lbl_preset_summary.setText(self._preset_summary(values))
+        self.lbl_preset_summary.setVisible(True)
+
+    def _on_save_preset(self):
+        current = self.combo_preset.currentText() if self.combo_preset.currentIndex() > 0 else ""
+        name, ok = QtWidgets.QInputDialog.getText(
+            self.form, "Sauvegarder le préréglage",
+            "Nom du préréglage (matériau) :", text=current)
+        name = name.strip()
+        if not ok or not name:
+            return
+        core.save_preset("testgrid", name, self._preset_values())
+        self._populate_preset_combo()
+        idx = self.combo_preset.findText(name)
+        if idx >= 0:
+            self.combo_preset.setCurrentIndex(idx)
+
+    def _on_delete_preset(self):
+        index = self.combo_preset.currentIndex()
+        if index <= 0:
+            return
+        name = self.combo_preset.currentText()
+        reply = QtWidgets.QMessageBox.question(
+            self.form, "Supprimer", "Supprimer le préréglage « {} » ?".format(name),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if reply != QtWidgets.QMessageBox.Yes:
+            return
+        core.delete_preset("testgrid", name)
+        self._populate_preset_combo()
 
     def _update_duration_preview(self):
         if self.spn_power_max.value() < self.spn_power_min.value() or self.spn_feed_max.value() < self.spn_feed_min.value():
