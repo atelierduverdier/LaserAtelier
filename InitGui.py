@@ -52,6 +52,8 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_CurvedCut",
             "LaserAtelier_Flat",
             "LaserAtelier_Combined",
+            "Separator",
+            "LaserAtelier_Settings",
         ]
         self.appendToolbar("Atelier Laser", self.command_list)
         self.appendMenu("Atelier Laser", self.command_list)

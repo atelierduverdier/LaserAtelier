@@ -67,7 +67,7 @@ Cet atelier a été développé et testé avec le module laser **LT-80W-AA-PRO**
 
 ### Adapter à un autre laser
 
-Si ton laser a un nez de géométrie différente, **le contrôle anti-collision doit être adapté avant d'utiliser les modes sur surface courbe** — sinon il sous-estimera (ou surestimera) les collisions. Pas besoin de toucher au code : ajoute une clé `nozzle` dans le fichier de configuration `laser_atelier_config.json` (dossier de configuration utilisateur de FreeCAD) :
+Si ton laser a un nez de géométrie différente, **le contrôle anti-collision doit être adapté avant d'utiliser les modes sur surface courbe** — sinon il sous-estimera (ou surestimera) les collisions. Pas besoin de toucher au code : le profil du bec s'édite depuis le panneau **Préférences** de l'atelier (icône engrenage), ou à la main via la clé `nozzle` du fichier de configuration `laser_atelier_config.json` (dossier de configuration utilisateur de FreeCAD) :
 
 ```json
 {"nozzle": {"bottom_diameter_mm": 5.0, "top_diameter_mm": 16.0, "height_mm": 18.0}}
@@ -98,8 +98,9 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
   prérequis est rappelé en commentaire dans chaque fichier généré.
 - Le sélecteur multi-broche `$1` et la compensation d'outil sont pensés
   pour LinuxCNC (laser = spindle 1, outil T100). Pour un contrôleur qui
-  ne les supporte pas (GRBL...), adapter `SPINDLE_SELECT` et
-  `CMD_TOOL_COMP` dans `laser_core.py`
+  ne les supporte pas (GRBL...), changer le sélecteur broche dans les
+  Préférences de l'atelier et adapter `CMD_TOOL_COMP` dans
+  `laser_core.py`
 
 ## Installation
 
@@ -118,3 +119,34 @@ Sélectionne la géométrie appropriée (voir l'info-bulle de chaque bouton) pui
 ## Configuration
 
 Les champs de G-code personnalisé (avant/après job) et les préréglages matériau sont mémorisés entre deux lancements de FreeCAD dans un fichier de configuration JSON (`laser_atelier_config.json`, dans le dossier de configuration utilisateur de FreeCAD).
+
+### Préférences de l'atelier (icône engrenage)
+
+Les réglages généraux de l'atelier s'éditent depuis la commande **Préférences** (barre d'outils / menu "Atelier Laser"). Ils sont enregistrés dans le même `laser_atelier_config.json` (clé `settings`, clé `nozzle` pour le profil du bec) et appliqués immédiatement, sans redémarrer FreeCAD :
+
+| Réglage | Clé JSON | Défaut | Rôle |
+|---|---|---|---|
+| Dossier G-code | `settings.gcode_dir` | `/mnt/srv-partage/Gcode` | Dossier proposé par défaut à la sauvegarde G-code de tous les modes (repli sur `/tmp` s'il n'est pas accessible — partage réseau non monté...) |
+| Vitesse rapide (estimation) | `settings.rapid_feed_mm_min` | `6000` | Vitesse G0 supposée pour l'estimation de durée des jobs. N'affecte **que** l'estimation, jamais le G-code généré. Mettre la `MAX_VELOCITY` de la machine pour des estimations réalistes |
+| Sélecteur broche | `settings.spindle_select` | `$1` | Sélecteur multi-broche ajouté aux commandes `S`/`M3`/`M5` (LinuxCNC : laser = spindle 1) |
+| Temporisation d'armement | `settings.arm_dwell_s` | `2.0` | Pause `G4` après l'armement (`M3` à puissance nulle), le temps que l'électronique du module soit prête |
+| Hauteur bec minimale | `settings.safe_min_nozzle_height_mm` | `1.5` | Butée de sécurité : le bec ne descend jamais plus près de la surface, quelle que soit la passe — garde-fou anti-collision |
+| Épaisseur max sans avertir | `settings.max_thickness_warning_mm` | `12.0` | Au-delà, avertissement à la génération d'une découpe (n'empêche pas de générer) |
+| Pas Z max sans avertir | `settings.recommended_max_step_mm` | `1.5` | Au-delà, avertissement à la génération (pas trop grand = parois du trait qui font écran au faisceau) |
+| Bec : diamètres et hauteur | `nozzle.bottom_diameter_mm`, `nozzle.top_diameter_mm`, `nozzle.height_mm` | `5` / `16` / `18` | Profil du bec pour le contrôle anti-collision des modes sur surface courbe (voir « Adapter à un autre laser ») |
+
+Une valeur invalide dans le JSON (nombre négatif, chaîne vide...) est ignorée avec un avertissement dans la vue Rapport, et la valeur par défaut est conservée.
+
+### Constantes avancées (code uniquement)
+
+Quelques constantes restent volontairement dans le code (`laser_core.py`) — les changer sans comprendre leur rôle peut produire du G-code faux ou lent :
+
+| Constante | Défaut | Rôle |
+|---|---|---|
+| `CMD_TOOL_COMP` | `G43 H100 (...)` | Ligne de compensation d'outil en tête de chaque job (offsets X/Y + Z palpé du T100). À adapter pour un contrôleur sans compensation d'outil (GRBL...) |
+| `FOCUS_TABLE` | `{2: 7, 3: 7, ...}` | Tableau constructeur épaisseur (mm) → hauteur de bec (mm) pour la découpe à plat (LT-80W). À refaire pour un autre module laser |
+| `CHAIN_TOLERANCE` | `0.001` mm | Tolérance de jonction entre segments pour le chaînage des contours |
+| `DISCRETIZE_DISTANCE` | `0.3` mm | Résolution de discrétisation des tracés (plus petit = plus fidèle mais G-code plus gros) |
+| `TRANSIT_SAMPLE_STEP` | `2.0` mm | Résolution du suivi de courbure pendant les transits (mode courbe) |
+| `MESH_PROBE_DEVIATION_MM` | `0.05` mm | Écart max entre le maillage de sonde et la vraie surface (modes courbes) |
+| `NOZZLE_CHECK_INTERVAL_MM` | `1.5` mm | Espacement minimal entre deux contrôles de dégagement du bec |

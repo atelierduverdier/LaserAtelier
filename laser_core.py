@@ -203,6 +203,90 @@ CMD_DISARM = "S0 {sel}\nM5 {sel}"
 CMD_BEAM_ON = "S{power:.0f} {sel}"
 CMD_BEAM_OFF = "S0 {sel}"
 
+# --- Réglages utilisateur -------------------------------------------------
+# Chaque réglage listé dans _USER_SETTINGS (plus bas) est surchargeable
+# SANS TOUCHER AU CODE : via le panneau Préférences de l'atelier (icône
+# engrenage), ou à la main dans laser_atelier_config.json, clé "settings" :
+#
+#   {"settings": {"gcode_dir": "/mnt/srv-partage/Gcode",
+#                 "rapid_feed_mm_min": 6000.0, ...}}
+#
+# Les valeurs ci-dessous (et SPINDLE_SELECT/ARM_DWELL_S plus haut,
+# SAFE_MIN_NOZZLE_HEIGHT_MM etc. plus bas) ne sont que les défauts.
+GCODE_DIR = "/mnt/srv-partage/Gcode"  # dossier proposé par défaut à la sauvegarde G-code
+RAPID_FEED_MM_MIN = 6000.0            # vitesse rapide supposée (G0) pour l'estimation de durée
+
+# (clé JSON, nom de la globale à surcharger, conversion, validation)
+_USER_SETTINGS = (
+    ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
+    ("spindle_select", "SPINDLE_SELECT", str, lambda v: bool(v.strip())),
+    ("arm_dwell_s", "ARM_DWELL_S", float, lambda v: v >= 0),
+    ("rapid_feed_mm_min", "RAPID_FEED_MM_MIN", float, lambda v: v > 0),
+    ("safe_min_nozzle_height_mm", "SAFE_MIN_NOZZLE_HEIGHT_MM", float, lambda v: v >= 0),
+    ("max_thickness_warning_mm", "MAX_THICKNESS_WARNING_MM", float, lambda v: v > 0),
+    ("recommended_max_step_mm", "RECOMMENDED_MAX_STEP_MM", float, lambda v: v > 0),
+)
+
+
+def _apply_settings_config():
+    """Surcharge les réglages utilisateur depuis la config JSON (clé
+    "settings"). Valeur invalide : avertissement et valeur par défaut
+    conservée -- même politique que le profil de bec."""
+    settings = load_config().get("settings")
+    if not isinstance(settings, dict):
+        return
+    for key, global_name, cast, valid in _USER_SETTINGS:
+        if key not in settings:
+            continue
+        try:
+            value = cast(settings[key])
+            if not valid(value):
+                raise ValueError(value)
+        except Exception:
+            FreeCAD.Console.PrintWarning(
+                "Réglage '{}' invalide dans la config ({!r}) : valeur par "
+                "défaut conservée.\n".format(key, settings[key]))
+            continue
+        globals()[global_name] = value
+
+
+def current_settings():
+    """Valeurs effectives des réglages utilisateur ({clé JSON: valeur}) --
+    pour préremplir le panneau Préférences."""
+    return {key: globals()[global_name] for key, global_name, _, _ in _USER_SETTINGS}
+
+
+def save_settings(new_settings):
+    """Écrit les réglages (clés JSON de _USER_SETTINGS) dans la config et
+    les applique immédiatement -- pas besoin de redémarrer FreeCAD."""
+    cfg = load_config()
+    stored = cfg.get("settings")
+    if not isinstance(stored, dict):
+        stored = {}
+    stored.update(new_settings)
+    cfg["settings"] = stored
+    save_config(cfg)
+    _apply_settings_config()
+
+
+def current_nozzle():
+    """Profil de bec effectif, en diamètres/hauteur (mm) -- pour
+    préremplir le panneau Préférences."""
+    return {"bottom_diameter_mm": NOZZLE_CONE_BOTTOM_RADIUS * 2.0,
+            "top_diameter_mm": NOZZLE_CONE_TOP_RADIUS * 2.0,
+            "height_mm": NOZZLE_CONE_HEIGHT}
+
+
+def save_nozzle(bottom_diameter_mm, top_diameter_mm, height_mm):
+    """Écrit le profil de bec dans la config (clé "nozzle", même format
+    que la surcharge manuelle documentée plus bas) et le réapplique."""
+    cfg = load_config()
+    cfg["nozzle"] = {"bottom_diameter_mm": bottom_diameter_mm,
+                     "top_diameter_mm": top_diameter_mm,
+                     "height_mm": height_mm}
+    save_config(cfg)
+    _apply_nozzle_config()
+
 CHAIN_TOLERANCE = 0.001        # mm : jonction exacte entre segments d'origine
 DISCRETIZE_DISTANCE = 0.3      # mm : résolution de tracé (Distance, pas
                                 # Deflection -- une droite parfaite n'a
@@ -2013,12 +2097,15 @@ def delete_preset(category, name):
         save_config(cfg)
 
 
-def estimate_job_time_seconds(gcode_text, rapid_feed=6000.0):
+def estimate_job_time_seconds(gcode_text, rapid_feed=None):
     """Estime le temps total du job en secondes, en reparcourant le
     G-code déjà généré : G1 selon la distance/avance programmée, G0 à
-    une vitesse rapide SUPPOSÉE (rapid_feed -- approximation, la vraie
-    vitesse rapide machine n'est pas connue ici), G4 pris en compte.
-    Approximatif : ignore accélérations/décélérations réelles."""
+    une vitesse rapide SUPPOSÉE (RAPID_FEED_MM_MIN par défaut --
+    approximation, la vraie vitesse rapide machine n'est pas connue
+    ici), G4 pris en compte. Approximatif : ignore
+    accélérations/décélérations réelles."""
+    if rapid_feed is None:
+        rapid_feed = RAPID_FEED_MM_MIN
     total_seconds = 0.0
     last_x = last_y = last_z = 0.0
     current_feed = 1000.0
@@ -2652,3 +2739,9 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
     lines.append("M2")
 
     return "\n".join(lines)
+
+
+# Appliquée en FIN de module : les réglages listés dans _USER_SETTINGS
+# surchargent des globales définies tout au long du fichier
+# (SAFE_MIN_NOZZLE_HEIGHT_MM etc.), elles doivent toutes exister avant.
+_apply_settings_config()

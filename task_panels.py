@@ -88,11 +88,6 @@ def _duration_row(form, callback, tooltip_extra=""):
     return lbl
 
 
-# Répertoire par défaut des G-code ; repli sur /tmp si le partage
-# réseau n'est pas monté au moment de la sauvegarde.
-GCODE_DIR = "/mnt/srv-partage/Gcode"
-
-
 def _write_gcode_with_dialog(parent_widget, gcode, default_path):
     """Estime la durée, propose un fichier de sauvegarde, écrit le G-code
     si un chemin est choisi (silencieux si annulé -- même comportement
@@ -101,12 +96,15 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path):
     toujours ouverte/visible (panneau optionnel de FreeCAD), donc s'y fier
     seule rendait l'info invisible en pratique pour qui ne l'a pas
     ouverte."""
-    if os.path.isdir(GCODE_DIR):
-        default_path = os.path.join(GCODE_DIR, os.path.basename(default_path))
+    # Dossier par défaut : GCODE_DIR (Préférences) ; repli sur le chemin
+    # d'origine si le dossier (partage réseau...) n'est pas accessible.
+    if os.path.isdir(core.GCODE_DIR):
+        default_path = os.path.join(core.GCODE_DIR, os.path.basename(default_path))
     estimated_seconds = core.estimate_job_time_seconds(gcode)
     duration_text = core.format_duration(estimated_seconds)
     FreeCAD.Console.PrintMessage(
-        "Durée estimée (approximative, rapide supposé à 6000mm/min) : {}\n".format(duration_text))
+        "Durée estimée (approximative, rapide supposé à {:.0f}mm/min) : {}\n".format(
+            core.RAPID_FEED_MM_MIN, duration_text))
     path, _ = QtWidgets.QFileDialog.getSaveFileName(
         parent_widget, "Sauvegarder G-code", default_path, "G-code (*.ngc)")
     if path:
@@ -117,7 +115,7 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path):
         QtWidgets.QMessageBox.information(
             parent_widget, "G-code généré",
             "Fichier écrit :\n{}\n\nDurée estimée (approximative, rapide supposé à "
-            "6000mm/min) :\n{}".format(path, duration_text))
+            "{:.0f}mm/min) :\n{}".format(path, core.RAPID_FEED_MM_MIN, duration_text))
 
 
 # ==========================================================================
@@ -668,8 +666,9 @@ class TaskPanelTestGrid:
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
-            "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min -- la\n"
-            "vraie vitesse rapide de ta machine n'est pas connue ici.")
+            "(transit) à une vitesse rapide SUPPOSÉE de {:.0f}mm/min\n"
+            "(réglable dans Préférences) -- la vraie vitesse rapide de\n"
+            "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -982,8 +981,9 @@ class TaskPanelCurved:
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
-            "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min -- la\n"
-            "vraie vitesse rapide de ta machine n'est pas connue ici.")
+            "(transit) à une vitesse rapide SUPPOSÉE de {:.0f}mm/min\n"
+            "(réglable dans Préférences) -- la vraie vitesse rapide de\n"
+            "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -1367,8 +1367,9 @@ class TaskPanelFlat:
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
-            "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min -- la\n"
-            "vraie vitesse rapide de ta machine n'est pas connue ici.")
+            "(transit) à une vitesse rapide SUPPOSÉE de {:.0f}mm/min\n"
+            "(réglable dans Préférences) -- la vraie vitesse rapide de\n"
+            "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -1726,7 +1727,8 @@ class TaskPanelCurvedCut:
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
-            "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min.")
+            "(transit) à une vitesse rapide SUPPOSÉE de {:.0f}mm/min\n"
+            "(réglable dans Préférences).".format(core.RAPID_FEED_MM_MIN))
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -2402,8 +2404,9 @@ class TaskPanelCombined:
         self.lbl_duration.setToolTip(
             "Recalculée après chaque ajout/suppression/réorganisation.\n"
             "Approximative : G1 selon distance/avance programmée, G0\n"
-            "(transit) à une vitesse rapide SUPPOSÉE de 6000mm/min -- la\n"
-            "vraie vitesse rapide de ta machine n'est pas connue ici.")
+            "(transit) à une vitesse rapide SUPPOSÉE de {:.0f}mm/min\n"
+            "(réglable dans Préférences) -- la vraie vitesse rapide de\n"
+            "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
         form.addRow(self.lbl_duration)
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
@@ -2617,6 +2620,193 @@ class TaskPanelCombined:
             return False
 
         _write_gcode_with_dialog(self.form, gcode, "/tmp/job_combine.ngc")
+        return True
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
+# PRÉFÉRENCES DE L'ATELIER
+# ==========================================================================
+class TaskPanelSettings:
+    """Édite les réglages utilisateur (laser_core._USER_SETTINGS + profil
+    du bec) et les enregistre dans laser_atelier_config.json. Appliqués
+    immédiatement à la validation -- pas besoin de redémarrer FreeCAD."""
+
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        settings = core.current_settings()
+        nozzle = core.current_nozzle()
+
+        # --- Sauvegarde ---
+        self.edt_gcode_dir = QtWidgets.QLineEdit(settings["gcode_dir"])
+        self.edt_gcode_dir.setToolTip(
+            "Dossier proposé par défaut dans le dialogue de sauvegarde\n"
+            "G-code de tous les modes. S'il n'est pas accessible au moment\n"
+            "de la sauvegarde (partage réseau non monté...), le dialogue\n"
+            "retombe sur /tmp.")
+        btn_browse = QtWidgets.QPushButton("Parcourir...")
+        btn_browse.clicked.connect(self._browse_gcode_dir)
+        row = QtWidgets.QWidget()
+        row_layout = QtWidgets.QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(self.edt_gcode_dir, 1)
+        row_layout.addWidget(btn_browse, 0)
+        form.addRow("Dossier G-code :", row)
+
+        self.spn_rapid = QtWidgets.QDoubleSpinBox()
+        self.spn_rapid.setRange(100.0, 60000.0)
+        self.spn_rapid.setDecimals(0)
+        self.spn_rapid.setValue(settings["rapid_feed_mm_min"])
+        self.spn_rapid.setSuffix(" mm/min")
+        self.spn_rapid.setToolTip(
+            "Vitesse rapide (G0) SUPPOSÉE pour l'estimation de durée des\n"
+            "jobs -- la vraie vitesse machine n'est pas connue ici. Mettre\n"
+            "la MAX_VELOCITY de ton LinuxCNC pour des estimations réalistes.\n"
+            "N'affecte que l'estimation, jamais le G-code généré.")
+        form.addRow("Vitesse rapide (estimation) :", self.spn_rapid)
+
+        # --- G-code / machine ---
+        self.edt_spindle = QtWidgets.QLineEdit(settings["spindle_select"])
+        self.edt_spindle.setToolTip(
+            "Sélecteur multi-broche ajouté aux commandes S/M3/M5 (LinuxCNC :\n"
+            "\"$1\" = spindle 1 = laser). Vider n'est pas accepté ; pour un\n"
+            "contrôleur mono-broche (GRBL...), utiliser \"$0\" ou adapter\n"
+            "CMD_* dans laser_core.py.")
+        form.addRow("Sélecteur broche :", self.edt_spindle)
+
+        self.spn_dwell = QtWidgets.QDoubleSpinBox()
+        self.spn_dwell.setRange(0.0, 30.0)
+        self.spn_dwell.setDecimals(1)
+        self.spn_dwell.setValue(settings["arm_dwell_s"])
+        self.spn_dwell.setSuffix(" s")
+        self.spn_dwell.setToolTip(
+            "Pause (G4) après l'armement du laser (M3 à puissance nulle),\n"
+            "le temps que l'électronique du module soit prête avant le\n"
+            "premier trait.")
+        form.addRow("Temporisation d'armement :", self.spn_dwell)
+
+        # --- Sécurité découpe ---
+        self.spn_safe_height = QtWidgets.QDoubleSpinBox()
+        self.spn_safe_height.setRange(0.0, 20.0)
+        self.spn_safe_height.setDecimals(1)
+        self.spn_safe_height.setValue(settings["safe_min_nozzle_height_mm"])
+        self.spn_safe_height.setSuffix(" mm")
+        self.spn_safe_height.setToolTip(
+            "Butée de sécurité : la hauteur du bec au-dessus de la surface\n"
+            "ne descend JAMAIS en dessous de cette valeur au fil des passes\n"
+            "de découpe, même si le suivi de foyer idéal voudrait plus bas.\n"
+            "Garde-fou anti-collision.")
+        form.addRow("Hauteur bec minimale :", self.spn_safe_height)
+
+        self.spn_max_thickness = QtWidgets.QDoubleSpinBox()
+        self.spn_max_thickness.setRange(1.0, 50.0)
+        self.spn_max_thickness.setDecimals(1)
+        self.spn_max_thickness.setValue(settings["max_thickness_warning_mm"])
+        self.spn_max_thickness.setSuffix(" mm")
+        self.spn_max_thickness.setToolTip(
+            "Épaisseur au-delà de laquelle un avertissement est émis à la\n"
+            "génération d'une découpe (au-delà de la plage vérifiée du\n"
+            "constructeur, la qualité se dégrade). N'empêche pas de générer.")
+        form.addRow("Épaisseur max sans avertir :", self.spn_max_thickness)
+
+        self.spn_max_step = QtWidgets.QDoubleSpinBox()
+        self.spn_max_step.setRange(0.1, 10.0)
+        self.spn_max_step.setDecimals(1)
+        self.spn_max_step.setValue(settings["recommended_max_step_mm"])
+        self.spn_max_step.setSuffix(" mm")
+        self.spn_max_step.setToolTip(
+            "Pas Z par passe au-delà duquel un avertissement est émis\n"
+            "(un pas trop grand peut faire écran au faisceau dans le trait\n"
+            "déjà coupé). N'empêche pas de générer.")
+        form.addRow("Pas Z max sans avertir :", self.spn_max_step)
+
+        # --- Profil du bec (anti-collision surfaces courbes) ---
+        lbl_nozzle = QtWidgets.QLabel(
+            "Profil du bec (contrôle anti-collision des modes sur surface\n"
+            "courbe). Tube droit : bas = haut = diamètre du tube. Section\n"
+            "rectangulaire : entrer la diagonale.")
+        lbl_nozzle.setWordWrap(True)
+        form.addRow(lbl_nozzle)
+
+        self.spn_nozzle_bottom = QtWidgets.QDoubleSpinBox()
+        self.spn_nozzle_bottom.setRange(0.5, 100.0)
+        self.spn_nozzle_bottom.setDecimals(1)
+        self.spn_nozzle_bottom.setValue(nozzle["bottom_diameter_mm"])
+        self.spn_nozzle_bottom.setSuffix(" mm")
+        self.spn_nozzle_bottom.setToolTip(
+            "Diamètre du bec à son point le plus bas (la pointe).")
+        form.addRow("Bec : diamètre pointe :", self.spn_nozzle_bottom)
+
+        self.spn_nozzle_top = QtWidgets.QDoubleSpinBox()
+        self.spn_nozzle_top.setRange(0.5, 100.0)
+        self.spn_nozzle_top.setDecimals(1)
+        self.spn_nozzle_top.setValue(nozzle["top_diameter_mm"])
+        self.spn_nozzle_top.setSuffix(" mm")
+        self.spn_nozzle_top.setToolTip(
+            "Diamètre du bec au sommet du cône (>= diamètre pointe).")
+        form.addRow("Bec : diamètre sommet :", self.spn_nozzle_top)
+
+        self.spn_nozzle_height = QtWidgets.QDoubleSpinBox()
+        self.spn_nozzle_height.setRange(1.0, 100.0)
+        self.spn_nozzle_height.setDecimals(1)
+        self.spn_nozzle_height.setValue(nozzle["height_mm"])
+        self.spn_nozzle_height.setSuffix(" mm")
+        self.spn_nozzle_height.setToolTip(
+            "Hauteur du cône (au-dessus : cylindre au diamètre du sommet).")
+        form.addRow("Bec : hauteur du cône :", self.spn_nozzle_height)
+
+        lbl = QtWidgets.QLabel(
+            "Enregistré dans laser_atelier_config.json et appliqué\n"
+            "immédiatement (les panneaux déjà ouverts gardent leurs\n"
+            "infobulles d'origine).")
+        lbl.setWordWrap(True)
+        form.addRow(lbl)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Préférences Atelier Laser")
+        self.form.setWindowIcon(_icon("settings.svg"))
+
+    def _browse_gcode_dir(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self.form, "Dossier G-code par défaut",
+            self.edt_gcode_dir.text() or os.path.expanduser("~"))
+        if path:
+            self.edt_gcode_dir.setText(path)
+
+    def accept(self):
+        if not self.edt_gcode_dir.text().strip():
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Le dossier G-code ne peut pas être vide.")
+            return False
+        if not self.edt_spindle.text().strip():
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Le sélecteur broche ne peut pas être vide.")
+            return False
+        if self.spn_nozzle_bottom.value() > self.spn_nozzle_top.value():
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur",
+                "Profil du bec incohérent : le diamètre à la pointe doit être\n"
+                "inférieur ou égal au diamètre au sommet.")
+            return False
+        core.save_settings({
+            "gcode_dir": self.edt_gcode_dir.text().strip(),
+            "spindle_select": self.edt_spindle.text().strip(),
+            "arm_dwell_s": self.spn_dwell.value(),
+            "rapid_feed_mm_min": self.spn_rapid.value(),
+            "safe_min_nozzle_height_mm": self.spn_safe_height.value(),
+            "max_thickness_warning_mm": self.spn_max_thickness.value(),
+            "recommended_max_step_mm": self.spn_max_step.value(),
+        })
+        core.save_nozzle(self.spn_nozzle_bottom.value(),
+                         self.spn_nozzle_top.value(),
+                         self.spn_nozzle_height.value())
+        FreeCAD.Console.PrintMessage("Préférences Atelier Laser enregistrées.\n")
         return True
 
     def reject(self):

@@ -182,7 +182,25 @@ class CombinedCommand:
         Gui.Control.showDialog(task_panels.TaskPanelCombined())
 
 
+class SettingsCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("settings.svg"),
+            "MenuText": "Préférences",
+            "ToolTip": "Réglages de l'atelier : dossier G-code par défaut, vitesse rapide d'estimation, "
+                       "sélecteur broche, garde-fous de découpe, profil du bec (anti-collision)",
+        }
+
+    def IsActive(self):
+        # Pas besoin de document ni de sélection pour régler l'atelier.
+        return True
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelSettings())
+
+
 def register_commands():
+    Gui.addCommand("LaserAtelier_Settings", SettingsCommand())
     Gui.addCommand("LaserAtelier_Hatch", HatchCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
