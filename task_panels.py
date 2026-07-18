@@ -810,7 +810,8 @@ class TaskPanelDefocusCalibration:
         self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes de hauteur (mm)")
         self.chk_labels.setChecked(True)
         self.chk_labels.setToolTip(
-            "Grave à gauche de chaque trait sa hauteur en mm entiers.\n"
+            "Grave à gauche de chaque trait sa hauteur en mm (décimale\n"
+            "affichée au besoin, ex. 0.5).\n"
             "Gravées à hauteur fixe (le Z de départ) pour rester lisibles.")
         form.addRow(self.chk_labels)
 

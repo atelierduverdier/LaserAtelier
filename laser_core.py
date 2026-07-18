@@ -1086,6 +1086,8 @@ _FONT_GLYPHS = {
     # comme un 5 stylisé, F comme un E sans barre du bas).
     'S': ('top', 'top_left', 'middle', 'bottom_right', 'bottom'),
     'F': ('top', 'top_left', 'middle', 'bottom_left'),
+    '-': ('middle',),  # signe moins (Z négatif)
+    # '.' n'est pas un segment : traité à part dans _char_to_edges.
 }
 
 
@@ -1094,6 +1096,13 @@ def _char_to_edges(ch, x0, y0, height):
     (x0, y0), mis à l'échelle à `height`. Renvoie [] pour un caractère
     non supporté (le curseur avance quand même dans text_to_edges, pour
     garder un espacement régulier même sur un caractère manquant)."""
+    if ch == '.':
+        # Point décimal : petit trait vertical au bas de la case (pas un
+        # segment nommé de l'afficheur 7 segments).
+        scale = height / 2.0
+        p1 = FreeCAD.Vector(x0 + 0.2 * scale, y0, 0)
+        p2 = FreeCAD.Vector(x0 + 0.2 * scale, y0 + 0.3 * scale, 0)
+        return [Part.LineSegment(p1, p2).toShape()]
     segments = _FONT_GLYPHS.get(ch.upper())
     if not segments:
         return []
@@ -1125,8 +1134,8 @@ def text_width(text, height, spacing_ratio=0.4):
 
 
 def text_to_edges(text, x0, y0, height, spacing_ratio=0.4):
-    """Convertit `text` (chiffres 0-9 et lettres S/F -- le seul jeu de
-    caractères dont la grille de test a besoin) en une liste de
+    """Convertit `text` (chiffres 0-9, lettres S/F, plus '.' et '-' pour
+    les hauteurs de la bande de calibration défocus) en une liste de
     Part.Edge, ancrée en bas-gauche à (x0, y0)."""
     char_width = text_char_width(height)
     spacing = char_width * spacing_ratio
@@ -2770,7 +2779,10 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     label_chains = []
     if draw_labels:
         for k, (_, z) in enumerate(marks):
-            text = "{:.0f}".format(z)
+            # Décimale seulement si nécessaire : pas entiers -> "2","4" ;
+            # pas fractionnaires -> "0.5","1.5" (point décimal géré par la
+            # police).
+            text = "{:g}".format(round(z, 1))
             w = text_width(text, label_height)
             y = k * row_gap
             edges = text_to_edges(text, -(w + row_gap * 0.4), y - label_height / 2.0, label_height)
