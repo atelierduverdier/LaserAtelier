@@ -2727,21 +2727,36 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
 # MODE : BANDE DE CALIBRATION DÉFOCUS
 # ==========================================================================
 def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, row_gap,
-                                       power, feed, draw_labels=True,
+                                       power, feed, power_end=None, draw_labels=True,
                                        label_power=300.0, label_feed=1500.0, label_z=None,
                                        pre_gcode="", post_gcode="", frame_only=False, quiet=False):
     """Grave une rangée de courts traits, chacun à une hauteur de bec
-    croissante (z_start, z_start+z_step, ...), à puissance/vitesse FIXES.
-    Chaque trait est étiqueté à sa gauche par sa hauteur Z en mm entiers
-    (la police vectorielle maison ne fait que les chiffres). En mesurant
-    l'épaisseur de chaque trait, on lit d'un coup : le foyer (trait le plus
-    fin) et la divergence -- de quoi remplir « point au foyer » + « défocus
-    de test » / « point au défocus de test » une bonne fois. Les étiquettes
-    sont gravées à une hauteur fixe (label_z, défaut z_start) pour rester
-    lisibles quel que soit le défocus du trait qu'elles désignent.
+    croissante (z_start, z_start+z_step, ...), à vitesse FIXE. Chaque trait
+    est étiqueté à sa gauche par sa hauteur Z en mm entiers (la police
+    vectorielle maison ne fait que les chiffres). En mesurant l'épaisseur de
+    chaque trait, on lit d'un coup : le foyer (trait le plus fin) et la
+    divergence -- de quoi remplir « point au foyer » + « défocus de test » /
+    « point au défocus de test » une bonne fois. Les étiquettes sont gravées
+    à une hauteur fixe (label_z, défaut z_start) pour rester lisibles quel
+    que soit le défocus du trait qu'elles désignent.
+
+    power / power_end : puissance du 1er trait, et du dernier. Plus le trait
+    est défocalisé, plus la MÊME puissance est étalée sur un gros point,
+    donc plus le trait est pâle -- jusqu'à disparaître. Une RAMPE
+    (power_end > power) monte progressivement la puissance avec la hauteur
+    pour que même les traits très défocalisés marquent, et restent
+    mesurables. power_end=None -> puissance constante.
+
+    Le transit entre traits se fait DIRECTEMENT à la hauteur du trait
+    suivant (laser éteint, pièce plate) -- pas de remontée au Z de sécurité
+    entre chaque trait (inutile à plat, et lente).
 
     frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
     n_marks = max(1, int(n_marks))
+    def _mark_power(k):
+        if power_end is None or n_marks < 2:
+            return power
+        return power + (power_end - power) * (k / float(n_marks - 1))
     if label_z is None:
         label_z = z_start
     label_height = max(2.0, min(row_gap * 0.45, 5.0))
@@ -2766,8 +2781,12 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
 
     lines = []
     lines.append("(G-Code Laser - Bande de calibration defocus)")
-    lines.append("(Traits : {} de Z={:.2f} a Z={:.2f} par pas de {:.2f}, S{:.0f} F{:.0f})".format(
-        n_marks, z_start, z_start + (n_marks - 1) * z_step, z_step, power, feed))
+    if power_end is None:
+        p_desc = "S{:.0f}".format(power)
+    else:
+        p_desc = "S{:.0f}->{:.0f} (rampe)".format(power, power_end)
+    lines.append("(Traits : {} de Z={:.2f} a Z={:.2f} par pas de {:.2f}, {} F{:.0f})".format(
+        n_marks, z_start, z_start + (n_marks - 1) * z_step, z_step, p_desc, feed))
     lines.append("(Mesurer l'epaisseur de chaque trait : le plus fin = foyer)")
     lines.append("G21")
     lines.append("G90")
@@ -2788,15 +2807,20 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         lines.append("(-- G-code personnalisé (avant) --)")
         lines.append(pre_gcode.strip())
 
-    current_z = [None]
+    started = [False]
 
     def _travel(x, y, target_z):
-        if current_z[0] != target_z:
+        # Transit à plat, laser éteint : on va DIRECTEMENT au trait suivant,
+        # à sa hauteur -- pas de remontée au Z de sécurité entre chaque
+        # trait. Seule la toute 1re approche part du Z de sécurité (le bec
+        # peut venir de n'importe où) ; ensuite on enchaîne de hauteur en
+        # hauteur sans va-et-vient.
+        if not started[0]:
             lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, z_safe))
             lines.append("G0 Z{:.4f}".format(target_z))
-            current_z[0] = target_z
+            started[0] = True
         else:
-            lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, target_z))
 
     def _emit(chain, p, f, target_z):
         p0 = chain[0]
@@ -2808,14 +2832,14 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
 
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     lines.append("(===== Traits de calibration =====)")
-    for chain, z in marks:
-        _emit(chain, power, feed, z)
+    for k, (chain, z) in enumerate(marks):
+        _emit(chain, _mark_power(k), feed, z)
     if label_chains:
         lines.append("(===== Etiquettes (hauteur en mm) =====)")
         for chain in label_chains:
             _emit(chain, label_power, label_feed, label_z)
 
-    if current_z[0] is not None:
+    if started[0]:
         lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")

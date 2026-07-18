@@ -781,12 +781,24 @@ class TaskPanelDefocusCalibration:
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
         self.spn_power.setRange(0, 1000)
-        self.spn_power.setValue(400)
+        self.spn_power.setValue(300)
         self.spn_power.setToolTip(
-            "Puissance (S) FIXE des traits. Modérée : assez pour marquer\n"
-            "nettement, pas trop pour que la brûlure ne s'élargisse pas\n"
-            "au-delà du point (ce qui fausserait la mesure).")
-        form.addRow("Puissance des traits :", self.spn_power)
+            "Puissance (S) du 1er trait (le plus bas, près du foyer).\n"
+            "Modérée : assez pour marquer, pas trop pour que la brûlure ne\n"
+            "s'élargisse pas au-delà du point (ce qui fausserait la mesure).")
+        form.addRow("Puissance 1er trait (bas) :", self.spn_power)
+
+        self.spn_power_end = QtWidgets.QDoubleSpinBox()
+        self.spn_power_end.setRange(0, 1000)
+        self.spn_power_end.setValue(800)
+        self.spn_power_end.setToolTip(
+            "Puissance (S) du DERNIER trait (le plus défocalisé). Plus haute\n"
+            "que le 1er : à défocus élevé, le point est étalé donc le trait\n"
+            "pâlit jusqu'à disparaître -- monter la puissance le maintient\n"
+            "visible et mesurable. La puissance augmente progressivement du\n"
+            "1er au dernier trait. Mets la même valeur que le 1er pour une\n"
+            "puissance constante.")
+        form.addRow("Puissance dernier trait (haut) :", self.spn_power_end)
 
         self.spn_feed = QtWidgets.QDoubleSpinBox()
         self.spn_feed.setRange(1, 20000)
@@ -875,6 +887,7 @@ class TaskPanelDefocusCalibration:
             "mark_length": self.spn_length.value(),
             "row_gap": self.spn_rowgap.value(),
             "power": self.spn_power.value(),
+            "power_end": self.spn_power_end.value(),
             "feed": self.spn_feed.value(),
             "draw_labels": self.chk_labels.isChecked(),
             "label_power": self.spn_label_power.value(),
