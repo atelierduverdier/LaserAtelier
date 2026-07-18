@@ -399,11 +399,13 @@ class TaskPanelFilledEngraving:
         self.spn_marge = QtWidgets.QDoubleSpinBox()
         self.spn_marge.setRange(0.0, 100.0)
         self.spn_marge.setDecimals(1)
-        self.spn_marge.setValue(5.0)
+        self.spn_marge.setValue(0.0)
         self.spn_marge.setSuffix(" mm")
         self.spn_marge.setToolTip(
-            "Hauteur de survol pour les déplacements à vide (laser éteint)\n"
-            "entre les traits.")
+            "Hauteur de survol des déplacements à vide (laser éteint) entre\n"
+            "les traits. 0 = transit à plat, sans lever le bec (recommandé\n"
+            "sur du plat : évite un aller-retour vertical à chaque hachure).\n"
+            "N'augmenter que pour survoler des obstacles (brides, serre-flans).")
         form.addRow("Marge de survol (transit) :", self.spn_marge)
 
         # --- Contour ---
@@ -427,19 +429,26 @@ class TaskPanelFilledEngraving:
         self.spn_contour_feed.setToolTip("Vitesse d'avance du contour.")
         form.addRow("Vitesse contour :", self.spn_contour_feed)
 
-        self.spn_contour_defocus = QtWidgets.QDoubleSpinBox()
-        self.spn_contour_defocus.setRange(0.0, 60.0)
-        self.spn_contour_defocus.setDecimals(2)
-        self.spn_contour_defocus.setValue(0.0)
-        self.spn_contour_defocus.setSuffix(" mm")
-        self.spn_contour_defocus.setToolTip(
-            "Défocus du contour : 0 = net au foyer. Augmenter pour élargir\n"
-            "le point et épaissir/faire ressortir le trait du contour.")
-        form.addRow("Défocus du contour :", self.spn_contour_defocus)
+        self.spn_contour_width = QtWidgets.QDoubleSpinBox()
+        self.spn_contour_width.setRange(0.0, 10.0)
+        self.spn_contour_width.setDecimals(2)
+        self.spn_contour_width.setValue(0.0)
+        self.spn_contour_width.setSuffix(" mm")
+        self.spn_contour_width.setToolTip(
+            "Largeur VOULUE du trait de contour. 0 (ou une valeur ≤ point au\n"
+            "foyer) = trait le plus fin, net au foyer. Sinon l'atelier\n"
+            "défocalise le bec juste ce qu'il faut pour élargir le point à\n"
+            "cette largeur -- entrer 1 mm donne un trait d'environ 1 mm.\n"
+            "Le défocus correspondant est indiqué juste en dessous.")
+        form.addRow("Épaisseur trait contour :", self.spn_contour_width)
+
+        self.lbl_contour_result = QtWidgets.QLabel("")
+        self.lbl_contour_result.setWordWrap(True)
+        form.addRow(self.lbl_contour_result)
 
         self.chk_contour.toggled.connect(self.spn_contour_power.setEnabled)
         self.chk_contour.toggled.connect(self.spn_contour_feed.setEnabled)
-        self.chk_contour.toggled.connect(self.spn_contour_defocus.setEnabled)
+        self.chk_contour.toggled.connect(self.spn_contour_width.setEnabled)
 
         def _update_defocus_preview():
             half_angle = core.defocus_divergence_half_angle(
@@ -456,12 +465,21 @@ class TaskPanelFilledEngraving:
                     "Défocus calculé : {:.2f} mm (bec remonté d'autant) -- point\n"
                     "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.".format(
                         defocus, spot, spot / 2.0))
+            # Retour visuel du contour : épaisseur voulue -> défocus.
+            off = self._contour_offset(half_angle)
+            if off <= 0:
+                self.lbl_contour_result.setText("Contour : net au foyer (trait le plus fin).")
+            else:
+                self.lbl_contour_result.setText(
+                    "Contour : trait {:.2f} mm -> bec remonté de {:.2f} mm.".format(
+                        self.spn_contour_width.value(), off))
 
         self._update_defocus_preview = _update_defocus_preview
         self.spn_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_dfocus.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_ztest.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_dtest.valueChanged.connect(lambda _v: _update_defocus_preview())
+        self.spn_contour_width.valueChanged.connect(lambda _v: _update_defocus_preview())
 
         # --- G-code avant/après ---
         self.txt_pre = QtWidgets.QPlainTextEdit()
@@ -505,9 +523,19 @@ class TaskPanelFilledEngraving:
 
         _update_defocus_preview()
 
+    def _contour_offset(self, half_angle):
+        """Défocus (mm) du contour pour que son trait fasse l'épaisseur
+        demandée -- 0 si la largeur voulue est <= au point au foyer (déjà
+        le plus fin). Réutilise defocus_for_fill_spacing avec overlap=1
+        (cible = largeur exacte, pas de recouvrement)."""
+        off = core.defocus_for_fill_spacing(
+            self.spn_contour_width.value(), self.spn_dfocus.value(), half_angle, overlap=1.0)
+        return off if off is not None else 0.0
+
     def _build_edges(self, silent=False):
-        """Renvoie (fill_edges, contour_edges, defocus) ou (None, None, None)
-        si la sélection est vide ou la calibration défocus invalide."""
+        """Renvoie (fill_edges, contour_edges, defocus, contour_z_offset) ou
+        (None, None, None, None) si la sélection est vide ou la calibration
+        défocus invalide."""
         faces = core.get_faces_from_selection_for_hatch(self.selection)
         if not faces:
             if not silent:
@@ -515,7 +543,7 @@ class TaskPanelFilledEngraving:
                     self.form, "Erreur",
                     "Aucune face 2D fermée trouvée dans la sélection\n"
                     "(face, Draft, ou sketch à fils fermés).")
-            return None, None, None
+            return None, None, None, None
         half_angle = core.defocus_divergence_half_angle(
             self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
         defocus = core.defocus_for_fill_spacing(
@@ -527,13 +555,13 @@ class TaskPanelFilledEngraving:
                     "Calibration de défocus invalide : le point mesuré au\n"
                     "défocus de test doit être strictement plus large que\n"
                     "celui mesuré au foyer.")
-            return None, None, None
+            return None, None, None, None
         spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
         fill_edges, contour_edges = core.build_filled_engraving_edges(
             faces, self.spn_spacing.value(), self.spn_angle.value(), fill_inset=spot / 2.0)
-        return fill_edges, contour_edges, defocus
+        return fill_edges, contour_edges, defocus, self._contour_offset(half_angle)
 
-    def _gen_kwargs(self, defocus):
+    def _gen_kwargs(self, defocus, contour_z_offset):
         return {
             "z_focus": self.spn_zwork.value(),
             "defocus": defocus,
@@ -542,17 +570,17 @@ class TaskPanelFilledEngraving:
             "draw_contour": self.chk_contour.isChecked(),
             "contour_power": self.spn_contour_power.value(),
             "contour_feed": self.spn_contour_feed.value(),
-            "contour_z_offset": self.spn_contour_defocus.value(),
+            "contour_z_offset": contour_z_offset,
             "marge_survol": self.spn_marge.value(),
         }
 
     def _update_duration_preview(self):
-        fill_edges, contour_edges, defocus = self._build_edges(silent=True)
+        fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges(silent=True)
         if fill_edges is None:
             self.lbl_duration.setText("Durée estimée : -- (sélection/calibration invalide)")
             return
         gcode = core.generate_gcode_filled_engraving(
-            fill_edges, contour_edges, quiet=True, **self._gen_kwargs(defocus))
+            fill_edges, contour_edges, quiet=True, **self._gen_kwargs(defocus, contour_z_offset))
         if not gcode:
             self.lbl_duration.setText("Durée estimée : --")
             return
@@ -560,22 +588,22 @@ class TaskPanelFilledEngraving:
         self.lbl_duration.setText("Durée estimée : {}".format(core.format_duration(seconds)))
 
     def _on_frame_preview(self):
-        fill_edges, contour_edges, defocus = self._build_edges()
+        fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
         if fill_edges is None:
             return
         gcode = core.generate_gcode_filled_engraving(
-            fill_edges, contour_edges, frame_only=True, **self._gen_kwargs(defocus))
+            fill_edges, contour_edges, frame_only=True, **self._gen_kwargs(defocus, contour_z_offset))
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
         _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_gravure_remplie.ngc")
 
     def _on_toolpath_preview(self):
-        fill_edges, contour_edges, defocus = self._build_edges()
+        fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
         if fill_edges is None:
             return
         gcode = core.generate_gcode_filled_engraving(
-            fill_edges, contour_edges, quiet=True, **self._gen_kwargs(defocus))
+            fill_edges, contour_edges, quiet=True, **self._gen_kwargs(defocus, contour_z_offset))
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
@@ -583,7 +611,7 @@ class TaskPanelFilledEngraving:
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
 
     def accept(self):
-        fill_edges, contour_edges, defocus = self._build_edges()
+        fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
         if fill_edges is None:
             return False
         if not fill_edges and not self.chk_contour.isChecked():
@@ -597,7 +625,7 @@ class TaskPanelFilledEngraving:
         post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_filled_engraving(
             fill_edges, contour_edges,
-            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs(defocus))
+            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs(defocus, contour_z_offset))
 
         cfg = core.load_config()
         cfg["pre_fe"] = pre_text
