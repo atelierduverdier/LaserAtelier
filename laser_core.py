@@ -2874,7 +2874,7 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
 # ==========================================================================
 # MODE : GRAVURE REMPLIE (NOIR) -- remplissage défocus + contour au foyer
 # ==========================================================================
-def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0):
+def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0, add_perimeter=True):
     """À partir de faces 2D (texte/forme fermée), renvoie
     (fill_edges, contour_edges) :
 
@@ -2888,6 +2888,12 @@ def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0):
       disparaître une face (trait plus fin que 2*fill_inset), cette face
       n'est simplement pas remplie : le contour (éventuellement un peu
       défocalisé) la noircit.
+
+    add_perimeter : ajoute au remplissage le CONTOUR de la zone rentrée
+    (les arêtes des faces insettées), tracé avec le faisceau de remplissage.
+    Les hachures parallèles laissent sinon une fine bande non brûlée entre
+    la dernière hachure et le bord (surtout sur les bords obliques) -- ce
+    liseré suit le bord et le comble, pour un noir plein jusqu'au contour.
 
     L'appelant calcule fill_inset = rayon du point au défocus retenu
     (spot_diameter_at_defocus / 2)."""
@@ -2905,6 +2911,9 @@ def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0):
         else:
             fill_faces.append(f)
     fill_edges = generate_hatch_edges(fill_faces, spacing, angle_deg) if fill_faces else []
+    if add_perimeter:
+        for f in fill_faces:
+            fill_edges.extend(f.Edges)
     return fill_edges, contour_edges
 
 

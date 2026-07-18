@@ -369,6 +369,15 @@ class TaskPanelFilledEngraving:
         self.spn_fill_feed.setToolTip("Vitesse d'avance du remplissage.")
         form.addRow("Vitesse remplissage :", self.spn_fill_feed)
 
+        self.chk_perimeter = QtWidgets.QCheckBox("Cerner le remplissage (fermer les blancs au bord)")
+        self.chk_perimeter.setChecked(True)
+        self.chk_perimeter.setToolTip(
+            "Trace le bord de la zone remplie avec le faisceau de remplissage,\n"
+            "en plus des hachures. Sans ça, les hachures parallèles laissent\n"
+            "une fine bande non brûlée le long du bord (surtout sur les bords\n"
+            "obliques) : ce liseré la comble pour un noir plein jusqu'au contour.")
+        form.addRow(self.chk_perimeter)
+
         # --- Calibration du point (défocus) : mêmes champs que Hachures 2D ---
         self.lbl_defocus_calib = QtWidgets.QLabel(
             "<b>Calibration du point laser</b> -- brûle 2 points test (au\n"
@@ -582,6 +591,7 @@ class TaskPanelFilledEngraving:
             "angle": self.spn_angle.value(),
             "fill_power": self.spn_fill_power.value(),
             "fill_feed": self.spn_fill_feed.value(),
+            "perimeter": self.chk_perimeter.isChecked(),
             "dfocus": self.spn_dfocus.value(),
             "ztest": self.spn_ztest.value(),
             "dtest": self.spn_dtest.value(),
@@ -604,6 +614,7 @@ class TaskPanelFilledEngraving:
         self.spn_angle.setValue(v.get("angle", self.spn_angle.value()))
         self.spn_fill_power.setValue(v.get("fill_power", self.spn_fill_power.value()))
         self.spn_fill_feed.setValue(v.get("fill_feed", self.spn_fill_feed.value()))
+        self.chk_perimeter.setChecked(v.get("perimeter", self.chk_perimeter.isChecked()))
         self.spn_dfocus.setValue(v.get("dfocus", self.spn_dfocus.value()))
         self.spn_ztest.setValue(v.get("ztest", self.spn_ztest.value()))
         self.spn_dtest.setValue(v.get("dtest", self.spn_dtest.value()))
@@ -677,7 +688,8 @@ class TaskPanelFilledEngraving:
             return None, None, None, None
         spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
         fill_edges, contour_edges = core.build_filled_engraving_edges(
-            faces, self.spn_spacing.value(), self.spn_angle.value(), fill_inset=spot / 2.0)
+            faces, self.spn_spacing.value(), self.spn_angle.value(), fill_inset=spot / 2.0,
+            add_perimeter=self.chk_perimeter.isChecked())
         return fill_edges, contour_edges, defocus, self._contour_offset(half_angle)
 
     def _gen_kwargs(self, defocus, contour_z_offset):
