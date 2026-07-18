@@ -989,6 +989,7 @@ class TaskPanelTestGrid:
         fill_type = fill_type_map.get(self.combo_filltype.currentIndex(), "paralleles") if mode == "gravure" else "paralleles"
 
         cell_z_offset = 0.0
+        fill_inset = 0.0
         if mode == "gravure" and fill_type == "defocus":
             half_angle = core.defocus_divergence_half_angle(
                 self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
@@ -1003,6 +1004,10 @@ class TaskPanelTestGrid:
                         "celui mesuré au foyer.")
                 return None, None, None, None
             cell_z_offset = defocus
+            # Rayon du point élargi à ce défocus : on rentre la zone
+            # hachurée d'autant pour que la brûlure ne déborde pas du carré.
+            spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
+            fill_inset = spot / 2.0
 
         cells = core.build_test_grid_cells(
             mode,
@@ -1011,6 +1016,7 @@ class TaskPanelTestGrid:
             self.spn_cell_size.value(), self.spn_gap.value(),
             fill_type=fill_type,
             hatch_spacing=self.spn_hatch_spacing.value(), hatch_angle=self.spn_hatch_angle.value(),
+            fill_inset=fill_inset,
         )
         return mode, fill_type, cells, cell_z_offset
 

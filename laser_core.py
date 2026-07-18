@@ -970,7 +970,8 @@ def build_test_grid_cells(mode, power_min, power_max, n_power,
                            feed_min, feed_max, n_feed,
                            cell_size, gap,
                            fill_type="paralleles",
-                           hatch_spacing=0.2, hatch_angle=45.0):
+                           hatch_spacing=0.2, hatch_angle=45.0,
+                           fill_inset=0.0):
     """Construit la grille de cellules de test. mode: "gravure" (contour
     rempli, réutilise generate_hatch_edges sans rien changer -- 3 types
     de remplissage possibles comme le mode Hachures 2D : "paralleles",
@@ -979,7 +980,18 @@ def build_test_grid_cells(mode, power_min, power_max, n_power,
     cell_z_offset dans generate_gcode_test_grid) ou "decoupe" (contour
     carré simple, comme le motif de calibration kerf). Puissance
     croissante en colonnes (X), vitesse (feed) croissante en lignes (Y).
-    Renvoie une liste de dicts : {row, col, power, feed, x0, y0, edges}."""
+
+    fill_inset : marge (mm) dont la zone HACHURÉE est rentrée par rapport
+    au carré de la cellule -- typiquement le RAYON du point laser. Le
+    point a une largeur : les hachures allant bord à bord, la brûlure
+    déborde du carré d'environ un rayon de point (très visible en
+    défocus, où le point est large). En rentrant la zone hachurée d'un
+    rayon, la brûlure (hachures + rayon de point) s'arrête pile au bord
+    du carré / du cadre. N'affecte QUE le remplissage : le contour
+    (border_edges, et le tracé de découpe) reste le carré plein.
+
+    Renvoie une liste de dicts :
+    {row, col, power, feed, x0, y0, edges, border_edges}."""
     n_power = max(1, int(n_power))
     n_feed = max(1, int(n_feed))
     step = cell_size + gap
@@ -1002,7 +1014,22 @@ def build_test_grid_cells(mode, power_min, power_max, n_power,
             square_edges = [Part.LineSegment(pts[i], pts[i + 1]).toShape() for i in range(4)]
 
             if mode == "gravure":
-                face = Part.Face(Part.Wire(square_edges))
+                # Face hachurée éventuellement rentrée d'un rayon de point
+                # (fill_inset) pour que la brûlure ne déborde pas du carré.
+                # Repli sur le carré plein si l'inset ne laisse pas de place.
+                r = fill_inset if (fill_inset > 0 and cell_size - 2.0 * fill_inset > max(hatch_spacing, 0.5)) else 0.0
+                if r > 0:
+                    ipts = [
+                        FreeCAD.Vector(x0 + r, y0 + r, 0),
+                        FreeCAD.Vector(x0 + cell_size - r, y0 + r, 0),
+                        FreeCAD.Vector(x0 + cell_size - r, y0 + cell_size - r, 0),
+                        FreeCAD.Vector(x0 + r, y0 + cell_size - r, 0),
+                        FreeCAD.Vector(x0 + r, y0 + r, 0),
+                    ]
+                    fill_edges = [Part.LineSegment(ipts[i], ipts[i + 1]).toShape() for i in range(4)]
+                else:
+                    fill_edges = square_edges
+                face = Part.Face(Part.Wire(fill_edges))
                 if fill_type == "croisees":
                     edges = (generate_hatch_edges([face], hatch_spacing, hatch_angle) +
                               generate_hatch_edges([face], hatch_spacing, hatch_angle + 90.0))
