@@ -1,18 +1,36 @@
 # Atelier Laser
 
-Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de marquage/découpe laser, avec suivi de surfaces 3D courbes, découpe multi-passes, grille de test puissance/vitesse et jobs combinant plusieurs opérations en une seule passe.
+Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de marquage/découpe laser : gravure noir plein de textes/formes, suivi de surfaces 3D courbes, découpe multi-passes, grilles de test et de calibration, et jobs combinant plusieurs opérations en une seule passe.
 
 ## Fonctionnalités
 
-- **Hachures 2D** : remplissage (parallèles / croisées / défocus) sur une face 2D
-- **Projection sur surface 3D** : projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée même sur un remplissage dense)
-- **Calibration kerf** : génère un carré test pour mesurer le kerf réel du laser
-- **Grille de test puissance/vitesse** : job unique en grille de cellules à puissance/vitesse variables, avec étiquettes de repérage, optimisation du trajet par proximité et remplissage défocus
-- **Marquage sur surface courbe** : suit le relief d'un modèle 3D (sonde par tessellation, ou interpolation), avec préréglages matériau et aperçu du trajet directement dans la vue 3D
-- **Découpe multi-passes sur surface courbée** : combine le suivi de relief du marquage courbe avec la logique multi-passes/kerf/imbrication de la découpe à plat
-- **Découpe multi-passes (matériau plat)** : passes progressives, compensation de kerf, ordre trous-avant-contour, rampe de puissance, dernière passe ralentie
-- **Job combiné** : empile plusieurs opérations (marquage, découpe, grille de test) dans un seul fichier G-code avec un seul armement du laser, transition de sécurité anti-collision entre opérations
-- Estimation de durée en direct, aperçu de trajet dans la vue 3D, aperçu de cadrage en fichier séparé pour vérifier le positionnement avant de lancer le job réel
+Les modes sont regroupés par thème dans la barre d'outils et le menu.
+
+**Gravure à plat**
+- **Hachures 2D** : remplissage (parallèles / croisées / défocus) sur une face 2D — crée la géométrie des hachures.
+- **Gravure remplie (noir)** : grave un texte/forme 2D en **noir plein** — remplissage par hachures en défocus (point élargi, automatiquement **rentré du rayon de point** pour ne pas déborder du bord, avec un liseré qui ferme les blancs le long des bords) **puis** contour repassé net au foyer (épaisseur de trait réglable). Préréglages matériau.
+
+**Sur surface 3D**
+- **Projection sur surface 3D** : projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée même sur un remplissage dense).
+- **Marquage sur surface courbe** : suit le relief d'un modèle 3D (sonde par tessellation, ou interpolation), avec préréglages matériau et aperçu du trajet directement dans la vue 3D.
+- **Découpe multi-passes sur surface courbée** : combine le suivi de relief du marquage courbe avec la logique multi-passes/kerf/imbrication de la découpe à plat.
+
+**Découpe**
+- **Découpe multi-passes (matériau plat)** : passes progressives, compensation de kerf, ordre trous-avant-contour, rampe de puissance, dernière passe ralentie.
+
+**Tests & calibration**
+- **Calibration kerf** : génère un carré test pour mesurer le kerf réel du laser.
+- **Grille de test puissance/vitesse** : job unique en grille de cellules à puissance/vitesse variables, avec étiquettes de repérage, **cadre net au foyer** autour de chaque cellule, optimisation du trajet par proximité, remplissage défocus et préréglages matériau.
+- **Bande de calibration défocus** : grave une rangée de courts traits à hauteurs de bec croissantes, étiquetés en **hauteur** (à gauche) et en **puissance** (à droite), avec **rampe de puissance** optionnelle — pour mesurer le foyer (trait le plus fin) et la divergence du point, et renseigner la calibration défocus une bonne fois.
+
+**Assemblage**
+- **Job combiné** : empile plusieurs opérations (marquage, découpe, grille de test) dans un seul fichier G-code avec un seul armement du laser, transition de sécurité anti-collision entre opérations.
+
+Communs à tous les modes : estimation de durée en direct, aperçu de trajet dans la vue 3D, aperçu de cadrage en fichier séparé (avec faisceau de visée à très faible puissance optionnel) pour vérifier le positionnement avant de lancer, préréglages matériau et préférences globales.
+
+## Modèle de défocus (remplissage noir)
+
+Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un cône de divergence linéaire calibré à partir de **deux mesures réelles** du point (au foyer, puis à un défocus connu) — jamais deviné. La **Bande de calibration défocus** fournit ces mesures ; on saisit ensuite « point au foyer », « défocus de test » et « point au défocus de test » dans les modes concernés, et l'atelier calcule le défocus nécessaire pour un espacement donné (et rentre le remplissage du rayon de point pour rester dans le contour).
 
 ## Démo vidéo
 

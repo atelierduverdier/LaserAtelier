@@ -60,15 +60,19 @@ Four modules, cleanly layered — keep the layering:
   banner-commented sections, one per mode. This is the layer you unit-test headless.
 - **`task_panels.py`** (~3.7k lines): one `TaskPanel*` class per mode (PySide6/Qt). Builds the form,
   reads widgets, calls `core.*` generators, writes the file via `_write_gcode_with_dialog`. Pure UI;
-  no geometry math beyond calling core.
+  no geometry math beyond calling core. Shared UI helpers: `_panel_header(form, icon, title)` (mode
+  banner) and `_section(form, title, icon)` (bold section header + rule) structure the dense panels —
+  both fall back to text if the SVG picto fails to render (`_icon_pixmap` returns None). Preset
+  save/load (material presets) reuses `core.load_presets/save_preset/delete_preset` per category.
 - **`commands.py`**: one `*Command` class per mode (`GetResources`/`IsActive`/`Activated`) that opens
   the matching task panel; `register_commands()` registers them all.
 - **`InitGui.py`**: the `Workbench` class — toolbar/menu order (`command_list`), lazy imports in
   `Initialize()`. Runs at FreeCAD startup.
 
 **Adding a mode** touches all four: a generator in `laser_core`, a panel in `task_panels`, a command
-in `commands.py` (+ `register_commands`), an entry in `InitGui.py`'s `command_list`, and an SVG in
-`resources/icons/` (64×64, orange `#ff8a00` + slate `#2f3540` house style).
+in `commands.py` (+ `register_commands`), an entry in `InitGui.py`'s `command_list` (grouped by theme
+with `"Separator"` tokens), and an SVG in `resources/icons/` (64×64, orange `#ff8a00` + slate
+`#2f3540` house style; `sect_*.svg` are the small section pictos reused across panels).
 
 ### G-code generation contract
 
