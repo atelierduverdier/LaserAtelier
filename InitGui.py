@@ -67,21 +67,11 @@ class LaserAtelierWorkbench(Workbench):
             # -- Réglages --
             "LaserAtelier_Settings",
         ]
-        # Barre d'outils : une rangée d'icônes groupées par séparateurs.
+        # Barre d'outils ET menu : la même liste groupée par séparateurs.
+        # (Testé aussi en sous-menus déroulants : n'apportait qu'un niveau à
+        # dérouler de plus sans gain de clarté -- on garde la liste plate.)
         self.appendToolbar("Atelier Laser", self.command_list)
-
-        # Menu : sous-menus déroulants par thème (appendMenu avec une liste
-        # [parent, sous-menu] crée le sous-menu). Les modes isolés (Découpe
-        # à plat, Job combiné, Préférences) restent au premier niveau pour
-        # un accès direct.
-        self.appendMenu(["Atelier Laser", "Gravure à plat"],
-                        ["LaserAtelier_Hatch", "LaserAtelier_FilledEngraving"])
-        self.appendMenu(["Atelier Laser", "Sur surface 3D"],
-                        ["LaserAtelier_Project", "LaserAtelier_Curved", "LaserAtelier_CurvedCut"])
-        self.appendMenu("Atelier Laser", ["LaserAtelier_Flat"])
-        self.appendMenu(["Atelier Laser", "Tests & calibration"],
-                        ["LaserAtelier_Kerf", "LaserAtelier_TestGrid", "LaserAtelier_DefocusCalibration"])
-        self.appendMenu("Atelier Laser", ["LaserAtelier_Combined", "LaserAtelier_Settings"])
+        self.appendMenu("Atelier Laser", self.command_list)
 
     def Activated(self):
         pass
