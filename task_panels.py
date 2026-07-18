@@ -295,6 +295,325 @@ class TaskPanelHatch:
 
 
 # ==========================================================================
+# MODE : GRAVURE REMPLIE (NOIR) -- remplissage défocus + contour au foyer
+# ==========================================================================
+class TaskPanelFilledEngraving:
+    def __init__(self, selection):
+        self.selection = selection
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        info = QtWidgets.QLabel(
+            "Grave une forme/texte 2D en NOIR PLEIN : remplissage par\n"
+            "hachures en défocus (point élargi, rentré pour ne pas déborder\n"
+            "du bord) puis contour repassé net au foyer. Sélectionne le\n"
+            "motif 2D (face/sketch/ShapeString) avant de lancer.")
+        info.setWordWrap(True)
+        form.addRow(info)
+
+        # --- Remplissage ---
+        self.spn_spacing = QtWidgets.QDoubleSpinBox()
+        self.spn_spacing.setRange(0.05, 100.0)
+        self.spn_spacing.setDecimals(2)
+        self.spn_spacing.setValue(1.0)
+        self.spn_spacing.setSuffix(" mm")
+        self.spn_spacing.setToolTip(
+            "Espacement des hachures de remplissage. Le défocus calculé\n"
+            "plus bas élargit le point à peu près à cette taille pour\n"
+            "noircir sans laisser de bandes claires.")
+        form.addRow("Espacement remplissage :", self.spn_spacing)
+
+        self.spn_angle = QtWidgets.QDoubleSpinBox()
+        self.spn_angle.setRange(-360, 360)
+        self.spn_angle.setValue(45)
+        self.spn_angle.setSuffix(" deg")
+        self.spn_angle.setToolTip("Orientation des hachures de remplissage.")
+        form.addRow("Angle hachures :", self.spn_angle)
+
+        self.spn_fill_power = QtWidgets.QDoubleSpinBox()
+        self.spn_fill_power.setRange(0, 1000)
+        self.spn_fill_power.setValue(500)
+        self.spn_fill_power.setToolTip("Puissance (S) du remplissage.")
+        form.addRow("Puissance remplissage :", self.spn_fill_power)
+
+        self.spn_fill_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_fill_feed.setRange(1, 20000)
+        self.spn_fill_feed.setValue(800)
+        self.spn_fill_feed.setSuffix(" mm/min")
+        self.spn_fill_feed.setToolTip("Vitesse d'avance du remplissage.")
+        form.addRow("Vitesse remplissage :", self.spn_fill_feed)
+
+        # --- Calibration du point (défocus) : mêmes champs que Hachures 2D ---
+        self.lbl_defocus_calib = QtWidgets.QLabel(
+            "<b>Calibration du point laser</b> -- brûle 2 points test (au\n"
+            "foyer, puis à un défocus connu) et mesure leur diamètre :")
+        self.lbl_defocus_calib.setWordWrap(True)
+        form.addRow(self.lbl_defocus_calib)
+
+        self.spn_dfocus = QtWidgets.QDoubleSpinBox()
+        self.spn_dfocus.setRange(0.01, 20.0)
+        self.spn_dfocus.setDecimals(3)
+        self.spn_dfocus.setValue(0.15)
+        self.spn_dfocus.setSuffix(" mm")
+        self.spn_dfocus.setToolTip(
+            "Diamètre du point AU FOYER. À MESURER réellement -- 0.15mm\n"
+            "n'est qu'une valeur de départ.")
+        form.addRow("Point au foyer (mesuré) :", self.spn_dfocus)
+
+        self.spn_ztest = QtWidgets.QDoubleSpinBox()
+        self.spn_ztest.setRange(0.1, 60.0)
+        self.spn_ztest.setDecimals(2)
+        self.spn_ztest.setValue(3.0)
+        self.spn_ztest.setSuffix(" mm")
+        self.spn_ztest.setToolTip(
+            "Défocus de test (bec écarté de cette distance du foyer)\n"
+            "utilisé pour la 2e mesure.")
+        form.addRow("Défocus de test :", self.spn_ztest)
+
+        self.spn_dtest = QtWidgets.QDoubleSpinBox()
+        self.spn_dtest.setRange(0.01, 30.0)
+        self.spn_dtest.setDecimals(3)
+        self.spn_dtest.setValue(1.0)
+        self.spn_dtest.setSuffix(" mm")
+        self.spn_dtest.setToolTip("Diamètre du point mesuré à ce défocus de test.")
+        form.addRow("Point au défocus de test (mesuré) :", self.spn_dtest)
+
+        self.lbl_defocus_result = QtWidgets.QLabel("Défocus calculé : --")
+        self.lbl_defocus_result.setWordWrap(True)
+        form.addRow(self.lbl_defocus_result)
+
+        # --- Z de travail ---
+        self.spn_zwork = QtWidgets.QDoubleSpinBox()
+        self.spn_zwork.setRange(-50, 200)
+        self.spn_zwork.setDecimals(2)
+        self.spn_zwork.setValue(8.5)
+        self.spn_zwork.setSuffix(" mm")
+        self.spn_zwork.setToolTip(
+            "Z de foyer (bec au point sur la surface). Le remplissage est\n"
+            "gravé à ce Z + le défocus calculé ; le contour à ce Z + son\n"
+            "propre défocus (ci-dessous).")
+        form.addRow("Z de travail (foyer) :", self.spn_zwork)
+
+        self.spn_marge = QtWidgets.QDoubleSpinBox()
+        self.spn_marge.setRange(0.0, 100.0)
+        self.spn_marge.setDecimals(1)
+        self.spn_marge.setValue(5.0)
+        self.spn_marge.setSuffix(" mm")
+        self.spn_marge.setToolTip(
+            "Hauteur de survol pour les déplacements à vide (laser éteint)\n"
+            "entre les traits.")
+        form.addRow("Marge de survol (transit) :", self.spn_marge)
+
+        # --- Contour ---
+        self.chk_contour = QtWidgets.QCheckBox("Graver le contour (repassé après le remplissage)")
+        self.chk_contour.setChecked(True)
+        self.chk_contour.setToolTip(
+            "Repasse le bord de la forme APRÈS le remplissage, pour une\n"
+            "arête nette. Décoche pour ne faire que le remplissage.")
+        form.addRow(self.chk_contour)
+
+        self.spn_contour_power = QtWidgets.QDoubleSpinBox()
+        self.spn_contour_power.setRange(0, 1000)
+        self.spn_contour_power.setValue(300)
+        self.spn_contour_power.setToolTip("Puissance (S) du contour.")
+        form.addRow("Puissance contour :", self.spn_contour_power)
+
+        self.spn_contour_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_contour_feed.setRange(1, 20000)
+        self.spn_contour_feed.setValue(1000)
+        self.spn_contour_feed.setSuffix(" mm/min")
+        self.spn_contour_feed.setToolTip("Vitesse d'avance du contour.")
+        form.addRow("Vitesse contour :", self.spn_contour_feed)
+
+        self.spn_contour_defocus = QtWidgets.QDoubleSpinBox()
+        self.spn_contour_defocus.setRange(0.0, 60.0)
+        self.spn_contour_defocus.setDecimals(2)
+        self.spn_contour_defocus.setValue(0.0)
+        self.spn_contour_defocus.setSuffix(" mm")
+        self.spn_contour_defocus.setToolTip(
+            "Défocus du contour : 0 = net au foyer. Augmenter pour élargir\n"
+            "le point et épaissir/faire ressortir le trait du contour.")
+        form.addRow("Défocus du contour :", self.spn_contour_defocus)
+
+        self.chk_contour.toggled.connect(self.spn_contour_power.setEnabled)
+        self.chk_contour.toggled.connect(self.spn_contour_feed.setEnabled)
+        self.chk_contour.toggled.connect(self.spn_contour_defocus.setEnabled)
+
+        def _update_defocus_preview():
+            half_angle = core.defocus_divergence_half_angle(
+                self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+            defocus = core.defocus_for_fill_spacing(
+                self.spn_spacing.value(), self.spn_dfocus.value(), half_angle)
+            if defocus is None:
+                self.lbl_defocus_result.setText(
+                    "Défocus calculé : -- (calibration invalide : le point au\n"
+                    "défocus de test doit être plus large qu'au foyer)")
+            else:
+                spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
+                self.lbl_defocus_result.setText(
+                    "Défocus calculé : {:.2f} mm (bec remonté d'autant) -- point\n"
+                    "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.".format(
+                        defocus, spot, spot / 2.0))
+
+        self._update_defocus_preview = _update_defocus_preview
+        self.spn_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
+        self.spn_dfocus.valueChanged.connect(lambda _v: _update_defocus_preview())
+        self.spn_ztest.valueChanged.connect(lambda _v: _update_defocus_preview())
+        self.spn_dtest.valueChanged.connect(lambda _v: _update_defocus_preview())
+
+        # --- G-code avant/après ---
+        self.txt_pre = QtWidgets.QPlainTextEdit()
+        self.txt_pre.setMaximumHeight(50)
+        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        form.addRow("G-code avant :", self.txt_pre)
+
+        self.txt_post = QtWidgets.QPlainTextEdit()
+        self.txt_post.setMaximumHeight(50)
+        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        form.addRow("G-code après :", self.txt_post)
+
+        cfg = core.load_config()
+        self.txt_pre.setPlainText(cfg.get("pre_fe", ""))
+        self.txt_post.setPlainText(cfg.get("post_fe", ""))
+
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
+            "Approximative : G1 selon distance/avance programmée, G0\n"
+            "(transit) à la vitesse rapide des Préférences.")
+
+        self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
+        self.btn_frame_preview.setToolTip(
+            "Crée un FICHIER À PART traçant le rectangle englobant, laser\n"
+            "éteint (ou faisceau de visée : voir Préférences) -- à lancer\n"
+            "seul pour vérifier le positionnement avant le vrai job.")
+        self.btn_frame_preview.clicked.connect(self._on_frame_preview)
+        form.addRow(self.btn_frame_preview)
+
+        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview.setToolTip(
+            "Affiche le trajet dans la vue 3D : gris fin = transit éteint,\n"
+            "rouge = gravure. Vérifie que le remplissage tient dans le\n"
+            "contour. Purement visuel.")
+        self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
+        form.addRow(self.btn_toolpath_preview)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Gravure remplie (noir)")
+        self.form.setWindowIcon(_icon("filled.svg"))
+
+        _update_defocus_preview()
+
+    def _build_edges(self, silent=False):
+        """Renvoie (fill_edges, contour_edges, defocus) ou (None, None, None)
+        si la sélection est vide ou la calibration défocus invalide."""
+        faces = core.get_faces_from_selection_for_hatch(self.selection)
+        if not faces:
+            if not silent:
+                QtWidgets.QMessageBox.critical(
+                    self.form, "Erreur",
+                    "Aucune face 2D fermée trouvée dans la sélection\n"
+                    "(face, Draft, ou sketch à fils fermés).")
+            return None, None, None
+        half_angle = core.defocus_divergence_half_angle(
+            self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+        defocus = core.defocus_for_fill_spacing(
+            self.spn_spacing.value(), self.spn_dfocus.value(), half_angle)
+        if defocus is None:
+            if not silent:
+                QtWidgets.QMessageBox.critical(
+                    self.form, "Erreur",
+                    "Calibration de défocus invalide : le point mesuré au\n"
+                    "défocus de test doit être strictement plus large que\n"
+                    "celui mesuré au foyer.")
+            return None, None, None
+        spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
+        fill_edges, contour_edges = core.build_filled_engraving_edges(
+            faces, self.spn_spacing.value(), self.spn_angle.value(), fill_inset=spot / 2.0)
+        return fill_edges, contour_edges, defocus
+
+    def _gen_kwargs(self, defocus):
+        return {
+            "z_focus": self.spn_zwork.value(),
+            "defocus": defocus,
+            "fill_power": self.spn_fill_power.value(),
+            "fill_feed": self.spn_fill_feed.value(),
+            "draw_contour": self.chk_contour.isChecked(),
+            "contour_power": self.spn_contour_power.value(),
+            "contour_feed": self.spn_contour_feed.value(),
+            "contour_z_offset": self.spn_contour_defocus.value(),
+            "marge_survol": self.spn_marge.value(),
+        }
+
+    def _update_duration_preview(self):
+        fill_edges, contour_edges, defocus = self._build_edges(silent=True)
+        if fill_edges is None:
+            self.lbl_duration.setText("Durée estimée : -- (sélection/calibration invalide)")
+            return
+        gcode = core.generate_gcode_filled_engraving(
+            fill_edges, contour_edges, quiet=True, **self._gen_kwargs(defocus))
+        if not gcode:
+            self.lbl_duration.setText("Durée estimée : --")
+            return
+        seconds = core.estimate_job_time_seconds(gcode)
+        self.lbl_duration.setText("Durée estimée : {}".format(core.format_duration(seconds)))
+
+    def _on_frame_preview(self):
+        fill_edges, contour_edges, defocus = self._build_edges()
+        if fill_edges is None:
+            return
+        gcode = core.generate_gcode_filled_engraving(
+            fill_edges, contour_edges, frame_only=True, **self._gen_kwargs(defocus))
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_gravure_remplie.ngc")
+
+    def _on_toolpath_preview(self):
+        fill_edges, contour_edges, defocus = self._build_edges()
+        if fill_edges is None:
+            return
+        gcode = core.generate_gcode_filled_engraving(
+            fill_edges, contour_edges, quiet=True, **self._gen_kwargs(defocus))
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
+            return
+        rapid, mark = core.parse_gcode_toolpath(gcode)
+        core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+
+    def accept(self):
+        fill_edges, contour_edges, defocus = self._build_edges()
+        if fill_edges is None:
+            return False
+        if not fill_edges and not self.chk_contour.isChecked():
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur",
+                "Rien à graver : le remplissage est vide (motif plus fin que\n"
+                "le point défocalisé) et le contour est décoché.")
+            return False
+
+        pre_text = self.txt_pre.toPlainText()
+        post_text = self.txt_post.toPlainText()
+        gcode = core.generate_gcode_filled_engraving(
+            fill_edges, contour_edges,
+            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs(defocus))
+
+        cfg = core.load_config()
+        cfg["pre_fe"] = pre_text
+        cfg["post_fe"] = post_text
+        core.save_config(cfg)
+
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
+            return False
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/gravure_remplie.ngc")
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
 # MODE : PROJECTION SUR SURFACE 3D
 # ==========================================================================
 class TaskPanelProject:

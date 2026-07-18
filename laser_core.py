@@ -2724,6 +2724,134 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
 
 
 # ==========================================================================
+# MODE : GRAVURE REMPLIE (NOIR) -- remplissage défocus + contour au foyer
+# ==========================================================================
+def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0):
+    """À partir de faces 2D (texte/forme fermée), renvoie
+    (fill_edges, contour_edges) :
+
+    - contour_edges : les arêtes du bord de chaque face (contour extérieur
+      + éventuels trous, ex. l'intérieur d'un « O »), à graver net au
+      foyer.
+    - fill_edges : les hachures de remplissage, calculées sur les faces
+      RENTRÉES de fill_inset (le rayon du point laser élargi) par un offset
+      2D vers l'intérieur -- pour que la brûlure (hachures + largeur du
+      point) ne déborde pas du contour. Si l'offset échoue ou fait
+      disparaître une face (trait plus fin que 2*fill_inset), cette face
+      n'est simplement pas remplie : le contour (éventuellement un peu
+      défocalisé) la noircit.
+
+    L'appelant calcule fill_inset = rayon du point au défocus retenu
+    (spot_diameter_at_defocus / 2)."""
+    contour_edges = []
+    fill_faces = []
+    for f in faces:
+        contour_edges.extend(f.Edges)
+        if fill_inset > 0:
+            try:
+                inset = f.makeOffset2D(-fill_inset)
+                sub = list(inset.Faces)
+            except Exception:
+                sub = []
+            fill_faces.extend(sub)  # vide si trop fin -> pas de remplissage ici
+        else:
+            fill_faces.append(f)
+    fill_edges = generate_hatch_edges(fill_faces, spacing, angle_deg) if fill_faces else []
+    return fill_edges, contour_edges
+
+
+def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
+                                     fill_power, fill_feed,
+                                     draw_contour=True, contour_power=300.0, contour_feed=1000.0,
+                                     contour_z_offset=0.0, marge_survol=5.0,
+                                     pre_gcode="", post_gcode="", frame_only=False, quiet=False):
+    """Grave une forme/texte à plat en NOIR PLEIN : d'abord le remplissage
+    par hachures gravé en DÉFOCUS (point élargi, cf. remplissage défocus du
+    mode Hachures 2D -- fill_edges doivent déjà être rentrées d'un rayon de
+    point par l'appelant pour ne pas déborder), PUIS le contour repassé
+    NET AU FOYER par-dessus pour une arête propre. Un seul armement pour
+    les deux.
+
+    Deux hauteurs de travail : remplissage à z_focus + defocus, contour à
+    z_focus + contour_z_offset (0 = foyer ; augmenter pour épaissir le
+    trait du contour en le défocalisant légèrement). Les deux corps
+    réutilisent generate_gcode_curved en marquage à PLAT (reference_shape
+    = None) et body_only : un plancher de retrait commun (min_safe_z)
+    garantit un transit sûr entre les deux hauteurs.
+
+    frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
+    z_fill = z_focus + defocus
+    z_contour = z_focus + contour_z_offset
+
+    has_contour = bool(draw_contour and contour_edges)
+    # Hauteur de sécurité commune (marquage à plat : Z natif = 0, donc
+    # z_safe = niveau de travail + marge + 5, cf. generate_gcode_curved).
+    safe_levels = [z_fill] + ([z_contour] if has_contour else [])
+    global_min_safe_z = max(safe_levels) + marge_survol + 5.0
+
+    if frame_only:
+        all_edges = list(fill_edges or []) + (list(contour_edges) if has_contour else [])
+        chains = chain_edges(all_edges)
+        if not chains:
+            return None
+        pts = [p for c in chains for p in c]
+        lines = ["(G-Code Laser - Gravure remplie : cadrage)"]
+        lines.append("G21")
+        lines.append("G90")
+        lines.append("G94")
+        lines.append(CMD_TOOL_COMP)
+        lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+        lines.append("G0 Z{:.4f}".format(global_min_safe_z))
+        lines.extend(build_frame_trace(
+            min(p.x for p in pts), max(p.x for p in pts),
+            min(p.y for p in pts), max(p.y for p in pts), global_min_safe_z))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    # Corps : remplissage d'abord, contour ensuite (repassé propre).
+    bodies = []
+    fill_body = generate_gcode_curved(
+        fill_edges, fill_power, fill_feed, z_fill, marge_survol,
+        reference_shape=None, body_only=True, quiet=quiet, min_safe_z=global_min_safe_z)
+    if fill_body:
+        bodies.append(("Remplissage defocus", fill_body))
+    if has_contour:
+        contour_body = generate_gcode_curved(
+            contour_edges, contour_power, contour_feed, z_contour, marge_survol,
+            reference_shape=None, body_only=True, quiet=quiet, min_safe_z=global_min_safe_z)
+        if contour_body:
+            bodies.append(("Contour", contour_body))
+    if not bodies:
+        return None
+
+    lines = []
+    lines.append("(G-Code Laser - Gravure remplie noir)")
+    lines.append("(Remplissage Z={:.4f} defocus={:.4f} S{:.0f} F{:.0f})".format(
+        z_fill, defocus, fill_power, fill_feed))
+    if any(label == "Contour" for label, _ in bodies):
+        lines.append("(Contour Z={:.4f} S{:.0f} F{:.0f})".format(z_contour, contour_power, contour_feed))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append(CMD_TOOL_COMP)
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    for label, body in bodies:
+        lines.append("(===== {} =====)".format(label))
+        lines.append(body)
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
+# ==========================================================================
 # MODE : JOB COMBINÉ (PLUSIEURS OPÉRATIONS, UN SEUL ARMEMENT)
 # ==========================================================================
 # Chaque opération est un dict {"type": "curved"|"flat"|"testgrid",

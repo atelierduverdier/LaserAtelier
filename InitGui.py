@@ -45,6 +45,7 @@ class LaserAtelierWorkbench(Workbench):
         commands.register_commands()
         self.command_list = [
             "LaserAtelier_Hatch",
+            "LaserAtelier_FilledEngraving",
             "LaserAtelier_Project",
             "LaserAtelier_Kerf",
             "LaserAtelier_TestGrid",

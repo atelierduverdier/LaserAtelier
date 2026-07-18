@@ -45,6 +45,26 @@ class HatchCommand:
         Gui.Control.showDialog(task_panels.TaskPanelHatch(selection))
 
 
+class FilledEngravingCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("filled.svg"),
+            "MenuText": "Gravure remplie (noir)",
+            "ToolTip": "Grave une forme/texte 2D en noir plein : remplissage par hachures en défocus "
+                       "(rentré pour ne pas déborder) puis contour repassé net au foyer",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
+
+    def Activated(self):
+        selection = Gui.Selection.getSelectionEx()
+        if not selection:
+            _warn_selection("Sélectionne le motif 2D (face/sketch/ShapeString) avant de lancer ce mode.")
+            return
+        Gui.Control.showDialog(task_panels.TaskPanelFilledEngraving(selection))
+
+
 class ProjectCommand:
     def GetResources(self):
         return {
@@ -202,6 +222,7 @@ class SettingsCommand:
 def register_commands():
     Gui.addCommand("LaserAtelier_Settings", SettingsCommand())
     Gui.addCommand("LaserAtelier_Hatch", HatchCommand())
+    Gui.addCommand("LaserAtelier_FilledEngraving", FilledEngravingCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
     Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())
