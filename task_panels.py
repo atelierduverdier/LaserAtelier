@@ -716,6 +716,215 @@ class TaskPanelKerf:
 
 
 # ==========================================================================
+# MODE : BANDE DE CALIBRATION DÉFOCUS
+# ==========================================================================
+class TaskPanelDefocusCalibration:
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        info = QtWidgets.QLabel(
+            "Grave une rangée de courts traits, chacun à une hauteur de bec\n"
+            "croissante (étiquetée en mm). MESURE l'épaisseur de chaque\n"
+            "trait : le plus fin = le foyer (sa hauteur = ton Z de foyer, sa\n"
+            "largeur = « point au foyer ») ; choisis un trait bien plus\n"
+            "large pour « défocus de test » (sa hauteur - celle du foyer) et\n"
+            "« point au défocus de test » (sa largeur). Zéro Z sur la\n"
+            "surface. Aucune sélection requise.")
+        info.setWordWrap(True)
+        form.addRow(info)
+
+        self.spn_zstart = QtWidgets.QDoubleSpinBox()
+        self.spn_zstart.setRange(-50, 200)
+        self.spn_zstart.setDecimals(1)
+        self.spn_zstart.setValue(0.0)
+        self.spn_zstart.setSuffix(" mm")
+        self.spn_zstart.setToolTip(
+            "Hauteur du bec du 1er trait (Z=0 = bec touche la surface).\n"
+            "Commence un peu en dessous du foyer présumé.")
+        form.addRow("Z de départ :", self.spn_zstart)
+
+        self.spn_zstep = QtWidgets.QDoubleSpinBox()
+        self.spn_zstep.setRange(0.5, 50.0)
+        self.spn_zstep.setDecimals(1)
+        self.spn_zstep.setValue(2.0)
+        self.spn_zstep.setSuffix(" mm")
+        self.spn_zstep.setToolTip(
+            "Pas de hauteur entre deux traits. Petit pas près du foyer\n"
+            "(pour bien le cerner) ; ton faisceau divergeant lentement, un\n"
+            "grand nombre de traits couvre une large plage.")
+        form.addRow("Pas de hauteur :", self.spn_zstep)
+
+        self.spn_nmarks = QtWidgets.QSpinBox()
+        self.spn_nmarks.setRange(2, 100)
+        self.spn_nmarks.setValue(20)
+        self.spn_nmarks.setToolTip("Nombre de traits (donc de hauteurs testées).")
+        form.addRow("Nombre de traits :", self.spn_nmarks)
+
+        self.spn_length = QtWidgets.QDoubleSpinBox()
+        self.spn_length.setRange(2.0, 200.0)
+        self.spn_length.setValue(15.0)
+        self.spn_length.setSuffix(" mm")
+        self.spn_length.setToolTip("Longueur de chaque trait (plus long = plus facile à mesurer).")
+        form.addRow("Longueur des traits :", self.spn_length)
+
+        self.spn_rowgap = QtWidgets.QDoubleSpinBox()
+        self.spn_rowgap.setRange(1.0, 50.0)
+        self.spn_rowgap.setValue(8.0)
+        self.spn_rowgap.setSuffix(" mm")
+        self.spn_rowgap.setToolTip(
+            "Espace vertical entre deux traits -- assez grand pour que les\n"
+            "traits les plus larges (fort défocus) ne se touchent pas.")
+        form.addRow("Espacement des traits :", self.spn_rowgap)
+
+        self.spn_power = QtWidgets.QDoubleSpinBox()
+        self.spn_power.setRange(0, 1000)
+        self.spn_power.setValue(400)
+        self.spn_power.setToolTip(
+            "Puissance (S) FIXE des traits. Modérée : assez pour marquer\n"
+            "nettement, pas trop pour que la brûlure ne s'élargisse pas\n"
+            "au-delà du point (ce qui fausserait la mesure).")
+        form.addRow("Puissance des traits :", self.spn_power)
+
+        self.spn_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_feed.setRange(1, 20000)
+        self.spn_feed.setValue(1000)
+        self.spn_feed.setSuffix(" mm/min")
+        self.spn_feed.setToolTip("Vitesse d'avance FIXE des traits.")
+        form.addRow("Vitesse des traits :", self.spn_feed)
+
+        self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes de hauteur (mm)")
+        self.chk_labels.setChecked(True)
+        self.chk_labels.setToolTip(
+            "Grave à gauche de chaque trait sa hauteur en mm entiers.\n"
+            "Gravées à hauteur fixe (le Z de départ) pour rester lisibles.")
+        form.addRow(self.chk_labels)
+
+        self.spn_label_power = QtWidgets.QDoubleSpinBox()
+        self.spn_label_power.setRange(0, 1000)
+        self.spn_label_power.setValue(300)
+        self.spn_label_power.setToolTip("Puissance (S) des étiquettes.")
+        form.addRow("Puissance étiquettes :", self.spn_label_power)
+
+        self.spn_label_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_label_feed.setRange(1, 20000)
+        self.spn_label_feed.setValue(1500)
+        self.spn_label_feed.setSuffix(" mm/min")
+        self.spn_label_feed.setToolTip("Vitesse d'avance des étiquettes.")
+        form.addRow("Vitesse étiquettes :", self.spn_label_feed)
+
+        self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
+        self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
+
+        self.lbl_range = QtWidgets.QLabel("")
+        self.lbl_range.setWordWrap(True)
+        form.addRow(self.lbl_range)
+
+        def _update_range():
+            zmax = self.spn_zstart.value() + (self.spn_nmarks.value() - 1) * self.spn_zstep.value()
+            self.lbl_range.setText("Plage balayée : Z {:.1f} à {:.1f} mm.".format(
+                self.spn_zstart.value(), zmax))
+        self.spn_zstart.valueChanged.connect(lambda _v: _update_range())
+        self.spn_zstep.valueChanged.connect(lambda _v: _update_range())
+        self.spn_nmarks.valueChanged.connect(lambda _v: _update_range())
+
+        self.txt_pre = QtWidgets.QPlainTextEdit()
+        self.txt_pre.setMaximumHeight(50)
+        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        form.addRow("G-code avant :", self.txt_pre)
+
+        self.txt_post = QtWidgets.QPlainTextEdit()
+        self.txt_post.setMaximumHeight(50)
+        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        form.addRow("G-code après :", self.txt_post)
+
+        cfg = core.load_config()
+        self.txt_pre.setPlainText(cfg.get("pre_dc", ""))
+        self.txt_post.setPlainText(cfg.get("post_dc", ""))
+
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
+            "Approximative : G1 selon distance/avance, G0 (transit) à la\n"
+            "vitesse rapide des Préférences.")
+
+        self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
+        self.btn_frame_preview.setToolTip(
+            "Fichier à part traçant le rectangle englobant, à lancer seul\n"
+            "pour vérifier le positionnement avant le vrai job.")
+        self.btn_frame_preview.clicked.connect(self._on_frame_preview)
+        form.addRow(self.btn_frame_preview)
+
+        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
+        form.addRow(self.btn_toolpath_preview)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Bande de calibration défocus")
+        self.form.setWindowIcon(_icon("defocus.svg"))
+
+        _update_range()
+        self._update_duration_preview()
+
+    def _gen_kwargs(self):
+        return {
+            "z_start": self.spn_zstart.value(),
+            "z_step": self.spn_zstep.value(),
+            "n_marks": self.spn_nmarks.value(),
+            "mark_length": self.spn_length.value(),
+            "row_gap": self.spn_rowgap.value(),
+            "power": self.spn_power.value(),
+            "feed": self.spn_feed.value(),
+            "draw_labels": self.chk_labels.isChecked(),
+            "label_power": self.spn_label_power.value(),
+            "label_feed": self.spn_label_feed.value(),
+        }
+
+    def _update_duration_preview(self):
+        gcode = core.generate_gcode_defocus_calibration(quiet=True, **self._gen_kwargs())
+        if not gcode:
+            self.lbl_duration.setText("Durée estimée : --")
+            return
+        seconds = core.estimate_job_time_seconds(gcode)
+        self.lbl_duration.setText("Durée estimée : {}".format(core.format_duration(seconds)))
+
+    def _on_frame_preview(self):
+        gcode = core.generate_gcode_defocus_calibration(frame_only=True, **self._gen_kwargs())
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_calibration_defocus.ngc")
+
+    def _on_toolpath_preview(self):
+        gcode = core.generate_gcode_defocus_calibration(quiet=True, **self._gen_kwargs())
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
+            return
+        rapid, mark = core.parse_gcode_toolpath(gcode)
+        core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+
+    def accept(self):
+        pre_text = self.txt_pre.toPlainText()
+        post_text = self.txt_post.toPlainText()
+        gcode = core.generate_gcode_defocus_calibration(
+            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs())
+
+        cfg = core.load_config()
+        cfg["pre_dc"] = pre_text
+        cfg["post_dc"] = post_text
+        core.save_config(cfg)
+
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
+            return False
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/calibration_defocus.ngc")
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
 # MODE : GRILLE DE TEST PUISSANCE / VITESSE
 # ==========================================================================
 class TaskPanelTestGrid:

@@ -2724,6 +2724,108 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
 
 
 # ==========================================================================
+# MODE : BANDE DE CALIBRATION DÉFOCUS
+# ==========================================================================
+def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, row_gap,
+                                       power, feed, draw_labels=True,
+                                       label_power=300.0, label_feed=1500.0, label_z=None,
+                                       pre_gcode="", post_gcode="", frame_only=False, quiet=False):
+    """Grave une rangée de courts traits, chacun à une hauteur de bec
+    croissante (z_start, z_start+z_step, ...), à puissance/vitesse FIXES.
+    Chaque trait est étiqueté à sa gauche par sa hauteur Z en mm entiers
+    (la police vectorielle maison ne fait que les chiffres). En mesurant
+    l'épaisseur de chaque trait, on lit d'un coup : le foyer (trait le plus
+    fin) et la divergence -- de quoi remplir « point au foyer » + « défocus
+    de test » / « point au défocus de test » une bonne fois. Les étiquettes
+    sont gravées à une hauteur fixe (label_z, défaut z_start) pour rester
+    lisibles quel que soit le défocus du trait qu'elles désignent.
+
+    frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
+    n_marks = max(1, int(n_marks))
+    if label_z is None:
+        label_z = z_start
+    label_height = max(2.0, min(row_gap * 0.45, 5.0))
+
+    marks = []  # (chain, z)
+    for k in range(n_marks):
+        z = z_start + k * z_step
+        y = k * row_gap
+        marks.append(([FreeCAD.Vector(0.0, y, 0.0), FreeCAD.Vector(mark_length, y, 0.0)], z))
+
+    label_chains = []
+    if draw_labels:
+        for k, (_, z) in enumerate(marks):
+            text = "{:.0f}".format(z)
+            w = text_width(text, label_height)
+            y = k * row_gap
+            edges = text_to_edges(text, -(w + row_gap * 0.4), y - label_height / 2.0, label_height)
+            label_chains.extend(chain_edges(edges))
+
+    all_pts = [p for chain, _ in marks for p in chain] + [p for chain in label_chains for p in chain]
+    z_safe = max([z for _, z in marks] + [label_z]) + TRAVEL_CLEARANCE_MM
+
+    lines = []
+    lines.append("(G-Code Laser - Bande de calibration defocus)")
+    lines.append("(Traits : {} de Z={:.2f} a Z={:.2f} par pas de {:.2f}, S{:.0f} F{:.0f})".format(
+        n_marks, z_start, z_start + (n_marks - 1) * z_step, z_step, power, feed))
+    lines.append("(Mesurer l'epaisseur de chaque trait : le plus fin = foyer)")
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append(CMD_TOOL_COMP)
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(
+            min(p.x for p in all_pts), max(p.x for p in all_pts),
+            min(p.y for p in all_pts), max(p.y for p in all_pts), z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+
+    current_z = [None]
+
+    def _travel(x, y, target_z):
+        if current_z[0] != target_z:
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, z_safe))
+            lines.append("G0 Z{:.4f}".format(target_z))
+            current_z[0] = target_z
+        else:
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+
+    def _emit(chain, p, f, target_z):
+        p0 = chain[0]
+        _travel(p0.x, p0.y, target_z)
+        lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=p))
+        for pt in chain[1:]:
+            lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(pt.x, pt.y, target_z, f))
+        lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    lines.append("(===== Traits de calibration =====)")
+    for chain, z in marks:
+        _emit(chain, power, feed, z)
+    if label_chains:
+        lines.append("(===== Etiquettes (hauteur en mm) =====)")
+        for chain in label_chains:
+            _emit(chain, label_power, label_feed, label_z)
+
+    if current_z[0] is not None:
+        lines.append("G0 Z{:.4f}".format(z_safe))
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
+# ==========================================================================
 # MODE : GRAVURE REMPLIE (NOIR) -- remplissage défocus + contour au foyer
 # ==========================================================================
 def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0):

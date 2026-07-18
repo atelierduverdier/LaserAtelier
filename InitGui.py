@@ -49,6 +49,7 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_Project",
             "LaserAtelier_Kerf",
             "LaserAtelier_TestGrid",
+            "LaserAtelier_DefocusCalibration",
             "LaserAtelier_Curved",
             "LaserAtelier_CurvedCut",
             "LaserAtelier_Flat",

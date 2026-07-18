@@ -116,6 +116,22 @@ class TestGridCommand:
         Gui.Control.showDialog(task_panels.TaskPanelTestGrid())
 
 
+class DefocusCalibrationCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("defocus.svg"),
+            "MenuText": "Bande de calibration défocus",
+            "ToolTip": "Grave une rangée de traits à hauteurs de bec croissantes (étiquetées) pour "
+                       "mesurer le foyer et la divergence du point -- de quoi calibrer le défocus (aucune sélection requise)",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelDefocusCalibration())
+
+
 class CurvedCommand:
     def GetResources(self):
         return {
@@ -226,6 +242,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
     Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())
+    Gui.addCommand("LaserAtelier_DefocusCalibration", DefocusCalibrationCommand())
     Gui.addCommand("LaserAtelier_Curved", CurvedCommand())
     Gui.addCommand("LaserAtelier_CurvedCut", CurvedCutCommand())
     Gui.addCommand("LaserAtelier_Flat", FlatCommand())
