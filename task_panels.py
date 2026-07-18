@@ -807,13 +807,21 @@ class TaskPanelDefocusCalibration:
         self.spn_feed.setToolTip("Vitesse d'avance FIXE des traits.")
         form.addRow("Vitesse des traits :", self.spn_feed)
 
-        self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes de hauteur (mm)")
+        self.chk_labels = QtWidgets.QCheckBox("Graver la hauteur (mm) à gauche")
         self.chk_labels.setChecked(True)
         self.chk_labels.setToolTip(
             "Grave à gauche de chaque trait sa hauteur en mm (décimale\n"
             "affichée au besoin, ex. 0.5).\n"
             "Gravées à hauteur fixe (le Z de départ) pour rester lisibles.")
         form.addRow(self.chk_labels)
+
+        self.chk_power_labels = QtWidgets.QCheckBox("Graver la puissance (S) à droite")
+        self.chk_power_labels.setChecked(True)
+        self.chk_power_labels.setToolTip(
+            "Grave à droite de chaque trait la puissance (S) qui l'a produit.\n"
+            "Indispensable avec la rampe de puissance : sinon impossible de\n"
+            "savoir quelle puissance a donné quel trait.")
+        form.addRow(self.chk_power_labels)
 
         self.spn_label_power = QtWidgets.QDoubleSpinBox()
         self.spn_label_power.setRange(0, 1000)
@@ -828,8 +836,12 @@ class TaskPanelDefocusCalibration:
         self.spn_label_feed.setToolTip("Vitesse d'avance des étiquettes.")
         form.addRow("Vitesse étiquettes :", self.spn_label_feed)
 
-        self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
-        self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
+        def _sync_label_fields():
+            on = self.chk_labels.isChecked() or self.chk_power_labels.isChecked()
+            self.spn_label_power.setEnabled(on)
+            self.spn_label_feed.setEnabled(on)
+        self.chk_labels.toggled.connect(lambda _v: _sync_label_fields())
+        self.chk_power_labels.toggled.connect(lambda _v: _sync_label_fields())
 
         self.lbl_range = QtWidgets.QLabel("")
         self.lbl_range.setWordWrap(True)
@@ -891,6 +903,7 @@ class TaskPanelDefocusCalibration:
             "power_end": self.spn_power_end.value(),
             "feed": self.spn_feed.value(),
             "draw_labels": self.chk_labels.isChecked(),
+            "draw_power_labels": self.chk_power_labels.isChecked(),
             "label_power": self.spn_label_power.value(),
             "label_feed": self.spn_label_feed.value(),
         }

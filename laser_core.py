@@ -2737,6 +2737,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
 # ==========================================================================
 def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, row_gap,
                                        power, feed, power_end=None, draw_labels=True,
+                                       draw_power_labels=True,
                                        label_power=300.0, label_feed=1500.0, label_z=None,
                                        pre_gcode="", post_gcode="", frame_only=False, quiet=False):
     """Grave une rangée de courts traits, chacun à une hauteur de bec
@@ -2745,9 +2746,12 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     vectorielle maison ne fait que les chiffres). En mesurant l'épaisseur de
     chaque trait, on lit d'un coup : le foyer (trait le plus fin) et la
     divergence -- de quoi remplir « point au foyer » + « défocus de test » /
-    « point au défocus de test » une bonne fois. Les étiquettes sont gravées
-    à une hauteur fixe (label_z, défaut z_start) pour rester lisibles quel
-    que soit le défocus du trait qu'elles désignent.
+    « point au défocus de test » une bonne fois. La hauteur de chaque trait
+    est gravée à sa GAUCHE ; avec draw_power_labels, sa puissance (S) est
+    aussi gravée à sa DROITE -- indispensable avec une rampe, sinon on ne
+    sait pas quelle puissance a donné quel trait. Les étiquettes sont
+    gravées à une hauteur fixe (label_z, défaut z_start) pour rester
+    lisibles quel que soit le défocus du trait qu'elles désignent.
 
     power / power_end : puissance du 1er trait, et du dernier. Plus le trait
     est défocalisé, plus la MÊME puissance est étalée sur un gros point,
@@ -2777,15 +2781,21 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         marks.append(([FreeCAD.Vector(0.0, y, 0.0), FreeCAD.Vector(mark_length, y, 0.0)], z))
 
     label_chains = []
-    if draw_labels:
-        for k, (_, z) in enumerate(marks):
-            # Décimale seulement si nécessaire : pas entiers -> "2","4" ;
-            # pas fractionnaires -> "0.5","1.5" (point décimal géré par la
-            # police).
+    for k, (_, z) in enumerate(marks):
+        y = k * row_gap
+        if draw_labels:
+            # Hauteur à GAUCHE. Décimale seulement si nécessaire : pas
+            # entiers -> "2","4" ; pas fractionnaires -> "0.5","1.5" (point
+            # décimal géré par la police).
             text = "{:g}".format(round(z, 1))
             w = text_width(text, label_height)
-            y = k * row_gap
             edges = text_to_edges(text, -(w + row_gap * 0.4), y - label_height / 2.0, label_height)
+            label_chains.extend(chain_edges(edges))
+        if draw_power_labels:
+            # Puissance à DROITE du trait (utile avec la rampe : sinon on ne
+            # sait pas quelle puissance a donné quel trait).
+            ptext = "S{:.0f}".format(_mark_power(k))
+            edges = text_to_edges(ptext, mark_length + row_gap * 0.4, y - label_height / 2.0, label_height)
             label_chains.extend(chain_edges(edges))
 
     all_pts = [p for chain, _ in marks for p in chain] + [p for chain in label_chains for p in chain]
