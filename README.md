@@ -128,6 +128,7 @@ Les réglages généraux de l'atelier s'éditent depuis la commande **Préféren
 |---|---|---|---|
 | Dossier G-code | `settings.gcode_dir` | `/mnt/srv-partage/Gcode` | Dossier proposé par défaut à la sauvegarde G-code de tous les modes (repli sur `/tmp` s'il n'est pas accessible — partage réseau non monté...) |
 | Vitesse rapide (estimation) | `settings.rapid_feed_mm_min` | `6000` | Vitesse G0 supposée pour l'estimation de durée des jobs. N'affecte **que** l'estimation, jamais le G-code généré. Mettre la `MAX_VELOCITY` de la machine pour des estimations réalistes |
+| Marge de survol (transits) | `settings.travel_clearance_mm` | `10.0` | Marge ajoutée au Z de travail pour les déplacements à vide et le début/fin de job (modes Grille de test et Découpe à plat — les modes courbes ont leur champ Marge de sécurité par panneau). `0` = transits au Z de travail |
 | Sélecteur broche | `settings.spindle_select` | `$1` | Sélecteur multi-broche ajouté aux commandes `S`/`M3`/`M5` (LinuxCNC : laser = spindle 1) |
 | Temporisation d'armement | `settings.arm_dwell_s` | `2.0` | Pause `G4` après l'armement (`M3` à puissance nulle), le temps que l'électronique du module soit prête |
 | Hauteur bec minimale | `settings.safe_min_nozzle_height_mm` | `1.5` | Butée de sécurité : le bec ne descend jamais plus près de la surface, quelle que soit la passe — garde-fou anti-collision |

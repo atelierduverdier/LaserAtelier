@@ -215,6 +215,10 @@ CMD_BEAM_OFF = "S0 {sel}"
 # SAFE_MIN_NOZZLE_HEIGHT_MM etc. plus bas) ne sont que les défauts.
 GCODE_DIR = "/mnt/srv-partage/Gcode"  # dossier proposé par défaut à la sauvegarde G-code
 RAPID_FEED_MM_MIN = 6000.0            # vitesse rapide supposée (G0) pour l'estimation de durée
+TRAVEL_CLEARANCE_MM = 10.0            # marge de survol ajoutée au Z de travail pour les
+                                      # transits/début/fin de job (modes grille et découpe à
+                                      # plat -- les modes courbes ont leur champ Marge de
+                                      # sécurité par panneau). 0 = transits au Z de travail.
 
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
 _USER_SETTINGS = (
@@ -222,6 +226,7 @@ _USER_SETTINGS = (
     ("spindle_select", "SPINDLE_SELECT", str, lambda v: bool(v.strip())),
     ("arm_dwell_s", "ARM_DWELL_S", float, lambda v: v >= 0),
     ("rapid_feed_mm_min", "RAPID_FEED_MM_MIN", float, lambda v: v > 0),
+    ("travel_clearance_mm", "TRAVEL_CLEARANCE_MM", float, lambda v: v >= 0),
     ("safe_min_nozzle_height_mm", "SAFE_MIN_NOZZLE_HEIGHT_MM", float, lambda v: v >= 0),
     ("max_thickness_warning_mm", "MAX_THICKNESS_WARNING_MM", float, lambda v: v > 0),
     ("recommended_max_step_mm", "RECOMMENDED_MAX_STEP_MM", float, lambda v: v > 0),
@@ -1264,7 +1269,7 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
     label_band = _order_band(label_band)
 
     all_pts = [p for item in cell_band + label_band for p in item[0]]
-    z_safe = max(z_work, z_cells) + 10.0
+    z_safe = max(z_work, z_cells) + TRAVEL_CLEARANCE_MM
     if min_safe_z is not None:
         z_safe = max(z_safe, min_safe_z)
 
@@ -2264,7 +2269,7 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
                 SAFE_MIN_NOZZLE_HEIGHT_MM, len(clamped_passes),
                 ", ".join("passe {} (voulu {:.2f}mm)".format(p, r) for p, r, u in clamped_passes)))
 
-    z_safe = z_start + 10.0
+    z_safe = z_start + TRAVEL_CLEARANCE_MM
     if min_safe_z is not None:
         z_safe = max(z_safe, min_safe_z)
 
@@ -2629,14 +2634,14 @@ def _operation_intrinsic_safe_z(op_type, params):
         z_start = params.get("z_start")
         if z_start is None:
             z_start = nozzle_height_for_thickness(params.get("thickness", 0.0))
-        return z_start + 10.0
+        return z_start + TRAVEL_CLEARANCE_MM
     if op_type == "testgrid":
         cells = params.get("cells")
         if not cells:
             return None
         z_work = params.get("z_work", 0.0)
         z_cells = z_work + params.get("cell_z_offset", 0.0)
-        return max(z_work, z_cells) + 10.0
+        return max(z_work, z_cells) + TRAVEL_CLEARANCE_MM
     return None
 
 

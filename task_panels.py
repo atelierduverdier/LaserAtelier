@@ -2851,6 +2851,20 @@ class TaskPanelSettings:
             "N'affecte que l'estimation, jamais le G-code généré.")
         form.addRow("Vitesse rapide (estimation) :", self.spn_rapid)
 
+        self.spn_clearance = QtWidgets.QDoubleSpinBox()
+        self.spn_clearance.setRange(0.0, 100.0)
+        self.spn_clearance.setDecimals(1)
+        self.spn_clearance.setValue(settings["travel_clearance_mm"])
+        self.spn_clearance.setSuffix(" mm")
+        self.spn_clearance.setToolTip(
+            "Marge AJOUTÉE au Z de travail pour les déplacements à vide et\n"
+            "le début/fin de job (modes Grille de test et Découpe à plat --\n"
+            "les modes sur surface courbe ont leur propre champ Marge de\n"
+            "sécurité). Utile pour survoler brides/serre-flans ; 0 = les\n"
+            "transits restent au Z de travail. Sans effet sur le Z de\n"
+            "gravure/découpe lui-même.")
+        form.addRow("Marge de survol (transits) :", self.spn_clearance)
+
         # --- G-code / machine ---
         self.edt_spindle = QtWidgets.QLineEdit(settings["spindle_select"])
         self.edt_spindle.setToolTip(
@@ -2979,6 +2993,7 @@ class TaskPanelSettings:
             "spindle_select": self.edt_spindle.text().strip(),
             "arm_dwell_s": self.spn_dwell.value(),
             "rapid_feed_mm_min": self.spn_rapid.value(),
+            "travel_clearance_mm": self.spn_clearance.value(),
             "safe_min_nozzle_height_mm": self.spn_safe_height.value(),
             "max_thickness_warning_mm": self.spn_max_thickness.value(),
             "recommended_max_step_mm": self.spn_max_step.value(),
