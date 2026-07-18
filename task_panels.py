@@ -88,6 +88,11 @@ def _duration_row(form, callback, tooltip_extra=""):
     return lbl
 
 
+# Répertoire par défaut des G-code ; repli sur /tmp si le partage
+# réseau n'est pas monté au moment de la sauvegarde.
+GCODE_DIR = "/mnt/srv-partage/Gcode"
+
+
 def _write_gcode_with_dialog(parent_widget, gcode, default_path):
     """Estime la durée, propose un fichier de sauvegarde, écrit le G-code
     si un chemin est choisi (silencieux si annulé -- même comportement
@@ -96,6 +101,8 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path):
     toujours ouverte/visible (panneau optionnel de FreeCAD), donc s'y fier
     seule rendait l'info invisible en pratique pour qui ne l'a pas
     ouverte."""
+    if os.path.isdir(GCODE_DIR):
+        default_path = os.path.join(GCODE_DIR, os.path.basename(default_path))
     estimated_seconds = core.estimate_job_time_seconds(gcode)
     duration_text = core.format_duration(estimated_seconds)
     FreeCAD.Console.PrintMessage(
