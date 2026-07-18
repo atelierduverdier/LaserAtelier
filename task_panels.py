@@ -720,7 +720,9 @@ class TaskPanelTestGrid:
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
             "Crée un FICHIER À PART qui trace uniquement le rectangle\n"
-            "englobant de toute la grille, laser éteint -- à lancer seul\n"
+            "englobant de toute la grille, laser éteint (ou faisceau de\n"
+            "visée très faible : voir « Puissance de cadrage » dans les\n"
+            "Préférences) -- à lancer seul\n"
             "sur la machine pour vérifier le positionnement AVANT de\n"
             "lancer la grille réelle (bouton OK). Volontairement séparé\n"
             "du job réel : pas de risque de le lancer en pensant vérifier\n"
@@ -1167,7 +1169,9 @@ class TaskPanelCurved:
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
             "Crée un FICHIER À PART qui trace uniquement le rectangle\n"
-            "englobant du motif, laser éteint -- à lancer seul sur la\n"
+            "englobant du motif, laser éteint (ou faisceau de visée très\n"
+            "faible : voir « Puissance de cadrage » dans les Préférences)\n"
+            "-- à lancer seul sur la\n"
             "machine pour vérifier le positionnement AVANT de lancer le\n"
             "vrai job (bouton OK). Volontairement séparé du job réel :\n"
             "pas de risque de le lancer en pensant vérifier alors que le\n"
@@ -1554,7 +1558,9 @@ class TaskPanelFlat:
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
             "Crée un FICHIER À PART qui trace uniquement le rectangle\n"
-            "englobant du motif, laser éteint -- à lancer seul sur la\n"
+            "englobant du motif, laser éteint (ou faisceau de visée très\n"
+            "faible : voir « Puissance de cadrage » dans les Préférences)\n"
+            "-- à lancer seul sur la\n"
             "machine pour vérifier le positionnement AVANT de lancer le\n"
             "vrai job (bouton OK). Volontairement séparé du job réel :\n"
             "pas de risque de le lancer en pensant vérifier alors que le\n"
@@ -1913,7 +1919,9 @@ class TaskPanelCurvedCut:
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
             "Crée un FICHIER À PART qui trace uniquement le rectangle\n"
-            "englobant du motif, laser éteint -- à lancer seul sur la\n"
+            "englobant du motif, laser éteint (ou faisceau de visée très\n"
+            "faible : voir « Puissance de cadrage » dans les Préférences)\n"
+            "-- à lancer seul sur la\n"
             "machine pour vérifier le positionnement AVANT de lancer le\n"
             "vrai job.")
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
@@ -2592,7 +2600,9 @@ class TaskPanelCombined:
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
             "Crée un FICHIER À PART qui trace le rectangle englobant de\n"
-            "CHAQUE opération (laser éteint, jamais armé) -- à lancer seul\n"
+            "CHAQUE opération, laser éteint (ou faisceau de visée très\n"
+            "faible : voir « Puissance de cadrage » dans les Préférences)\n"
+            "-- à lancer seul\n"
             "sur la machine pour vérifier le positionnement de toutes les\n"
             "opérations AVANT de lancer le job réel.")
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
@@ -2865,6 +2875,30 @@ class TaskPanelSettings:
             "gravure/découpe lui-même.")
         form.addRow("Marge de survol (transits) :", self.spn_clearance)
 
+        self.spn_frame_power = QtWidgets.QDoubleSpinBox()
+        self.spn_frame_power.setRange(0.0, 1000.0)
+        self.spn_frame_power.setDecimals(0)
+        self.spn_frame_power.setValue(settings["frame_power"])
+        self.spn_frame_power.setToolTip(
+            "Puissance (valeur S) du faisceau pendant l'aperçu cadrage,\n"
+            "pour VISUALISER la zone de travail sur la pièce. 0 = laser\n"
+            "éteint (comportement historique). Sinon, régler TRÈS FAIBLE\n"
+            "(S5-S20 typiquement) : juste de quoi voir le point sans\n"
+            "marquer le matériau -- à valider sur une chute.")
+        form.addRow("Puissance de cadrage (S) :", self.spn_frame_power)
+
+        self.spn_frame_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_frame_feed.setRange(1.0, 20000.0)
+        self.spn_frame_feed.setDecimals(0)
+        self.spn_frame_feed.setValue(settings["frame_feed_mm_min"])
+        self.spn_frame_feed.setSuffix(" mm/min")
+        self.spn_frame_feed.setToolTip(
+            "Vitesse du tracé de cadrage quand le faisceau de visée est\n"
+            "allumé (sans effet si la puissance de cadrage est 0 : le\n"
+            "tracé se fait alors en rapides G0). Plus lent = plus le\n"
+            "rectangle est facile à suivre à l'œil.")
+        form.addRow("Vitesse de cadrage :", self.spn_frame_feed)
+
         # --- G-code / machine ---
         self.edt_spindle = QtWidgets.QLineEdit(settings["spindle_select"])
         self.edt_spindle.setToolTip(
@@ -2994,6 +3028,8 @@ class TaskPanelSettings:
             "arm_dwell_s": self.spn_dwell.value(),
             "rapid_feed_mm_min": self.spn_rapid.value(),
             "travel_clearance_mm": self.spn_clearance.value(),
+            "frame_power": self.spn_frame_power.value(),
+            "frame_feed_mm_min": self.spn_frame_feed.value(),
             "safe_min_nozzle_height_mm": self.spn_safe_height.value(),
             "max_thickness_warning_mm": self.spn_max_thickness.value(),
             "recommended_max_step_mm": self.spn_max_step.value(),

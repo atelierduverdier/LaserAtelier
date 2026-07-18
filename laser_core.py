@@ -219,6 +219,10 @@ TRAVEL_CLEARANCE_MM = 10.0            # marge de survol ajoutée au Z de travail
                                       # transits/début/fin de job (modes grille et découpe à
                                       # plat -- les modes courbes ont leur champ Marge de
                                       # sécurité par panneau). 0 = transits au Z de travail.
+FRAME_POWER = 0.0                     # puissance (S) du faisceau pendant l'aperçu cadrage :
+                                      # 0 = laser éteint (défaut), sinon TRÈS FAIBLE (S5-S20)
+                                      # juste pour visualiser la zone de travail sans marquer
+FRAME_FEED_MM_MIN = 1500.0            # vitesse du tracé de cadrage quand le faisceau est allumé
 
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
 _USER_SETTINGS = (
@@ -227,6 +231,8 @@ _USER_SETTINGS = (
     ("arm_dwell_s", "ARM_DWELL_S", float, lambda v: v >= 0),
     ("rapid_feed_mm_min", "RAPID_FEED_MM_MIN", float, lambda v: v > 0),
     ("travel_clearance_mm", "TRAVEL_CLEARANCE_MM", float, lambda v: v >= 0),
+    ("frame_power", "FRAME_POWER", float, lambda v: 0 <= v <= 1000),
+    ("frame_feed_mm_min", "FRAME_FEED_MM_MIN", float, lambda v: v > 0),
     ("safe_min_nozzle_height_mm", "SAFE_MIN_NOZZLE_HEIGHT_MM", float, lambda v: v >= 0),
     ("max_thickness_warning_mm", "MAX_THICKNESS_WARNING_MM", float, lambda v: v > 0),
     ("recommended_max_step_mm", "RECOMMENDED_MAX_STEP_MM", float, lambda v: v > 0),
@@ -1952,12 +1958,27 @@ def order_open_chains_by_proximity(chains):
 
 
 def build_frame_trace(min_x, max_x, min_y, max_y, z_height):
-    """Trace le rectangle englobant du job, laser éteint (G0 uniquement),
-    pour vérifier le positionnement avant de lancer le job réel."""
-    lines = ["(-- Cadrage : vérification du positionnement, laser éteint --)"]
+    """Trace le rectangle englobant du job pour vérifier le positionnement
+    avant de lancer le job réel. Laser éteint (G0 uniquement) par défaut ;
+    si FRAME_POWER > 0 (Préférences), le rectangle est parcouru faisceau
+    allumé à cette puissance (G1 à FRAME_FEED_MM_MIN) pour VISUALISER la
+    zone de travail sur la pièce -- à régler très faible (S5-S20), juste
+    de quoi voir le point sans marquer. L'armement/l'extinction sont
+    gérés ici : tous les appelants encadrent déjà ce bloc d'un M5 avant
+    et d'un désarmement après."""
     corners = [(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y), (min_x, min_y)]
-    for cx, cy in corners:
-        lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(cx, cy, z_height))
+    if FRAME_POWER <= 0:
+        lines = ["(-- Cadrage : vérification du positionnement, laser éteint --)"]
+        for cx, cy in corners:
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(cx, cy, z_height))
+        return lines
+    lines = ["(-- Cadrage : vérification du positionnement, faisceau de visée S{:.0f} --)".format(FRAME_POWER)]
+    lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(corners[0][0], corners[0][1], z_height))
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=FRAME_POWER))
+    for cx, cy in corners[1:]:
+        lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.1f}".format(cx, cy, z_height, FRAME_FEED_MM_MIN))
+    lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
     return lines
 
 
