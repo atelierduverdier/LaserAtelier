@@ -162,9 +162,51 @@ attentes de sélection, voir le message si rien n'est sélectionné).
 import math
 import json
 import os
+import unicodedata
 import FreeCAD
 import Part
 from collections import defaultdict
+
+# Translittérations non gérées par la décomposition NFKD (qui ne sépare
+# pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
+_LINUXCNC_FALLBACK = str.maketrans({
+    "–": "-", "—": "-",       # tirets demi/cadratin
+    "’": "'", "‘": "'",       # apostrophes typographiques
+    "…": "...", "×": "x", "°": "deg", "µ": "u",
+})
+
+
+def sanitize_gcode_for_linuxcnc(text):
+    """Rend le G-code digeste pour l'interpréteur RS274 de LinuxCNC :
+
+    1. Parenthèses imbriquées dans les commentaires : LinuxCNC ferme un
+       commentaire au PREMIER ')' et prend la suite de la ligne pour du
+       code -- un libellé comme « passe(s) », « operation(s) » ou
+       « (par bande de Z) » provoquait donc une erreur. Toute parenthèse
+       INTERNE à un commentaire devient crochet [ ].
+    2. Caractères non-ASCII (accents français) : RS274 rejette les octets
+       non ASCII -- ils sont translittérés (é->e, ç->c...).
+
+    Idempotent (ré-assainir un texte déjà propre ne change rien), donc sûr
+    à appliquer plusieurs fois (job combiné = corps déjà assainis)."""
+    text = text.translate(_LINUXCNC_FALLBACK)
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    out = []
+    for line in text.split("\n"):
+        start = line.find("(")
+        if start == -1:
+            out.append(line)
+            continue
+        # Un seul commentaire par ligne dans le G-code généré (au plus
+        # « CODE (commentaire) ») : le contenu va du premier '(' au
+        # DERNIER ')', ses parenthèses internes sont neutralisées.
+        end = line.rfind(")")
+        if end <= start:
+            out.append(line)
+            continue
+        content = line[start + 1:end].replace("(", "[").replace(")", "]")
+        out.append(line[:start] + "(" + content + ")" + line[end + 1:])
+    return "\n".join(out)
 
 # Persistance des champs G-code avant/après entre deux exécutions de la
 # macro (un run de macro FreeCAD repart de zéro à chaque fois, rien ne
@@ -1234,23 +1276,6 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
 
     z_cells = z_work + cell_z_offset
 
-    cell_band = []  # [(chain, power, feed, comment), ...] à z_cells
-    for cell in cells:
-        comment = "(-- Cellule L{} C{} : S={:.0f} F={:.0f} --)".format(
-            cell["row"], cell["col"], cell["power"], cell["feed"])
-        for chain in chain_edges(cell["edges"]):
-            cell_band.append((chain, cell["power"], cell["feed"], comment))
-
-    label_band = []  # [(chain, power, feed, comment), ...] à z_work (toujours au foyer)
-    if label_edges:
-        label_comment = "(-- Étiquettes de repérage (puissance/vitesse) : S={:.0f} F={:.0f} --)".format(
-            label_power, label_feed)
-        for chain in chain_edges(label_edges):
-            label_band.append((chain, label_power, label_feed, label_comment))
-
-    if not cell_band and not label_band:
-        return None
-
     def _order_band(band):
         # order_open_chains_by_proximity (pas order_chains_for_cutting) :
         # les traits de hachures sont des segments OUVERTS -- il faut
@@ -1271,8 +1296,32 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
             result.append((chain, power, feed, comment))
         return result
 
-    cell_band = _order_band(cell_band)
+    # Cellules gravées UNE À UNE, dans l'ordre de lecture en partant du
+    # BAS À GAUCHE : rangées de bas en haut (row croissant), et de gauche
+    # à droite dans chaque rangée (col croissant). L'optimisation par
+    # proximité, si activée, ne réordonne QUE les hachures À L'INTÉRIEUR
+    # d'une même cellule -- jamais entre cellules. Auparavant elle
+    # réordonnait toutes les hachures de toute la grille ensemble, ce qui
+    # entrelaçait les cellules (trajet illisible, sauts partout, une même
+    # cellule reprise en plusieurs fois).
+    cell_band = []  # [(chain, power, feed, comment), ...] à z_cells
+    for cell in sorted(cells, key=lambda c: (c["row"], c["col"])):
+        comment = "(-- Cellule L{} C{} : S={:.0f} F={:.0f} --)".format(
+            cell["row"], cell["col"], cell["power"], cell["feed"])
+        cell_chains = [(chain, cell["power"], cell["feed"], comment)
+                       for chain in chain_edges(cell["edges"])]
+        cell_band.extend(_order_band(cell_chains))
+
+    label_band = []  # [(chain, power, feed, comment), ...] à z_work (toujours au foyer)
+    if label_edges:
+        label_comment = "(-- Étiquettes de repérage (puissance/vitesse) : S={:.0f} F={:.0f} --)".format(
+            label_power, label_feed)
+        for chain in chain_edges(label_edges):
+            label_band.append((chain, label_power, label_feed, label_comment))
     label_band = _order_band(label_band)
+
+    if not cell_band and not label_band:
+        return None
 
     all_pts = [p for item in cell_band + label_band for p in item[0]]
     z_safe = max(z_work, z_cells) + TRAVEL_CLEARANCE_MM
@@ -1287,7 +1336,9 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
     else:
         lines.append("(Z de travail fixe : {:.4f}mm -- un seul plongeon/une seule remontée pour tout le job)".format(z_work))
     if use_proximity:
-        lines.append("(Ordre : optimisé par plus proche voisin (par bande de Z))")
+        lines.append("(Ordre : cellules par rangee du bas vers le haut, gauche a droite ; hachures optimisees dans chaque cellule)")
+    else:
+        lines.append("(Ordre : cellules par rangee du bas vers le haut, gauche a droite)")
     if not body_only:
         lines.append("G21")
         lines.append("G90")
@@ -1306,7 +1357,7 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
         if not body_only:
             lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
             lines.append("M2")
-        return "\n".join(lines)
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
     if pre_gcode.strip():
         lines.append("(-- G-code personnalisé (avant) --)")
@@ -1357,7 +1408,7 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
         lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
         lines.append("M2")
 
-    return "\n".join(lines)
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 # ==========================================================================
@@ -1609,7 +1660,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         if not body_only:
             lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
             lines.append("M2")
-        return "\n".join(lines)
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
     if pre_gcode.strip():
         lines.append("(-- G-code personnalisé (avant) --)")
@@ -1684,7 +1735,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
             "voisine que le point focal lui-même -- Z non modifié (focus imposé), "
             "à vérifier visuellement sur ces zones.\n".format(nozzle_marking_warnings))
 
-    return "\n".join(lines)
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 # ==========================================================================
@@ -2332,7 +2383,7 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
         if not body_only:
             lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
             lines.append("M2")
-        return "\n".join(lines)
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
     if pre_gcode.strip():
         lines.append("(-- G-code personnalisé (avant) --)")
@@ -2393,7 +2444,7 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
     if not body_only:
         lines.append("M2")
 
-    return "\n".join(lines)
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 # ==========================================================================
@@ -2530,7 +2581,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
         if not body_only:
             lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
             lines.append("M2")
-        return "\n".join(lines)
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
     if pre_gcode.strip():
         lines.append("(-- G-code personnalisé (avant) --)")
@@ -2615,7 +2666,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
             "à vérifier visuellement/physiquement sur ces zones (plus fréquent sur les "
             "dernières passes, le foyer reculant dans la matière).\n".format(nozzle_cut_warnings))
 
-    return "\n".join(lines)
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 # ==========================================================================
@@ -2764,7 +2815,7 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
     lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
     lines.append("M2")
 
-    return "\n".join(lines)
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 # Appliquée en FIN de module : les réglages listés dans _USER_SETTINGS
