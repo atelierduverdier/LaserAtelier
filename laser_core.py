@@ -2784,10 +2784,10 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     for k, (_, z) in enumerate(marks):
         y = k * row_gap
         if draw_labels:
-            # Hauteur à GAUCHE. Décimale seulement si nécessaire : pas
-            # entiers -> "2","4" ; pas fractionnaires -> "0.5","1.5" (point
-            # décimal géré par la police).
-            text = "{:g}".format(round(z, 1))
+            # Hauteur à GAUCHE. Décimales seulement si nécessaire : pas
+            # entiers -> "2","4" ; pas fins -> "0.5","8.25" (jusqu'à 2
+            # décimales, point géré par la police).
+            text = "{:g}".format(round(z, 2))
             w = text_width(text, label_height)
             edges = text_to_edges(text, -(w + row_gap * 0.4), y - label_height / 2.0, label_height)
             label_chains.extend(chain_edges(edges))
