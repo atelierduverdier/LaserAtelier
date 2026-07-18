@@ -738,7 +738,8 @@ class TaskPanelDefocusCalibration:
 
         self.spn_zstart = QtWidgets.QDoubleSpinBox()
         self.spn_zstart.setRange(-50, 200)
-        self.spn_zstart.setDecimals(1)
+        self.spn_zstart.setDecimals(2)
+        self.spn_zstart.setSingleStep(0.25)
         self.spn_zstart.setValue(0.0)
         self.spn_zstart.setSuffix(" mm")
         self.spn_zstart.setToolTip(
@@ -747,8 +748,9 @@ class TaskPanelDefocusCalibration:
         form.addRow("Z de départ :", self.spn_zstart)
 
         self.spn_zstep = QtWidgets.QDoubleSpinBox()
-        self.spn_zstep.setRange(0.5, 50.0)
-        self.spn_zstep.setDecimals(1)
+        self.spn_zstep.setRange(0.05, 50.0)
+        self.spn_zstep.setDecimals(2)
+        self.spn_zstep.setSingleStep(0.25)
         self.spn_zstep.setValue(2.0)
         self.spn_zstep.setSuffix(" mm")
         self.spn_zstep.setToolTip(
