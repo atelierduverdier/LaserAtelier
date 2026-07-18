@@ -313,6 +313,30 @@ class TaskPanelFilledEngraving:
         info.setWordWrap(True)
         form.addRow(info)
 
+        # --- Préréglages nommés (par matériau), catégorie "filled" ---
+        self.combo_preset = QtWidgets.QComboBox()
+        self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_preset.setMinimumContentsLength(14)
+        self.combo_preset.setToolTip(
+            "Recharge un jeu complet de réglages sauvegardé sous un nom\n"
+            "(typiquement un matériau). Survole un nom pour voir son résumé.")
+        form.addRow("Préréglage matériau :", self.combo_preset)
+        self.combo_preset.currentIndexChanged.connect(self._on_preset_selected)
+
+        self.lbl_preset_summary = QtWidgets.QLabel("")
+        self.lbl_preset_summary.setWordWrap(True)
+        self.lbl_preset_summary.setVisible(False)
+        form.addRow(self.lbl_preset_summary)
+
+        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        self.btn_save_preset.setToolTip("Sauvegarde toutes les valeurs du panneau sous un nom.")
+        self.btn_save_preset.clicked.connect(self._on_save_preset)
+        form.addRow(self.btn_save_preset)
+
+        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        self.btn_delete_preset.clicked.connect(self._on_delete_preset)
+        form.addRow(self.btn_delete_preset)
+
         # --- Remplissage ---
         self.spn_spacing = QtWidgets.QDoubleSpinBox()
         self.spn_spacing.setRange(0.05, 100.0)
@@ -521,7 +545,102 @@ class TaskPanelFilledEngraving:
         self.form.setWindowTitle("Gravure remplie (noir)")
         self.form.setWindowIcon(_icon("filled.svg"))
 
+        self._populate_preset_combo()
         _update_defocus_preview()
+
+    # --- Préréglages nommés (catégorie "filled") ---
+    @staticmethod
+    def _preset_summary(values):
+        lines = ["Remplissage : espace {:g} mm @ {:g} deg, S{:g} F{:g}".format(
+            values.get("spacing", 0), values.get("angle", 0),
+            values.get("fill_power", 0), values.get("fill_feed", 0))]
+        lines.append("Foyer {:g} mm, calib point {:g} / défocus {:g}->{:g} mm".format(
+            values.get("zwork", 0), values.get("dfocus", 0),
+            values.get("ztest", 0), values.get("dtest", 0)))
+        if values.get("contour", True):
+            lines.append("Contour S{:g} F{:g}, trait {:g} mm".format(
+                values.get("contour_power", 0), values.get("contour_feed", 0),
+                values.get("contour_width", 0)))
+        return "\n".join(lines)
+
+    def _populate_preset_combo(self):
+        self.combo_preset.blockSignals(True)
+        self.combo_preset.clear()
+        self.combo_preset.addItem("-- Choisir --")
+        presets = core.load_presets("filled")
+        for name in sorted(presets):
+            self.combo_preset.addItem(name)
+            self.combo_preset.setItemData(
+                self.combo_preset.count() - 1, self._preset_summary(presets[name]),
+                QtCore.Qt.ToolTipRole)
+        self.combo_preset.blockSignals(False)
+        self.lbl_preset_summary.setVisible(False)
+
+    def _preset_values(self):
+        return {
+            "spacing": self.spn_spacing.value(),
+            "angle": self.spn_angle.value(),
+            "fill_power": self.spn_fill_power.value(),
+            "fill_feed": self.spn_fill_feed.value(),
+            "dfocus": self.spn_dfocus.value(),
+            "ztest": self.spn_ztest.value(),
+            "dtest": self.spn_dtest.value(),
+            "zwork": self.spn_zwork.value(),
+            "marge": self.spn_marge.value(),
+            "contour": self.chk_contour.isChecked(),
+            "contour_power": self.spn_contour_power.value(),
+            "contour_feed": self.spn_contour_feed.value(),
+            "contour_width": self.spn_contour_width.value(),
+        }
+
+    def _on_preset_selected(self, index):
+        if index <= 0:
+            self.lbl_preset_summary.setVisible(False)
+            return
+        v = core.load_presets("filled").get(self.combo_preset.currentText())
+        if not v:
+            return
+        self.spn_spacing.setValue(v.get("spacing", self.spn_spacing.value()))
+        self.spn_angle.setValue(v.get("angle", self.spn_angle.value()))
+        self.spn_fill_power.setValue(v.get("fill_power", self.spn_fill_power.value()))
+        self.spn_fill_feed.setValue(v.get("fill_feed", self.spn_fill_feed.value()))
+        self.spn_dfocus.setValue(v.get("dfocus", self.spn_dfocus.value()))
+        self.spn_ztest.setValue(v.get("ztest", self.spn_ztest.value()))
+        self.spn_dtest.setValue(v.get("dtest", self.spn_dtest.value()))
+        self.spn_zwork.setValue(v.get("zwork", self.spn_zwork.value()))
+        self.spn_marge.setValue(v.get("marge", self.spn_marge.value()))
+        self.chk_contour.setChecked(v.get("contour", self.chk_contour.isChecked()))
+        self.spn_contour_power.setValue(v.get("contour_power", self.spn_contour_power.value()))
+        self.spn_contour_feed.setValue(v.get("contour_feed", self.spn_contour_feed.value()))
+        self.spn_contour_width.setValue(v.get("contour_width", self.spn_contour_width.value()))
+        self.lbl_preset_summary.setText(self._preset_summary(v))
+        self.lbl_preset_summary.setVisible(True)
+
+    def _on_save_preset(self):
+        current = self.combo_preset.currentText() if self.combo_preset.currentIndex() > 0 else ""
+        name, ok = QtWidgets.QInputDialog.getText(
+            self.form, "Sauvegarder le préréglage",
+            "Nom du préréglage (matériau) :", text=current)
+        name = name.strip()
+        if not ok or not name:
+            return
+        core.save_preset("filled", name, self._preset_values())
+        self._populate_preset_combo()
+        idx = self.combo_preset.findText(name)
+        if idx >= 0:
+            self.combo_preset.setCurrentIndex(idx)
+
+    def _on_delete_preset(self):
+        if self.combo_preset.currentIndex() <= 0:
+            return
+        name = self.combo_preset.currentText()
+        reply = QtWidgets.QMessageBox.question(
+            self.form, "Supprimer", "Supprimer le préréglage « {} » ?".format(name),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if reply != QtWidgets.QMessageBox.Yes:
+            return
+        core.delete_preset("filled", name)
+        self._populate_preset_combo()
 
     def _contour_offset(self, half_angle):
         """Défocus (mm) du contour pour que son trait fasse l'épaisseur
