@@ -1610,11 +1610,19 @@ class TaskPanelPowerRamp:
 
         self.spn_steps = QtWidgets.QSpinBox()
         self.spn_steps.setRange(4, 400)
-        self.spn_steps.setValue(40)
+        self.spn_steps.setValue(20)
         self.spn_steps.setToolTip(
-            "Nombre de paliers approximant la rampe (un S par palier). Plus\n"
-            "élevé = transition plus douce mais G-code plus gros. 40 paliers\n"
-            "sur 80 mm = un changement de puissance tous les 2 mm.")
+            "Nombre de paliers approximant la rampe (un changement de S par\n"
+            "palier). Beaucoup de paliers = rampe plus douce, MAIS sur un\n"
+            "laser piloté par la vitesse de broche (S/PWM), chaque\n"
+            "changement de S est une frontière où la machine fait un\n"
+            "micro-arrêt : à haute vitesse, ces frontières hachent le trait\n"
+            "en pointillés. À l'intérieur d'un palier (S constant), le trait\n"
+            "reste continu. Donc si le trait se pointille trop vite, BAISSE\n"
+            "le nombre de paliers (ex. 8-15) : chaque palier devient un\n"
+            "segment plus long tracé en continu (rampe plus « en marches »\n"
+            "mais trait franc), et tu lis quand même à quelle puissance/\n"
+            "vitesse ça marque le mieux.")
         form.addRow("Paliers de la rampe :", self.spn_steps)
 
         _section(form, "Rampe de hauteur (Z)", "sect_zheight.svg")
