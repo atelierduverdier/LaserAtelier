@@ -37,6 +37,27 @@ def _icon_pixmap(name, size):
         return None
 
 
+class _WrapLabel(QtWidgets.QLabel):
+    """QLabel de paragraphe : word-wrap activé, et retours à la ligne
+    manuels (\\n) transformés en espaces à chaque setText. Le panneau des
+    tâches est étroit et non redimensionnable de façon fiable ; avec des
+    \\n manuels ET le word-wrap, Qt conserve les \\n PUIS recoupe
+    par-dessus quand un segment dépasse la largeur -- d'où du texte en
+    escalier, coupé au mauvais endroit. En laissant Qt seul gérer le
+    retour à la ligne (texte replié en un seul flux d'espaces), le texte
+    s'adapte proprement à la largeur réelle. Les info-bulles (setToolTip)
+    ne sont pas concernées : elles ne sont pas repliées et gardent leurs
+    \\n tels quels."""
+
+    def __init__(self, text=""):
+        super().__init__()
+        self.setWordWrap(True)
+        self.setText(text)
+
+    def setText(self, text):
+        super().setText(" ".join(str(text).split()))
+
+
 def _panel_header(form, icon_name, title):
     """Bandeau en tête de panneau : icône du mode + nom en gras/agrandi,
     suivi d'un trait. Repère visuel immédiat du mode ouvert."""
@@ -129,8 +150,7 @@ def _duration_row(form, callback, tooltip_extra=""):
     row = QtWidgets.QWidget()
     row_layout = QtWidgets.QHBoxLayout(row)
     row_layout.setContentsMargins(0, 0, 0, 0)
-    lbl = QtWidgets.QLabel("Durée estimée : --")
-    lbl.setWordWrap(True)
+    lbl = _WrapLabel("Durée estimée : --")
     lbl.setToolTip(
         "Cliquer sur Actualiser pour recalculer avec les valeurs\n"
         "actuelles des champs ci-dessus. " + tooltip_extra)
@@ -269,12 +289,11 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
     inner = QtWidgets.QFormLayout(box)
     inner.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-    lbl = QtWidgets.QLabel(
+    lbl = _WrapLabel(
         "Défocaliser étale la puissance sur un point plus large : le trait\n"
         "pâlit, voire ne marque plus. Renseigne un réglage de RÉFÉRENCE\n"
         "connu bon sur ce matériau (une gravure réussie) ; l'atelier compare\n"
         "la fluence (énergie déposée) du réglage actuel à cette référence.")
-    lbl.setWordWrap(True)
     inner.addRow(lbl)
 
     chk = QtWidgets.QCheckBox("Compenser la puissance automatiquement")
@@ -312,8 +331,7 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
         "au pied à coulisse ou lue sur la bande de calibration défocus).")
     inner.addRow("Réf. largeur du point :", ref_spot_w)
 
-    info = QtWidgets.QLabel("")
-    info.setWordWrap(True)
+    info = _WrapLabel("")
     inner.addRow(info)
 
     form.addRow(box)
@@ -441,8 +459,7 @@ class TaskPanelHatch:
             "La Gravure remplie fait ce retrait automatiquement.")
         form.addRow("Retrait du bord :", self.spn_inset)
 
-        self.lbl_defocus_result = QtWidgets.QLabel("Défocus calculé : --")
-        self.lbl_defocus_result.setWordWrap(True)
+        self.lbl_defocus_result = _WrapLabel("Défocus calculé : --")
         form.addRow(self.lbl_defocus_result)
 
         def _update_defocus_preview():
@@ -476,8 +493,7 @@ class TaskPanelHatch:
         self.spn_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
         _on_filltype_changed(self.combo_filltype.currentIndex())
 
-        info = QtWidgets.QLabel("Sélectionne le motif 2D (face/sketch) avant de générer.")
-        info.setWordWrap(True)
+        info = _WrapLabel("Sélectionne le motif 2D (face/sketch) avant de générer.")
         form.addRow(info)
 
         self._last_fields = {
@@ -519,12 +535,11 @@ class TaskPanelFilledEngraving:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "filled.svg", "Gravure remplie (noir)")
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Grave une forme/texte 2D en NOIR PLEIN : remplissage par\n"
             "hachures en défocus (point élargi, rentré pour ne pas déborder\n"
             "du bord) puis contour repassé net au foyer. Sélectionne le\n"
             "motif 2D (face/sketch/ShapeString) avant de lancer.")
-        info.setWordWrap(True)
         form.addRow(info)
 
         _section(form, "Préréglage matériau", "sect_preset.svg")
@@ -537,8 +552,7 @@ class TaskPanelFilledEngraving:
         form.addRow("Préréglage matériau :", self.combo_preset)
         self.combo_preset.currentIndexChanged.connect(self._on_preset_selected)
 
-        self.lbl_preset_summary = QtWidgets.QLabel("")
-        self.lbl_preset_summary.setWordWrap(True)
+        self.lbl_preset_summary = _WrapLabel("")
         self.lbl_preset_summary.setVisible(False)
         form.addRow(self.lbl_preset_summary)
 
@@ -594,8 +608,7 @@ class TaskPanelFilledEngraving:
 
         self._fluence = _make_fluence_widgets(form)
 
-        self.lbl_defocus_result = QtWidgets.QLabel("Défocus calculé : --")
-        self.lbl_defocus_result.setWordWrap(True)
+        self.lbl_defocus_result = _WrapLabel("Défocus calculé : --")
         self.lbl_defocus_result.setToolTip(
             "Calculé depuis la calibration du point des Préférences (icône\n"
             "engrenage) -- mesurée avec la Bande de calibration défocus.")
@@ -635,8 +648,7 @@ class TaskPanelFilledEngraving:
             "Le défocus correspondant est indiqué juste en dessous.")
         form.addRow("Épaisseur trait contour :", self.spn_contour_width)
 
-        self.lbl_contour_result = QtWidgets.QLabel("")
-        self.lbl_contour_result.setWordWrap(True)
+        self.lbl_contour_result = _WrapLabel("")
         form.addRow(self.lbl_contour_result)
 
         self.chk_contour.toggled.connect(self.spn_contour_power.setEnabled)
@@ -726,8 +738,7 @@ class TaskPanelFilledEngraving:
             "largeur.")
         form.addRow("Largeur max vague (rempl.) :", self.spn_fill_wave_width)
 
-        self.lbl_style_info = QtWidgets.QLabel("")
-        self.lbl_style_info.setWordWrap(True)
+        self.lbl_style_info = _WrapLabel("")
         form.addRow(self.lbl_style_info)
 
         self._style_param_widgets = {
@@ -1164,18 +1175,16 @@ class TaskPanelProject:
         form = QtWidgets.QFormLayout(inner)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
         _panel_header(form, "project.svg", "Projection sur surface 3D")
-        lbl = QtWidgets.QLabel(
+        lbl = _WrapLabel(
             "Sélectionne maintenant, dans la vue 3D (le panneau reste\n"
             "ouvert) : un ou plusieurs motifs 2D (ShapeString, hachures...)\n"
             "ET la surface 3D de référence (sphère, vague...). Ils seront\n"
             "tous projetés ensemble sur cette surface en un seul objet.\n"
             "L'état ci-dessous se met à jour au fil de ta sélection ; clique\n"
             "sur OK quand il est vert.")
-        lbl.setWordWrap(True)
         form.addRow(lbl)
 
-        self.lbl_status = QtWidgets.QLabel()
-        self.lbl_status.setWordWrap(True)
+        self.lbl_status = _WrapLabel()
         form.addRow(self.lbl_status)
 
         # Un panneau de tâches FreeCAD ne reçoit pas d'événement de
@@ -1249,11 +1258,10 @@ class TaskPanelKerf:
             "résultat), mais consomme davantage de matière pour le test.")
         form.addRow("Taille du carré test :", self.spn_size)
 
-        lbl = QtWidgets.QLabel(
+        lbl = _WrapLabel(
             "Crée un carré test. Découpe-le en mode Découpe multi-passes\n"
             "avec Compensation de kerf = 0, puis mesure la pièce obtenue :\n"
             "kerf = taille dessinée - taille mesurée.")
-        lbl.setWordWrap(True)
         form.addRow(lbl)
 
         self.form = _scrollable(inner)
@@ -1282,7 +1290,7 @@ class TaskPanelDefocusCalibration:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Grave une rangée de courts traits, chacun à une hauteur de bec\n"
             "croissante (étiquetée en mm). MESURE l'épaisseur de chaque\n"
             "trait : le plus fin = le foyer (sa hauteur = ton Z de foyer, sa\n"
@@ -1292,7 +1300,6 @@ class TaskPanelDefocusCalibration:
             "trois mesures dans les PRÉFÉRENCES (icône engrenage, section\n"
             "Calibration du point) -- elles servent à tous les modes. Zéro Z\n"
             "sur la surface. Aucune sélection requise.")
-        info.setWordWrap(True)
         _panel_header(form, "defocus.svg", "Bande de calibration défocus")
         form.addRow(info)
 
@@ -1408,8 +1415,7 @@ class TaskPanelDefocusCalibration:
         self.chk_labels.toggled.connect(lambda _v: _sync_label_fields())
         self.chk_power_labels.toggled.connect(lambda _v: _sync_label_fields())
 
-        self.lbl_range = QtWidgets.QLabel("")
-        self.lbl_range.setWordWrap(True)
+        self.lbl_range = _WrapLabel("")
         form.addRow(self.lbl_range)
 
         def _update_range():
@@ -1539,14 +1545,13 @@ class TaskPanelPowerRamp:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "powerramp.svg", "Test rampe puissance / vitesse (lignes)")
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Grave de longues lignes horizontales, UNE PAR VITESSE, chacune\n"
             "parcourue avec une puissance qui MONTE de gauche (min) à droite\n"
             "(max). On lit d'un coup, à chaque vitesse, à partir de quelle\n"
             "puissance le trait commence à marquer et où il sature -- le\n"
             "complément continu de la Grille de test (cellules discrètes).\n"
             "Zéro Z sur la surface. Aucune sélection requise.")
-        info.setWordWrap(True)
         form.addRow(info)
 
         _section(form, "Lignes (vitesses)", "sect_power.svg")
@@ -1769,7 +1774,7 @@ class TaskPanelOffsetTest:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Job MIXTE : fraise une croix centrée sur X0 Y0, puis grave une\n"
             "croix laser au MÊME X0 Y0 programmé. L'écart entre les deux\n"
             "croix = l'erreur d'offsets X/Y du T100 dans tool.tbl\n"
@@ -1779,7 +1784,6 @@ class TaskPanelOffsetTest:
             "main, zéro X/Y à l'oeil au centre de la chute. Monter la\n"
             "glissière laser pendant la pause du 2e changement d'outil.\n"
             "Lunettes laser obligatoires. Aucune sélection requise.")
-        info.setWordWrap(True)
         _panel_header(form, "offset_test.svg", "Test des offsets X/Y du laser")
         form.addRow(info)
 
@@ -1977,14 +1981,13 @@ class TaskPanelHalftone:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "halftone.svg", "Gravure photo (trame de points)")
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Grave une image en niveaux de gris sous forme de TRAME DE\n"
             "POINTS laser : chaque point encode la noirceur locale, soit\n"
             "par sa densité (tramage par diffusion, recommandé), soit par\n"
             "la durée de son pulse. Image posée coin bas-gauche en X0 Y0.\n"
             "Zéro X/Y sur la pièce, zéro Z sur sa surface. La machine\n"
             "s'arrête à chaque point : compter ~2-4 points/seconde.")
-        info.setWordWrap(True)
         form.addRow(info)
 
         _section(form, "Image", "sect_preview.svg")
@@ -2026,8 +2029,7 @@ class TaskPanelHalftone:
             "zones claires (matériau foncé, ardoise...).")
         form.addRow(self.chk_invert)
 
-        self.lbl_grid = QtWidgets.QLabel("Grille : --")
-        self.lbl_grid.setWordWrap(True)
+        self.lbl_grid = _WrapLabel("Grille : --")
         form.addRow(self.lbl_grid)
 
         _section(form, "Tramage & puissance", "sect_power.svg")
@@ -2281,7 +2283,7 @@ class TaskPanelTestGrid:
         # d'élargir la fenêtre.
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Génère en un seul job une grille de cellules couvrant une\n"
             "plage de puissance x vitesse, pour choisir à l'œil le\n"
             "meilleur réglage sur une chute du matériau visé, au lieu de\n"
@@ -2289,7 +2291,6 @@ class TaskPanelTestGrid:
             "son étiquette (puissance croissante en X, vitesse croissante\n"
             "en Y) -- la grille complète est aussi imprimée dans la vue\n"
             "Rapport. Aucune sélection requise.")
-        info.setWordWrap(True)
         _panel_header(form, "testgrid.svg", "Grille de test puissance / vitesse")
         form.addRow(info)
 
@@ -2306,8 +2307,7 @@ class TaskPanelTestGrid:
         form.addRow("Préréglage matériau :", self.combo_preset)
         self.combo_preset.currentIndexChanged.connect(self._on_preset_selected)
 
-        self.lbl_preset_summary = QtWidgets.QLabel("")
-        self.lbl_preset_summary.setWordWrap(True)
+        self.lbl_preset_summary = _WrapLabel("")
         self.lbl_preset_summary.setVisible(False)
         form.addRow(self.lbl_preset_summary)
 
@@ -2456,8 +2456,7 @@ class TaskPanelTestGrid:
 
         self._gravure_widgets = [self.combo_filltype, self.spn_hatch_spacing, self.spn_hatch_angle]
 
-        self.lbl_defocus_result = QtWidgets.QLabel("Défocus calculé : --")
-        self.lbl_defocus_result.setWordWrap(True)
+        self.lbl_defocus_result = _WrapLabel("Défocus calculé : --")
         self.lbl_defocus_result.setToolTip(
             "Calculé depuis la calibration du point des Préférences (icône\n"
             "engrenage) -- mesurée avec la Bande de calibration défocus.")
@@ -2466,8 +2465,7 @@ class TaskPanelTestGrid:
         self._defocus_widgets = [self.lbl_defocus_result]
 
 
-        self.lbl_total = QtWidgets.QLabel("Total : -- cellules")
-        self.lbl_total.setWordWrap(True)
+        self.lbl_total = _WrapLabel("Total : -- cellules")
         form.addRow(self.lbl_total)
 
         def _update_total_preview():
@@ -3015,7 +3013,7 @@ class TaskPanelCurved:
         # d'élargir la fenêtre.
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Grave un motif filaire (hachures, tracés...), à PLAT ou sur\n"
             "SURFACE COURBE.\n"
             "Pièce PLATE : sélectionne juste le motif 2D (ex: Hachures du\n"
@@ -3025,7 +3023,6 @@ class TaskPanelCurved:
             "DEUX EN MÊME TEMPS -- le modèle 3D permet une sonde exacte du\n"
             "relief pendant le marquage (sans lui, le Z est seulement\n"
             "interpolé entre les points déjà projetés).")
-        info.setWordWrap(True)
         form.addRow(info)
 
         self.combo_preset = QtWidgets.QComboBox()
@@ -3153,8 +3150,7 @@ class TaskPanelCurved:
             "hauteur de défocus obtenue s'affiche ci-dessous.")
         form.addRow("Largeur du point :", self.spn_spot_width)
 
-        self.lbl_style_info = QtWidgets.QLabel("")
-        self.lbl_style_info.setWordWrap(True)
+        self.lbl_style_info = _WrapLabel("")
         form.addRow(self.lbl_style_info)
 
         self._fluence = _make_fluence_widgets(form)
@@ -3583,8 +3579,7 @@ class TaskPanelFlat:
             "pas (voir avertissement si le pas calculé est trop grand).")
         form.addRow("Nombre de passes :", self.spn_passes)
 
-        self.lbl_zauto = QtWidgets.QLabel("Hauteur bec 1ère passe (calculée) : 0.000 mm")
-        self.lbl_zauto.setWordWrap(True)
+        self.lbl_zauto = _WrapLabel("Hauteur bec 1ère passe (calculée) : 0.000 mm")
         self.lbl_zauto.setToolTip(
             "Z=0 = LE BEC TOUCHE LA SURFACE (ton zéro au papier). Valeur\n"
             "POSITIVE = hauteur du bec AU-DESSUS de la surface (jamais en\n"
@@ -4030,7 +4025,7 @@ class TaskPanelCurvedCut:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "curved_cut.svg", "Découpe multi-passes (courbe)")
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Comme le marquage sur surface courbe, sélectionne à la fois\n"
             "le motif projeté (Hachures_3D, issu du mode Projection) ET le\n"
             "modèle 3D d'origine, TOUS LES DEUX EN MÊME TEMPS -- le modèle\n"
@@ -4038,7 +4033,6 @@ class TaskPanelCurvedCut:
             "foyer un peu plus DANS la matière (comme la Découpe\n"
             "multi-passes à plat), tout en suivant le relief natif de la\n"
             "surface à chaque point du tracé.")
-        info.setWordWrap(True)
         form.addRow(info)
 
         self.combo_preset = QtWidgets.QComboBox()
@@ -4439,9 +4433,8 @@ class _OperationDialogCurved(QtWidgets.QDialog):
         self.spn_feed.setSuffix(" mm/min")
         form.addRow("Avance (Feed) :", self.spn_feed)
 
-        info = QtWidgets.QLabel("{} segment(s) sélectionné(s){}.\nZ de travail et marge : Préférences.".format(
+        info = _WrapLabel("{} segment(s) sélectionné(s){}.\nZ de travail et marge : Préférences.".format(
             len(edges), " -- sonde exacte sur objet 3D" if reference_shape is not None else " -- interpolation (pas d'objet 3D de référence)"))
-        info.setWordWrap(True)
         form.addRow(info)
 
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
@@ -4525,9 +4518,8 @@ class _OperationDialogCurvedCut(QtWidgets.QDialog):
         self.chk_proximity.setChecked(True)
         form.addRow(self.chk_proximity)
 
-        info = QtWidgets.QLabel("{} segment(s) sélectionné(s){}.".format(
+        info = _WrapLabel("{} segment(s) sélectionné(s){}.".format(
             len(edges), " -- sonde exacte sur objet 3D" if reference_shape is not None else " -- interpolation (pas d'objet 3D de référence)"))
-        info.setWordWrap(True)
         form.addRow(info)
 
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
@@ -4603,8 +4595,7 @@ class _OperationDialogFlat(QtWidgets.QDialog):
         self.chk_proximity.setChecked(True)
         form.addRow(self.chk_proximity)
 
-        info = QtWidgets.QLabel("{} segment(s) sélectionné(s).".format(len(edges)))
-        info.setWordWrap(True)
+        info = _WrapLabel("{} segment(s) sélectionné(s).".format(len(edges)))
         form.addRow(info)
 
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
@@ -4729,10 +4720,9 @@ class _OperationDialogTestGrid(QtWidgets.QDialog):
         self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
         self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
 
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Le remplissage Défocus n'est pas disponible ici (calibration\n"
             "dédiée) -- utilise le panneau Grille de test seul pour ce cas.")
-        info.setWordWrap(True)
         form.addRow(info)
 
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
@@ -4798,7 +4788,7 @@ class TaskPanelCombined:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "combined.svg", "Job combiné")
-        info = QtWidgets.QLabel(
+        info = _WrapLabel(
             "Empile plusieurs opérations (Marquage courbe / Découpe\n"
             "courbe / Découpe multi-passes / Grille de test) dans UN SEUL\n"
             "job -- UN SEUL armement (M3) au début, UN SEUL désarmement\n"
@@ -4806,7 +4796,6 @@ class TaskPanelCombined:
             "de la liste. Sélectionne la géométrie voulue AVANT de cliquer\n"
             "sur \"+ Ajouter\" pour chaque opération -- la sélection est\n"
             "capturée à l'ajout, pas au moment de lancer le job.")
-        info.setWordWrap(True)
         form.addRow(info)
 
         self.list_ops = QtWidgets.QListWidget()
@@ -4841,8 +4830,7 @@ class TaskPanelCombined:
         self.btn_remove.clicked.connect(self._on_remove)
         form.addRow(self.btn_remove)
 
-        self.lbl_duration = QtWidgets.QLabel("Durée estimée : -- (aucune opération)")
-        self.lbl_duration.setWordWrap(True)
+        self.lbl_duration = _WrapLabel("Durée estimée : -- (aucune opération)")
         self.lbl_duration.setToolTip(
             "Recalculée après chaque ajout/suppression/réorganisation.\n"
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -5201,13 +5189,12 @@ class TaskPanelSettings:
         form.addRow("Accélération (estimation) :", self.spn_accel)
 
         _section(form, "Calibration du point (défocus)", "sect_focus.svg")
-        lbl_calib = QtWidgets.QLabel(
+        lbl_calib = _WrapLabel(
             "Propriété machine, mesurée UNE FOIS avec la Bande de\n"
             "calibration défocus : brûle deux points test (au foyer, puis à\n"
             "un défocus connu) et mesure leur diamètre. Utilisée par\n"
             "Hachures 2D, Gravure remplie, Grille de test et le style\n"
             "Vague -- plus rien à resaisir dans les panneaux.")
-        lbl_calib.setWordWrap(True)
         form.addRow(lbl_calib)
 
         self.spn_spot_focus = QtWidgets.QDoubleSpinBox()
@@ -5299,11 +5286,10 @@ class TaskPanelSettings:
         form.addRow("Pas Z max sans avertir :", self.spn_max_step)
 
         _section(form, "Profil du bec (anti-collision)", "sect_focus.svg")
-        lbl_nozzle = QtWidgets.QLabel(
+        lbl_nozzle = _WrapLabel(
             "Profil du bec (contrôle anti-collision des modes sur surface\n"
             "courbe). Tube droit : bas = haut = diamètre du tube. Section\n"
             "rectangulaire : entrer la diagonale.")
-        lbl_nozzle.setWordWrap(True)
         form.addRow(lbl_nozzle)
 
         self.spn_nozzle_bottom = QtWidgets.QDoubleSpinBox()
@@ -5333,11 +5319,10 @@ class TaskPanelSettings:
             "Hauteur du cône (au-dessus : cylindre au diamètre du sommet).")
         form.addRow("Bec : hauteur du cône :", self.spn_nozzle_height)
 
-        lbl = QtWidgets.QLabel(
+        lbl = _WrapLabel(
             "Enregistré dans laser_atelier_config.json et appliqué\n"
             "immédiatement (les panneaux déjà ouverts gardent leurs\n"
             "infobulles d'origine).")
-        lbl.setWordWrap(True)
         form.addRow(lbl)
 
         self.form = _scrollable(inner)
