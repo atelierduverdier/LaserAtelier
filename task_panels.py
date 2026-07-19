@@ -479,31 +479,6 @@ class TaskPanelFilledEngraving:
             "engrenage) -- mesurée avec la Bande de calibration défocus.")
         form.addRow(self.lbl_defocus_result)
 
-        _section(form, "Z de travail & transit", "sect_zheight.svg")
-        self.spn_zwork = QtWidgets.QDoubleSpinBox()
-        self.spn_zwork.setRange(-50, 200)
-        self.spn_zwork.setDecimals(2)
-        self.spn_zwork.setValue(core.Z_WORK_MM)
-        self.spn_zwork.setSuffix(" mm")
-        self.spn_zwork.setToolTip(
-            "Z de foyer (bec au point sur la surface). Le remplissage est\n"
-            "gravé à ce Z + le défocus calculé ; le contour à ce Z + son\n"
-            "propre défocus (ci-dessous).")
-        form.addRow("Z de travail (foyer) :", self.spn_zwork)
-
-        self.spn_marge = QtWidgets.QDoubleSpinBox()
-        self.spn_marge.setRange(0.0, 100.0)
-        self.spn_marge.setDecimals(1)
-        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
-        self.spn_marge.setSuffix(" mm")
-        self.spn_marge.setToolTip(
-            "Hauteur de survol des déplacements à vide (laser éteint) entre\n"
-            "les traits. 0 = transit à plat, sans lever le bec (recommandé\n"
-            "sur du plat : évite un aller-retour vertical à chaque hachure).\n"
-            "N'augmenter que pour survoler des obstacles (brides, serre-flans).\n"
-            "Valeur par défaut réglable dans les Préférences.")
-        form.addRow("Marge de survol (transit) :", self.spn_marge)
-
         _section(form, "Contour", "sect_contour.svg")
         self.chk_contour = QtWidgets.QCheckBox("Graver le contour (repassé après le remplissage)")
         self.chk_contour.setChecked(True)
@@ -754,7 +729,6 @@ class TaskPanelFilledEngraving:
             "spacing": self.spn_spacing, "angle": self.spn_angle,
             "fill_power": self.spn_fill_power, "fill_feed": self.spn_fill_feed,
             "perimeter": self.chk_perimeter,
-            "zwork": self.spn_zwork, "marge": self.spn_marge,
             "contour": self.chk_contour, "contour_power": self.spn_contour_power,
             "contour_feed": self.spn_contour_feed, "contour_width": self.spn_contour_width,
             "fill_style": self.combo_fill_style, "contour_style": self.combo_contour_style,
@@ -778,7 +752,6 @@ class TaskPanelFilledEngraving:
         lines = ["Remplissage : espace {:g} mm @ {:g} deg, S{:g} F{:g}".format(
             values.get("spacing", 0), values.get("angle", 0),
             values.get("fill_power", 0), values.get("fill_feed", 0))]
-        lines.append("Foyer {:g} mm".format(values.get("zwork", 0)))
         if values.get("contour", True):
             lines.append("Contour S{:g} F{:g}, trait {:g} mm".format(
                 values.get("contour_power", 0), values.get("contour_feed", 0),
@@ -805,8 +778,6 @@ class TaskPanelFilledEngraving:
             "fill_power": self.spn_fill_power.value(),
             "fill_feed": self.spn_fill_feed.value(),
             "perimeter": self.chk_perimeter.isChecked(),
-            "zwork": self.spn_zwork.value(),
-            "marge": self.spn_marge.value(),
             "contour": self.chk_contour.isChecked(),
             "contour_power": self.spn_contour_power.value(),
             "contour_feed": self.spn_contour_feed.value(),
@@ -833,8 +804,6 @@ class TaskPanelFilledEngraving:
         self.spn_fill_power.setValue(v.get("fill_power", self.spn_fill_power.value()))
         self.spn_fill_feed.setValue(v.get("fill_feed", self.spn_fill_feed.value()))
         self.chk_perimeter.setChecked(v.get("perimeter", self.chk_perimeter.isChecked()))
-        self.spn_zwork.setValue(v.get("zwork", self.spn_zwork.value()))
-        self.spn_marge.setValue(v.get("marge", self.spn_marge.value()))
         self.chk_contour.setChecked(v.get("contour", self.chk_contour.isChecked()))
         self.spn_contour_power.setValue(v.get("contour_power", self.spn_contour_power.value()))
         self.spn_contour_feed.setValue(v.get("contour_feed", self.spn_contour_feed.value()))
@@ -940,7 +909,7 @@ class TaskPanelFilledEngraving:
             # « Épaisseur trait contour » = largeur max de la vague.
             contour_params["wave_amplitude"] = self._contour_offset(half_angle)
         return {
-            "z_focus": self.spn_zwork.value(),
+            "z_focus": core.Z_WORK_MM,
             "defocus": defocus,
             "fill_power": self.spn_fill_power.value(),
             "fill_feed": self.spn_fill_feed.value(),
@@ -948,7 +917,7 @@ class TaskPanelFilledEngraving:
             "contour_power": self.spn_contour_power.value(),
             "contour_feed": self.spn_contour_feed.value(),
             "contour_z_offset": contour_z_offset,
-            "marge_survol": self.spn_marge.value(),
+            "marge_survol": core.TRANSIT_MARGIN_MM,
             "fill_style": fill_style,
             "contour_style": contour_style,
             "fill_style_params": fill_params,
@@ -1027,33 +996,82 @@ class TaskPanelFilledEngraving:
 # MODE : PROJECTION SUR SURFACE 3D
 # ==========================================================================
 class TaskPanelProject:
-    def __init__(self, selection):
-        self.selection = selection
+    """Le panneau s'ouvre SANS sélection préalable : on sélectionne les
+    objets dans la vue 3D pendant qu'il est ouvert (un panneau de tâches
+    FreeCAD est non-bloquant), un état affiché en direct dit ce qui est
+    reconnu, puis OK projette. Plus besoin de tout sélectionner AVANT de
+    cliquer sur l'icône (ce qui était contre-intuitif : l'icône était
+    grisée tant que rien n'était sélectionné, puis se plaignait qu'il
+    fallait sélectionner)."""
+
+    def __init__(self):
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
         _panel_header(form, "project.svg", "Projection sur surface 3D")
         lbl = QtWidgets.QLabel(
-            "Sélectionne un ou plusieurs motifs 2D (ShapeString, hachures...)\n"
-            "PUIS la surface 3D de référence (sphère, vague...), tous en\n"
-            "même temps -- ils seront tous projetés ensemble sur cette\n"
-            "surface, en un seul objet résultat. Aucun autre paramètre --\n"
-            "clique juste sur OK.")
+            "Sélectionne maintenant, dans la vue 3D (le panneau reste\n"
+            "ouvert) : un ou plusieurs motifs 2D (ShapeString, hachures...)\n"
+            "ET la surface 3D de référence (sphère, vague...). Ils seront\n"
+            "tous projetés ensemble sur cette surface en un seul objet.\n"
+            "L'état ci-dessous se met à jour au fil de ta sélection ; clique\n"
+            "sur OK quand il est vert.")
         lbl.setWordWrap(True)
         form.addRow(lbl)
+
+        self.lbl_status = QtWidgets.QLabel()
+        self.lbl_status.setWordWrap(True)
+        form.addRow(self.lbl_status)
+
+        # Un panneau de tâches FreeCAD ne reçoit pas d'événement de
+        # sélection : on interroge la sélection courante à intervalle
+        # régulier pour rafraîchir l'état (léger, juste une classification).
+        self._timer = QtCore.QTimer()
+        self._timer.setInterval(400)
+        self._timer.timeout.connect(self._refresh_status)
+        self._timer.start()
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Projection sur surface 3D")
         self.form.setWindowIcon(_icon("project.svg"))
+        self._refresh_status()
+
+    def _classify(self):
+        """(motifs 2D, surface 3D, message) de la sélection courante."""
+        selection = Gui.Selection.getSelectionEx()
+        if not selection:
+            return [], None, "Aucun objet sélectionné."
+        motifs, reference = core.split_projection_selection(selection)
+        if not motifs or reference is None:
+            return None, None, (
+                "Sélection ambiguë : il faut EXACTEMENT une surface 3D\n"
+                "(un seul objet d'épaisseur significative) et au moins un\n"
+                "motif 2D plat.")
+        return motifs, reference, None
+
+    def _refresh_status(self):
+        motifs, reference, err = self._classify()
+        if err:
+            self.lbl_status.setText("⏳ " + err)
+            self.lbl_status.setStyleSheet("color: #b0740a;")
+            return
+        self.lbl_status.setText(
+            "✅ {} motif(s) 2D + surface « {} » -- prêt à projeter.".format(
+                len(motifs), reference.Label))
+        self.lbl_status.setStyleSheet("color: #2e7d32; font-weight: bold;")
 
     def accept(self):
-        obj, err = core.run_projection(self.selection)
+        selection = Gui.Selection.getSelectionEx()
+        obj, err = core.run_projection(selection)
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False
         FreeCAD.Console.PrintMessage("Succès : objet '{}' créé.\n".format(obj.Name))
+        self._timer.stop()
         return True
 
     def reject(self):
+        self._timer.stop()
         return True
 
 
@@ -1684,16 +1702,17 @@ class TaskPanelHalftone:
         _sync_mode()
 
         _section(form, "Z de travail", "sect_zheight.svg")
-        self.spn_zwork = QtWidgets.QDoubleSpinBox()
-        self.spn_zwork.setRange(-50, 200)
-        self.spn_zwork.setDecimals(2)
-        self.spn_zwork.setValue(core.Z_WORK_MM)
-        self.spn_zwork.setSuffix(" mm")
-        self.spn_zwork.setToolTip(
-            "Z de gravure : le foyer pour des points fins/nets, ou un léger\n"
-            "défocus pour des points plus gros et doux (grain plus visible,\n"
-            "permet un pas de trame plus grand).")
-        form.addRow("Z de travail :", self.spn_zwork)
+        self.spn_zoffset = QtWidgets.QDoubleSpinBox()
+        self.spn_zoffset.setRange(0.0, 30.0)
+        self.spn_zoffset.setDecimals(2)
+        self.spn_zoffset.setValue(0.0)
+        self.spn_zoffset.setSuffix(" mm")
+        self.spn_zoffset.setToolTip(
+            "Décalage AJOUTÉ au Z de travail des Préférences (le foyer).\n"
+            "0 = points fins/nets au foyer ; un léger défocus donne des\n"
+            "points plus gros et doux (grain plus visible, permet un pas\n"
+            "de trame plus grand).")
+        form.addRow("Décalage Z (défocus) :", self.spn_zoffset)
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.txt_pre = QtWidgets.QPlainTextEdit()
@@ -1726,7 +1745,7 @@ class TaskPanelHalftone:
             "pitch": self.spn_pitch, "invert": self.chk_invert,
             "mode": self.combo_mode, "power": self.spn_power,
             "dwell_min": self.spn_dwell_min, "dwell_max": self.spn_dwell_max,
-            "white": self.spn_white, "zwork": self.spn_zwork,
+            "white": self.spn_white, "zoffset": self.spn_zoffset,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -1801,7 +1820,7 @@ class TaskPanelHalftone:
     def _gen_kwargs(self):
         return {
             "pitch": self.spn_pitch.value(),
-            "z_work": self.spn_zwork.value(),
+            "z_work": core.Z_WORK_MM + self.spn_zoffset.value(),
             "power": self.spn_power.value(),
             "dwell_min_s": self.spn_dwell_min.value() / 1000.0,
             "dwell_max_s": self.spn_dwell_max.value() / 1000.0,
@@ -2060,20 +2079,6 @@ class TaskPanelTestGrid:
 
         self._defocus_widgets = [self.lbl_defocus_result]
 
-        self.spn_zwork = QtWidgets.QDoubleSpinBox()
-        self.spn_zwork.setRange(-50, 200)
-        self.spn_zwork.setValue(core.Z_WORK_MM)
-        self.spn_zwork.setSuffix(" mm")
-        self.spn_zwork.setToolTip(
-            "Z de travail FIXE pour toute la grille (pas de sonde/\n"
-            "courbure, la grille est destinée à une chute posée à plat) :\n"
-            "en Gravure, la hauteur qui met le laser au point (foyer). En\n"
-            "Découpe, la hauteur du bec au-dessus de la surface (voir le\n"
-            "mode Découpe multi-passes, Z=0 = bec touche la surface). En\n"
-            "remplissage Défocus, cette valeur reste le foyer utilisé pour\n"
-            "les étiquettes -- les cellules sont automatiquement décalées\n"
-            "du défocus calculé ci-dessus.")
-        form.addRow("Z de travail :", self.spn_zwork)
 
         self.lbl_total = QtWidgets.QLabel("Total : -- cellules")
         self.lbl_total.setWordWrap(True)
@@ -2179,17 +2184,6 @@ class TaskPanelTestGrid:
             "cellules (qui peut être décalé par le défocus).")
         form.addRow(self.chk_border)
 
-        self.spn_border_z = QtWidgets.QDoubleSpinBox()
-        self.spn_border_z.setRange(-50, 200)
-        self.spn_border_z.setDecimals(2)
-        self.spn_border_z.setValue(core.Z_WORK_MM)
-        self.spn_border_z.setSuffix(" mm")
-        self.spn_border_z.setToolTip(
-            "Z de foyer auquel le cadre est gravé (bec au point sur la\n"
-            "surface = trait le plus fin). Indépendant du « Z de travail »\n"
-            "des cellules : ainsi le cadre reste net même quand les\n"
-            "cellules sont gravées en défocus.")
-        form.addRow("Z du cadre (foyer) :", self.spn_border_z)
 
         self.spn_border_power = QtWidgets.QDoubleSpinBox()
         self.spn_border_power.setRange(0, 1000)
@@ -2209,7 +2203,6 @@ class TaskPanelTestGrid:
             "cours de test.")
         form.addRow("Vitesse cadre :", self.spn_border_feed)
 
-        self.chk_border.toggled.connect(self.spn_border_z.setEnabled)
         self.chk_border.toggled.connect(self.spn_border_power.setEnabled)
         self.chk_border.toggled.connect(self.spn_border_feed.setEnabled)
 
@@ -2271,10 +2264,10 @@ class TaskPanelTestGrid:
             "feed_steps": self.spn_feed_steps, "cell_size": self.spn_cell_size,
             "gap": self.spn_gap, "filltype": self.combo_filltype,
             "hatch_spacing": self.spn_hatch_spacing, "hatch_angle": self.spn_hatch_angle,
-            "zwork": self.spn_zwork, "proximity": self.chk_proximity,
+            "proximity": self.chk_proximity,
             "labels": self.chk_labels, "label_power": self.spn_label_power,
             "label_feed": self.spn_label_feed, "border": self.chk_border,
-            "border_z": self.spn_border_z, "border_power": self.spn_border_power,
+            "border_power": self.spn_border_power,
             "border_feed": self.spn_border_feed,
         }
         _restore_last_values("testgrid", self._last_fields)
@@ -2299,8 +2292,8 @@ class TaskPanelTestGrid:
             values.get("power_steps", 0),
             values.get("feed_min", 0), values.get("feed_max", 0),
             values.get("feed_steps", 0))]
-        line2 = "Cellules {:g} mm, espace {:g} mm, Z {:g} mm".format(
-            values.get("cell_size", 0), values.get("gap", 0), values.get("zwork", 0))
+        line2 = "Cellules {:g} mm, espace {:g} mm".format(
+            values.get("cell_size", 0), values.get("gap", 0))
         if mode == 0:
             filltypes = ("Parallèles", "Croisées", "Défocus")
             filltype = values.get("filltype", 0)
@@ -2312,9 +2305,8 @@ class TaskPanelTestGrid:
             lines.append("Étiquettes S{:g} F{:g}".format(
                 values.get("label_power", 0), values.get("label_feed", 0)))
         if values.get("border_enabled", True):
-            lines.append("Cadre au foyer S{:g} F{:g} Z{:g}".format(
-                values.get("border_power", 0), values.get("border_feed", 0),
-                values.get("border_z", 0)))
+            lines.append("Cadre au foyer S{:g} F{:g}".format(
+                values.get("border_power", 0), values.get("border_feed", 0)))
         return "\n".join(lines)
 
     def _border_kwargs(self):
@@ -2322,7 +2314,7 @@ class TaskPanelTestGrid:
         accept, aperçu trajet et estimation de durée)."""
         return {
             "draw_border": self.chk_border.isChecked(),
-            "z_border": self.spn_border_z.value(),
+            "z_border": core.Z_WORK_MM,
             "border_power": self.spn_border_power.value(),
             "border_feed": self.spn_border_feed.value(),
         }
@@ -2355,13 +2347,11 @@ class TaskPanelTestGrid:
             "filltype": self.combo_filltype.currentIndex(),
             "hatch_spacing": self.spn_hatch_spacing.value(),
             "hatch_angle": self.spn_hatch_angle.value(),
-            "zwork": self.spn_zwork.value(),
             "proximity": self.chk_proximity.isChecked(),
             "labels": self.chk_labels.isChecked(),
             "label_power": self.spn_label_power.value(),
             "label_feed": self.spn_label_feed.value(),
             "border_enabled": self.chk_border.isChecked(),
-            "border_z": self.spn_border_z.value(),
             "border_power": self.spn_border_power.value(),
             "border_feed": self.spn_border_feed.value(),
         }
@@ -2385,13 +2375,11 @@ class TaskPanelTestGrid:
         self.combo_filltype.setCurrentIndex(values.get("filltype", self.combo_filltype.currentIndex()))
         self.spn_hatch_spacing.setValue(values.get("hatch_spacing", self.spn_hatch_spacing.value()))
         self.spn_hatch_angle.setValue(values.get("hatch_angle", self.spn_hatch_angle.value()))
-        self.spn_zwork.setValue(values.get("zwork", self.spn_zwork.value()))
         self.chk_proximity.setChecked(values.get("proximity", self.chk_proximity.isChecked()))
         self.chk_labels.setChecked(values.get("labels", self.chk_labels.isChecked()))
         self.spn_label_power.setValue(values.get("label_power", self.spn_label_power.value()))
         self.spn_label_feed.setValue(values.get("label_feed", self.spn_label_feed.value()))
         self.chk_border.setChecked(values.get("border_enabled", self.chk_border.isChecked()))
-        self.spn_border_z.setValue(values.get("border_z", self.spn_border_z.value()))
         self.spn_border_power.setValue(values.get("border_power", self.spn_border_power.value()))
         self.spn_border_feed.setValue(values.get("border_feed", self.spn_border_feed.value()))
         self.lbl_preset_summary.setText(self._preset_summary(values))
@@ -2436,7 +2424,7 @@ class TaskPanelTestGrid:
         # use_proximity transmis comme dans accept() : sans lui, la durée
         # affichée est celle du trajet NON optimisé, pas du job réel.
         gcode = core.generate_gcode_test_grid(
-            cells, self.spn_zwork.value(),
+            cells, core.Z_WORK_MM,
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
@@ -2517,7 +2505,7 @@ class TaskPanelTestGrid:
         # réel (z_border compte dans son calcul) -- c'est la garantie
         # documentée de l'aperçu cadrage.
         gcode = core.generate_gcode_test_grid(
-            cells, self.spn_zwork.value(),
+            cells, core.Z_WORK_MM,
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, frame_only=True, **self._border_kwargs()
@@ -2536,7 +2524,7 @@ class TaskPanelTestGrid:
             return
         _, _, label_edges = self._build_label_edges(cells)
         gcode = core.generate_gcode_test_grid(
-            cells, self.spn_zwork.value(),
+            cells, core.Z_WORK_MM,
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(), quiet=True,
@@ -2579,7 +2567,7 @@ class TaskPanelTestGrid:
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_test_grid(
-            cells, self.spn_zwork.value(),
+            cells, core.Z_WORK_MM,
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(),
             label_feed=self.spn_label_feed.value(),
@@ -2692,26 +2680,6 @@ class TaskPanelCurved:
             "marquage plus léger.")
         form.addRow("Avance (Feed) :", self.spn_feed)
 
-        self.spn_zfocus = QtWidgets.QDoubleSpinBox()
-        self.spn_zfocus.setRange(-50, 200)
-        self.spn_zfocus.setValue(core.Z_WORK_MM)
-        self.spn_zfocus.setSuffix(" mm")
-        self.spn_zfocus.setToolTip(
-            "Hauteur de travail (cale) : position Z qui met le laser au\n"
-            "point (foyer) sur la surface à graver. À régler empiriquement\n"
-            "(le trait le plus net possible) -- indépendante de la butée de\n"
-            "bec calculée dans le mode Découpe multi-passes.")
-        form.addRow("Z Travail (Cale) :", self.spn_zfocus)
-
-        self.spn_marge = QtWidgets.QDoubleSpinBox()
-        self.spn_marge.setRange(0.0, 20)
-        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
-        self.spn_marge.setSuffix(" mm")
-        self.spn_marge.setToolTip(
-            "Marge fixe au-dessus de la hauteur de travail pendant le\n"
-            "transit. Sonde exacte si l'objet 3D est aussi sélectionné,\n"
-            "sinon interpolation.")
-        form.addRow("Marge de sécurité (transit) :", self.spn_marge)
 
         _section(form, "Style de trait", "sect_options.svg")
         self.combo_style = QtWidgets.QComboBox()
@@ -2868,7 +2836,6 @@ class TaskPanelCurved:
 
         self._last_fields = {
             "power": self.spn_power, "feed": self.spn_feed,
-            "z_focus": self.spn_zfocus, "marge": self.spn_marge,
             "style": self.combo_style, "dash_len": self.spn_dash_len,
             "gap_len": self.spn_gap_len, "dot_spacing": self.spn_dot_spacing,
             "dot_dwell_ms": self.spn_dot_dwell, "wave_period": self.spn_wave_period,
@@ -2919,8 +2886,6 @@ class TaskPanelCurved:
             return
         self.spn_power.setValue(values.get("power", self.spn_power.value()))
         self.spn_feed.setValue(values.get("feed", self.spn_feed.value()))
-        self.spn_zfocus.setValue(values.get("z_focus", self.spn_zfocus.value()))
-        self.spn_marge.setValue(values.get("marge", self.spn_marge.value()))
         self.combo_style.setCurrentIndex(values.get("style", self.combo_style.currentIndex()))
         self.spn_dash_len.setValue(values.get("dash_len", self.spn_dash_len.value()))
         self.spn_gap_len.setValue(values.get("gap_len", self.spn_gap_len.value()))
@@ -2937,8 +2902,6 @@ class TaskPanelCurved:
         core.save_preset("curved", name, {
             "power": self.spn_power.value(),
             "feed": self.spn_feed.value(),
-            "z_focus": self.spn_zfocus.value(),
-            "marge": self.spn_marge.value(),
             "style": self.combo_style.currentIndex(),
             "dash_len": self.spn_dash_len.value(),
             "gap_len": self.spn_gap_len.value(),
@@ -2971,7 +2934,7 @@ class TaskPanelCurved:
             return
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
-            self.spn_zfocus.value(), self.spn_marge.value(),
+            core.Z_WORK_MM, core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
             **self._style_kwargs()
         )
@@ -2984,7 +2947,7 @@ class TaskPanelCurved:
         # natif du document -- décalage à retirer ici pour que l'aperçu se
         # superpose correctement au modèle 3D dans la vue 3D (sinon le
         # trajet apparaît décalé sous/au-dessus de la surface).
-        z_offset = core.curved_native_z_offset(self._edges, self.spn_zfocus.value())
+        z_offset = core.curved_native_z_offset(self._edges, core.Z_WORK_MM)
         rapid = core.shift_segments_z(rapid, -z_offset)
         mark = core.shift_segments_z(mark, -z_offset)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
@@ -2995,7 +2958,7 @@ class TaskPanelCurved:
             return
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
-            self.spn_zfocus.value(), self.spn_marge.value(),
+            core.Z_WORK_MM, core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
             **self._style_kwargs()
         )
@@ -3011,7 +2974,7 @@ class TaskPanelCurved:
             return
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
-            self.spn_zfocus.value(), self.spn_marge.value(),
+            core.Z_WORK_MM, core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, frame_only=True, probe=self._probe,
             **self._style_kwargs()
         )
@@ -3036,8 +2999,8 @@ class TaskPanelCurved:
             self._edges,
             self.spn_power.value(),
             self.spn_feed.value(),
-            self.spn_zfocus.value(),
-            self.spn_marge.value(),
+            core.Z_WORK_MM,
+            core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape,
             pre_gcode=pre_text,
             post_gcode=post_text,
@@ -3998,19 +3961,7 @@ class _OperationDialogCurved(QtWidgets.QDialog):
         self.spn_feed.setSuffix(" mm/min")
         form.addRow("Avance (Feed) :", self.spn_feed)
 
-        self.spn_zfocus = QtWidgets.QDoubleSpinBox()
-        self.spn_zfocus.setRange(-50, 200)
-        self.spn_zfocus.setValue(core.Z_WORK_MM)
-        self.spn_zfocus.setSuffix(" mm")
-        form.addRow("Z Travail (Cale) :", self.spn_zfocus)
-
-        self.spn_marge = QtWidgets.QDoubleSpinBox()
-        self.spn_marge.setRange(0.0, 20)
-        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
-        self.spn_marge.setSuffix(" mm")
-        form.addRow("Marge de sécurité (transit) :", self.spn_marge)
-
-        info = QtWidgets.QLabel("{} segment(s) sélectionné(s){}.".format(
+        info = QtWidgets.QLabel("{} segment(s) sélectionné(s){}.\nZ de travail et marge : Préférences.".format(
             len(edges), " -- sonde exacte sur objet 3D" if reference_shape is not None else " -- interpolation (pas d'objet 3D de référence)"))
         info.setWordWrap(True)
         form.addRow(info)
@@ -4028,8 +3979,8 @@ class _OperationDialogCurved(QtWidgets.QDialog):
                 edges=self.edges,
                 power=self.spn_power.value(),
                 feed=self.spn_feed.value(),
-                z_focus=self.spn_zfocus.value(),
-                marge_survol=self.spn_marge.value(),
+                z_focus=core.Z_WORK_MM,
+                marge_survol=core.TRANSIT_MARGIN_MM,
                 reference_shape=self.reference_shape,
             ),
         }
@@ -4278,12 +4229,6 @@ class _OperationDialogTestGrid(QtWidgets.QDialog):
         self.spn_hatch_angle.setSuffix(" deg")
         form.addRow("Angle hachures (Gravure) :", self.spn_hatch_angle)
 
-        self.spn_zwork = QtWidgets.QDoubleSpinBox()
-        self.spn_zwork.setRange(-50, 200)
-        self.spn_zwork.setValue(core.Z_WORK_MM)
-        self.spn_zwork.setSuffix(" mm")
-        form.addRow("Z de travail :", self.spn_zwork)
-
         self.chk_proximity = QtWidgets.QCheckBox("Optimiser l'ordre par proximité")
         self.chk_proximity.setChecked(True)
         form.addRow(self.chk_proximity)
@@ -4356,7 +4301,7 @@ class _OperationDialogTestGrid(QtWidgets.QDialog):
             "label": self.txt_label.text().strip() or "Grille de test",
             "params": dict(
                 cells=cells,
-                z_work=self.spn_zwork.value(),
+                z_work=core.Z_WORK_MM,
                 label_edges=label_edges,
                 label_power=self.spn_label_power.value(),
                 label_feed=self.spn_label_feed.value(),

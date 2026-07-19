@@ -12,7 +12,7 @@ Les modes sont regroupés par thème dans la barre d'outils et le menu.
 - **Gravure photo (trame de points)** : convertit une image (PNG/JPG…) en **trame de points laser** — tramage par **diffusion Floyd-Steinberg** (points identiques, la densité rend le gris) ou par **durée de pulse variable** (chaque point dure proportionnellement à la noirceur locale), parcours en serpentin, option négatif pour matériaux foncés.
 
 **Sur surface 3D**
-- **Projection sur surface 3D** : projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée même sur un remplissage dense).
+- **Projection sur surface 3D** : projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée même sur un remplissage dense). Le panneau s'ouvre d'abord, puis on sélectionne les motifs 2D et la surface 3D dans la vue (état reconnu affiché en direct) avant de valider.
 - **Marquage de motif (plat ou courbe)** : grave un motif filaire à plat (motif 2D seul) ou en suivant le relief d'un modèle 3D (sonde par tessellation, ou interpolation), avec préréglages matériau, aperçu du trajet directement dans la vue 3D, et **styles de trait** (plein / tirets / pointillé / vague défocus — les styles suivent le relief comme le trait plein).
 - **Découpe multi-passes sur surface courbée** : combine le suivi de relief du marquage courbe avec la logique multi-passes/kerf/imbrication de la découpe à plat.
 

@@ -91,16 +91,12 @@ class ProjectCommand:
         }
 
     def IsActive(self):
-        return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
+        # Plus besoin d'une sélection AVANT d'ouvrir : le panneau se
+        # sélectionne pendant qu'il est ouvert (état affiché en direct).
+        return FreeCAD.ActiveDocument is not None
 
     def Activated(self):
-        selection = Gui.Selection.getSelectionEx()
-        if len(selection) < 2:
-            _warn_selection(
-                "Sélectionne un ou plusieurs motifs 2D (ShapeString, hachures...)\n"
-                "PUIS la surface 3D de référence, tous en même temps.")
-            return
-        Gui.Control.showDialog(task_panels.TaskPanelProject(selection))
+        Gui.Control.showDialog(task_panels.TaskPanelProject())
 
 
 class KerfCommand:
