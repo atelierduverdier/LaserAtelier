@@ -2683,17 +2683,22 @@ class TaskPanelCurved:
 
         _section(form, "Style de trait", "sect_options.svg")
         self.combo_style = QtWidgets.QComboBox()
-        self.combo_style.addItems(["Trait plein", "Tirets", "Pointillé", "Vague défocus"])
+        self.combo_style.addItems(
+            ["Trait plein", "Tirets", "Pointillé", "Vague défocus", "Défocus (point élargi)"])
         self.combo_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_style.setMinimumContentsLength(14)
         self.combo_style.setToolTip(
-            "Trait plein : trait continu (comportement historique).\n"
+            "Trait plein : trait continu net, au foyer.\n"
             "Tirets : faisceau pulsé le long du tracé (mouvement continu).\n"
             "Pointillé : vrais points ronds -- arrêt + pulse à chaque point\n"
             "(plus lent). Vague défocus : le Z oscille entre le foyer et\n"
             "l'amplitude ci-dessous AU-DESSUS du suivi de relief -- trait\n"
-            "qui varie continûment en largeur et en intensité. Tous les\n"
-            "styles suivent le relief comme le trait plein.")
+            "qui varie continûment en largeur et en intensité.\n"
+            "Défocus (point élargi) : trait continu gravé plus HAUT que le\n"
+            "foyer (point laser élargi) -- pour NOIRCIR un remplissage en un\n"
+            "passage (l'équivalent du remplissage Défocus des Hachures 2D,\n"
+            "mais appliqué au motif projeté). Tous les styles suivent le\n"
+            "relief comme le trait plein.")
         form.addRow("Style de trait :", self.combo_style)
 
         self.spn_dash_len = QtWidgets.QDoubleSpinBox()
@@ -2748,6 +2753,20 @@ class TaskPanelCurved:
             "la bande de calibration défocus (trait gravé à cette hauteur).")
         form.addRow("Amplitude de la vague :", self.spn_wave_amp)
 
+        self.spn_defocus = QtWidgets.QDoubleSpinBox()
+        self.spn_defocus.setRange(0.1, 30.0)
+        self.spn_defocus.setDecimals(2)
+        self.spn_defocus.setValue(2.0)
+        self.spn_defocus.setSuffix(" mm")
+        self.spn_defocus.setToolTip(
+            "Défocus (style Défocus point élargi) : hauteur AJOUTÉE au Z de\n"
+            "travail (foyer, Préférences) -- le bec remonte d'autant, le\n"
+            "point s'élargit. Plus le défocus est grand, plus le point est\n"
+            "large (et plus il faut de puissance). La largeur obtenue se lit\n"
+            "sur la bande de calibration défocus (trait gravé à cette\n"
+            "hauteur), et s'affiche ci-dessous.")
+        form.addRow("Défocus (mm) :", self.spn_defocus)
+
         self.lbl_style_info = QtWidgets.QLabel("")
         self.lbl_style_info.setWordWrap(True)
         form.addRow(self.lbl_style_info)
@@ -2760,6 +2779,7 @@ class TaskPanelCurved:
                 w.setVisible(idx == 2)
             for w in (self.spn_wave_period, self.spn_wave_amp):
                 w.setVisible(idx == 3)
+            self.spn_defocus.setVisible(idx == 4)
             if idx == 3:
                 amp = self.spn_wave_amp.value()
                 peak = core.wave_peak_z_feed(
@@ -2773,12 +2793,21 @@ class TaskPanelCurved:
                             " le trajet sera ralenti").format(core.Z_MAX_FEED_MM_MIN)
                 self.lbl_style_info.setText(txt + ".")
                 self.lbl_style_info.setVisible(True)
+            elif idx == 4:
+                width = core.spot_diameter_at_defocus(
+                    self.spn_defocus.value(), core.SPOT_FOCUS_MM, core.calibrated_half_angle())
+                self.lbl_style_info.setText(
+                    "Défocus : point élargi à ~{:.2f} mm (calibration des\n"
+                    "Préférences) -- gravé à Z {:+.2f} mm du foyer. Pour un\n"
+                    "noir plein, espacer les hachures d'un peu moins que\n"
+                    "cette largeur (mode Hachures 2D).".format(width, self.spn_defocus.value()))
+                self.lbl_style_info.setVisible(True)
             else:
                 self.lbl_style_info.setVisible(False)
 
         self._update_style_ui = _update_style_ui
         self.combo_style.currentIndexChanged.connect(lambda _i: _update_style_ui())
-        for w in (self.spn_wave_amp, self.spn_wave_period, self.spn_feed):
+        for w in (self.spn_wave_amp, self.spn_wave_period, self.spn_feed, self.spn_defocus):
             w.valueChanged.connect(lambda _v: _update_style_ui())
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
@@ -2839,7 +2868,7 @@ class TaskPanelCurved:
             "style": self.combo_style, "dash_len": self.spn_dash_len,
             "gap_len": self.spn_gap_len, "dot_spacing": self.spn_dot_spacing,
             "dot_dwell_ms": self.spn_dot_dwell, "wave_period": self.spn_wave_period,
-            "wave_amp": self.spn_wave_amp,
+            "wave_amp": self.spn_wave_amp, "defocus": self.spn_defocus,
         }
         _restore_last_values("curved", self._last_fields)
 
@@ -2856,8 +2885,20 @@ class TaskPanelCurved:
         edges = core.get_all_edges_from_selection(edge_sel)
         return edges, reference_shape
 
+    def _z_focus(self):
+        """Z de travail effectif : foyer des Préférences, remonté du
+        défocus si le style « Défocus (point élargi) » est choisi (point
+        laser élargi pour noircir en un passage)."""
+        base = core.Z_WORK_MM
+        if self.combo_style.currentIndex() == 4:  # Défocus (point élargi)
+            base += self.spn_defocus.value()
+        return base
+
     def _style_kwargs(self):
-        style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague"}
+        # Le style « Défocus » (index 4) est un trait PLEIN gravé plus haut
+        # (cf. _z_focus) : le point élargi fait le noir, le tracé reste
+        # continu. D'où style="plein" ici, la différence est portée par le Z.
+        style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague", 4: "plein"}
         return {
             "style": style_map.get(self.combo_style.currentIndex(), "plein"),
             "style_params": {
@@ -2893,6 +2934,7 @@ class TaskPanelCurved:
         self.spn_dot_dwell.setValue(values.get("dot_dwell_ms", self.spn_dot_dwell.value()))
         self.spn_wave_period.setValue(values.get("wave_period", self.spn_wave_period.value()))
         self.spn_wave_amp.setValue(values.get("wave_amp", self.spn_wave_amp.value()))
+        self.spn_defocus.setValue(values.get("defocus", self.spn_defocus.value()))
 
     def _on_save_preset(self):
         name, ok = QtWidgets.QInputDialog.getText(self.form, "Sauvegarder le préréglage", "Nom du préréglage :")
@@ -2903,6 +2945,7 @@ class TaskPanelCurved:
             "power": self.spn_power.value(),
             "feed": self.spn_feed.value(),
             "style": self.combo_style.currentIndex(),
+            "defocus": self.spn_defocus.value(),
             "dash_len": self.spn_dash_len.value(),
             "gap_len": self.spn_gap_len.value(),
             "dot_spacing": self.spn_dot_spacing.value(),
@@ -2934,7 +2977,7 @@ class TaskPanelCurved:
             return
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
-            core.Z_WORK_MM, core.TRANSIT_MARGIN_MM,
+            self._z_focus(), core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
             **self._style_kwargs()
         )
@@ -2947,7 +2990,7 @@ class TaskPanelCurved:
         # natif du document -- décalage à retirer ici pour que l'aperçu se
         # superpose correctement au modèle 3D dans la vue 3D (sinon le
         # trajet apparaît décalé sous/au-dessus de la surface).
-        z_offset = core.curved_native_z_offset(self._edges, core.Z_WORK_MM)
+        z_offset = core.curved_native_z_offset(self._edges, self._z_focus())
         rapid = core.shift_segments_z(rapid, -z_offset)
         mark = core.shift_segments_z(mark, -z_offset)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
@@ -2958,7 +3001,7 @@ class TaskPanelCurved:
             return
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
-            core.Z_WORK_MM, core.TRANSIT_MARGIN_MM,
+            self._z_focus(), core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
             **self._style_kwargs()
         )
@@ -2974,7 +3017,7 @@ class TaskPanelCurved:
             return
         gcode = core.generate_gcode_curved(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
-            core.Z_WORK_MM, core.TRANSIT_MARGIN_MM,
+            self._z_focus(), core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, frame_only=True, probe=self._probe,
             **self._style_kwargs()
         )
@@ -2999,7 +3042,7 @@ class TaskPanelCurved:
             self._edges,
             self.spn_power.value(),
             self.spn_feed.value(),
-            core.Z_WORK_MM,
+            self._z_focus(),
             core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape,
             pre_gcode=pre_text,
