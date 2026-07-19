@@ -795,6 +795,20 @@ def calibrated_half_angle():
         SPOT_FOCUS_MM, SPOT_TEST_DIAMETER_MM, SPOT_TEST_DEFOCUS_MM)
 
 
+def defocus_for_spot_diameter(d_target, d_focus, half_angle):
+    """Défocus (mm, hauteur à remonter le bec au-dessus du foyer) pour
+    obtenir un point de diamètre `d_target` -- inverse de
+    spot_diameter_at_defocus. Renvoie 0.0 si la cible est <= au point au
+    foyer (déjà le plus petit) et None si la calibration est invalide
+    (demi-angle nul). Sert à saisir directement la LARGEUR du point
+    (intuitif) plutôt que la hauteur de défocus."""
+    if half_angle <= 1e-9:
+        return None
+    if d_target <= d_focus:
+        return 0.0
+    return (d_target - d_focus) / (2.0 * math.tan(half_angle))
+
+
 def defocus_for_fill_spacing(spacing, d_focus, half_angle, overlap=0.85):
     """Défocus (mm, valeur absolue à AJOUTER au Z de travail/foyer)
     nécessaire pour qu'un remplissage par hachures parallèles espacées de
