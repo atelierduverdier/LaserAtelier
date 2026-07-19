@@ -1656,14 +1656,25 @@ class TaskPanelPowerRamp:
         self.spn_label_power = QtWidgets.QDoubleSpinBox()
         self.spn_label_power.setRange(0, 1000)
         self.spn_label_power.setValue(300)
-        self.spn_label_power.setToolTip("Puissance (S) FIXE des étiquettes.")
+        self.spn_label_power.setToolTip(
+            "Puissance (S) qui GRAVE les étiquettes elles-mêmes (les F à\n"
+            "gauche et les chiffres de puissance). FIXE, séparée de la rampe\n"
+            "testée, pour que les étiquettes restent lisibles même quand tu\n"
+            "testes des puissances très faibles (une étiquette à S0 serait\n"
+            "invisible). Effet visible sur la PIÈCE gravée, pas dans\n"
+            "l'aperçu de trajet 3D (qui dessine tout en rouge, sans tenir\n"
+            "compte de la puissance).")
         form.addRow("Puissance étiquettes :", self.spn_label_power)
 
         self.spn_label_feed = QtWidgets.QDoubleSpinBox()
         self.spn_label_feed.setRange(1, 20000)
         self.spn_label_feed.setValue(1500)
         self.spn_label_feed.setSuffix(" mm/min")
-        self.spn_label_feed.setToolTip("Vitesse d'avance FIXE des étiquettes.")
+        self.spn_label_feed.setToolTip(
+            "Vitesse d'avance qui GRAVE les étiquettes. FIXE, séparée de la\n"
+            "rampe testée. N'apparaît pas dans l'aperçu de trajet 3D, mais\n"
+            "change le rendu sur la pièce ET la durée estimée (plus lent =\n"
+            "étiquettes plus marquées mais job plus long).")
         form.addRow("Vitesse étiquettes :", self.spn_label_feed)
 
         self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
