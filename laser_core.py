@@ -3291,7 +3291,7 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
 # ==========================================================================
 def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
                                     power_min, power_max, z_work, line_gap,
-                                    n_steps=40, draw_labels=True,
+                                    z_end=None, n_steps=40, draw_labels=True,
                                     label_power=300.0, label_feed=1500.0,
                                     pre_gcode="", post_gcode="",
                                     frame_only=False, quiet=False):
@@ -3303,16 +3303,25 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
     CONTINU de la grille de cellules discrètes. La rampe est approchée par
     n_steps petits segments à puissance croissante (un S par segment).
 
+    z_end : si donné et différent de z_work, la HAUTEUR Z monte AUSSI le
+    long de chaque ligne, de z_work (gauche = foyer) à z_end (droite) --
+    en même temps que la puissance. On teste ainsi, à chaque vitesse,
+    l'effet combiné puissance croissante + défocus croissant (le bec
+    s'éloigne du foyer). z_end=None (ou = z_work) : hauteur constante au
+    foyer (rampe de puissance seule).
+
     Étiquettes : la vitesse (F) à gauche de chaque ligne, et les bornes de
     puissance (Smin à gauche, Smax à droite) sous la première ligne.
-    Gravées à label_power/label_feed FIXES, au foyer (z_work). Tout est à
-    plat au même Z : transit laser éteint sans lever le bec.
+    Gravées à label_power/label_feed FIXES, au foyer (z_work).
 
     frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
     n_lines = max(1, int(n_lines))
     n_steps = max(2, int(n_steps))
     if line_length <= 0 or n_lines < 1:
         return None
+    if z_end is None:
+        z_end = z_work
+    z_ramp = abs(z_end - z_work) > 1e-9
 
     lines_geo = []  # (y, feed)
     for i in range(n_lines):
@@ -3343,7 +3352,7 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
         all_pts.append(FreeCAD.Vector(line_length, y, 0.0))
     for ch in label_chains:
         all_pts.extend(ch)
-    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    z_safe = max(z_work, z_end) + TRAVEL_CLEARANCE_MM
 
     lines = []
     lines.append("(G-Code Laser - Test rampe puissance/vitesse (lignes))")
@@ -3351,6 +3360,9 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
         n_lines, feed_min, feed_max if n_lines > 1 else feed_min))
     lines.append("(Puissance : rampe S{:.0f} (gauche) -> S{:.0f} (droite) sur {:.0f}mm, {} paliers)".format(
         power_min, power_max, line_length, n_steps))
+    if z_ramp:
+        lines.append("(Hauteur Z : rampe {:.2f}mm (gauche, foyer) -> {:.2f}mm (droite) le long de chaque ligne)".format(
+            z_work, z_end))
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
@@ -3374,30 +3386,44 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     started = [False]
 
-    def _travel(x, y):
-        # Transit à plat, laser éteint : première approche depuis le Z de
-        # sécurité, ensuite d'une ligne à l'autre sans lever le bec.
+    def _travel(x, y, target_z=None):
+        # Transit laser éteint. Sans rampe Z, tout est au même Z : on
+        # enchaîne à plat sans lever le bec. Avec rampe Z, une ligne finit
+        # en haut (z_end) : on retracte au Z de sécurité avant de rejoindre
+        # le début (foyer) de la ligne suivante.
+        if target_z is None:
+            target_z = z_work
         if not started[0]:
             lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, z_safe))
-            lines.append("G0 Z{:.4f}".format(z_work))
+            lines.append("G0 Z{:.4f}".format(target_z))
             started[0] = True
+        elif z_ramp:
+            lines.append("G0 Z{:.4f}".format(z_safe))
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+            lines.append("G0 Z{:.4f}".format(target_z))
         else:
             lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
 
     lines.append("(===== Lignes a rampe de puissance =====)")
     for y, feed in lines_geo:
-        _travel(0.0, y)
+        _travel(0.0, y, z_work)
         for k in range(n_steps):
             x1 = line_length * (k + 1) / float(n_steps)
-            power = power_min + (power_max - power_min) * k / float(n_steps - 1)
+            t = k / float(n_steps - 1)
+            power = power_min + (power_max - power_min) * t
             lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power))
-            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(x1, y, feed))
+            if z_ramp:
+                z_k = z_work + (z_end - z_work) * t
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(x1, y, z_k, feed))
+            else:
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(x1, y, feed))
         lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
 
     if label_chains:
         lines.append("(===== Etiquettes (vitesses + bornes de puissance) =====)")
         for ch in label_chains:
-            _travel(ch[0].x, ch[0].y)
+            # Étiquettes toujours au foyer (z_work).
+            _travel(ch[0].x, ch[0].y, z_work)
             lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=label_power))
             for p in ch[1:]:
                 lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(p.x, p.y, label_feed))

@@ -1617,6 +1617,34 @@ class TaskPanelPowerRamp:
             "sur 80 mm = un changement de puissance tous les 2 mm.")
         form.addRow("Paliers de la rampe :", self.spn_steps)
 
+        _section(form, "Rampe de hauteur (Z)", "sect_zheight.svg")
+        self.chk_zramp = QtWidgets.QCheckBox("Monter en Z le long de la ligne (défocus progressif)")
+        self.chk_zramp.setToolTip(
+            "Coché : la hauteur du bec monte AUSSI le long de chaque ligne,\n"
+            "de la focale (gauche) à la hauteur de fin (droite), en même\n"
+            "temps que la puissance -- pour tester à chaque vitesse l'effet\n"
+            "combiné puissance croissante + défocus croissant. Décoché :\n"
+            "hauteur constante au foyer (rampe de puissance seule).")
+        form.addRow(self.chk_zramp)
+
+        self.lbl_zstart = _WrapLabel(
+            "Z de début (gauche) = focale des Préférences : {:.2f} mm.".format(core.Z_WORK_MM))
+        form.addRow(self.lbl_zstart)
+
+        self.spn_z_end = QtWidgets.QDoubleSpinBox()
+        self.spn_z_end.setRange(-50.0, 200.0)
+        self.spn_z_end.setDecimals(2)
+        self.spn_z_end.setValue(core.Z_WORK_MM + 6.0)
+        self.spn_z_end.setSuffix(" mm")
+        self.spn_z_end.setToolTip(
+            "Hauteur du bec à la FIN de chaque ligne (droite). Le Z monte\n"
+            "linéairement de la focale (gauche) à cette valeur (droite).\n"
+            "Plus haut que la focale = défocus croissant (point élargi).")
+        form.addRow("Z de fin (droite) :", self.spn_z_end)
+
+        self.chk_zramp.toggled.connect(self.spn_z_end.setEnabled)
+        self.spn_z_end.setEnabled(False)
+
         _section(form, "Étiquettes", "sect_labels.svg")
         self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes (vitesse + bornes de puissance)")
         self.chk_labels.setChecked(True)
@@ -1676,7 +1704,8 @@ class TaskPanelPowerRamp:
             "length": self.spn_length, "nlines": self.spn_nlines, "gap": self.spn_gap,
             "feed_min": self.spn_feed_min, "feed_max": self.spn_feed_max,
             "power_min": self.spn_power_min, "power_max": self.spn_power_max,
-            "steps": self.spn_steps, "labels": self.chk_labels,
+            "steps": self.spn_steps, "zramp": self.chk_zramp, "z_end": self.spn_z_end,
+            "labels": self.chk_labels,
             "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
         }
         _restore_last_values("powerramp", self._last_fields)
@@ -1696,6 +1725,7 @@ class TaskPanelPowerRamp:
             "power_min": self.spn_power_min.value(),
             "power_max": self.spn_power_max.value(),
             "z_work": core.Z_WORK_MM,
+            "z_end": self.spn_z_end.value() if self.chk_zramp.isChecked() else None,
             "line_gap": self.spn_gap.value(),
             "n_steps": self.spn_steps.value(),
             "draw_labels": self.chk_labels.isChecked(),
