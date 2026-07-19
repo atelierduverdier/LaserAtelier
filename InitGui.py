@@ -44,6 +44,9 @@ class LaserAtelierWorkbench(Workbench):
         import commands
         commands.register_commands()
         self.command_list = [
+            # -- Découverte --
+            "LaserAtelier_Guide",
+            "Separator",
             # -- Gravure à plat --
             "LaserAtelier_Hatch",
             "LaserAtelier_FilledEngraving",

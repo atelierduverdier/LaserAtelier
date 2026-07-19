@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 100">
+  <!-- bec laser -->
+  <polygon points="52,6 84,6 68,24" fill="#2f3540"/>
+  <!-- cône du faisceau : converge au foyer puis diverge -->
+  <polygon points="62,24 74,24 68,52" fill="#ff8a00" opacity="0.35"/>
+  <polygon points="68,52 56,86 80,86" fill="#ff8a00" opacity="0.35"/>
+  <circle cx="68" cy="52" r="2.5" fill="#ff8a00"/>
+  <!-- repères -->
+  <g stroke="#2f3540" stroke-width="1.5">
+    <line x1="92" y1="52" x2="120" y2="52"/>
+    <line x1="92" y1="86" x2="120" y2="86"/>
+  </g>
+  <g font-family="sans-serif" font-size="11" fill="#2f3540">
+    <text x="126" y="56">foyer = point fin</text>
+    <text x="126" y="90">défocus = point large</text>
+    <text x="126" y="22">bec remonté de Z →</text>
+  </g>
+  <!-- flèche Z -->
+  <g stroke="#ff8a00" stroke-width="2" fill="none">
+    <line x1="30" y1="80" x2="30" y2="40"/>
+    <polyline points="25,46 30,40 35,46"/>
+  </g>
+  <text x="12" y="64" font-family="sans-serif" font-size="11" fill="#ff8a00">Z</text>
+</svg>

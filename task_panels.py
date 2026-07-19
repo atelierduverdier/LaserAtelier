@@ -95,6 +95,50 @@ def _section(form, title, icon_name=None):
     _hline(form)
 
 
+def _intro(form, resume, details=None):
+    """En-tête d'explication d'un panneau : un RÉSUMÉ court toujours
+    visible (1-2 phrases, l'essentiel pour quelqu'un qui découvre le
+    mode), et des DÉTAILS optionnels repliés derrière un bouton « En
+    savoir plus » -- le pavé complet reste à un clic sans encombrer le
+    panneau. Renvoie le label de détails (pour d'éventuels ajustements)."""
+    lbl = _WrapLabel(resume)
+    form.addRow(lbl)
+    if not details:
+        return None
+    btn = QtWidgets.QToolButton()
+    btn.setText("En savoir plus")
+    btn.setCheckable(True)
+    btn.setArrowType(QtCore.Qt.RightArrow)
+    btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+    btn.setAutoRaise(True)
+    det = _WrapLabel(details)
+    det.setVisible(False)
+
+    def _toggle(on):
+        det.setVisible(on)
+        btn.setArrowType(QtCore.Qt.DownArrow if on else QtCore.Qt.RightArrow)
+    btn.toggled.connect(_toggle)
+    form.addRow(btn)
+    form.addRow(det)
+    return det
+
+
+def _diagram(form, name, width=260, height=100):
+    """Petit schéma explicatif (SVG de resources/icons) inséré comme une
+    rangée du formulaire, centré -- un dessin vaut un paragraphe. Ne fait
+    rien si le rendu échoue (le texte reste seul, jamais de plantage)."""
+    try:
+        pm = _icon(name).pixmap(width, height)
+        if pm.isNull():
+            return
+    except Exception:
+        return
+    lbl = QtWidgets.QLabel()
+    lbl.setPixmap(pm)
+    lbl.setAlignment(QtCore.Qt.AlignHCenter)
+    form.addRow(lbl)
+
+
 def _hline(form):
     line = QtWidgets.QFrame()
     line.setFrameShape(QtWidgets.QFrame.HLine)
@@ -485,6 +529,79 @@ def _fluence_advice(spot, power, feed, w):
 
 
 # ==========================================================================
+# GUIDE RAPIDE (point d'entrée pour découvrir l'atelier)
+# ==========================================================================
+class TaskPanelGuide:
+    """Panneau purement informatif : le flux de travail de l'atelier et
+    « quel mode pour quoi ? » -- le point d'entrée de quelqu'un qui
+    connaît FreeCAD mais découvre cet atelier. Aucune logique, que du
+    texte et des schémas."""
+
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        _panel_header(form, "guide.svg", "Guide rapide de l'atelier")
+        _diagram(form, "diag_pipeline.svg", width=280, height=110)
+
+        _section(form, "Le flux de travail", "sect_options.svg")
+        steps = _WrapLabel(
+            "1. CALIBRER (une fois) : Préférences (engrenage) -- focale, "
+            "calibration du point via la Bande de calibration défocus, "
+            "offsets T100 via le Test des offsets.  "
+            "2. TESTER sur une chute : Grille de test ou Rampe "
+            "puissance/vitesse pour trouver les bons réglages du matériau.  "
+            "3. MOTIF : Hachures 2D (remplissage), texte/forme (Gravure "
+            "remplie), image (Gravure photo) -- et Projection si la pièce "
+            "est courbe.  "
+            "4. G-CODE : Marquage, Gravure remplie ou Découpe génèrent le "
+            "fichier .ngc.  "
+            "5. CADRAGE : chaque mode propose un fichier d'aperçu séparé "
+            "(rectangle englobant, laser éteint) à lancer d'abord pour "
+            "vérifier le positionnement.  "
+            "6. GRAVER : sur LinuxCNC, faire T100 M6 AVANT de lancer le "
+            "fichier (rappelé dans chaque G-code généré).")
+        form.addRow(steps)
+
+        _section(form, "Quel mode pour quoi ?", "sect_gcode.svg")
+        table = _WrapLabel(
+            "• Graver un TEXTE ou une FORME en noir : Gravure remplie.  "
+            "• Graver une PHOTO : Gravure photo (trame de points).  "
+            "• Remplir une face de hachures (géométrie) : Hachures 2D, puis "
+            "Marquage pour le G-code.  "
+            "• Graver sur une pièce BOMBÉE : Hachures 2D → Projection → "
+            "Marquage (motif + modèle 3D sélectionnés ensemble).  "
+            "• DÉCOUPER du plat : Découpe multi-passes (attaches, amorce, "
+            "copies en matrice).  "
+            "• Découper une pièce courbe : Découpe multi-passes (courbe).  "
+            "• Enchaîner plusieurs opérations en un fichier : Job combiné.  "
+            "• Trouver les réglages d'un matériau : Grille de test (cellules) "
+            "ou Rampe (lignes continues).")
+        form.addRow(table)
+
+        _section(form, "Les 3 règles de la maison", "sect_safety.svg")
+        rules = _WrapLabel(
+            "• Zéro Z toujours sur la SURFACE de la pièce (le Z de travail "
+            "des Préférences est alors la focale du nez, une constante).  "
+            "• On MESURE, on ne devine pas : calibration du point, kerf, "
+            "offsets -- tout vient d'un test réel sur chute.  "
+            "• Toujours lancer l'aperçu CADRAGE avant le vrai job, lunettes "
+            "laser sur le nez.")
+        form.addRow(rules)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Guide rapide de l'atelier")
+        self.form.setWindowIcon(_icon("guide.svg"))
+
+    def accept(self):
+        return True
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
 # MODE : HACHURES 2D
 # ==========================================================================
 class TaskPanelHatch:
@@ -493,7 +610,7 @@ class TaskPanelHatch:
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
-        _panel_header(form, "hatch.svg", "Hachures 2D")
+        _panel_header(form, "hatch.svg", "Hachures 2D (géométrie)")
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -503,6 +620,18 @@ class TaskPanelHatch:
         # que la place manque, donc tout reste visible sans avoir besoin
         # d'élargir la fenêtre.
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        _intro(form,
+               "Remplit la face 2D sélectionnée de hachures et crée un objet "
+               "« Hachures » dans le document. GÉOMÉTRIE SEULE : aucun G-code "
+               "ici -- grave ensuite cet objet avec le mode Marquage (ou "
+               "projette-le d'abord sur une surface 3D).",
+               "Trois types : Parallèles (zigzag, défaut), Croisées (2 passes à "
+               "angle+90, plus dense) et Défocus (destiné à être gravé avec le "
+               "point laser élargi pour noircir en un seul passage -- le défocus "
+               "à utiliser est calculé plus bas depuis la calibration des "
+               "Préférences). Le Retrait du bord rentre les hachures pour que "
+               "la brûlure ne déborde pas de la forme.")
 
         self.combo_filltype = QtWidgets.QComboBox()
         self.combo_filltype.addItems(["Parallèles", "Croisées (grille)", "Défocus (noir)"])
@@ -597,9 +726,6 @@ class TaskPanelHatch:
         self.spn_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
         _on_filltype_changed(self.combo_filltype.currentIndex())
 
-        info = _WrapLabel("Sélectionne le motif 2D (face/sketch) avant de générer.")
-        form.addRow(info)
-
         self._last_fields = {
             "filltype": self.combo_filltype, "spacing": self.spn_spacing,
             "angle": self.spn_angle, "inset": self.spn_inset,
@@ -639,12 +765,18 @@ class TaskPanelFilledEngraving:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "filled.svg", "Gravure remplie (noir)")
-        info = _WrapLabel(
-            "Grave une forme/texte 2D en NOIR PLEIN : remplissage par\n"
-            "hachures en défocus (point élargi, rentré pour ne pas déborder\n"
-            "du bord) puis contour repassé net au foyer. Sélectionne le\n"
-            "motif 2D (face/sketch/ShapeString) avant de lancer.")
-        form.addRow(info)
+        _intro(form,
+               "Grave la forme/le texte 2D sélectionné (face, sketch, "
+               "ShapeString) en NOIR PLEIN, en deux temps :",
+               "Le remplissage utilise le point laser volontairement ÉLARGI "
+               "(défocus, calculé depuis la calibration des Préférences pour "
+               "l'espacement choisi) et il est rentré du rayon de point pour ne "
+               "pas déborder ; le contour est ensuite repassé net au foyer pour "
+               "une arête propre. Un seul armement laser pour les deux. Chaque "
+               "partie a ses propres styles de trait (plein/tirets/pointillé/"
+               "vague) et la section « Puissance vs défocus » aide à garder un "
+               "noir constant quel que soit le défocus.")
+        _diagram(form, "diag_filled.svg")
 
         _section(form, "Préréglage matériau", "sect_preset.svg")
         self.combo_preset = QtWidgets.QComboBox()
@@ -1287,6 +1419,7 @@ class TaskPanelProject:
             "L'état ci-dessous se met à jour au fil de ta sélection ; clique\n"
             "sur OK quand il est vert.")
         form.addRow(lbl)
+        _diagram(form, "diag_projection.svg")
 
         self.lbl_status = _WrapLabel()
         form.addRow(self.lbl_status)
@@ -1397,18 +1530,22 @@ class TaskPanelDefocusCalibration:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        info = _WrapLabel(
-            "Grave une rangée de courts traits, chacun à une hauteur de bec\n"
-            "croissante (étiquetée en mm). MESURE l'épaisseur de chaque\n"
-            "trait : le plus fin = le foyer (sa hauteur = ton Z de foyer, sa\n"
-            "largeur = « point au foyer ») ; choisis un trait bien plus\n"
-            "large pour « défocus de test » (sa hauteur - celle du foyer) et\n"
-            "« point au défocus de test » (sa largeur). REPORTE ensuite ces\n"
-            "trois mesures dans les PRÉFÉRENCES (icône engrenage, section\n"
-            "Calibration du point) -- elles servent à tous les modes. Zéro Z\n"
-            "sur la surface. Aucune sélection requise.")
         _panel_header(form, "defocus.svg", "Bande de calibration défocus")
-        form.addRow(info)
+        _intro(form,
+               "Grave une rangée de traits, chacun à une hauteur de bec "
+               "croissante (étiquetée) : le trait LE PLUS FIN te donne le "
+               "foyer, les traits larges la divergence du faisceau. Zéro Z "
+               "sur la surface, aucune sélection requise.",
+               "À mesurer au pied à coulisse : (1) la hauteur du trait le plus "
+               "fin = ton Z de foyer et sa largeur = « point au foyer » ; "
+               "(2) un trait bien plus large : sa hauteur moins celle du foyer "
+               "= « défocus de test », sa largeur = « point au défocus de "
+               "test ». REPORTE ces trois mesures dans les Préférences (icône "
+               "engrenage, section Calibration du point) : elles servent à "
+               "tous les modes (remplissage noir, styles vague/défocus...). "
+               "La rampe de puissance optionnelle garde les traits très "
+               "défocalisés visibles.")
+        _diagram(form, "diag_defocus.svg")
 
         self._presets = _PresetController(form, inner, "defocus_calib", lambda: self._last_fields)
 
@@ -1656,14 +1793,19 @@ class TaskPanelPowerRamp:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "powerramp.svg", "Test rampe puissance / vitesse (lignes)")
-        info = _WrapLabel(
-            "Grave de longues lignes horizontales, UNE PAR VITESSE, chacune\n"
-            "parcourue avec une puissance qui MONTE de gauche (min) à droite\n"
-            "(max). On lit d'un coup, à chaque vitesse, à partir de quelle\n"
-            "puissance le trait commence à marquer et où il sature -- le\n"
-            "complément continu de la Grille de test (cellules discrètes).\n"
-            "Zéro Z sur la surface. Aucune sélection requise.")
-        form.addRow(info)
+        _intro(form,
+               "Grave de longues lignes, UNE PAR VITESSE, avec la puissance "
+               "qui MONTE le long de chaque ligne : on repère d'un coup où le "
+               "trait apparaît et où il sature, à chaque vitesse. Zéro Z sur "
+               "la surface, aucune sélection requise.",
+               "Complément continu de la Grille de test (cellules discrètes). "
+               "La règle graduée sous la première ligne donne la puissance "
+               "sous chaque point du trait. Option rampe Z : la hauteur du "
+               "bec monte aussi le long de la ligne (défocus progressif). "
+               "Astuce laser S/PWM : si le trait se pointille à haute "
+               "vitesse, baisse le nombre de paliers (chaque changement de "
+               "puissance fait micro-branler la machine).")
+        _diagram(form, "diag_ramp.svg")
 
         self._presets = _PresetController(form, inner, "powerramp", lambda: self._last_fields)
 
@@ -1937,18 +2079,20 @@ class TaskPanelOffsetTest:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        info = _WrapLabel(
-            "Job MIXTE : fraise une croix centrée sur X0 Y0, puis grave une\n"
-            "croix laser au MÊME X0 Y0 programmé. L'écart entre les deux\n"
-            "croix = l'erreur d'offsets X/Y du T100 dans tool.tbl\n"
-            "(X_nouveau = X_actuel - dX, idem Y ; dX = X laser - X fraisé).\n"
-            "AVANT de lancer : chute de bois sur le martyre (prévoir LARGE\n"
-            "si un signe d'offset est faux), fraise à graver montée à la\n"
-            "main, zéro X/Y à l'oeil au centre de la chute. Monter la\n"
-            "glissière laser pendant la pause du 2e changement d'outil.\n"
-            "Lunettes laser obligatoires. Aucune sélection requise.")
         _panel_header(form, "offset_test.svg", "Test des offsets X/Y du laser")
-        form.addRow(info)
+        _intro(form,
+               "Job MIXTE fraise + laser : fraise une croix sur X0 Y0, puis "
+               "grave une croix laser au même X0 Y0 programmé. L'écart mesuré "
+               "entre les deux croix = l'erreur d'offsets X/Y du T100 dans "
+               "tool.tbl. Lunettes laser obligatoires.",
+               "Correction : X_nouveau = X_actuel - dX (idem Y), avec dX = X "
+               "laser - X fraisé (écarts signés, sens machine). AVANT de "
+               "lancer : chute de bois sur le martyre (prévoir LARGE si un "
+               "signe d'offset est faux), fraise à graver montée à la main, "
+               "zéro X/Y à l'oeil au centre de la chute. Monter la glissière "
+               "laser pendant la pause du 2e changement d'outil. Aucune "
+               "sélection requise.")
+        _diagram(form, "diag_offset.svg")
 
         self._presets = _PresetController(form, inner, "offset_test", lambda: self._last_fields)
 
@@ -2147,14 +2291,16 @@ class TaskPanelHalftone:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "halftone.svg", "Gravure photo (trame de points)")
-        info = _WrapLabel(
-            "Grave une image en niveaux de gris sous forme de TRAME DE\n"
-            "POINTS laser : chaque point encode la noirceur locale, soit\n"
-            "par sa densité (tramage par diffusion, recommandé), soit par\n"
-            "la durée de son pulse. Image posée coin bas-gauche en X0 Y0.\n"
-            "Zéro X/Y sur la pièce, zéro Z sur sa surface. La machine\n"
-            "s'arrête à chaque point : compter ~2-4 points/seconde.")
-        form.addRow(info)
+        _intro(form,
+               "Grave une image (PNG/JPG...) en TRAME DE POINTS laser, comme "
+               "une photo de journal. Choisis l'image, la largeur et le pas "
+               "de trame -- aucune sélection requise.",
+               "Chaque point encode la noirceur locale : soit par sa densité "
+               "(tramage par diffusion Floyd-Steinberg, recommandé), soit par "
+               "la durée de son pulse. Image posée coin bas-gauche en X0 Y0 ; "
+               "zéro X/Y sur la pièce, zéro Z sur sa surface. La machine "
+               "s'arrête à chaque point : compter ~2-4 points/seconde -- le "
+               "pas de trame pilote directement la durée du job.")
 
         _section(form, "Image", "sect_preview.svg")
         self.edt_image = QtWidgets.QLineEdit()
@@ -2449,16 +2595,19 @@ class TaskPanelTestGrid:
         # d'élargir la fenêtre.
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        info = _WrapLabel(
-            "Génère en un seul job une grille de cellules couvrant une\n"
-            "plage de puissance x vitesse, pour choisir à l'œil le\n"
-            "meilleur réglage sur une chute du matériau visé, au lieu de\n"
-            "tâtonner passe par passe. La position de chaque cellule est\n"
-            "son étiquette (puissance croissante en X, vitesse croissante\n"
-            "en Y) -- la grille complète est aussi imprimée dans la vue\n"
-            "Rapport. Aucune sélection requise.")
         _panel_header(form, "testgrid.svg", "Grille de test puissance / vitesse")
-        form.addRow(info)
+        _intro(form,
+               "Grave (ou découpe) une grille de cellules sur une chute : "
+               "chaque cellule teste UN couple puissance/vitesse. Tu choisis "
+               "ensuite la meilleure à l'oeil. Aucune sélection requise.",
+               "Puissance croissante en colonnes (X), vitesse croissante en "
+               "lignes (Y) ; chaque colonne/ligne est étiquetée directement "
+               "sur la pièce (S..., F...), et la grille complète est aussi "
+               "imprimée dans la vue Rapport. Le champ « Hauteur (Z) de "
+               "test » permet de rejouer la même grille à une autre hauteur "
+               "(bec défocalisé) pour caractériser un matériau proprement, "
+               "une hauteur à la fois.")
+        _diagram(form, "diag_grid.svg")
 
         # Préréglages nommés (par matériau), catégorie "testgrid" : TOUS les
         # réglages de la grille sont couverts (pas seulement puissance/vitesse).
@@ -3211,17 +3360,18 @@ class TaskPanelCurved:
         # d'élargir la fenêtre.
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        info = _WrapLabel(
-            "Grave un motif filaire (hachures, tracés...), à PLAT ou sur\n"
-            "SURFACE COURBE.\n"
-            "Pièce PLATE : sélectionne juste le motif 2D (ex: Hachures du\n"
-            "mode Hachures 2D) -- rien d'autre.\n"
-            "Surface COURBE : sélectionne le motif projeté (Hachures_3D,\n"
-            "issu du mode Projection) ET le modèle 3D d'origine, TOUS LES\n"
-            "DEUX EN MÊME TEMPS -- le modèle 3D permet une sonde exacte du\n"
-            "relief pendant le marquage (sans lui, le Z est seulement\n"
-            "interpolé entre les points déjà projetés).")
-        form.addRow(info)
+        _intro(form,
+               "Grave un motif filaire (hachures, tracés...). Pièce PLATE : "
+               "sélectionne juste le motif 2D. Surface COURBE : sélectionne "
+               "le motif projeté (Hachures_3D) ET le modèle 3D d'origine, "
+               "les deux en même temps.",
+               "Le modèle 3D permet une sonde exacte du relief pendant le "
+               "marquage (sans lui, le Z n'est qu'interpolé entre les points "
+               "déjà projetés). Cinq styles de trait : plein, tirets, "
+               "pointillé, vague défocus (le Z ondule, trait qui varie en "
+               "largeur), et défocus point élargi (noircir un remplissage en "
+               "un passage) -- tous suivent le relief. Le Z de travail et la "
+               "marge de transit viennent des Préférences.")
 
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -4223,15 +4373,16 @@ class TaskPanelCurvedCut:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "curved_cut.svg", "Découpe multi-passes (courbe)")
-        info = _WrapLabel(
-            "Comme le marquage sur surface courbe, sélectionne à la fois\n"
-            "le motif projeté (Hachures_3D, issu du mode Projection) ET le\n"
-            "modèle 3D d'origine, TOUS LES DEUX EN MÊME TEMPS -- le modèle\n"
-            "3D permet une sonde exacte du relief. Chaque passe recule le\n"
-            "foyer un peu plus DANS la matière (comme la Découpe\n"
-            "multi-passes à plat), tout en suivant le relief natif de la\n"
-            "surface à chaque point du tracé.")
-        form.addRow(info)
+        _intro(form,
+               "Découpe en plusieurs passes EN SUIVANT LE RELIEF d'une "
+               "surface courbe. Sélectionne le motif projeté (Hachures_3D) "
+               "ET le modèle 3D d'origine, les deux en même temps.",
+               "Le modèle 3D permet une sonde exacte du relief. Chaque passe "
+               "recule le foyer un peu plus DANS la matière (comme la découpe "
+               "à plat : épaisseur / nombre de passes), tout en suivant le "
+               "relief natif à chaque point du tracé. Compensation de kerf, "
+               "ordre trous-avant-contour et optimisation par proximité "
+               "disponibles comme à plat.")
 
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -5394,6 +5545,7 @@ class TaskPanelSettings:
             "Hachures 2D, Gravure remplie, Grille de test et le style\n"
             "Vague -- plus rien à resaisir dans les panneaux.")
         form.addRow(lbl_calib)
+        _diagram(form, "diag_defocus.svg")
 
         self.spn_spot_focus = QtWidgets.QDoubleSpinBox()
         self.spn_spot_focus.setRange(0.01, 20.0)

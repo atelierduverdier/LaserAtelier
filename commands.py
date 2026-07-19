@@ -26,12 +26,30 @@ def _warn_selection(message):
     QtWidgets.QMessageBox.warning(None, "Sélection", message)
 
 
+class GuideCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("guide.svg"),
+            "MenuText": "Guide rapide",
+            "ToolTip": "Le flux de travail de l'atelier et « quel mode pour quoi ? » -- "
+                       "le point d'entrée pour découvrir l'atelier",
+        }
+
+    def IsActive(self):
+        # Purement informatif : toujours disponible.
+        return True
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelGuide())
+
+
 class HatchCommand:
     def GetResources(self):
         return {
             "Pixmap": _icon_path("hatch.svg"),
-            "MenuText": "Générer hachures 2D",
-            "ToolTip": "Génère un remplissage (parallèles / croisées / défocus) sur une face 2D sélectionnée",
+            "MenuText": "Hachures 2D (géométrie)",
+            "ToolTip": "Remplit une face 2D sélectionnée de hachures (parallèles / croisées / défocus) et "
+                       "crée un objet Hachures -- géométrie seule, le G-code se génère ensuite avec le mode Marquage",
         }
 
     def IsActive(self):
@@ -287,6 +305,7 @@ class SettingsCommand:
 
 
 def register_commands():
+    Gui.addCommand("LaserAtelier_Guide", GuideCommand())
     Gui.addCommand("LaserAtelier_Settings", SettingsCommand())
     Gui.addCommand("LaserAtelier_Hatch", HatchCommand())
     Gui.addCommand("LaserAtelier_FilledEngraving", FilledEngravingCommand())
