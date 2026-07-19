@@ -242,6 +242,112 @@ def _save_last_values(panel_key, fields):
     core.save_config(cfg)
 
 
+def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_defocus=3.0):
+    """Ajoute une section « Puissance vs défocus » à `form` (compensation
+    de la puissance selon le défocus, cf. line_fluence dans laser_core) et
+    renvoie ses widgets, dont "container" (un QGroupBox regroupant tout,
+    à masquer d'un bloc quand la section n'a pas lieu d'être). L'appelant
+    câble l'aperçu (self.<...>.valueChanged) et lit chk pour compenser la
+    puissance à la génération. La référence (matériau) est sauvegardée
+    dans le préréglage matériau et la dernière session."""
+    box = QtWidgets.QGroupBox("Puissance vs défocus")
+    inner = QtWidgets.QFormLayout(box)
+    inner.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+    lbl = QtWidgets.QLabel(
+        "Défocaliser étale la puissance sur un point plus large : le trait\n"
+        "pâlit, voire ne marque plus. Renseigne un réglage de RÉFÉRENCE\n"
+        "connu bon sur ce matériau (une gravure réussie) ; l'atelier compare\n"
+        "la fluence (énergie déposée) du réglage actuel à cette référence.")
+    lbl.setWordWrap(True)
+    inner.addRow(lbl)
+
+    chk = QtWidgets.QCheckBox("Compenser la puissance automatiquement")
+    chk.setToolTip(
+        "Coché : la puissance est CALCULÉE pour déposer la même énergie\n"
+        "qu'à la référence, au défocus et à la vitesse actuels (la\n"
+        "puissance saisie plus haut est alors ignorée). Décoché : la\n"
+        "puissance saisie est utilisée telle quelle, et l'atelier indique\n"
+        "seulement la fluence obtenue par rapport à la référence (à toi\n"
+        "d'ajuster). Utile pour comparer les deux approches sur une chute.")
+    inner.addRow(chk)
+
+    ref_power_w = QtWidgets.QDoubleSpinBox()
+    ref_power_w.setRange(0, 1000)
+    ref_power_w.setValue(ref_power)
+    ref_power_w.setToolTip("Puissance (S) du réglage de référence connu bon.")
+    inner.addRow("Réf. puissance (S) :", ref_power_w)
+
+    ref_feed_w = QtWidgets.QDoubleSpinBox()
+    ref_feed_w.setRange(1, 20000)
+    ref_feed_w.setValue(ref_feed)
+    ref_feed_w.setSuffix(" mm/min")
+    ref_feed_w.setToolTip("Vitesse d'avance du réglage de référence.")
+    inner.addRow("Réf. vitesse :", ref_feed_w)
+
+    ref_defocus_w = QtWidgets.QDoubleSpinBox()
+    ref_defocus_w.setRange(0.0, 30.0)
+    ref_defocus_w.setDecimals(2)
+    ref_defocus_w.setValue(ref_defocus)
+    ref_defocus_w.setSuffix(" mm")
+    ref_defocus_w.setToolTip(
+        "Défocus AUQUEL la référence a été gravée (0 = au foyer). Sert à\n"
+        "retrouver le diamètre de point de la référence via la calibration\n"
+        "des Préférences.")
+    inner.addRow("Réf. défocus :", ref_defocus_w)
+
+    info = QtWidgets.QLabel("")
+    info.setWordWrap(True)
+    inner.addRow(info)
+
+    form.addRow(box)
+    return {"container": box, "chk": chk, "ref_power": ref_power_w,
+            "ref_feed": ref_feed_w, "ref_defocus": ref_defocus_w, "info": info}
+
+
+def _fluence_advice(defocus, power, feed, w):
+    """Texte d'aperçu + puissance effective pour la section fluence.
+    `defocus`/`power`/`feed` = réglage ACTUEL, `w` = widgets renvoyés par
+    _make_fluence_widgets. Renvoie (texte, couleur, puissance_effective) :
+    puissance_effective = valeur compensée si la case est cochée, sinon
+    None (l'appelant garde sa puissance saisie)."""
+    half = core.calibrated_half_angle()
+    spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half)
+    ref_spot = core.spot_diameter_at_defocus(
+        w["ref_defocus"].value(), core.SPOT_FOCUS_MM, half)
+    ref_power = w["ref_power"].value()
+    ref_feed = w["ref_feed"].value()
+    if w["chk"].isChecked():
+        p_eff = core.power_for_line_fluence(feed, spot, ref_power, ref_feed, ref_spot)
+        if p_eff is None:
+            return ("Référence invalide : renseigne puissance/vitesse/défocus.",
+                    "#b0740a", None)
+        clipped = min(p_eff, 1000.0)
+        txt = "Puissance compensée : S{:.0f}".format(clipped)
+        if p_eff > 1000.0:
+            txt += " (plafonnée à 1000 -- la référence demande S{:.0f}, hors échelle : ralentir ou moins défocaliser)".format(p_eff)
+        txt += " -- pour un point de {:.2f} mm au défocus {:.2f} mm.".format(spot, defocus)
+        return (txt, "#2e7d32", clipped)
+    ratio = core.relative_line_fluence(power, feed, spot, ref_power, ref_feed, ref_spot)
+    if ratio is None:
+        return ("Référence invalide : renseigne puissance/vitesse/défocus.",
+                "#b0740a", None)
+    suggested = core.power_for_line_fluence(feed, spot, ref_power, ref_feed, ref_spot)
+    txt = "Fluence actuelle : {:.0f}% de la référence".format(ratio * 100.0)
+    if ratio < 0.85:
+        txt += " -- TROP FAIBLE, risque de trait pâle/absent."
+        color = "#c0392b"
+    elif ratio > 1.2:
+        txt += " -- élevée, risque de sur-brûlage."
+        color = "#b0740a"
+    else:
+        txt += " -- proche de la référence."
+        color = "#2e7d32"
+    if suggested is not None:
+        txt += " Pour l'égaler : S{:.0f}.".format(min(suggested, 1000.0))
+    return (txt, color, None)
+
+
 # ==========================================================================
 # MODE : HACHURES 2D
 # ==========================================================================
@@ -472,6 +578,8 @@ class TaskPanelFilledEngraving:
             "obliques) : ce liseré la comble pour un noir plein jusqu'au contour.")
         form.addRow(self.chk_perimeter)
 
+        self._fluence = _make_fluence_widgets(form)
+
         self.lbl_defocus_result = QtWidgets.QLabel("Défocus calculé : --")
         self.lbl_defocus_result.setWordWrap(True)
         self.lbl_defocus_result.setToolTip(
@@ -639,10 +747,23 @@ class TaskPanelFilledEngraving:
                 self.lbl_contour_result.setText(
                     "Contour : trait {:.2f} mm -> bec remonté de {:.2f} mm.".format(
                         self.spn_contour_width.value(), off))
+            # Fluence du remplissage (compensation puissance/défocus).
+            if defocus is not None:
+                txt, color, _ = _fluence_advice(
+                    defocus, self.spn_fill_power.value(), self.spn_fill_feed.value(),
+                    self._fluence)
+                self._fluence["info"].setText("Remplissage -- " + txt)
+                self._fluence["info"].setStyleSheet("color: {};".format(color))
+                self.spn_fill_power.setEnabled(not self._fluence["chk"].isChecked())
 
         self._update_defocus_preview = _update_defocus_preview
         self.spn_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_contour_width.valueChanged.connect(lambda _v: _update_defocus_preview())
+        for _w in (self.spn_fill_power, self.spn_fill_feed, self._fluence["chk"],
+                   self._fluence["ref_power"], self._fluence["ref_feed"],
+                   self._fluence["ref_defocus"]):
+            _sig = _w.toggled if isinstance(_w, QtWidgets.QCheckBox) else _w.valueChanged
+            _sig.connect(lambda _v: _update_defocus_preview())
 
         def _update_style_preview():
             # Visibilité : n'affiche que les paramètres des styles choisis.
@@ -735,6 +856,8 @@ class TaskPanelFilledEngraving:
             "dash_len": self.spn_dash_len, "gap_len": self.spn_gap_len,
             "dot_spacing": self.spn_dot_spacing, "dot_dwell_ms": self.spn_dot_dwell,
             "wave_period": self.spn_wave_period, "fill_wave_width": self.spn_fill_wave_width,
+            "fluence_on": self._fluence["chk"], "ref_power": self._fluence["ref_power"],
+            "ref_feed": self._fluence["ref_feed"], "ref_defocus": self._fluence["ref_defocus"],
         }
         _restore_last_values("filled", self._last_fields)
 
@@ -790,6 +913,10 @@ class TaskPanelFilledEngraving:
             "dot_dwell_ms": self.spn_dot_dwell.value(),
             "wave_period": self.spn_wave_period.value(),
             "fill_wave_width": self.spn_fill_wave_width.value(),
+            "fluence_on": self._fluence["chk"].isChecked(),
+            "ref_power": self._fluence["ref_power"].value(),
+            "ref_feed": self._fluence["ref_feed"].value(),
+            "ref_defocus": self._fluence["ref_defocus"].value(),
         }
 
     def _on_preset_selected(self, index):
@@ -816,6 +943,10 @@ class TaskPanelFilledEngraving:
         self.spn_dot_dwell.setValue(v.get("dot_dwell_ms", self.spn_dot_dwell.value()))
         self.spn_wave_period.setValue(v.get("wave_period", self.spn_wave_period.value()))
         self.spn_fill_wave_width.setValue(v.get("fill_wave_width", self.spn_fill_wave_width.value()))
+        self._fluence["chk"].setChecked(v.get("fluence_on", self._fluence["chk"].isChecked()))
+        self._fluence["ref_power"].setValue(v.get("ref_power", self._fluence["ref_power"].value()))
+        self._fluence["ref_feed"].setValue(v.get("ref_feed", self._fluence["ref_feed"].value()))
+        self._fluence["ref_defocus"].setValue(v.get("ref_defocus", self._fluence["ref_defocus"].value()))
         self.lbl_preset_summary.setText(self._preset_summary(v))
         self.lbl_preset_summary.setVisible(True)
 
@@ -908,10 +1039,18 @@ class TaskPanelFilledEngraving:
         if contour_style == "vague":
             # « Épaisseur trait contour » = largeur max de la vague.
             contour_params["wave_amplitude"] = self._contour_offset(half_angle)
+        # Compensation puissance/défocus (option 2) : si cochée, la
+        # puissance de remplissage est calculée pour égaler la fluence de
+        # référence au défocus réel du remplissage.
+        fill_power = self.spn_fill_power.value()
+        _, _, p_eff = _fluence_advice(
+            defocus, fill_power, self.spn_fill_feed.value(), self._fluence)
+        if p_eff is not None:
+            fill_power = p_eff
         return {
             "z_focus": core.Z_WORK_MM,
             "defocus": defocus,
-            "fill_power": self.spn_fill_power.value(),
+            "fill_power": fill_power,
             "fill_feed": self.spn_fill_feed.value(),
             "draw_contour": self.chk_contour.isChecked(),
             "contour_power": self.spn_contour_power.value(),
@@ -2771,6 +2910,8 @@ class TaskPanelCurved:
         self.lbl_style_info.setWordWrap(True)
         form.addRow(self.lbl_style_info)
 
+        self._fluence = _make_fluence_widgets(form)
+
         def _update_style_ui():
             idx = self.combo_style.currentIndex()
             for w in (self.spn_dash_len, self.spn_gap_len):
@@ -2780,6 +2921,9 @@ class TaskPanelCurved:
             for w in (self.spn_wave_period, self.spn_wave_amp):
                 w.setVisible(idx == 3)
             self.spn_defocus.setVisible(idx == 4)
+            # Compensation puissance/défocus : seulement pour le style
+            # Défocus (point élargi), le seul à défocus constant.
+            self._fluence["container"].setVisible(idx == 4)
             if idx == 3:
                 amp = self.spn_wave_amp.value()
                 peak = core.wave_peak_z_feed(
@@ -2802,13 +2946,24 @@ class TaskPanelCurved:
                     "noir plein, espacer les hachures d'un peu moins que\n"
                     "cette largeur (mode Hachures 2D).".format(width, self.spn_defocus.value()))
                 self.lbl_style_info.setVisible(True)
+                # Aperçu fluence + puissance compensée pour le défocus.
+                txt2, color, _ = _fluence_advice(
+                    self.spn_defocus.value(), self.spn_power.value(),
+                    self.spn_feed.value(), self._fluence)
+                self._fluence["info"].setText(txt2)
+                self._fluence["info"].setStyleSheet("color: {};".format(color))
+                self.spn_power.setEnabled(not self._fluence["chk"].isChecked())
             else:
                 self.lbl_style_info.setVisible(False)
+                self.spn_power.setEnabled(True)
 
         self._update_style_ui = _update_style_ui
         self.combo_style.currentIndexChanged.connect(lambda _i: _update_style_ui())
-        for w in (self.spn_wave_amp, self.spn_wave_period, self.spn_feed, self.spn_defocus):
+        for w in (self.spn_wave_amp, self.spn_wave_period, self.spn_feed, self.spn_defocus,
+                  self.spn_power, self._fluence["ref_power"], self._fluence["ref_feed"],
+                  self._fluence["ref_defocus"]):
             w.valueChanged.connect(lambda _v: _update_style_ui())
+        self._fluence["chk"].toggled.connect(lambda _v: _update_style_ui())
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
@@ -2869,6 +3024,8 @@ class TaskPanelCurved:
             "gap_len": self.spn_gap_len, "dot_spacing": self.spn_dot_spacing,
             "dot_dwell_ms": self.spn_dot_dwell, "wave_period": self.spn_wave_period,
             "wave_amp": self.spn_wave_amp, "defocus": self.spn_defocus,
+            "fluence_on": self._fluence["chk"], "ref_power": self._fluence["ref_power"],
+            "ref_feed": self._fluence["ref_feed"], "ref_defocus": self._fluence["ref_defocus"],
         }
         _restore_last_values("curved", self._last_fields)
 
@@ -2893,6 +3050,18 @@ class TaskPanelCurved:
         if self.combo_style.currentIndex() == 4:  # Défocus (point élargi)
             base += self.spn_defocus.value()
         return base
+
+    def _effective_power(self):
+        """Puissance effective : compensée selon le défocus (fluence de
+        référence) si le style Défocus est choisi ET la compensation
+        cochée, sinon la puissance saisie."""
+        if self.combo_style.currentIndex() == 4:
+            _, _, p_eff = _fluence_advice(
+                self.spn_defocus.value(), self.spn_power.value(),
+                self.spn_feed.value(), self._fluence)
+            if p_eff is not None:
+                return p_eff
+        return self.spn_power.value()
 
     def _style_kwargs(self):
         # Le style « Défocus » (index 4) est un trait PLEIN gravé plus haut
@@ -2935,6 +3104,10 @@ class TaskPanelCurved:
         self.spn_wave_period.setValue(values.get("wave_period", self.spn_wave_period.value()))
         self.spn_wave_amp.setValue(values.get("wave_amp", self.spn_wave_amp.value()))
         self.spn_defocus.setValue(values.get("defocus", self.spn_defocus.value()))
+        self._fluence["chk"].setChecked(values.get("fluence_on", self._fluence["chk"].isChecked()))
+        self._fluence["ref_power"].setValue(values.get("ref_power", self._fluence["ref_power"].value()))
+        self._fluence["ref_feed"].setValue(values.get("ref_feed", self._fluence["ref_feed"].value()))
+        self._fluence["ref_defocus"].setValue(values.get("ref_defocus", self._fluence["ref_defocus"].value()))
 
     def _on_save_preset(self):
         name, ok = QtWidgets.QInputDialog.getText(self.form, "Sauvegarder le préréglage", "Nom du préréglage :")
@@ -2952,6 +3125,10 @@ class TaskPanelCurved:
             "dot_dwell_ms": self.spn_dot_dwell.value(),
             "wave_period": self.spn_wave_period.value(),
             "wave_amp": self.spn_wave_amp.value(),
+            "fluence_on": self._fluence["chk"].isChecked(),
+            "ref_power": self._fluence["ref_power"].value(),
+            "ref_feed": self._fluence["ref_feed"].value(),
+            "ref_defocus": self._fluence["ref_defocus"].value(),
         })
         self._populate_preset_combo()
         idx = self.combo_preset.findText(name)
@@ -2976,7 +3153,7 @@ class TaskPanelCurved:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return
         gcode = core.generate_gcode_curved(
-            self._edges, self.spn_power.value(), self.spn_feed.value(),
+            self._edges, self._effective_power(), self.spn_feed.value(),
             self._z_focus(), core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
             **self._style_kwargs()
@@ -3000,7 +3177,7 @@ class TaskPanelCurved:
             self.lbl_duration.setText("Durée estimée : -- (aucun segment dans la sélection)")
             return
         gcode = core.generate_gcode_curved(
-            self._edges, self.spn_power.value(), self.spn_feed.value(),
+            self._edges, self._effective_power(), self.spn_feed.value(),
             self._z_focus(), core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
             **self._style_kwargs()
@@ -3016,7 +3193,7 @@ class TaskPanelCurved:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return
         gcode = core.generate_gcode_curved(
-            self._edges, self.spn_power.value(), self.spn_feed.value(),
+            self._edges, self._effective_power(), self.spn_feed.value(),
             self._z_focus(), core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, frame_only=True, probe=self._probe,
             **self._style_kwargs()
@@ -3040,7 +3217,7 @@ class TaskPanelCurved:
         post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_curved(
             self._edges,
-            self.spn_power.value(),
+            self._effective_power(),
             self.spn_feed.value(),
             self._z_focus(),
             core.TRANSIT_MARGIN_MM,

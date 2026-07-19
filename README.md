@@ -34,6 +34,10 @@ Communs à tous les modes : estimation de durée **tenant compte des accélérat
 
 Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un cône de divergence linéaire calibré à partir de **deux mesures réelles** du point (au foyer, puis à un défocus connu) — jamais deviné. La **Bande de calibration défocus** fournit ces mesures ; on les saisit **une seule fois dans les Préférences** (« point au foyer », « défocus de test », « point au défocus de test ») et tous les modes concernés (Hachures 2D, Gravure remplie, Grille de test, style Vague) les réutilisent : l'atelier calcule le défocus nécessaire pour un espacement donné (et rentre le remplissage du rayon de point pour rester dans le contour).
 
+### Puissance vs défocus (fluence)
+
+Défocaliser étale la **même** puissance sur un point plus large : l'énergie déposée par unité de surface (la **fluence**) baisse, et sous un seuil le trait ne marque plus. Pour un trait balayé à la vitesse `v`, avec un point de diamètre `d` et une puissance `P`, la fluence vaut `F ∝ P / (d · v)` (l'aire du point grossit en `d²`, mais le temps de séjour sur chaque point grossit en `d`, d'où le `1/d` net). Les modes **Gravure remplie** et **Marquage (style Défocus)** exposent une section « Puissance vs défocus » : on renseigne un réglage de **référence** connu bon sur le matériau (puissance, vitesse, défocus d'une gravure réussie), et l'atelier soit **indique** la fluence obtenue par rapport à cette référence (à ajuster à la main), soit **compense la puissance automatiquement** pour retrouver la même fluence au défocus et à la vitesse courants (case à cocher). Aucune constante optique absolue n'est supposée — seuls des rapports à un point mesuré, dans l'esprit « on mesure, on ne devine pas » du reste de l'atelier.
+
 ## Démo vidéo
 
 [Vidéo de démonstration sur YouTube](https://youtu.be/KP4F4Cd287A)

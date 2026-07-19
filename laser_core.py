@@ -814,6 +814,49 @@ def defocus_for_fill_spacing(spacing, d_focus, half_angle, overlap=0.85):
     return (target - d_focus) / (2.0 * math.tan(half_angle))
 
 
+# --- Fluence (énergie déposée) : lien puissance <-> défocus ------------
+# Défocaliser étale la MÊME puissance sur un point plus large : l'énergie
+# reçue par unité de surface (la fluence) baisse, et sous un seuil le
+# trait ne marque plus (constaté à l'usage). Pour un trait BALAYÉ à la
+# vitesse v, avec un point de diamètre d et une puissance P, la fluence
+# vaut :   F ∝ P / (d · v)
+# Point subtil : l'aire du point grossit en d², MAIS le faisceau balaie
+# chaque point plus longtemps quand il est large (temps de séjour ∝ d),
+# donc la fluence ne chute qu'en 1/d, pas 1/d². Aucune constante optique
+# absolue n'étant connue, on ne manipule que des RAPPORTS à un réglage de
+# référence mesuré bon sur le matériau (même philosophie « on mesure, on
+# ne devine pas » que le reste de l'atelier).
+def line_fluence(power, feed, spot_diam):
+    """Fluence relative (sans unité) d'un trait balayé : P / (d · v).
+    Sert uniquement à comparer deux réglages entre eux."""
+    if feed <= 0 or spot_diam <= 0:
+        return 0.0
+    return power / (spot_diam * feed)
+
+
+def relative_line_fluence(power, feed, spot_diam,
+                          ref_power, ref_feed, ref_spot):
+    """Rapport de fluence entre le réglage (power, feed, spot) et une
+    RÉFÉRENCE connue bonne (ref_*) : 1.0 = même énergie déposée qu'à la
+    référence, < 1 = plus pâle (risque de ne pas marquer), > 1 = plus
+    appuyé (risque de brûler). None si la référence est invalide."""
+    ref = line_fluence(ref_power, ref_feed, ref_spot)
+    if ref <= 0:
+        return None
+    return line_fluence(power, feed, spot_diam) / ref
+
+
+def power_for_line_fluence(feed, spot_diam, ref_power, ref_feed, ref_spot, ratio=1.0):
+    """Puissance (S) qui donne `ratio` fois la fluence de référence, à la
+    vitesse et au diamètre de point donnés -- inversion de line_fluence :
+      P = ratio · ref_power · (spot / ref_spot) · (feed / ref_feed)
+    (la puissance monte proportionnellement au diamètre du point ET à la
+    vitesse). None si la référence est invalide."""
+    if ref_spot <= 0 or ref_feed <= 0 or ref_power <= 0:
+        return None
+    return ratio * ref_power * (spot_diam / ref_spot) * (feed / ref_feed)
+
+
 def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inset=0.0):
     """Crée l'objet 'Hachures_...' dans le document (vert), comme
     hachure.fcmacro, avec 3 types de remplissage possibles :
