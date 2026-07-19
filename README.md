@@ -31,6 +31,8 @@ Les modes sont regroupés par thème dans la barre d'outils et le menu.
 **Assemblage**
 - **Job combiné** : empile plusieurs opérations (marquage, découpe, grille de test) dans un seul fichier G-code avec un seul armement du laser, transition de sécurité anti-collision entre opérations.
 
+Tous les modes de **test & calibration** (Grille, Rampe, Bande de calibration défocus, Kerf, Offsets) ont un sélecteur de **préréglages** : des **préréglages d'usine** (★, points de départ prêts à l'emploi, non supprimables) qu'on charge d'un clic, plus les siens (sauvegarde/suppression comme les préréglages matériau des autres modes).
+
 Communs à tous les modes : estimation de durée **tenant compte des accélérations** (profil trapézoïdal par course, accélération réglable dans les Préférences — décisif sur les remplissages faits de milliers de traits courts), aperçu de trajet dans la vue 3D, aperçu de cadrage en fichier séparé (avec faisceau de visée à très faible puissance optionnel) pour vérifier le positionnement avant de lancer, préréglages matériau, préférences globales, et **mémorisation des derniers réglages** de chaque panneau (rouvrir un mode retrouve les valeurs de la dernière fois).
 
 ## Modèle de défocus (remplissage noir)

@@ -2565,6 +2565,90 @@ def delete_preset(category, name):
         save_config(cfg)
 
 
+# --- Préréglages D'USINE (points de départ, toujours proposés) ----------
+# Fournis avec l'atelier pour les modes de CALIBRATION, pour ne pas partir
+# d'une page blanche. Ce sont des dicts {champ: valeur} dont les CLÉS
+# correspondent aux `_last_fields` du panneau (index pour un combo, bool
+# pour une case, nombre pour un champ). Non supprimables ; l'utilisateur
+# peut en charger un, l'ajuster, puis le sauvegarder sous un autre nom
+# (préréglage utilisateur, qui masque l'usine s'il porte le même nom).
+_FACTORY_PRESETS = {
+    "defocus_calib": {
+        "Recherche du foyer (fin)": {
+            "zstart": 0.0, "zstep": 0.5, "nmarks": 16, "length": 15.0,
+            "rowgap": 6.0, "power": 300.0, "power_end": 300.0, "feed": 1000.0,
+            "labels": True, "power_labels": True, "label_power": 300.0, "label_feed": 1500.0},
+        "Divergence (large + rampe)": {
+            "zstart": 0.0, "zstep": 2.0, "nmarks": 20, "length": 15.0,
+            "rowgap": 8.0, "power": 250.0, "power_end": 800.0, "feed": 1000.0,
+            "labels": True, "power_labels": True, "label_power": 300.0, "label_feed": 1500.0},
+        "Balayage complet (0-45mm)": {
+            "zstart": 0.0, "zstep": 3.0, "nmarks": 16, "length": 12.0,
+            "rowgap": 9.0, "power": 300.0, "power_end": 1000.0, "feed": 1200.0,
+            "labels": True, "power_labels": True, "label_power": 300.0, "label_feed": 1500.0},
+    },
+    "powerramp": {
+        "Gravure MDF (puissance/vitesse)": {
+            "length": 100.0, "nlines": 6, "gap": 8.0, "feed_min": 300.0, "feed_max": 1500.0,
+            "power_min": 0.0, "power_max": 1000.0, "steps": 15, "zramp": False, "z_end": 14.0,
+            "labels": True, "label_power": 300.0, "label_feed": 1500.0},
+        "Marquage léger (rapide)": {
+            "length": 100.0, "nlines": 6, "gap": 8.0, "feed_min": 1000.0, "feed_max": 6000.0,
+            "power_min": 0.0, "power_max": 600.0, "steps": 15, "zramp": False, "z_end": 14.0,
+            "labels": True, "label_power": 300.0, "label_feed": 1500.0},
+        "Découpe fine (lent)": {
+            "length": 100.0, "nlines": 5, "gap": 8.0, "feed_min": 100.0, "feed_max": 600.0,
+            "power_min": 400.0, "power_max": 1000.0, "steps": 12, "zramp": False, "z_end": 14.0,
+            "labels": True, "label_power": 300.0, "label_feed": 1500.0},
+        "Défocus/largeur (rampe Z)": {
+            "length": 120.0, "nlines": 5, "gap": 10.0, "feed_min": 300.0, "feed_max": 900.0,
+            "power_min": 200.0, "power_max": 1000.0, "steps": 15, "zramp": True, "z_end": 40.0,
+            "labels": True, "label_power": 300.0, "label_feed": 1500.0},
+    },
+    "offset_test": {
+        "Croix standard (10 mm)": {
+            "half": 10.0, "surface_z": 0.0, "mill_tool": 2, "rpm": 18000.0,
+            "mill_feed": 600.0, "depth": 0.4, "zfocus": 8.0, "power": 300.0, "laser_feed": 1000.0},
+        "Grande croix (20 mm)": {
+            "half": 20.0, "surface_z": 0.0, "mill_tool": 2, "rpm": 18000.0,
+            "mill_feed": 600.0, "depth": 0.4, "zfocus": 8.0, "power": 300.0, "laser_feed": 1000.0},
+    },
+    "kerf": {
+        "Petit (10 mm)": {"size": 10.0},
+        "Standard (20 mm)": {"size": 20.0},
+        "Grand (50 mm)": {"size": 50.0},
+    },
+    "testgrid": {
+        "Gravure MDF (départ)": {
+            "mode": 0, "power_min": 200.0, "power_max": 1000.0, "power_steps": 5,
+            "feed_min": 500.0, "feed_max": 3000.0, "feed_steps": 5, "cell_size": 10.0,
+            "gap": 3.0, "zwork": 8.0, "filltype": 0, "hatch_spacing": 0.2, "hatch_angle": 45.0,
+            "proximity": True, "labels": True, "label_power": 300.0, "label_feed": 1500.0,
+            "border_enabled": True, "border_power": 300.0, "border_feed": 1000.0},
+        "Découpe (départ)": {
+            "mode": 1, "power_min": 500.0, "power_max": 1000.0, "power_steps": 4,
+            "feed_min": 150.0, "feed_max": 700.0, "feed_steps": 5, "cell_size": 10.0,
+            "gap": 4.0, "zwork": 8.0, "proximity": True, "labels": True,
+            "label_power": 300.0, "label_feed": 1500.0, "border_enabled": False,
+            "border_power": 300.0, "border_feed": 1000.0},
+    },
+}
+
+
+def factory_presets(category):
+    """Préréglages d'usine (dict {nom: valeurs}) d'une catégorie, dans
+    l'ordre de définition."""
+    return _FACTORY_PRESETS.get(category, {})
+
+
+def all_presets(category):
+    """Préréglages d'usine + utilisateur (l'utilisateur masque l'usine
+    de même nom). Pour peupler le sélecteur d'un panneau."""
+    merged = dict(_FACTORY_PRESETS.get(category, {}))
+    merged.update(load_presets(category))
+    return merged
+
+
 def estimate_job_time_seconds(gcode_text, rapid_feed=None, accel=None):
     """Estime le temps total du job en secondes, en reparcourant le
     G-code déjà généré : G1 selon la distance/avance programmée, G0 à

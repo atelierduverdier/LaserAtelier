@@ -277,6 +277,110 @@ def _save_last_values(panel_key, fields):
     core.save_config(cfg)
 
 
+class _PresetController:
+    """Bloc de préréglages (sélecteur + Sauvegarder + Supprimer) réutilisable,
+    adossé aux préréglages d'USINE + UTILISATEUR d'une catégorie. Un
+    préréglage = un instantané de `fields_getter()` (dict nom -> widget),
+    via _widget_get/_widget_set (même mécanique que la mémorisation de la
+    dernière session). Les préréglages d'usine (★) ne sont pas supprimables.
+    `on_loaded` est appelé après chargement (pour rafraîchir les aperçus).
+
+    Le sélecteur/les boutons sont ajoutés à `form` tout de suite ; les
+    champs (fields_getter) et on_loaded ne sont lus qu'à l'interaction,
+    donc l'appelant peut placer ce bloc EN HAUT du panneau et définir
+    self._last_fields plus loin dans son __init__."""
+
+    def __init__(self, form, parent_widget, category, fields_getter, on_loaded=None):
+        self.category = category
+        self.fields_getter = fields_getter
+        self.parent = parent_widget
+        self.on_loaded = on_loaded
+
+        _section(form, "Préréglages", "sect_preset.svg")
+        self.combo = QtWidgets.QComboBox()
+        self.combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo.setMinimumContentsLength(18)
+        self.combo.setToolTip(
+            "Charge un jeu complet de réglages. Les ★ sont fournis d'usine\n"
+            "(points de départ utiles, non supprimables) ; les autres sont\n"
+            "les tiens. Choisis-en un pour remplir tous les champs d'un coup,\n"
+            "ajuste, puis « Sauvegarder » sous un nom pour créer le tien.")
+        form.addRow("Préréglage :", self.combo)
+
+        btn_save = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        btn_save.setToolTip("Enregistre toutes les valeurs du panneau sous un nom.")
+        btn_save.clicked.connect(self._on_save)
+        form.addRow(btn_save)
+
+        btn_del = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        btn_del.clicked.connect(self._on_delete)
+        form.addRow(btn_del)
+
+        self.combo.currentIndexChanged.connect(self._on_selected)
+        self._populate()
+
+    def _populate(self):
+        self.combo.blockSignals(True)
+        self.combo.clear()
+        self.combo.addItem("-- Choisir --", None)
+        factory = core.factory_presets(self.category)
+        user = core.load_presets(self.category)
+        for name in factory:
+            self.combo.addItem("★ " + name, name)
+        for name in sorted(user):
+            if name not in factory:
+                self.combo.addItem(name, name)
+        self.combo.blockSignals(False)
+
+    def _on_selected(self, index):
+        if index <= 0:
+            return
+        name = self.combo.currentData()
+        values = core.all_presets(self.category).get(name)
+        fields = self.fields_getter() or {}
+        if not values:
+            return
+        for key, widget in fields.items():
+            if key in values:
+                _widget_set(widget, values[key])
+        if self.on_loaded:
+            self.on_loaded()
+
+    def _on_save(self):
+        current = self.combo.currentData() or ""
+        name, ok = QtWidgets.QInputDialog.getText(
+            self.parent, "Sauvegarder le préréglage",
+            "Nom du préréglage :", text=current)
+        name = name.strip()
+        if not ok or not name:
+            return
+        fields = self.fields_getter() or {}
+        core.save_preset(self.category, name, {k: _widget_get(w) for k, w in fields.items()})
+        self._populate()
+        i = self.combo.findData(name)
+        if i >= 0:
+            self.combo.setCurrentIndex(i)
+
+    def _on_delete(self):
+        name = self.combo.currentData()
+        if not name:
+            return
+        if name not in core.load_presets(self.category):
+            QtWidgets.QMessageBox.information(
+                self.parent, "Préréglage d'usine",
+                "« {} » est un préréglage d'usine : il ne peut pas être\n"
+                "supprimé. Tu peux le charger, l'ajuster, puis le sauvegarder\n"
+                "sous un autre nom.".format(name))
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self.parent, "Supprimer", "Supprimer le préréglage « {} » ?".format(name),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if reply != QtWidgets.QMessageBox.Yes:
+            return
+        core.delete_preset(self.category, name)
+        self._populate()
+
+
 def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
     """Ajoute une section « Puissance vs défocus » à `form` (compensation
     de la puissance selon le défocus, cf. line_fluence dans laser_core) et
@@ -1264,6 +1368,9 @@ class TaskPanelKerf:
             "kerf = taille dessinée - taille mesurée.")
         form.addRow(lbl)
 
+        self._last_fields = {"size": self.spn_size}
+        self._presets = _PresetController(form, inner, "kerf", lambda: self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Calibration kerf")
         self.form.setWindowIcon(_icon("kerf.svg"))
@@ -1302,6 +1409,8 @@ class TaskPanelDefocusCalibration:
             "sur la surface. Aucune sélection requise.")
         _panel_header(form, "defocus.svg", "Bande de calibration défocus")
         form.addRow(info)
+
+        self._presets = _PresetController(form, inner, "defocus_calib", lambda: self._last_fields)
 
         _section(form, "Balayage en hauteur (Z)", "sect_zheight.svg")
         self.spn_zstart = QtWidgets.QDoubleSpinBox()
@@ -1466,6 +1575,8 @@ class TaskPanelDefocusCalibration:
             "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
         }
         _restore_last_values("defocus_calib", self._last_fields)
+        # Un préréglage chargé rafraîchit la plage affichée et la durée.
+        self._presets.on_loaded = lambda: (_update_range(), self._update_duration_preview())
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Bande de calibration défocus")
@@ -1553,6 +1664,8 @@ class TaskPanelPowerRamp:
             "complément continu de la Grille de test (cellules discrètes).\n"
             "Zéro Z sur la surface. Aucune sélection requise.")
         form.addRow(info)
+
+        self._presets = _PresetController(form, inner, "powerramp", lambda: self._last_fields)
 
         _section(form, "Lignes (vitesses)", "sect_power.svg")
         self.spn_length = QtWidgets.QDoubleSpinBox()
@@ -1728,6 +1841,7 @@ class TaskPanelPowerRamp:
             "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
         }
         _restore_last_values("powerramp", self._last_fields)
+        self._presets.on_loaded = self._update_duration_preview
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test rampe puissance / vitesse (lignes)")
@@ -1835,6 +1949,8 @@ class TaskPanelOffsetTest:
             "Lunettes laser obligatoires. Aucune sélection requise.")
         _panel_header(form, "offset_test.svg", "Test des offsets X/Y du laser")
         form.addRow(info)
+
+        self._presets = _PresetController(form, inner, "offset_test", lambda: self._last_fields)
 
         _section(form, "Croix (géométrie)", "sect_options.svg")
         self.spn_half = QtWidgets.QDoubleSpinBox()
@@ -1956,6 +2072,7 @@ class TaskPanelOffsetTest:
             "laser_feed": self.spn_laser_feed,
         }
         _restore_last_values("offset_test", self._last_fields)
+        self._presets.on_loaded = self._update_duration_preview
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test des offsets X/Y du laser")
@@ -2771,14 +2888,22 @@ class TaskPanelTestGrid:
     def _populate_preset_combo(self):
         self.combo_preset.blockSignals(True)
         self.combo_preset.clear()
-        self.combo_preset.addItem("-- Choisir --")
-        presets = core.load_presets("testgrid")
-        for name in sorted(presets):
-            self.combo_preset.addItem(name)
+        self.combo_preset.addItem("-- Choisir --", None)
+        factory = core.factory_presets("testgrid")
+        user = core.load_presets("testgrid")
+        # ★ = préréglages d'usine (non supprimables) ; nom réel en itemData.
+        for name in factory:
+            self.combo_preset.addItem("★ " + name, name)
             self.combo_preset.setItemData(
                 self.combo_preset.count() - 1,
-                self._preset_summary(presets[name]),
-                QtCore.Qt.ToolTipRole)
+                self._preset_summary(factory[name]), QtCore.Qt.ToolTipRole)
+        for name in sorted(user):
+            if name in factory:
+                continue
+            self.combo_preset.addItem(name, name)
+            self.combo_preset.setItemData(
+                self.combo_preset.count() - 1,
+                self._preset_summary(user[name]), QtCore.Qt.ToolTipRole)
         self.combo_preset.blockSignals(False)
         self.lbl_preset_summary.setVisible(False)
 
@@ -2810,7 +2935,7 @@ class TaskPanelTestGrid:
         if index <= 0:
             self.lbl_preset_summary.setVisible(False)
             return
-        values = core.load_presets("testgrid").get(self.combo_preset.currentText())
+        values = core.all_presets("testgrid").get(self.combo_preset.currentData())
         if not values:
             return
         self.combo_mode.setCurrentIndex(values.get("mode", self.combo_mode.currentIndex()))
@@ -2837,7 +2962,7 @@ class TaskPanelTestGrid:
         self.lbl_preset_summary.setVisible(True)
 
     def _on_save_preset(self):
-        current = self.combo_preset.currentText() if self.combo_preset.currentIndex() > 0 else ""
+        current = self.combo_preset.currentData() or ""
         name, ok = QtWidgets.QInputDialog.getText(
             self.form, "Sauvegarder le préréglage",
             "Nom du préréglage (matériau) :", text=current)
@@ -2846,15 +2971,21 @@ class TaskPanelTestGrid:
             return
         core.save_preset("testgrid", name, self._preset_values())
         self._populate_preset_combo()
-        idx = self.combo_preset.findText(name)
+        idx = self.combo_preset.findData(name)
         if idx >= 0:
             self.combo_preset.setCurrentIndex(idx)
 
     def _on_delete_preset(self):
-        index = self.combo_preset.currentIndex()
-        if index <= 0:
+        name = self.combo_preset.currentData()
+        if not name:
             return
-        name = self.combo_preset.currentText()
+        if name not in core.load_presets("testgrid"):
+            QtWidgets.QMessageBox.information(
+                self.form, "Préréglage d'usine",
+                "« {} » est un préréglage d'usine : il ne peut pas être\n"
+                "supprimé. Tu peux le charger, l'ajuster, puis le sauvegarder\n"
+                "sous un autre nom.".format(name))
+            return
         reply = QtWidgets.QMessageBox.question(
             self.form, "Supprimer", "Supprimer le préréglage « {} » ?".format(name),
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
