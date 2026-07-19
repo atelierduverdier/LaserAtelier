@@ -1275,6 +1275,37 @@ def text_to_edges(text, x0, y0, height, spacing_ratio=0.4):
     return edges
 
 
+def text_to_edges_vertical(text, x_center, y_top, height, vgap_ratio=0.3):
+    """Comme text_to_edges mais empile les caractères VERTICALEMENT (de
+    haut en bas), chacun centré horizontalement sur x_center. Pour des
+    étiquettes qui tiennent dans un espacement HORIZONTAL serré -- ex. les
+    graduations de puissance du test rampe, écrites verticalement faute de
+    place à l'horizontale. y_top = haut du 1er caractère (le texte descend
+    ensuite)."""
+    char_w = text_char_width(height)
+    vgap = height * vgap_ratio
+    x0 = x_center - char_w / 2.0
+    edges = []
+    for i, ch in enumerate(text):
+        y_bottom = y_top - (i + 1) * height - i * vgap
+        edges.extend(_char_to_edges(ch, x0, y_bottom, height))
+    return edges
+
+
+def nice_axis_step(span, target_ticks=6):
+    """Pas « rond » (1/2/2.5/5 x puissance de 10) pour graduer un axe de
+    `span` en ~target_ticks intervalles -- graduations lisibles (100, 200,
+    250, 500...) plutôt qu'un pas brut."""
+    if span <= 0:
+        return 1.0
+    raw = span / float(target_ticks)
+    mag = 10.0 ** math.floor(math.log10(raw))
+    for m in (1.0, 2.0, 2.5, 5.0, 10.0):
+        if m * mag >= raw:
+            return m * mag
+    return 10.0 * mag
+
+
 def build_test_grid_axis_labels(cells, n_power, n_feed, cell_size, gap, label_height=None):
     """Construit les étiquettes d'axe de la grille de test : une par
     colonne de puissance (ex: "S400", sous la grille) et une par ligne de
@@ -3336,15 +3367,38 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
             w = text_width(text, label_h)
             label_chains.extend(chain_edges(
                 text_to_edges(text, -(w + line_gap * 0.3), y - label_h / 2.0, label_h)))
-        # Bornes de puissance sous la 1re ligne (échelle gauche->droite).
-        y_scale = -line_gap
-        smin = "S{:.0f}".format(power_min)
-        label_chains.extend(chain_edges(
-            text_to_edges(smin, 0.0, y_scale - label_h, label_h)))
-        smax = "S{:.0f}".format(power_max)
-        w = text_width(smax, label_h)
-        label_chains.extend(chain_edges(
-            text_to_edges(smax, line_length - w, y_scale - label_h, label_h)))
+
+        # Règle de graduation de puissance sous la 1re ligne (y=0) :
+        # petits traits verticaux à des valeurs de S rondes le long de X,
+        # étiquetés en chiffres VERTICAUX (empilés) pour tenir dans
+        # l'espacement serré. Les bornes power_min/power_max sont toujours
+        # marquées, plus des paliers ronds intermédiaires.
+        tick_top = -line_gap * 0.25
+        tick_len = label_h * 0.7
+        grad_h = label_h * 0.8
+        span = power_max - power_min
+
+        tick_powers = [power_min, power_max]
+        if span > 0:
+            step = nice_axis_step(span)
+            p = math.ceil((power_min + 1e-9) / step) * step
+            while p < power_max - 1e-9:
+                tick_powers.append(p)
+                p += step
+        # dédoublonnage (tolérance) + tri
+        uniq = []
+        for p in sorted(tick_powers):
+            if not uniq or abs(p - uniq[-1]) > max(span * 0.02, 1e-6):
+                uniq.append(p)
+
+        for p in uniq:
+            x_tick = 0.0 if span <= 0 else line_length * (p - power_min) / span
+            # trait de graduation vertical
+            label_chains.append([FreeCAD.Vector(x_tick, tick_top, 0.0),
+                                 FreeCAD.Vector(x_tick, tick_top - tick_len, 0.0)])
+            # valeur en chiffres empilés sous le trait
+            label_chains.extend(chain_edges(text_to_edges_vertical(
+                "{:.0f}".format(p), x_tick, tick_top - tick_len - grad_h * 0.4, grad_h)))
 
     all_pts = []
     for y, _ in lines_geo:
