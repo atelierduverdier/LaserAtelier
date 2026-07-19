@@ -284,6 +284,18 @@ Z_MAX_FEED_MM_MIN = 1500.0            # vitesse max supposée de l'axe Z (mm/min
                                       # la vraie limite machine, rien de dangereux)
 ACCEL_MM_S2 = 800.0                   # accélération machine supposée (mm/s2) pour
                                       # l'estimation de durée -- n'affecte jamais le G-code
+Z_WORK_MM = 8.5                       # Z de travail (foyer) proposé par défaut dans les
+                                      # panneaux -- propriété machine (focale du nez avec le
+                                      # zéro Z sur la surface), une seule valeur à entretenir
+TRANSIT_MARGIN_MM = 0.5               # marge de survol par défaut des modes marquage (au-
+                                      # dessus du Z de travail / du relief pour les transits)
+# --- Calibration du point laser (défocus) : PROPRIÉTÉ MACHINE, mesurée
+# une fois avec la Bande de calibration défocus puis saisie ici (via les
+# Préférences) -- utilisée par Hachures 2D, Gravure remplie, Grille de
+# test et le style Vague, au lieu d'être resaisie dans chaque panneau.
+SPOT_FOCUS_MM = 0.15                  # diamètre du point AU FOYER (mesuré)
+SPOT_TEST_DEFOCUS_MM = 3.0            # défocus de test de la 2e mesure (mm)
+SPOT_TEST_DIAMETER_MM = 1.0           # diamètre du point mesuré à ce défocus de test
 
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
 _USER_SETTINGS = (
@@ -296,6 +308,11 @@ _USER_SETTINGS = (
     ("frame_feed_mm_min", "FRAME_FEED_MM_MIN", float, lambda v: v > 0),
     ("z_max_feed_mm_min", "Z_MAX_FEED_MM_MIN", float, lambda v: v > 0),
     ("accel_mm_s2", "ACCEL_MM_S2", float, lambda v: v > 0),
+    ("z_work_mm", "Z_WORK_MM", float, lambda v: -100 <= v <= 500),
+    ("transit_margin_mm", "TRANSIT_MARGIN_MM", float, lambda v: v >= 0),
+    ("spot_focus_mm", "SPOT_FOCUS_MM", float, lambda v: v > 0),
+    ("spot_test_defocus_mm", "SPOT_TEST_DEFOCUS_MM", float, lambda v: v > 0),
+    ("spot_test_diameter_mm", "SPOT_TEST_DIAMETER_MM", float, lambda v: v > 0),
     ("safe_min_nozzle_height_mm", "SAFE_MIN_NOZZLE_HEIGHT_MM", float, lambda v: v >= 0),
     ("max_thickness_warning_mm", "MAX_THICKNESS_WARNING_MM", float, lambda v: v > 0),
     ("recommended_max_step_mm", "RECOMMENDED_MAX_STEP_MM", float, lambda v: v > 0),
@@ -767,6 +784,15 @@ def spot_diameter_at_defocus(z, d_focus, half_angle):
     absolue) du foyer, selon le modèle conique calibré par
     defocus_divergence_half_angle."""
     return d_focus + 2.0 * abs(z) * math.tan(half_angle)
+
+
+def calibrated_half_angle():
+    """Demi-angle de divergence issu de la calibration du point stockée
+    dans les Préférences (mesures de la Bande de calibration défocus) --
+    le point d'entrée UNIQUE de la calibration pour tous les panneaux,
+    au lieu de trois champs resaisis dans chacun."""
+    return defocus_divergence_half_angle(
+        SPOT_FOCUS_MM, SPOT_TEST_DIAMETER_MM, SPOT_TEST_DEFOCUS_MM)
 
 
 def defocus_for_fill_spacing(spacing, d_focus, half_angle, overlap=0.85):

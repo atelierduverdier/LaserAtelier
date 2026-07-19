@@ -321,82 +321,39 @@ class TaskPanelHatch:
             "La Gravure remplie fait ce retrait automatiquement.")
         form.addRow("Retrait du bord :", self.spn_inset)
 
-        self.lbl_defocus_calib = QtWidgets.QLabel(
-            "<b>Calibration du point laser</b> -- brûle 2 points test (au\n"
-            "foyer, puis à un défocus connu) et mesure leur diamètre :")
-        self.lbl_defocus_calib.setWordWrap(True)
-        form.addRow(self.lbl_defocus_calib)
-
-        self.spn_dfocus = QtWidgets.QDoubleSpinBox()
-        self.spn_dfocus.setRange(0.01, 20.0)
-        self.spn_dfocus.setValue(0.15)
-        self.spn_dfocus.setDecimals(3)
-        self.spn_dfocus.setSuffix(" mm")
-        self.spn_dfocus.setToolTip(
-            "Diamètre du point laser AU FOYER (Z de travail normal, celui\n"
-            "utilisé pour un trait fin/une découpe). À MESURER réellement --\n"
-            "0.15mm n'est qu'une valeur de départ, pas une donnée\n"
-            "constructeur.")
-        form.addRow("Point au foyer (mesuré) :", self.spn_dfocus)
-
-        self.spn_ztest = QtWidgets.QDoubleSpinBox()
-        self.spn_ztest.setRange(0.1, 50.0)
-        self.spn_ztest.setValue(3.0)
-        self.spn_ztest.setDecimals(2)
-        self.spn_ztest.setSuffix(" mm")
-        self.spn_ztest.setToolTip(
-            "Défocus de test (bec écarté de cette distance du foyer)\n"
-            "utilisé pour la 2e mesure -- la valeur exacte importe peu,\n"
-            "seule compte la précision de la mesure du point obtenu.")
-        form.addRow("Défocus de test :", self.spn_ztest)
-
-        self.spn_dtest = QtWidgets.QDoubleSpinBox()
-        self.spn_dtest.setRange(0.01, 30.0)
-        self.spn_dtest.setValue(1.0)
-        self.spn_dtest.setDecimals(3)
-        self.spn_dtest.setSuffix(" mm")
-        self.spn_dtest.setToolTip("Diamètre du point laser mesuré à ce défocus de test.")
-        form.addRow("Point au défocus de test (mesuré) :", self.spn_dtest)
-
         self.lbl_defocus_result = QtWidgets.QLabel("Défocus calculé : --")
         self.lbl_defocus_result.setWordWrap(True)
         form.addRow(self.lbl_defocus_result)
 
-        self._defocus_widgets = [
-            self.lbl_defocus_calib, self.spn_dfocus, self.spn_ztest,
-            self.spn_dtest, self.lbl_defocus_result,
-        ]
-
         def _update_defocus_preview():
-            half_angle = core.defocus_divergence_half_angle(
-                self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+            # Calibration du point : centralisée dans les Préférences
+            # (icône engrenage), plus de champs resaisis ici.
+            half_angle = core.calibrated_half_angle()
             defocus = core.defocus_for_fill_spacing(
-                self.spn_spacing.value(), self.spn_dfocus.value(), half_angle)
+                self.spn_spacing.value(), core.SPOT_FOCUS_MM, half_angle)
             if defocus is None:
                 self.lbl_defocus_result.setText(
-                    "Défocus calculé : -- (calibration invalide : le point\n"
-                    "mesuré au défocus de test doit être strictement plus\n"
-                    "large que celui mesuré au foyer)")
+                    "Défocus calculé : -- (calibration du point invalide dans\n"
+                    "les Préférences : le point au défocus de test doit être\n"
+                    "plus large qu'au foyer -- à mesurer avec la Bande de\n"
+                    "calibration défocus puis à saisir dans les Préférences).")
             else:
-                spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
+                spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
                 self.lbl_defocus_result.setText(
                     "Défocus calculé : {:.3f} mm -- à AJOUTER au Z de travail\n"
                     "(mode Marquage/Découpe) pour cette passe de remplissage.\n"
                     "Point élargi : {:.2f} mm -- Retrait du bord recommandé :\n"
                     "{:.2f} mm (rayon du point) pour que la brûlure ne déborde\n"
-                    "pas de la forme.".format(defocus, spot, spot / 2.0))
+                    "pas de la forme.\n"
+                    "(Calibration du point : Préférences, icône engrenage.)".format(
+                        defocus, spot, spot / 2.0))
 
         def _on_filltype_changed(idx):
-            is_defocus = (idx == 2)
-            for w in self._defocus_widgets:
-                w.setVisible(is_defocus)
+            self.lbl_defocus_result.setVisible(idx == 2)
             _update_defocus_preview()
 
         self.combo_filltype.currentIndexChanged.connect(_on_filltype_changed)
         self.spn_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_dfocus.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_ztest.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_dtest.valueChanged.connect(lambda _v: _update_defocus_preview())
         _on_filltype_changed(self.combo_filltype.currentIndex())
 
         info = QtWidgets.QLabel("Sélectionne le motif 2D (face/sketch) avant de générer.")
@@ -406,8 +363,6 @@ class TaskPanelHatch:
         self._last_fields = {
             "filltype": self.combo_filltype, "spacing": self.spn_spacing,
             "angle": self.spn_angle, "inset": self.spn_inset,
-            "dfocus": self.spn_dfocus, "ztest": self.spn_ztest,
-            "dtest": self.spn_dtest,
         }
         _restore_last_values("hatch", self._last_fields)
 
@@ -517,50 +472,18 @@ class TaskPanelFilledEngraving:
             "obliques) : ce liseré la comble pour un noir plein jusqu'au contour.")
         form.addRow(self.chk_perimeter)
 
-        _section(form, "Calibration du point (défocus)", "sect_focus.svg")
-        self.lbl_defocus_calib = QtWidgets.QLabel(
-            "<b>Calibration du point laser</b> -- brûle 2 points test (au\n"
-            "foyer, puis à un défocus connu) et mesure leur diamètre :")
-        self.lbl_defocus_calib.setWordWrap(True)
-        form.addRow(self.lbl_defocus_calib)
-
-        self.spn_dfocus = QtWidgets.QDoubleSpinBox()
-        self.spn_dfocus.setRange(0.01, 20.0)
-        self.spn_dfocus.setDecimals(3)
-        self.spn_dfocus.setValue(0.15)
-        self.spn_dfocus.setSuffix(" mm")
-        self.spn_dfocus.setToolTip(
-            "Diamètre du point AU FOYER. À MESURER réellement -- 0.15mm\n"
-            "n'est qu'une valeur de départ.")
-        form.addRow("Point au foyer (mesuré) :", self.spn_dfocus)
-
-        self.spn_ztest = QtWidgets.QDoubleSpinBox()
-        self.spn_ztest.setRange(0.1, 60.0)
-        self.spn_ztest.setDecimals(2)
-        self.spn_ztest.setValue(3.0)
-        self.spn_ztest.setSuffix(" mm")
-        self.spn_ztest.setToolTip(
-            "Défocus de test (bec écarté de cette distance du foyer)\n"
-            "utilisé pour la 2e mesure.")
-        form.addRow("Défocus de test :", self.spn_ztest)
-
-        self.spn_dtest = QtWidgets.QDoubleSpinBox()
-        self.spn_dtest.setRange(0.01, 30.0)
-        self.spn_dtest.setDecimals(3)
-        self.spn_dtest.setValue(1.0)
-        self.spn_dtest.setSuffix(" mm")
-        self.spn_dtest.setToolTip("Diamètre du point mesuré à ce défocus de test.")
-        form.addRow("Point au défocus de test (mesuré) :", self.spn_dtest)
-
         self.lbl_defocus_result = QtWidgets.QLabel("Défocus calculé : --")
         self.lbl_defocus_result.setWordWrap(True)
+        self.lbl_defocus_result.setToolTip(
+            "Calculé depuis la calibration du point des Préférences (icône\n"
+            "engrenage) -- mesurée avec la Bande de calibration défocus.")
         form.addRow(self.lbl_defocus_result)
 
         _section(form, "Z de travail & transit", "sect_zheight.svg")
         self.spn_zwork = QtWidgets.QDoubleSpinBox()
         self.spn_zwork.setRange(-50, 200)
         self.spn_zwork.setDecimals(2)
-        self.spn_zwork.setValue(8.5)
+        self.spn_zwork.setValue(core.Z_WORK_MM)
         self.spn_zwork.setSuffix(" mm")
         self.spn_zwork.setToolTip(
             "Z de foyer (bec au point sur la surface). Le remplissage est\n"
@@ -571,13 +494,14 @@ class TaskPanelFilledEngraving:
         self.spn_marge = QtWidgets.QDoubleSpinBox()
         self.spn_marge.setRange(0.0, 100.0)
         self.spn_marge.setDecimals(1)
-        self.spn_marge.setValue(0.0)
+        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
         self.spn_marge.setSuffix(" mm")
         self.spn_marge.setToolTip(
             "Hauteur de survol des déplacements à vide (laser éteint) entre\n"
             "les traits. 0 = transit à plat, sans lever le bec (recommandé\n"
             "sur du plat : évite un aller-retour vertical à chaque hachure).\n"
-            "N'augmenter que pour survoler des obstacles (brides, serre-flans).")
+            "N'augmenter que pour survoler des obstacles (brides, serre-flans).\n"
+            "Valeur par défaut réglable dans les Préférences.")
         form.addRow("Marge de survol (transit) :", self.spn_marge)
 
         _section(form, "Contour", "sect_contour.svg")
@@ -716,19 +640,21 @@ class TaskPanelFilledEngraving:
         }
 
         def _update_defocus_preview():
-            half_angle = core.defocus_divergence_half_angle(
-                self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+            # Calibration du point : centralisée dans les Préférences.
+            half_angle = core.calibrated_half_angle()
             defocus = core.defocus_for_fill_spacing(
-                self.spn_spacing.value(), self.spn_dfocus.value(), half_angle)
+                self.spn_spacing.value(), core.SPOT_FOCUS_MM, half_angle)
             if defocus is None:
                 self.lbl_defocus_result.setText(
-                    "Défocus calculé : -- (calibration invalide : le point au\n"
-                    "défocus de test doit être plus large qu'au foyer)")
+                    "Défocus calculé : -- (calibration du point invalide dans\n"
+                    "les Préférences : le point au défocus de test doit être\n"
+                    "plus large qu'au foyer).")
             else:
-                spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
+                spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
                 self.lbl_defocus_result.setText(
                     "Défocus calculé : {:.2f} mm (bec remonté d'autant) -- point\n"
-                    "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.".format(
+                    "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.\n"
+                    "(Calibration du point : Préférences, icône engrenage.)".format(
                         defocus, spot, spot / 2.0))
             # Retour visuel du contour : épaisseur voulue -> défocus.
             off = self._contour_offset(half_angle)
@@ -741,9 +667,6 @@ class TaskPanelFilledEngraving:
 
         self._update_defocus_preview = _update_defocus_preview
         self.spn_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_dfocus.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_ztest.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_dtest.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_contour_width.valueChanged.connect(lambda _v: _update_defocus_preview())
 
         def _update_style_preview():
@@ -759,13 +682,12 @@ class TaskPanelFilledEngraving:
 
             # Avertissement vitesse Z crête pour les vagues.
             infos = []
-            half_angle = core.defocus_divergence_half_angle(
-                self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+            half_angle = core.calibrated_half_angle()
             period = self.spn_wave_period.value()
             checks = []
             if fill_s == "vague":
                 amp = core.defocus_for_fill_spacing(
-                    self.spn_fill_wave_width.value(), self.spn_dfocus.value(),
+                    self.spn_fill_wave_width.value(), core.SPOT_FOCUS_MM,
                     half_angle, overlap=1.0)
                 checks.append(("remplissage", amp, self.spn_fill_feed.value()))
             if contour_s == "vague":
@@ -789,8 +711,7 @@ class TaskPanelFilledEngraving:
         self.combo_fill_style.currentIndexChanged.connect(lambda _i: _update_style_preview())
         self.combo_contour_style.currentIndexChanged.connect(lambda _i: _update_style_preview())
         for w in (self.spn_wave_period, self.spn_fill_wave_width, self.spn_fill_feed,
-                  self.spn_contour_feed, self.spn_dfocus, self.spn_ztest, self.spn_dtest,
-                  self.spn_contour_width):
+                  self.spn_contour_feed, self.spn_contour_width):
             w.valueChanged.connect(lambda _v: _update_style_preview())
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
@@ -832,8 +753,7 @@ class TaskPanelFilledEngraving:
         self._last_fields = {
             "spacing": self.spn_spacing, "angle": self.spn_angle,
             "fill_power": self.spn_fill_power, "fill_feed": self.spn_fill_feed,
-            "perimeter": self.chk_perimeter, "dfocus": self.spn_dfocus,
-            "ztest": self.spn_ztest, "dtest": self.spn_dtest,
+            "perimeter": self.chk_perimeter,
             "zwork": self.spn_zwork, "marge": self.spn_marge,
             "contour": self.chk_contour, "contour_power": self.spn_contour_power,
             "contour_feed": self.spn_contour_feed, "contour_width": self.spn_contour_width,
@@ -858,9 +778,7 @@ class TaskPanelFilledEngraving:
         lines = ["Remplissage : espace {:g} mm @ {:g} deg, S{:g} F{:g}".format(
             values.get("spacing", 0), values.get("angle", 0),
             values.get("fill_power", 0), values.get("fill_feed", 0))]
-        lines.append("Foyer {:g} mm, calib point {:g} / défocus {:g}->{:g} mm".format(
-            values.get("zwork", 0), values.get("dfocus", 0),
-            values.get("ztest", 0), values.get("dtest", 0)))
+        lines.append("Foyer {:g} mm".format(values.get("zwork", 0)))
         if values.get("contour", True):
             lines.append("Contour S{:g} F{:g}, trait {:g} mm".format(
                 values.get("contour_power", 0), values.get("contour_feed", 0),
@@ -887,9 +805,6 @@ class TaskPanelFilledEngraving:
             "fill_power": self.spn_fill_power.value(),
             "fill_feed": self.spn_fill_feed.value(),
             "perimeter": self.chk_perimeter.isChecked(),
-            "dfocus": self.spn_dfocus.value(),
-            "ztest": self.spn_ztest.value(),
-            "dtest": self.spn_dtest.value(),
             "zwork": self.spn_zwork.value(),
             "marge": self.spn_marge.value(),
             "contour": self.chk_contour.isChecked(),
@@ -918,9 +833,6 @@ class TaskPanelFilledEngraving:
         self.spn_fill_power.setValue(v.get("fill_power", self.spn_fill_power.value()))
         self.spn_fill_feed.setValue(v.get("fill_feed", self.spn_fill_feed.value()))
         self.chk_perimeter.setChecked(v.get("perimeter", self.chk_perimeter.isChecked()))
-        self.spn_dfocus.setValue(v.get("dfocus", self.spn_dfocus.value()))
-        self.spn_ztest.setValue(v.get("ztest", self.spn_ztest.value()))
-        self.spn_dtest.setValue(v.get("dtest", self.spn_dtest.value()))
         self.spn_zwork.setValue(v.get("zwork", self.spn_zwork.value()))
         self.spn_marge.setValue(v.get("marge", self.spn_marge.value()))
         self.chk_contour.setChecked(v.get("contour", self.chk_contour.isChecked()))
@@ -968,9 +880,10 @@ class TaskPanelFilledEngraving:
         """Défocus (mm) du contour pour que son trait fasse l'épaisseur
         demandée -- 0 si la largeur voulue est <= au point au foyer (déjà
         le plus fin). Réutilise defocus_for_fill_spacing avec overlap=1
-        (cible = largeur exacte, pas de recouvrement)."""
+        (cible = largeur exacte, pas de recouvrement). Point au foyer :
+        calibration des Préférences."""
         off = core.defocus_for_fill_spacing(
-            self.spn_contour_width.value(), self.spn_dfocus.value(), half_angle, overlap=1.0)
+            self.spn_contour_width.value(), core.SPOT_FOCUS_MM, half_angle, overlap=1.0)
         return off if off is not None else 0.0
 
     def _build_edges(self, silent=False):
@@ -985,19 +898,20 @@ class TaskPanelFilledEngraving:
                     "Aucune face 2D fermée trouvée dans la sélection\n"
                     "(face, Draft, ou sketch à fils fermés).")
             return None, None, None, None
-        half_angle = core.defocus_divergence_half_angle(
-            self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+        half_angle = core.calibrated_half_angle()
         defocus = core.defocus_for_fill_spacing(
-            self.spn_spacing.value(), self.spn_dfocus.value(), half_angle)
+            self.spn_spacing.value(), core.SPOT_FOCUS_MM, half_angle)
         if defocus is None:
             if not silent:
                 QtWidgets.QMessageBox.critical(
                     self.form, "Erreur",
-                    "Calibration de défocus invalide : le point mesuré au\n"
-                    "défocus de test doit être strictement plus large que\n"
-                    "celui mesuré au foyer.")
+                    "Calibration du point invalide dans les Préférences : le\n"
+                    "point mesuré au défocus de test doit être strictement\n"
+                    "plus large que celui mesuré au foyer (à mesurer avec la\n"
+                    "Bande de calibration défocus, puis à saisir dans les\n"
+                    "Préférences, icône engrenage).")
             return None, None, None, None
-        spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
+        spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
         fill_edges, contour_edges = core.build_filled_engraving_edges(
             faces, self.spn_spacing.value(), self.spn_angle.value(), fill_inset=spot / 2.0,
             add_perimeter=self.chk_perimeter.isChecked())
@@ -1016,11 +930,10 @@ class TaskPanelFilledEngraving:
         }
         fill_params = dict(common)
         contour_params = dict(common)
-        half_angle = core.defocus_divergence_half_angle(
-            self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+        half_angle = core.calibrated_half_angle()
         if fill_style == "vague":
             amp = core.defocus_for_fill_spacing(
-                self.spn_fill_wave_width.value(), self.spn_dfocus.value(),
+                self.spn_fill_wave_width.value(), core.SPOT_FOCUS_MM,
                 half_angle, overlap=1.0)
             fill_params["wave_amplitude"] = amp or 0.0
         if contour_style == "vague":
@@ -1202,8 +1115,10 @@ class TaskPanelDefocusCalibration:
             "trait : le plus fin = le foyer (sa hauteur = ton Z de foyer, sa\n"
             "largeur = « point au foyer ») ; choisis un trait bien plus\n"
             "large pour « défocus de test » (sa hauteur - celle du foyer) et\n"
-            "« point au défocus de test » (sa largeur). Zéro Z sur la\n"
-            "surface. Aucune sélection requise.")
+            "« point au défocus de test » (sa largeur). REPORTE ensuite ces\n"
+            "trois mesures dans les PRÉFÉRENCES (icône engrenage, section\n"
+            "Calibration du point) -- elles servent à tous les modes. Zéro Z\n"
+            "sur la surface. Aucune sélection requise.")
         info.setWordWrap(True)
         _panel_header(form, "defocus.svg", "Bande de calibration défocus")
         form.addRow(info)
@@ -1526,7 +1441,7 @@ class TaskPanelOffsetTest:
         self.spn_zfocus = QtWidgets.QDoubleSpinBox()
         self.spn_zfocus.setRange(0.0, 100.0)
         self.spn_zfocus.setDecimals(2)
-        self.spn_zfocus.setValue(7.0)
+        self.spn_zfocus.setValue(core.Z_WORK_MM)
         self.spn_zfocus.setSuffix(" mm")
         self.spn_zfocus.setToolTip(
             "Hauteur de focale du nez laser au-dessus de la surface\n"
@@ -1772,7 +1687,7 @@ class TaskPanelHalftone:
         self.spn_zwork = QtWidgets.QDoubleSpinBox()
         self.spn_zwork.setRange(-50, 200)
         self.spn_zwork.setDecimals(2)
-        self.spn_zwork.setValue(8.5)
+        self.spn_zwork.setValue(core.Z_WORK_MM)
         self.spn_zwork.setSuffix(" mm")
         self.spn_zwork.setToolTip(
             "Z de gravure : le foyer pour des points fins/nets, ou un léger\n"
@@ -2136,53 +2051,18 @@ class TaskPanelTestGrid:
 
         self._gravure_widgets = [self.combo_filltype, self.spn_hatch_spacing, self.spn_hatch_angle]
 
-        self.lbl_defocus_calib = QtWidgets.QLabel(
-            "<b>Calibration du point laser</b> -- brûle 2 points test (au\n"
-            "foyer, puis à un défocus connu) et mesure leur diamètre :")
-        self.lbl_defocus_calib.setWordWrap(True)
-        form.addRow(self.lbl_defocus_calib)
-
-        self.spn_dfocus = QtWidgets.QDoubleSpinBox()
-        self.spn_dfocus.setRange(0.01, 20.0)
-        self.spn_dfocus.setValue(0.15)
-        self.spn_dfocus.setDecimals(3)
-        self.spn_dfocus.setSuffix(" mm")
-        self.spn_dfocus.setToolTip(
-            "Diamètre du point laser AU FOYER (Z de travail normal). À\n"
-            "MESURER réellement -- 0.15mm n'est qu'une valeur de départ,\n"
-            "pas une donnée constructeur.")
-        form.addRow("Point au foyer (mesuré) :", self.spn_dfocus)
-
-        self.spn_ztest = QtWidgets.QDoubleSpinBox()
-        self.spn_ztest.setRange(0.1, 50.0)
-        self.spn_ztest.setValue(3.0)
-        self.spn_ztest.setDecimals(2)
-        self.spn_ztest.setSuffix(" mm")
-        self.spn_ztest.setToolTip(
-            "Défocus de test (bec écarté de cette distance du foyer)\n"
-            "utilisé pour la 2e mesure.")
-        form.addRow("Défocus de test :", self.spn_ztest)
-
-        self.spn_dtest = QtWidgets.QDoubleSpinBox()
-        self.spn_dtest.setRange(0.01, 30.0)
-        self.spn_dtest.setValue(1.0)
-        self.spn_dtest.setDecimals(3)
-        self.spn_dtest.setSuffix(" mm")
-        self.spn_dtest.setToolTip("Diamètre du point laser mesuré à ce défocus de test.")
-        form.addRow("Point au défocus de test (mesuré) :", self.spn_dtest)
-
         self.lbl_defocus_result = QtWidgets.QLabel("Défocus calculé : --")
         self.lbl_defocus_result.setWordWrap(True)
+        self.lbl_defocus_result.setToolTip(
+            "Calculé depuis la calibration du point des Préférences (icône\n"
+            "engrenage) -- mesurée avec la Bande de calibration défocus.")
         form.addRow(self.lbl_defocus_result)
 
-        self._defocus_widgets = [
-            self.lbl_defocus_calib, self.spn_dfocus, self.spn_ztest,
-            self.spn_dtest, self.lbl_defocus_result,
-        ]
+        self._defocus_widgets = [self.lbl_defocus_result]
 
         self.spn_zwork = QtWidgets.QDoubleSpinBox()
         self.spn_zwork.setRange(-50, 200)
-        self.spn_zwork.setValue(4.0)
+        self.spn_zwork.setValue(core.Z_WORK_MM)
         self.spn_zwork.setSuffix(" mm")
         self.spn_zwork.setToolTip(
             "Z de travail FIXE pour toute la grille (pas de sonde/\n"
@@ -2209,19 +2089,20 @@ class TaskPanelTestGrid:
                 "Total : {} cellules -- encombrement grille {:.0f} x {:.0f} mm".format(n, width, height))
 
         def _update_defocus_preview():
-            half_angle = core.defocus_divergence_half_angle(
-                self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+            # Calibration du point : centralisée dans les Préférences.
+            half_angle = core.calibrated_half_angle()
             defocus = core.defocus_for_fill_spacing(
-                self.spn_hatch_spacing.value(), self.spn_dfocus.value(), half_angle)
+                self.spn_hatch_spacing.value(), core.SPOT_FOCUS_MM, half_angle)
             if defocus is None:
                 self.lbl_defocus_result.setText(
-                    "Défocus calculé : -- (calibration invalide : le point\n"
-                    "mesuré au défocus de test doit être strictement plus\n"
-                    "large que celui mesuré au foyer)")
+                    "Défocus calculé : -- (calibration du point invalide dans\n"
+                    "les Préférences : le point au défocus de test doit être\n"
+                    "plus large qu'au foyer).")
             else:
                 self.lbl_defocus_result.setText(
                     "Défocus calculé : {:.3f} mm -- Z cellules = Z de travail\n"
-                    "+ cette valeur (étiquettes toujours au foyer).".format(defocus))
+                    "+ cette valeur (étiquettes toujours au foyer).\n"
+                    "(Calibration du point : Préférences, icône engrenage.)".format(defocus))
 
         def _update_visibility():
             is_gravure = (self.combo_mode.currentIndex() == 0)
@@ -2235,9 +2116,6 @@ class TaskPanelTestGrid:
         self.combo_mode.currentIndexChanged.connect(lambda _i: _update_visibility())
         self.combo_filltype.currentIndexChanged.connect(lambda _i: _update_visibility())
         self.spn_hatch_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_dfocus.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_ztest.valueChanged.connect(lambda _v: _update_defocus_preview())
-        self.spn_dtest.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_power_steps.valueChanged.connect(lambda _v: _update_total_preview())
         self.spn_feed_steps.valueChanged.connect(lambda _v: _update_total_preview())
         self.spn_cell_size.valueChanged.connect(lambda _v: _update_total_preview())
@@ -2304,7 +2182,7 @@ class TaskPanelTestGrid:
         self.spn_border_z = QtWidgets.QDoubleSpinBox()
         self.spn_border_z.setRange(-50, 200)
         self.spn_border_z.setDecimals(2)
-        self.spn_border_z.setValue(8.5)
+        self.spn_border_z.setValue(core.Z_WORK_MM)
         self.spn_border_z.setSuffix(" mm")
         self.spn_border_z.setToolTip(
             "Z de foyer auquel le cadre est gravé (bec au point sur la\n"
@@ -2393,7 +2271,6 @@ class TaskPanelTestGrid:
             "feed_steps": self.spn_feed_steps, "cell_size": self.spn_cell_size,
             "gap": self.spn_gap, "filltype": self.combo_filltype,
             "hatch_spacing": self.spn_hatch_spacing, "hatch_angle": self.spn_hatch_angle,
-            "dfocus": self.spn_dfocus, "ztest": self.spn_ztest, "dtest": self.spn_dtest,
             "zwork": self.spn_zwork, "proximity": self.chk_proximity,
             "labels": self.chk_labels, "label_power": self.spn_label_power,
             "label_feed": self.spn_label_feed, "border": self.chk_border,
@@ -2478,9 +2355,6 @@ class TaskPanelTestGrid:
             "filltype": self.combo_filltype.currentIndex(),
             "hatch_spacing": self.spn_hatch_spacing.value(),
             "hatch_angle": self.spn_hatch_angle.value(),
-            "dfocus": self.spn_dfocus.value(),
-            "ztest": self.spn_ztest.value(),
-            "dtest": self.spn_dtest.value(),
             "zwork": self.spn_zwork.value(),
             "proximity": self.chk_proximity.isChecked(),
             "labels": self.chk_labels.isChecked(),
@@ -2511,9 +2385,6 @@ class TaskPanelTestGrid:
         self.combo_filltype.setCurrentIndex(values.get("filltype", self.combo_filltype.currentIndex()))
         self.spn_hatch_spacing.setValue(values.get("hatch_spacing", self.spn_hatch_spacing.value()))
         self.spn_hatch_angle.setValue(values.get("hatch_angle", self.spn_hatch_angle.value()))
-        self.spn_dfocus.setValue(values.get("dfocus", self.spn_dfocus.value()))
-        self.spn_ztest.setValue(values.get("ztest", self.spn_ztest.value()))
-        self.spn_dtest.setValue(values.get("dtest", self.spn_dtest.value()))
         self.spn_zwork.setValue(values.get("zwork", self.spn_zwork.value()))
         self.chk_proximity.setChecked(values.get("proximity", self.chk_proximity.isChecked()))
         self.chk_labels.setChecked(values.get("labels", self.chk_labels.isChecked()))
@@ -2592,22 +2463,23 @@ class TaskPanelTestGrid:
         cell_z_offset = 0.0
         fill_inset = 0.0
         if mode == "gravure" and fill_type == "defocus":
-            half_angle = core.defocus_divergence_half_angle(
-                self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+            half_angle = core.calibrated_half_angle()
             defocus = core.defocus_for_fill_spacing(
-                self.spn_hatch_spacing.value(), self.spn_dfocus.value(), half_angle)
+                self.spn_hatch_spacing.value(), core.SPOT_FOCUS_MM, half_angle)
             if defocus is None:
                 if not silent:
                     QtWidgets.QMessageBox.critical(
                         self.form, "Erreur",
-                        "Calibration de défocus invalide : le point mesuré au\n"
-                        "défocus de test doit être strictement plus large que\n"
-                        "celui mesuré au foyer.")
+                        "Calibration du point invalide dans les Préférences :\n"
+                        "le point mesuré au défocus de test doit être plus\n"
+                        "large que celui mesuré au foyer (à mesurer avec la\n"
+                        "Bande de calibration défocus, puis à saisir dans les\n"
+                        "Préférences, icône engrenage).")
                 return None, None, None, None
             cell_z_offset = defocus
             # Rayon du point élargi à ce défocus : on rentre la zone
             # hachurée d'autant pour que la brûlure ne déborde pas du carré.
-            spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
+            spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
             fill_inset = spot / 2.0
 
         cells = core.build_test_grid_cells(
@@ -2822,7 +2694,7 @@ class TaskPanelCurved:
 
         self.spn_zfocus = QtWidgets.QDoubleSpinBox()
         self.spn_zfocus.setRange(-50, 200)
-        self.spn_zfocus.setValue(4.0)
+        self.spn_zfocus.setValue(core.Z_WORK_MM)
         self.spn_zfocus.setSuffix(" mm")
         self.spn_zfocus.setToolTip(
             "Hauteur de travail (cale) : position Z qui met le laser au\n"
@@ -2833,7 +2705,7 @@ class TaskPanelCurved:
 
         self.spn_marge = QtWidgets.QDoubleSpinBox()
         self.spn_marge.setRange(0.0, 20)
-        self.spn_marge.setValue(0.5)
+        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
         self.spn_marge.setSuffix(" mm")
         self.spn_marge.setToolTip(
             "Marge fixe au-dessus de la hauteur de travail pendant le\n"
@@ -2921,10 +2793,13 @@ class TaskPanelCurved:
             for w in (self.spn_wave_period, self.spn_wave_amp):
                 w.setVisible(idx == 3)
             if idx == 3:
+                amp = self.spn_wave_amp.value()
                 peak = core.wave_peak_z_feed(
-                    self.spn_wave_amp.value(), self.spn_feed.value(),
-                    self.spn_wave_period.value())
-                txt = "Vague : vitesse Z crête ~{:.0f} mm/min".format(peak)
+                    amp, self.spn_feed.value(), self.spn_wave_period.value())
+                width = core.spot_diameter_at_defocus(
+                    amp, core.SPOT_FOCUS_MM, core.calibrated_half_angle())
+                txt = ("Vague : largeur max du trait ~{:.2f} mm (calibration des\n"
+                       "Préférences), vitesse Z crête ~{:.0f} mm/min").format(width, peak)
                 if peak > core.Z_MAX_FEED_MM_MIN:
                     txt += (" -- AU-DELÀ de la limite Z supposée ({:.0f}, cf. Préférences) :"
                             " le trajet sera ralenti").format(core.Z_MAX_FEED_MM_MIN)
@@ -3765,7 +3640,7 @@ class TaskPanelCurvedCut:
 
         self.spn_zfocus = QtWidgets.QDoubleSpinBox()
         self.spn_zfocus.setRange(-50, 200)
-        self.spn_zfocus.setValue(4.0)
+        self.spn_zfocus.setValue(core.Z_WORK_MM)
         self.spn_zfocus.setSuffix(" mm")
         self.spn_zfocus.setToolTip(
             "Hauteur de travail (cale) : position Z qui met le laser au\n"
@@ -3777,7 +3652,7 @@ class TaskPanelCurvedCut:
 
         self.spn_marge = QtWidgets.QDoubleSpinBox()
         self.spn_marge.setRange(0.0, 20)
-        self.spn_marge.setValue(0.5)
+        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
         self.spn_marge.setSuffix(" mm")
         self.spn_marge.setToolTip("Marge de sécurité ajoutée à la hauteur de retrait entre les chaînes.")
         form.addRow("Marge de sécurité (retrait) :", self.spn_marge)
@@ -4125,13 +4000,13 @@ class _OperationDialogCurved(QtWidgets.QDialog):
 
         self.spn_zfocus = QtWidgets.QDoubleSpinBox()
         self.spn_zfocus.setRange(-50, 200)
-        self.spn_zfocus.setValue(4.0)
+        self.spn_zfocus.setValue(core.Z_WORK_MM)
         self.spn_zfocus.setSuffix(" mm")
         form.addRow("Z Travail (Cale) :", self.spn_zfocus)
 
         self.spn_marge = QtWidgets.QDoubleSpinBox()
         self.spn_marge.setRange(0.0, 20)
-        self.spn_marge.setValue(0.5)
+        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
         self.spn_marge.setSuffix(" mm")
         form.addRow("Marge de sécurité (transit) :", self.spn_marge)
 
@@ -4185,13 +4060,13 @@ class _OperationDialogCurvedCut(QtWidgets.QDialog):
 
         self.spn_zfocus = QtWidgets.QDoubleSpinBox()
         self.spn_zfocus.setRange(-50, 200)
-        self.spn_zfocus.setValue(4.0)
+        self.spn_zfocus.setValue(core.Z_WORK_MM)
         self.spn_zfocus.setSuffix(" mm")
         form.addRow("Z Travail (Cale, 1ère passe) :", self.spn_zfocus)
 
         self.spn_marge = QtWidgets.QDoubleSpinBox()
         self.spn_marge.setRange(0.0, 20)
-        self.spn_marge.setValue(0.5)
+        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
         self.spn_marge.setSuffix(" mm")
         form.addRow("Marge de sécurité (retrait) :", self.spn_marge)
 
@@ -4405,7 +4280,7 @@ class _OperationDialogTestGrid(QtWidgets.QDialog):
 
         self.spn_zwork = QtWidgets.QDoubleSpinBox()
         self.spn_zwork.setRange(-50, 200)
-        self.spn_zwork.setValue(4.0)
+        self.spn_zwork.setValue(core.Z_WORK_MM)
         self.spn_zwork.setSuffix(" mm")
         form.addRow("Z de travail :", self.spn_zwork)
 
@@ -4902,6 +4777,69 @@ class TaskPanelSettings:
             "ton LinuxCNC. N'affecte jamais le G-code.")
         form.addRow("Accélération (estimation) :", self.spn_accel)
 
+        _section(form, "Calibration du point (défocus)", "sect_focus.svg")
+        lbl_calib = QtWidgets.QLabel(
+            "Propriété machine, mesurée UNE FOIS avec la Bande de\n"
+            "calibration défocus : brûle deux points test (au foyer, puis à\n"
+            "un défocus connu) et mesure leur diamètre. Utilisée par\n"
+            "Hachures 2D, Gravure remplie, Grille de test et le style\n"
+            "Vague -- plus rien à resaisir dans les panneaux.")
+        lbl_calib.setWordWrap(True)
+        form.addRow(lbl_calib)
+
+        self.spn_spot_focus = QtWidgets.QDoubleSpinBox()
+        self.spn_spot_focus.setRange(0.01, 20.0)
+        self.spn_spot_focus.setDecimals(3)
+        self.spn_spot_focus.setValue(settings["spot_focus_mm"])
+        self.spn_spot_focus.setSuffix(" mm")
+        self.spn_spot_focus.setToolTip(
+            "Diamètre du point laser AU FOYER (trait le plus fin de la\n"
+            "bande de calibration). À MESURER réellement.")
+        form.addRow("Point au foyer (mesuré) :", self.spn_spot_focus)
+
+        self.spn_spot_zdefocus = QtWidgets.QDoubleSpinBox()
+        self.spn_spot_zdefocus.setRange(0.1, 60.0)
+        self.spn_spot_zdefocus.setDecimals(2)
+        self.spn_spot_zdefocus.setValue(settings["spot_test_defocus_mm"])
+        self.spn_spot_zdefocus.setSuffix(" mm")
+        self.spn_spot_zdefocus.setToolTip(
+            "Défocus de test de la 2e mesure : hauteur AU-DESSUS du foyer\n"
+            "d'un trait nettement plus large de la bande de calibration.")
+        form.addRow("Défocus de test :", self.spn_spot_zdefocus)
+
+        self.spn_spot_dtest = QtWidgets.QDoubleSpinBox()
+        self.spn_spot_dtest.setRange(0.01, 30.0)
+        self.spn_spot_dtest.setDecimals(3)
+        self.spn_spot_dtest.setValue(settings["spot_test_diameter_mm"])
+        self.spn_spot_dtest.setSuffix(" mm")
+        self.spn_spot_dtest.setToolTip("Diamètre du point mesuré à ce défocus de test.")
+        form.addRow("Point au défocus de test :", self.spn_spot_dtest)
+
+        _section(form, "Z de travail par défaut", "sect_zheight.svg")
+        self.spn_zwork_default = QtWidgets.QDoubleSpinBox()
+        self.spn_zwork_default.setRange(-50.0, 200.0)
+        self.spn_zwork_default.setDecimals(2)
+        self.spn_zwork_default.setValue(settings["z_work_mm"])
+        self.spn_zwork_default.setSuffix(" mm")
+        self.spn_zwork_default.setToolTip(
+            "Z de travail (foyer) PROPOSÉ PAR DÉFAUT dans tous les\n"
+            "panneaux -- avec le zéro Z sur la surface de la pièce, c'est\n"
+            "la focale du nez laser, une propriété machine. Chaque panneau\n"
+            "reste modifiable au cas par cas (et retient sa dernière\n"
+            "valeur).")
+        form.addRow("Z de travail (foyer) :", self.spn_zwork_default)
+
+        self.spn_transit_default = QtWidgets.QDoubleSpinBox()
+        self.spn_transit_default.setRange(0.0, 100.0)
+        self.spn_transit_default.setDecimals(1)
+        self.spn_transit_default.setValue(settings["transit_margin_mm"])
+        self.spn_transit_default.setSuffix(" mm")
+        self.spn_transit_default.setToolTip(
+            "Marge de survol PROPOSÉE PAR DÉFAUT dans les modes de\n"
+            "marquage (au-dessus du Z de travail / du relief pour les\n"
+            "transits). 0 = transits à plat, recommandé sur pièce plate.")
+        form.addRow("Marge de survol (marquage) :", self.spn_transit_default)
+
         _section(form, "Sécurité découpe", "sect_safety.svg")
         self.spn_safe_height = QtWidgets.QDoubleSpinBox()
         self.spn_safe_height.setRange(0.0, 20.0)
@@ -5012,6 +4950,11 @@ class TaskPanelSettings:
             "rapid_feed_mm_min": self.spn_rapid.value(),
             "z_max_feed_mm_min": self.spn_z_max_feed.value(),
             "accel_mm_s2": self.spn_accel.value(),
+            "spot_focus_mm": self.spn_spot_focus.value(),
+            "spot_test_defocus_mm": self.spn_spot_zdefocus.value(),
+            "spot_test_diameter_mm": self.spn_spot_dtest.value(),
+            "z_work_mm": self.spn_zwork_default.value(),
+            "transit_margin_mm": self.spn_transit_default.value(),
             "travel_clearance_mm": self.spn_clearance.value(),
             "frame_power": self.spn_frame_power.value(),
             "frame_feed_mm_min": self.spn_frame_feed.value(),

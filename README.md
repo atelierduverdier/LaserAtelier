@@ -32,7 +32,7 @@ Communs à tous les modes : estimation de durée **tenant compte des accélérat
 
 ## Modèle de défocus (remplissage noir)
 
-Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un cône de divergence linéaire calibré à partir de **deux mesures réelles** du point (au foyer, puis à un défocus connu) — jamais deviné. La **Bande de calibration défocus** fournit ces mesures ; on saisit ensuite « point au foyer », « défocus de test » et « point au défocus de test » dans les modes concernés, et l'atelier calcule le défocus nécessaire pour un espacement donné (et rentre le remplissage du rayon de point pour rester dans le contour).
+Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un cône de divergence linéaire calibré à partir de **deux mesures réelles** du point (au foyer, puis à un défocus connu) — jamais deviné. La **Bande de calibration défocus** fournit ces mesures ; on les saisit **une seule fois dans les Préférences** (« point au foyer », « défocus de test », « point au défocus de test ») et tous les modes concernés (Hachures 2D, Gravure remplie, Grille de test, style Vague) les réutilisent : l'atelier calcule le défocus nécessaire pour un espacement donné (et rentre le remplissage du rayon de point pour rester dans le contour).
 
 ## Démo vidéo
 
@@ -153,6 +153,11 @@ Les réglages généraux de l'atelier s'éditent depuis la commande **Préféren
 | Vitesse de cadrage | `settings.frame_feed_mm_min` | `1500` | Vitesse du tracé de cadrage quand le faisceau de visée est allumé (sans effet à puissance 0 : le tracé se fait en rapides G0) |
 | Vitesse Z max (avertissement) | `settings.z_max_feed_mm_min` | `1500` | Vitesse max supposée de l'axe Z — sert uniquement à avertir quand un trait en **vague défocus** demanderait plus vite (le trajet serait ralenti par la machine). N'affecte jamais le G-code |
 | Accélération (estimation) | `settings.accel_mm_s2` | `800` | Accélération machine supposée pour l'estimation de durée (mettre la `MAX_ACCELERATION` X/Y du LinuxCNC). N'affecte jamais le G-code |
+| Point au foyer | `settings.spot_focus_mm` | `0.15` | **Calibration du point** (mesurée avec la Bande de calibration défocus) : diamètre du point au foyer. Utilisée par tous les modes à défocus — plus rien à resaisir dans les panneaux |
+| Défocus de test | `settings.spot_test_defocus_mm` | `3.0` | Calibration du point : hauteur au-dessus du foyer de la 2e mesure |
+| Point au défocus de test | `settings.spot_test_diameter_mm` | `1.0` | Calibration du point : diamètre mesuré à ce défocus |
+| Z de travail (foyer) par défaut | `settings.z_work_mm` | `8.5` | Z de travail **proposé par défaut** dans tous les panneaux (= focale du nez avec le zéro Z sur la surface). Chaque panneau reste modifiable et retient sa dernière valeur |
+| Marge de survol (marquage) par défaut | `settings.transit_margin_mm` | `0.5` | Marge de transit proposée par défaut dans les modes de marquage (`0` recommandé sur pièce plate) |
 | Sélecteur broche | `settings.spindle_select` | `$1` | Sélecteur multi-broche ajouté aux commandes `S`/`M3`/`M5` (LinuxCNC : laser = spindle 1) |
 | Temporisation d'armement | `settings.arm_dwell_s` | `2.0` | Pause `G4` après l'armement (`M3` à puissance nulle), le temps que l'électronique du module soit prête |
 | Hauteur bec minimale | `settings.safe_min_nozzle_height_mm` | `1.5` | Butée de sécurité : le bec ne descend jamais plus près de la surface, quelle que soit la passe — garde-fou anti-collision |
