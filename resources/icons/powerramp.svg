@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- lignes horizontales : trait de plus en plus épais vers la droite
+       (puissance qui monte), une par vitesse -->
+  <g fill="#ff8a00">
+    <polygon points="10,14 54,11 54,17 10,16"/>
+    <polygon points="10,26 54,22 54,30 10,28"/>
+    <polygon points="10,40 54,35 54,45 10,42"/>
+    <polygon points="10,54 54,48 54,60 10,56"/>
+  </g>
+  <!-- axe puissance (bas) : flèche gauche->droite -->
+  <g stroke="#2f3540" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="10" y1="8" x2="52" y2="8"/>
+    <polyline points="47,5 52,8 47,11"/>
+  </g>
+</svg>

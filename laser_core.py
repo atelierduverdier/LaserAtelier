@@ -3287,6 +3287,133 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
 
 
 # ==========================================================================
+# MODE : TEST RAMPE PUISSANCE / VITESSE (LIGNES)
+# ==========================================================================
+def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
+                                    power_min, power_max, z_work, line_gap,
+                                    n_steps=40, draw_labels=True,
+                                    label_power=300.0, label_feed=1500.0,
+                                    pre_gcode="", post_gcode="",
+                                    frame_only=False, quiet=False):
+    """Grave N longues lignes horizontales, une par VITESSE (feed_min ->
+    feed_max, une ligne = une vitesse), chacune parcourue avec une
+    PUISSANCE qui monte progressivement de power_min (gauche) à power_max
+    (droite). On lit d'un coup, à chaque vitesse, à partir de quelle
+    puissance le trait commence à marquer et où il sature -- le complément
+    CONTINU de la grille de cellules discrètes. La rampe est approchée par
+    n_steps petits segments à puissance croissante (un S par segment).
+
+    Étiquettes : la vitesse (F) à gauche de chaque ligne, et les bornes de
+    puissance (Smin à gauche, Smax à droite) sous la première ligne.
+    Gravées à label_power/label_feed FIXES, au foyer (z_work). Tout est à
+    plat au même Z : transit laser éteint sans lever le bec.
+
+    frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
+    n_lines = max(1, int(n_lines))
+    n_steps = max(2, int(n_steps))
+    if line_length <= 0 or n_lines < 1:
+        return None
+
+    lines_geo = []  # (y, feed)
+    for i in range(n_lines):
+        feed = feed_min if n_lines == 1 else feed_min + (feed_max - feed_min) * i / float(n_lines - 1)
+        lines_geo.append((i * line_gap, feed))
+
+    label_h = max(2.0, min(line_gap * 0.5, 6.0))
+    label_chains = []  # liste de chaînes (chaque chaîne = liste de Vector)
+    if draw_labels:
+        for y, feed in lines_geo:
+            text = "F{:.0f}".format(feed)
+            w = text_width(text, label_h)
+            label_chains.extend(chain_edges(
+                text_to_edges(text, -(w + line_gap * 0.3), y - label_h / 2.0, label_h)))
+        # Bornes de puissance sous la 1re ligne (échelle gauche->droite).
+        y_scale = -line_gap
+        smin = "S{:.0f}".format(power_min)
+        label_chains.extend(chain_edges(
+            text_to_edges(smin, 0.0, y_scale - label_h, label_h)))
+        smax = "S{:.0f}".format(power_max)
+        w = text_width(smax, label_h)
+        label_chains.extend(chain_edges(
+            text_to_edges(smax, line_length - w, y_scale - label_h, label_h)))
+
+    all_pts = []
+    for y, _ in lines_geo:
+        all_pts.append(FreeCAD.Vector(0.0, y, 0.0))
+        all_pts.append(FreeCAD.Vector(line_length, y, 0.0))
+    for ch in label_chains:
+        all_pts.extend(ch)
+    z_safe = z_work + TRAVEL_CLEARANCE_MM
+
+    lines = []
+    lines.append("(G-Code Laser - Test rampe puissance/vitesse (lignes))")
+    lines.append("(Lignes : {} vitesses de F{:.0f} a F{:.0f})".format(
+        n_lines, feed_min, feed_max if n_lines > 1 else feed_min))
+    lines.append("(Puissance : rampe S{:.0f} (gauche) -> S{:.0f} (droite) sur {:.0f}mm, {} paliers)".format(
+        power_min, power_max, line_length, n_steps))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append(CMD_TOOL_COMP)
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        if all_pts:
+            lines.extend(build_frame_trace(
+                min(p.x for p in all_pts), max(p.x for p in all_pts),
+                min(p.y for p in all_pts), max(p.y for p in all_pts), z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    started = [False]
+
+    def _travel(x, y):
+        # Transit à plat, laser éteint : première approche depuis le Z de
+        # sécurité, ensuite d'une ligne à l'autre sans lever le bec.
+        if not started[0]:
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, z_safe))
+            lines.append("G0 Z{:.4f}".format(z_work))
+            started[0] = True
+        else:
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+
+    lines.append("(===== Lignes a rampe de puissance =====)")
+    for y, feed in lines_geo:
+        _travel(0.0, y)
+        for k in range(n_steps):
+            x1 = line_length * (k + 1) / float(n_steps)
+            power = power_min + (power_max - power_min) * k / float(n_steps - 1)
+            lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power))
+            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(x1, y, feed))
+        lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+
+    if label_chains:
+        lines.append("(===== Etiquettes (vitesses + bornes de puissance) =====)")
+        for ch in label_chains:
+            _travel(ch[0].x, ch[0].y)
+            lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=label_power))
+            for p in ch[1:]:
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(p.x, p.y, label_feed))
+            lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+
+    if started[0]:
+        lines.append("G0 Z{:.4f}".format(z_safe))
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
+# ==========================================================================
 # STYLES DE TRAIT (tirets / pointillé / vague) -- travail À PLAT
 # ==========================================================================
 # Au lieu d'un trait continu, une chaîne peut être rendue en TIRETS

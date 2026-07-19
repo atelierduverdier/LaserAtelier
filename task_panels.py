@@ -1529,6 +1529,237 @@ class TaskPanelDefocusCalibration:
 
 
 # ==========================================================================
+# MODE : TEST RAMPE PUISSANCE / VITESSE (LIGNES)
+# ==========================================================================
+class TaskPanelPowerRamp:
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        _panel_header(form, "powerramp.svg", "Test rampe puissance / vitesse (lignes)")
+        info = QtWidgets.QLabel(
+            "Grave de longues lignes horizontales, UNE PAR VITESSE, chacune\n"
+            "parcourue avec une puissance qui MONTE de gauche (min) à droite\n"
+            "(max). On lit d'un coup, à chaque vitesse, à partir de quelle\n"
+            "puissance le trait commence à marquer et où il sature -- le\n"
+            "complément continu de la Grille de test (cellules discrètes).\n"
+            "Zéro Z sur la surface. Aucune sélection requise.")
+        info.setWordWrap(True)
+        form.addRow(info)
+
+        _section(form, "Lignes (vitesses)", "sect_power.svg")
+        self.spn_length = QtWidgets.QDoubleSpinBox()
+        self.spn_length.setRange(10.0, 500.0)
+        self.spn_length.setValue(80.0)
+        self.spn_length.setSuffix(" mm")
+        self.spn_length.setToolTip(
+            "Longueur de chaque ligne : toute la plage de puissance est\n"
+            "étalée dessus, donc plus long = transition plus lisible et plus\n"
+            "facile à repérer où le trait apparaît.")
+        form.addRow("Longueur des lignes :", self.spn_length)
+
+        self.spn_nlines = QtWidgets.QSpinBox()
+        self.spn_nlines.setRange(1, 40)
+        self.spn_nlines.setValue(6)
+        self.spn_nlines.setToolTip("Nombre de lignes = nombre de vitesses testées.")
+        form.addRow("Nombre de vitesses :", self.spn_nlines)
+
+        self.spn_gap = QtWidgets.QDoubleSpinBox()
+        self.spn_gap.setRange(1.0, 50.0)
+        self.spn_gap.setValue(8.0)
+        self.spn_gap.setSuffix(" mm")
+        self.spn_gap.setToolTip("Espacement vertical entre deux lignes.")
+        form.addRow("Espacement des lignes :", self.spn_gap)
+
+        self.spn_feed_min = QtWidgets.QDoubleSpinBox()
+        self.spn_feed_min.setRange(1, 20000)
+        self.spn_feed_min.setValue(500)
+        self.spn_feed_min.setSuffix(" mm/min")
+        self.spn_feed_min.setToolTip("Vitesse de la 1re ligne (en bas) -- la plus lente.")
+        form.addRow("Vitesse min :", self.spn_feed_min)
+
+        self.spn_feed_max = QtWidgets.QDoubleSpinBox()
+        self.spn_feed_max.setRange(1, 20000)
+        self.spn_feed_max.setValue(3000)
+        self.spn_feed_max.setSuffix(" mm/min")
+        self.spn_feed_max.setToolTip("Vitesse de la dernière ligne (en haut) -- la plus rapide.")
+        form.addRow("Vitesse max :", self.spn_feed_max)
+
+        _section(form, "Rampe de puissance", "sect_power.svg")
+        self.spn_power_min = QtWidgets.QDoubleSpinBox()
+        self.spn_power_min.setRange(0, 1000)
+        self.spn_power_min.setValue(0)
+        self.spn_power_min.setToolTip(
+            "Puissance (S) au DÉBUT de chaque ligne (gauche). 0 = la ligne\n"
+            "commence éteinte et monte -- pratique pour voir exactement où\n"
+            "le trait apparaît.")
+        form.addRow("Puissance min (gauche) :", self.spn_power_min)
+
+        self.spn_power_max = QtWidgets.QDoubleSpinBox()
+        self.spn_power_max.setRange(0, 1000)
+        self.spn_power_max.setValue(800)
+        self.spn_power_max.setToolTip("Puissance (S) à la FIN de chaque ligne (droite).")
+        form.addRow("Puissance max (droite) :", self.spn_power_max)
+
+        self.spn_steps = QtWidgets.QSpinBox()
+        self.spn_steps.setRange(4, 400)
+        self.spn_steps.setValue(40)
+        self.spn_steps.setToolTip(
+            "Nombre de paliers approximant la rampe (un S par palier). Plus\n"
+            "élevé = transition plus douce mais G-code plus gros. 40 paliers\n"
+            "sur 80 mm = un changement de puissance tous les 2 mm.")
+        form.addRow("Paliers de la rampe :", self.spn_steps)
+
+        _section(form, "Étiquettes", "sect_labels.svg")
+        self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes (vitesse + bornes de puissance)")
+        self.chk_labels.setChecked(True)
+        self.chk_labels.setToolTip(
+            "Grave la vitesse (F) à gauche de chaque ligne, et les bornes\n"
+            "de puissance (Smin à gauche, Smax à droite) sous la 1re ligne.")
+        form.addRow(self.chk_labels)
+
+        self.spn_label_power = QtWidgets.QDoubleSpinBox()
+        self.spn_label_power.setRange(0, 1000)
+        self.spn_label_power.setValue(300)
+        self.spn_label_power.setToolTip("Puissance (S) FIXE des étiquettes.")
+        form.addRow("Puissance étiquettes :", self.spn_label_power)
+
+        self.spn_label_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_label_feed.setRange(1, 20000)
+        self.spn_label_feed.setValue(1500)
+        self.spn_label_feed.setSuffix(" mm/min")
+        self.spn_label_feed.setToolTip("Vitesse d'avance FIXE des étiquettes.")
+        form.addRow("Vitesse étiquettes :", self.spn_label_feed)
+
+        self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
+        self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
+
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
+        self.txt_pre = QtWidgets.QPlainTextEdit()
+        self.txt_pre.setMaximumHeight(50)
+        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        form.addRow("G-code avant :", self.txt_pre)
+
+        self.txt_post = QtWidgets.QPlainTextEdit()
+        self.txt_post.setMaximumHeight(50)
+        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        form.addRow("G-code après :", self.txt_post)
+
+        cfg = core.load_config()
+        self.txt_pre.setPlainText(cfg.get("pre_pr", ""))
+        self.txt_post.setPlainText(cfg.get("post_pr", ""))
+
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
+            "Approximative : G1 selon distance/avance, G0 (transit) à la\n"
+            "vitesse rapide des Préférences.")
+
+        self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
+        self.btn_frame_preview.setToolTip(
+            "Fichier à part traçant le rectangle englobant, à lancer seul\n"
+            "pour vérifier le positionnement avant le vrai job.")
+        self.btn_frame_preview.clicked.connect(self._on_frame_preview)
+        form.addRow(self.btn_frame_preview)
+
+        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
+        form.addRow(self.btn_toolpath_preview)
+
+        self._last_fields = {
+            "length": self.spn_length, "nlines": self.spn_nlines, "gap": self.spn_gap,
+            "feed_min": self.spn_feed_min, "feed_max": self.spn_feed_max,
+            "power_min": self.spn_power_min, "power_max": self.spn_power_max,
+            "steps": self.spn_steps, "labels": self.chk_labels,
+            "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
+        }
+        _restore_last_values("powerramp", self._last_fields)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Test rampe puissance / vitesse (lignes)")
+        self.form.setWindowIcon(_icon("powerramp.svg"))
+
+        self._update_duration_preview()
+
+    def _gen_kwargs(self):
+        return {
+            "line_length": self.spn_length.value(),
+            "n_lines": self.spn_nlines.value(),
+            "feed_min": self.spn_feed_min.value(),
+            "feed_max": self.spn_feed_max.value(),
+            "power_min": self.spn_power_min.value(),
+            "power_max": self.spn_power_max.value(),
+            "z_work": core.Z_WORK_MM,
+            "line_gap": self.spn_gap.value(),
+            "n_steps": self.spn_steps.value(),
+            "draw_labels": self.chk_labels.isChecked(),
+            "label_power": self.spn_label_power.value(),
+            "label_feed": self.spn_label_feed.value(),
+        }
+
+    def _valid_ranges(self, warn=False):
+        if self.spn_power_max.value() < self.spn_power_min.value() or self.spn_feed_max.value() < self.spn_feed_min.value():
+            if warn:
+                QtWidgets.QMessageBox.critical(
+                    self.form, "Erreur", "Vérifie les plages (max >= min) puissance et vitesse.")
+            return False
+        return True
+
+    def _update_duration_preview(self):
+        if not self._valid_ranges():
+            self.lbl_duration.setText("Durée estimée : -- (vérifie les plages min/max)")
+            return
+        gcode = core.generate_gcode_power_ramp_lines(quiet=True, **self._gen_kwargs())
+        if not gcode:
+            self.lbl_duration.setText("Durée estimée : --")
+            return
+        seconds = core.estimate_job_time_seconds(gcode)
+        self.lbl_duration.setText("Durée estimée : {}".format(core.format_duration(seconds)))
+
+    def _on_frame_preview(self):
+        if not self._valid_ranges(warn=True):
+            return
+        gcode = core.generate_gcode_power_ramp_lines(frame_only=True, **self._gen_kwargs())
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_rampe.ngc")
+
+    def _on_toolpath_preview(self):
+        if not self._valid_ranges(warn=True):
+            return
+        gcode = core.generate_gcode_power_ramp_lines(quiet=True, **self._gen_kwargs())
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
+            return
+        rapid, mark = core.parse_gcode_toolpath(gcode)
+        core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+
+    def accept(self):
+        if not self._valid_ranges(warn=True):
+            return False
+        _save_last_values("powerramp", self._last_fields)
+        pre_text = self.txt_pre.toPlainText()
+        post_text = self.txt_post.toPlainText()
+        gcode = core.generate_gcode_power_ramp_lines(
+            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs())
+
+        cfg = core.load_config()
+        cfg["pre_pr"] = pre_text
+        cfg["post_pr"] = post_text
+        core.save_config(cfg)
+
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
+            return False
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/test_rampe_puissance.ngc")
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
 # MODE : TEST DES OFFSETS X/Y DU LASER (T100)
 # ==========================================================================
 class TaskPanelOffsetTest:

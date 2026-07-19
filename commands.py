@@ -129,6 +129,23 @@ class TestGridCommand:
         Gui.Control.showDialog(task_panels.TaskPanelTestGrid())
 
 
+class PowerRampCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("powerramp.svg"),
+            "MenuText": "Test rampe puissance/vitesse (lignes)",
+            "ToolTip": "Grave de longues lignes, une par vitesse, avec une puissance qui monte "
+                       "progressivement de gauche à droite -- complément continu de la grille de test "
+                       "(aucune sélection requise)",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelPowerRamp())
+
+
 class DefocusCalibrationCommand:
     def GetResources(self):
         return {
@@ -277,6 +294,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
     Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())
+    Gui.addCommand("LaserAtelier_PowerRamp", PowerRampCommand())
     Gui.addCommand("LaserAtelier_DefocusCalibration", DefocusCalibrationCommand())
     Gui.addCommand("LaserAtelier_OffsetTest", OffsetTestCommand())
     Gui.addCommand("LaserAtelier_Curved", CurvedCommand())

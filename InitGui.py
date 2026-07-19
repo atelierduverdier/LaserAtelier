@@ -52,14 +52,15 @@ class LaserAtelierWorkbench(Workbench):
             # -- Sur surface 3D --
             "LaserAtelier_Project",
             "LaserAtelier_Curved",
-            "LaserAtelier_CurvedCut",
             "Separator",
             # -- Découpe --
+            "LaserAtelier_CurvedCut",
             "LaserAtelier_Flat",
             "Separator",
             # -- Tests & calibration --
             "LaserAtelier_Kerf",
             "LaserAtelier_TestGrid",
+            "LaserAtelier_PowerRamp",
             "LaserAtelier_DefocusCalibration",
             "LaserAtelier_OffsetTest",
             "Separator",
