@@ -3420,6 +3420,12 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
+    # G64 : mode trajectoire CONTINUE (path blending). Sans lui, LinuxCNC
+    # peut faire un arrêt net (exact stop) à chaque petit segment de la
+    # rampe -- d'où le trait qui avance par à-coups. En G64, les segments
+    # colinéaires de la rampe s'enchaînent en un mouvement FLUIDE à vitesse
+    # constante, seule la puissance change palier par palier.
+    lines.append("G64")
     lines.append(CMD_TOOL_COMP)
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -3438,52 +3444,62 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
         lines.append(pre_gcode.strip())
 
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
-    started = [False]
+    current_z = [None]  # None = retracté au Z de sécurité (position inconnue)
 
-    def _travel(x, y, target_z=None):
-        # Transit laser éteint. Sans rampe Z, tout est au même Z : on
-        # enchaîne à plat sans lever le bec. Avec rampe Z, une ligne finit
-        # en haut (z_end) : on retracte au Z de sécurité avant de rejoindre
-        # le début (foyer) de la ligne suivante.
-        if target_z is None:
-            target_z = z_work
-        if not started[0]:
+    def _travel(x, y, target_z):
+        # Transit laser éteint. On ne se relève au Z de sécurité QUE si le
+        # Z de destination diffère du Z courant (ex : après une ligne finie
+        # en haut avec la rampe Z). Tant qu'on reste au même Z -- typique
+        # des étiquettes, toutes au foyer -- on enchaîne à plat sans lever
+        # le bec (sinon le laser remontait tout en haut entre CHAQUE petit
+        # trait de lettre).
+        if current_z[0] is None:
             lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, z_safe))
             lines.append("G0 Z{:.4f}".format(target_z))
-            started[0] = True
-        elif z_ramp:
+        elif abs(current_z[0] - target_z) > 1e-9:
             lines.append("G0 Z{:.4f}".format(z_safe))
             lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
             lines.append("G0 Z{:.4f}".format(target_z))
         else:
             lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+        current_z[0] = target_z
 
     lines.append("(===== Lignes a rampe de puissance =====)")
+    beam_off = CMD_BEAM_OFF.format(sel=SPINDLE_SELECT)
     for y, feed in lines_geo:
         _travel(0.0, y, z_work)
         for k in range(n_steps):
             x1 = line_length * (k + 1) / float(n_steps)
             t = k / float(n_steps - 1)
             power = power_min + (power_max - power_min) * t
-            lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power))
+            # Puissance (S) sur la MÊME ligne que le mouvement : l'ordre
+            # d'exécution RS274 applique S avant le déplacement du bloc,
+            # donc la puissance du palier est posée puis le segment tracé
+            # -- pas de bloc « S seul » qui pourrait casser l'enchaînement.
             if z_ramp:
                 z_k = z_work + (z_end - z_work) * t
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(x1, y, z_k, feed))
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} S{:.0f} {sel}".format(
+                    x1, y, z_k, feed, power, sel=SPINDLE_SELECT))
             else:
-                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(x1, y, feed))
-        lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {sel}".format(
+                    x1, y, feed, power, sel=SPINDLE_SELECT))
+        lines.append(beam_off)
+        if z_ramp:
+            current_z[0] = z_end  # la ligne s'est terminée en haut (droite)
 
     if label_chains:
         lines.append("(===== Etiquettes (vitesses + bornes de puissance) =====)")
         for ch in label_chains:
-            # Étiquettes toujours au foyer (z_work).
+            # Étiquettes toujours au foyer (z_work) : le 1er transit après
+            # les lignes en rampe retracte une seule fois, ensuite tout
+            # s'enchaîne à plat.
             _travel(ch[0].x, ch[0].y, z_work)
             lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=label_power))
             for p in ch[1:]:
                 lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(p.x, p.y, label_feed))
-            lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+            lines.append(beam_off)
 
-    if started[0]:
+    if current_z[0] is not None:
         lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")
