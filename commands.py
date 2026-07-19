@@ -65,6 +65,23 @@ class FilledEngravingCommand:
         Gui.Control.showDialog(task_panels.TaskPanelFilledEngraving(selection))
 
 
+class HalftoneCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("halftone.svg"),
+            "MenuText": "Gravure photo (trame de points)",
+            "ToolTip": "Grave une image en niveaux de gris sous forme de trame de points laser "
+                       "(tramage par diffusion ou durée de pulse variable -- aucune sélection requise)",
+        }
+
+    def IsActive(self):
+        # Aucun document ni sélection nécessaires : l'image vient d'un fichier.
+        return True
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelHalftone())
+
+
 class ProjectCommand:
     def GetResources(self):
         return {
@@ -256,6 +273,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Settings", SettingsCommand())
     Gui.addCommand("LaserAtelier_Hatch", HatchCommand())
     Gui.addCommand("LaserAtelier_FilledEngraving", FilledEngravingCommand())
+    Gui.addCommand("LaserAtelier_Halftone", HalftoneCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
     Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())

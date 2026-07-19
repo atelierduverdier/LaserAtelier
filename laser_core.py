@@ -159,6 +159,7 @@ attentes de sélection, voir le message si rien n'est sélectionné).
 ------------------------------------------------------------------------
 """
 
+import bisect
 import heapq
 import math
 import json
@@ -277,6 +278,12 @@ FRAME_POWER = 0.0                     # puissance (S) du faisceau pendant l'aper
                                       # 0 = laser éteint (défaut), sinon TRÈS FAIBLE (S5-S20)
                                       # juste pour visualiser la zone de travail sans marquer
 FRAME_FEED_MM_MIN = 1500.0            # vitesse du tracé de cadrage quand le faisceau est allumé
+Z_MAX_FEED_MM_MIN = 1500.0            # vitesse max supposée de l'axe Z (mm/min) -- sert
+                                      # uniquement à AVERTIR quand un trait en vague demande
+                                      # plus vite (LinuxCNC ralentira le trajet pour respecter
+                                      # la vraie limite machine, rien de dangereux)
+ACCEL_MM_S2 = 800.0                   # accélération machine supposée (mm/s2) pour
+                                      # l'estimation de durée -- n'affecte jamais le G-code
 
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
 _USER_SETTINGS = (
@@ -287,6 +294,8 @@ _USER_SETTINGS = (
     ("travel_clearance_mm", "TRAVEL_CLEARANCE_MM", float, lambda v: v >= 0),
     ("frame_power", "FRAME_POWER", float, lambda v: 0 <= v <= 1000),
     ("frame_feed_mm_min", "FRAME_FEED_MM_MIN", float, lambda v: v > 0),
+    ("z_max_feed_mm_min", "Z_MAX_FEED_MM_MIN", float, lambda v: v > 0),
+    ("accel_mm_s2", "ACCEL_MM_S2", float, lambda v: v > 0),
     ("safe_min_nozzle_height_mm", "SAFE_MIN_NOZZLE_HEIGHT_MM", float, lambda v: v >= 0),
     ("max_thickness_warning_mm", "MAX_THICKNESS_WARNING_MM", float, lambda v: v > 0),
     ("recommended_max_step_mm", "RECOMMENDED_MAX_STEP_MM", float, lambda v: v > 0),
@@ -1988,6 +1997,99 @@ def offset_chain_kerf(points, distance, is_hole):
     return result
 
 
+def _lead_in_point(points, distance, is_hole):
+    """Point d'AMORCE de découpe : décalé de `distance` du premier sommet
+    de la chaîne fermée, VERS LA CHUTE (extérieur pour un contour de
+    pièce, intérieur pour un trou -- même convention que
+    offset_chain_kerf). Le laser s'allume là, dans la matière perdue,
+    puis rejoint le contour : la verrue d'allumage (le laser marque
+    toujours plus fort au point de départ) reste hors du bord fini.
+    Renvoie None si la chaîne est trop courte pour calculer une normale."""
+    pts2d = [(p.x, p.y) for p in points]
+    closed = len(pts2d) > 1 and math.hypot(pts2d[0][0] - pts2d[-1][0],
+                                           pts2d[0][1] - pts2d[-1][1]) < 1e-9
+    if closed:
+        pts2d = pts2d[:-1]
+    n = len(pts2d)
+    if n < 3:
+        return None
+
+    area = 0.0
+    for i in range(n):
+        x1, y1 = pts2d[i]
+        x2, y2 = pts2d[(i + 1) % n]
+        area += x1 * y2 - x2 * y1
+    winding = 1.0 if area > 0 else -1.0
+    sign = 1.0 if not is_hole else -1.0
+
+    xp, yp = pts2d[-1]
+    xc, yc = pts2d[0]
+    xn, yn = pts2d[1]
+    d1x, d1y = xc - xp, yc - yp
+    len1 = math.hypot(d1x, d1y) or 1e-9
+    d1x, d1y = d1x / len1, d1y / len1
+    d2x, d2y = xn - xc, yn - yc
+    len2 = math.hypot(d2x, d2y) or 1e-9
+    d2x, d2y = d2x / len2, d2y / len2
+    n1x, n1y = winding * d1y, -winding * d1x
+    n2x, n2y = winding * d2y, -winding * d2x
+    bx, by = n1x + n2x, n1y + n2y
+    blen = math.hypot(bx, by)
+    if blen < 1e-9:
+        bx, by, blen = n1x, n1y, math.hypot(n1x, n1y) or 1.0
+    bx, by = bx / blen, by / blen
+    return FreeCAD.Vector(xc + sign * bx * distance, yc + sign * by * distance,
+                          points[0].z)
+
+
+def split_closed_chain_tabs(chain, tab_count, tab_length):
+    """Découpe une chaîne FERMÉE en morceaux [(sous-chaîne, faisceau
+    allumé), ...] : `tab_count` zones d'ATTACHE de `tab_length` (faisceau
+    éteint, la matière y reste) réparties régulièrement le long du
+    périmètre, le reste coupé. La 1re attache est centrée à un
+    demi-intervalle du point de départ (l'amorce/le départ restent en
+    zone coupée). Renvoie None si le périmètre est trop court pour
+    accueillir les attaches (au moins ~2mm coupés entre chacune)."""
+    tab_count = max(1, int(tab_count))
+    cum = _chain_cumlen(chain)
+    total = cum[-1]
+    if total <= tab_count * (tab_length + 2.0):
+        return None
+    pieces = []
+    s = 0.0
+    for i in range(tab_count):
+        center = (i + 0.5) * total / tab_count
+        a, b = center - tab_length / 2.0, center + tab_length / 2.0
+        if a > s + 1e-9:
+            pieces.append((slice_chain(chain, s, a, cum), True))
+        pieces.append((slice_chain(chain, a, b, cum), False))
+        s = b
+    if s < total - 1e-9:
+        pieces.append((slice_chain(chain, s, total, cum), True))
+    return pieces
+
+
+def replicate_edges(edges, nx, ny, dx, dy):
+    """Réplique les edges en matrice nx x ny au pas (dx, dy) -- pour
+    découper n copies d'une même pièce en un seul job. La copie (0,0)
+    est l'originale (non copiée)."""
+    nx = max(1, int(nx))
+    ny = max(1, int(ny))
+    if nx == 1 and ny == 1:
+        return list(edges)
+    out = []
+    for i in range(nx):
+        for j in range(ny):
+            if i == 0 and j == 0:
+                out.extend(edges)
+                continue
+            for e in edges:
+                c = e.copy()
+                c.translate(FreeCAD.Vector(i * dx, j * dy, 0))
+                out.append(c)
+    return out
+
+
 def order_chains_for_cutting(chains, depths, use_hole_first, use_proximity):
     """Renvoie les INDICES des chaînes dans l'ordre de découpe : si
     use_hole_first, regroupe par palier de profondeur décroissante
@@ -2246,18 +2348,53 @@ def delete_preset(category, name):
         save_config(cfg)
 
 
-def estimate_job_time_seconds(gcode_text, rapid_feed=None):
+def estimate_job_time_seconds(gcode_text, rapid_feed=None, accel=None):
     """Estime le temps total du job en secondes, en reparcourant le
     G-code déjà généré : G1 selon la distance/avance programmée, G0 à
-    une vitesse rapide SUPPOSÉE (RAPID_FEED_MM_MIN par défaut --
-    approximation, la vraie vitesse rapide machine n'est pas connue
-    ici), G4 pris en compte. Approximatif : ignore
-    accélérations/décélérations réelles."""
+    une vitesse rapide SUPPOSÉE (RAPID_FEED_MM_MIN par défaut), G4 pris
+    en compte.
+
+    Tient compte des ACCÉLÉRATIONS (profil trapézoïdal, `accel` =
+    ACCEL_MM_S2 par défaut, réglable dans les Préférences) : les
+    mouvements consécutifs quasi colinéaires (< ~30 deg de changement de
+    direction), de même type (G0/G1) et de même avance, sont fusionnés
+    en une COURSE continue (le planificateur de LinuxCNC les enchaîne
+    sans s'arrêter) ; chaque course paie un départ et un arrêt. Sans ça,
+    l'estimation supposait la vitesse de croisière atteinte instantanément
+    -- très optimiste sur un remplissage fait de milliers de traits
+    courts, où la machine passe son temps à accélérer/freiner."""
     if rapid_feed is None:
         rapid_feed = RAPID_FEED_MM_MIN
+    if accel is None:
+        accel = ACCEL_MM_S2
+
+    def run_time(dist_mm, feed_mm_min):
+        # Profil trapézoïdal départ/arrêt : d >= v2/a -> plateau atteint,
+        # sinon profil triangulaire (jamais à pleine vitesse).
+        v = feed_mm_min / 60.0
+        if v <= 0:
+            return 0.0
+        if accel <= 0:
+            return dist_mm / v
+        if dist_mm >= v * v / accel:
+            return dist_mm / v + v / accel
+        return 2.0 * math.sqrt(dist_mm / accel)
+
     total_seconds = 0.0
     last_x = last_y = last_z = 0.0
     current_feed = 1000.0
+    # Course en cours : (is_g0, feed, distance cumulée, direction unitaire)
+    run_is_g0 = None
+    run_feed = None
+    run_dist = 0.0
+    run_dir = None
+
+    def flush_run():
+        nonlocal total_seconds, run_is_g0, run_dist, run_dir, run_feed
+        if run_dist > 0:
+            total_seconds += run_time(run_dist, rapid_feed if run_is_g0 else run_feed)
+        run_is_g0, run_feed, run_dist, run_dir = None, None, 0.0, None
+
     for line in gcode_text.split("\n"):
         line = line.strip()
         if not line or line.startswith("("):
@@ -2290,11 +2427,23 @@ def estimate_job_time_seconds(gcode_text, rapid_feed=None):
                 z = val
             elif token[0] == 'F':
                 current_feed = val
-        dist = math.sqrt((x - last_x) ** 2 + (y - last_y) ** 2 + (z - last_z) ** 2)
-        feed = rapid_feed if is_g0 else current_feed
-        if feed > 0:
-            total_seconds += (dist / feed) * 60.0
+        dx, dy, dz = x - last_x, y - last_y, z - last_z
+        dist = math.sqrt(dx * dx + dy * dy + dz * dz)
         last_x, last_y, last_z = x, y, z
+        if dist < 1e-9:
+            continue
+        direction = (dx / dist, dy / dist, dz / dist)
+        feed = rapid_feed if is_g0 else current_feed
+        cont = (run_dir is not None and run_is_g0 == is_g0
+                and (is_g0 or run_feed == feed)
+                and (run_dir[0] * direction[0] + run_dir[1] * direction[1]
+                     + run_dir[2] * direction[2]) > 0.87)
+        if not cont:
+            flush_run()
+            run_is_g0, run_feed = is_g0, feed
+        run_dist += dist
+        run_dir = direction
+    flush_run()
     return total_seconds
 
 
@@ -2312,6 +2461,8 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
                                    pre_gcode="", post_gcode="",
                                    power_end=None, kerf_width=0.0,
                                    use_hole_first=False, use_proximity=False,
+                                   tab_count=0, tab_length=4.0, tab_height=1.0,
+                                   lead_in_mm=0.0,
                                    frame_only=False, quiet=False, body_only=False, min_safe_z=None):
     """z_start=None : calcule automatiquement depuis l'épaisseur -- Z=0 =
     le bec touche la surface du matériau (zéro au papier), Z POSITIF =
@@ -2328,6 +2479,20 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
     suivante, pour que "avant" ait un sens physique réel).
     use_proximity : réordonne par plus proche voisin (heuristique) pour
     réduire les déplacements à vide.
+
+    tab_count/tab_length/tab_height : ATTACHES (tabs). tab_count > 0
+    laisse, sur chaque chaîne FERMÉE, tab_count ponts de tab_length mm
+    non coupés (faisceau éteint en les traversant) sur les passes qui
+    attaqueraient les derniers tab_height mm d'épaisseur -- la pièce
+    reste solidaire de la planche par ces ponts (à couper au cutter
+    ensuite) au lieu de tomber/bouger avant la fin du job. Chaînes
+    ouvertes ou trop courtes : attaches ignorées (avertissement).
+
+    lead_in_mm : AMORCE de découpe. > 0 = le faisceau s'allume à cette
+    distance du contour, DANS LA CHUTE (extérieur d'un contour de pièce,
+    intérieur d'un trou), puis rejoint le contour en coupant -- la verrue
+    du point d'allumage (marquage renforcé au départ) reste hors du bord
+    fini. Chaînes fermées uniquement.
     frame_only : ne génère QUE le rectangle englobant (laser éteint), en
     réutilisant le même calcul de Z de sécurité que le job réel -- pour
     un fichier de VÉRIFICATION DE CADRAGE SÉPARÉ du job (à lancer seul
@@ -2433,6 +2598,11 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
         lines.append("(Ordre : optimisé par plus proche voisin)")
     if power_end is not None:
         lines.append("(Puissance : rampe de S{:.0f} (1ère passe) à S{:.0f} (dernière passe))".format(power, power_end))
+    if tab_count > 0:
+        lines.append("(Attaches : {} x {:.1f}mm par contour ferme, hauteur {:.1f}mm -- ponts a couper au cutter)".format(
+            int(tab_count), tab_length, tab_height))
+    if lead_in_mm > 0:
+        lines.append("(Amorce : allumage a {:.1f}mm du contour, dans la chute)".format(lead_in_mm))
     if clamped_passes:
         lines.append("(ATTENTION : butée de sécurité {:.1f}mm appliquée sur {} passe(s), voir Rapport)".format(
             SAFE_MIN_NOZZLE_HEIGHT_MM, len(clamped_passes)))
@@ -2459,9 +2629,27 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
         lines.append(pre_gcode.strip())
 
     state_armed = body_only
+    tab_count = max(0, int(tab_count))
+    tab_warned = False
 
-    for chain in chains:
-        p0 = chain[0]
+    for ci, chain in enumerate(chains):
+        closed = math.hypot(chain[0].x - chain[-1].x, chain[0].y - chain[-1].y) < 1e-6
+        is_hole = (depths[ci] % 2 == 1) if ci < len(depths) else False
+
+        lead_pt = None
+        if lead_in_mm > 0 and closed:
+            lead_pt = _lead_in_point(chain, lead_in_mm, is_hole)
+
+        tab_pieces = None
+        if tab_count > 0:
+            if closed:
+                tab_pieces = split_closed_chain_tabs(chain, tab_count, tab_length)
+            if tab_pieces is None and not quiet and not tab_warned:
+                FreeCAD.Console.PrintWarning(
+                    "Attaches ignorées sur au moins une chaîne (ouverte, ou périmètre "
+                    "trop court pour {} attache(s) de {:.1f}mm).\n".format(
+                        tab_count, tab_length))
+                tab_warned = True
 
         for pass_idx in range(n_passes):
             z_pass = pass_heights[pass_idx]
@@ -2473,18 +2661,34 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
             else:
                 pass_power = power
 
+            # Chaîne OUVERTE : passes en aller-retour (sens alterné) -- la
+            # passe suivante repart de là où la précédente s'est arrêtée,
+            # au lieu de retraverser la pièce faisceau allumé pour revenir
+            # au début (bug historique : le G1 de reprise coupait tout
+            # droit de la fin vers le début du trait).
+            path = chain if (closed or pass_idx % 2 == 0) else list(reversed(chain))
+            p0 = path[0]
+            start_pt = lead_pt if lead_pt is not None else p0
+
+            # Attaches actives sur les passes qui attaqueraient les
+            # derniers tab_height mm d'épaisseur.
+            tabs_this_pass = (tab_pieces is not None
+                              and (pass_idx + 1) * z_step > thickness - tab_height + 1e-9)
+
             lines.append("(-- Passe {}/{} : Z={:.4f} F={:.0f} S={:.0f} --)".format(
                 pass_idx + 1, n_passes, z_pass, pass_feed, pass_power))
 
             if pass_idx == 0:
                 # Arrivée sur cette chaîne : retrait complet nécessaire
                 # (on vient d'une autre chaîne, ou d'une position inconnue)
-                lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(p0.x, p0.y, z_safe))
+                lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(start_pt.x, start_pt.y, z_safe))
                 lines.append("G0 Z{:.4f}".format(z_pass))
             else:
-                # Passe suivante de la MÊME chaîne, même X,Y : le kerf est
-                # déjà ouvert ici (coupé par la passe précédente) -- pas
-                # besoin de remonter, juste ajuster le Z directement.
+                # Passe suivante de la MÊME chaîne : le kerf est déjà
+                # ouvert -- pas besoin de remonter. Avec amorce, retour au
+                # point d'allumage (faisceau éteint, à plat dans la chute).
+                if lead_pt is not None:
+                    lines.append("G0 X{:.4f} Y{:.4f}".format(start_pt.x, start_pt.y))
                 lines.append("G0 Z{:.4f}".format(z_pass))
 
             if not state_armed:
@@ -2492,8 +2696,23 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
                 state_armed = True
             lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=pass_power))
 
-            for p in chain[1:]:
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(p.x, p.y, z_pass, pass_feed))
+            if lead_pt is not None:
+                # Amorce : rejoint le contour en coupant depuis la chute.
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                    p0.x, p0.y, z_pass, pass_feed))
+
+            if tabs_this_pass:
+                for piece, on in tab_pieces:
+                    if not on:
+                        lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+                    for p in piece[1:]:
+                        lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                            p.x, p.y, z_pass, pass_feed))
+                    if not on:
+                        lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=pass_power))
+            else:
+                for p in path[1:]:
+                    lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(p.x, p.y, z_pass, pass_feed))
 
             lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
 
@@ -2657,7 +2876,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
     nozzle_cut_warnings = 0
 
     for chain in chains:
-        p0 = chain[0]
+        closed = math.hypot(chain[0].x - chain[-1].x, chain[0].y - chain[-1].y) < 1e-6
 
         for pass_idx in range(n_passes):
             is_last_pass = (pass_idx == n_passes - 1)
@@ -2667,6 +2886,13 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
                 pass_power = power + (power_end - power) * t
             else:
                 pass_power = power
+
+            # Chaîne OUVERTE : passes en aller-retour (sens alterné) --
+            # même correction que la découpe à plat : sans ça, la reprise
+            # de passe recoupait tout droit de la fin vers le début du
+            # trait, faisceau allumé.
+            path = chain if (closed or pass_idx % 2 == 0) else list(reversed(chain))
+            p0 = path[0]
 
             lines.append("(-- Passe {}/{} : F={:.0f} S={:.0f} --)".format(
                 pass_idx + 1, n_passes, pass_feed, pass_power))
@@ -2688,7 +2914,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
             lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=pass_power))
 
             last_check_pos = p0
-            for p in chain[1:]:
+            for p in path[1:]:
                 # Contrôlé tous les NOZZLE_CHECK_INTERVAL_MM, pas à chaque
                 # point discrétisé -- voir la même optimisation dans
                 # generate_gcode_curved.
@@ -2875,6 +3101,218 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
 
 
 # ==========================================================================
+# STYLES DE TRAIT (tirets / pointillé / vague) -- travail À PLAT
+# ==========================================================================
+# Au lieu d'un trait continu, une chaîne peut être rendue en TIRETS
+# (faisceau pulsé par segments le long du tracé, mouvement continu), en
+# POINTILLÉ (vrais points ronds : arrêt + pulse G4 à chaque point -- plus
+# lent mais points nets, et en défocus ça donne des gros points doux), ou
+# en VAGUE (le Z oscille entre le foyer et un défocus max le long du
+# tracé : le trait varie continûment en largeur ET en intensité, effet
+# calligraphique). L'amplitude de la vague se calcule avec le modèle de
+# défocus calibré (defocus_for_fill_spacing, overlap=1) à partir de la
+# largeur max de trait voulue. Utilisé par la Gravure remplie (styles de
+# remplissage et de contour).
+def _chain_cumlen(chain):
+    """Abscisse curviligne cumulée (2D, X/Y) de chaque point de la
+    chaîne."""
+    cum = [0.0]
+    for i in range(1, len(chain)):
+        cum.append(cum[-1] + math.hypot(chain[i].x - chain[i - 1].x,
+                                        chain[i].y - chain[i - 1].y))
+    return cum
+
+
+def _point_at_s(chain, cum, s):
+    """Point interpolé à l'abscisse curviligne s (Z interpolé aussi)."""
+    if s <= 0:
+        p = chain[0]
+    elif s >= cum[-1]:
+        p = chain[-1]
+    else:
+        i = bisect.bisect_right(cum, s)
+        p0, p1 = chain[i - 1], chain[i]
+        seg = cum[i] - cum[i - 1]
+        t = (s - cum[i - 1]) / seg if seg > 0 else 0.0
+        return FreeCAD.Vector(p0.x + (p1.x - p0.x) * t,
+                              p0.y + (p1.y - p0.y) * t,
+                              p0.z + (p1.z - p0.z) * t)
+    return FreeCAD.Vector(p.x, p.y, p.z)
+
+
+def slice_chain(chain, s0, s1, cum=None):
+    """Sous-chaîne entre les abscisses curvilignes s0 et s1 (bornes
+    interpolées, points intermédiaires d'origine conservés)."""
+    if cum is None:
+        cum = _chain_cumlen(chain)
+    pts = [_point_at_s(chain, cum, s0)]
+    for i in range(bisect.bisect_right(cum, s0), bisect.bisect_left(cum, s1)):
+        pts.append(chain[i])
+    pts.append(_point_at_s(chain, cum, s1))
+    out = [pts[0]]
+    for p in pts[1:]:
+        if (math.hypot(p.x - out[-1].x, p.y - out[-1].y) > 1e-9
+                or abs(p.z - out[-1].z) > 1e-9):
+            out.append(p)
+    if len(out) < 2:
+        out = [pts[0], pts[-1]]
+    return out
+
+
+def dash_chain(chain, dash_len, gap_len):
+    """Découpe la chaîne en morceaux alternés [(sous-chaîne, faisceau
+    allumé), ...] couvrant tout le tracé : tirets de dash_len (allumé)
+    séparés d'espaces de gap_len (éteint, parcourus au même feed pour un
+    mouvement continu sans à-coups)."""
+    cum = _chain_cumlen(chain)
+    total = cum[-1]
+    if total < 1e-9:
+        return []
+    pieces = []
+    s, on = 0.0, True
+    while s < total - 1e-9:
+        ln = dash_len if on else gap_len
+        e = min(s + ln, total)
+        pieces.append((slice_chain(chain, s, e, cum), on))
+        s, on = e, not on
+    return pieces
+
+
+def dot_positions(chain, spacing):
+    """Points régulièrement espacés (abscisse curviligne) le long de la
+    chaîne, extrémités comprises. Sur une chaîne fermée, le point de
+    fin (= point de départ) n'est pas doublé."""
+    cum = _chain_cumlen(chain)
+    total = cum[-1]
+    if total < 1e-9:
+        return [chain[0]]
+    n = max(1, int(math.floor(total / spacing + 1e-9))) + 1
+    pts = [_point_at_s(chain, cum, min(i * spacing, total)) for i in range(n)]
+    closed = math.hypot(chain[0].x - chain[-1].x, chain[0].y - chain[-1].y) < 1e-6
+    if closed and len(pts) > 1 and math.hypot(
+            pts[-1].x - pts[0].x, pts[-1].y - pts[0].y) < spacing * 0.5:
+        pts.pop()
+    return pts
+
+
+def wave_resample(chain, period, amplitude, step=None):
+    """Rééchantillonne la chaîne et renvoie [(point, dz)] : dz oscille de
+    0 (foyer, trait fin) à `amplitude` (défocus max, trait large et pâle)
+    avec la période donnée le long de l'abscisse curviligne."""
+    if step is None:
+        step = max(min(period / 12.0, 1.0), 0.05)
+    cum = _chain_cumlen(chain)
+    total = cum[-1]
+    if total < 1e-9:
+        return []
+    n = max(2, int(math.ceil(total / step)) + 1)
+    out = []
+    for i in range(n):
+        s = total * i / float(n - 1)
+        p = _point_at_s(chain, cum, s)
+        dz = amplitude * 0.5 * (1.0 - math.cos(2.0 * math.pi * s / period))
+        out.append((p, dz))
+    return out
+
+
+def wave_peak_z_feed(amplitude, feed, period):
+    """Vitesse Z crête (mm/min) d'un trait en vague parcouru à `feed` --
+    dérivée max de la sinusoïde : pi * amplitude * feed / période. À
+    comparer à Z_MAX_FEED_MM_MIN : au-delà, LinuxCNC ralentit le trajet
+    pour respecter la limite de l'axe Z (pas de danger, juste plus
+    lent que le feed programmé)."""
+    if period <= 0:
+        return 0.0
+    return math.pi * amplitude * feed / period
+
+
+def generate_flat_styled_body(chains, power, feed, z_base, style="plein",
+                              dash_len=3.0, gap_len=2.0,
+                              dot_spacing=1.5, dot_dwell_s=0.05,
+                              wave_period=5.0, wave_amplitude=0.0,
+                              marge_survol=0.0, min_safe_z=None):
+    """Corps G-code (équivalent body_only : ni en-tête, ni armement, ni
+    M2) d'un tracé À PLAT au Z machine z_base, rendu avec un style de
+    trait : "plein", "tirets", "pointille" ou "vague" (cf. le bloc de
+    commentaires en tête de section). Pour "vague", z_base est le FOYER
+    et le trait monte jusqu'à z_base + wave_amplitude. Transit faisceau
+    éteint à plat (pièce plate) au-dessus du point le plus haut du trait
+    + marge_survol. Renvoie None si aucune chaîne."""
+    if not chains:
+        return None
+    amp = wave_amplitude if style == "vague" else 0.0
+    z_top = z_base + amp
+    z_safe = z_top + marge_survol + 5.0
+    if min_safe_z is not None:
+        z_safe = max(z_safe, min_safe_z)
+    z_transit = z_top + marge_survol
+
+    lines = ["G0 Z{:.4f}".format(z_safe)]
+    started = [False]
+
+    def _goto(x, y, z_target):
+        # 1re approche depuis la hauteur de sécurité (le bec peut venir de
+        # n'importe où) ; ensuite transit à plat, faisceau éteint.
+        if not started[0]:
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, z_safe))
+            lines.append("G0 Z{:.4f}".format(z_target))
+            started[0] = True
+        elif abs(z_transit - z_target) < 1e-9:
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+        else:
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, z_transit))
+            lines.append("G0 Z{:.4f}".format(z_target))
+
+    beam_on = CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power)
+    beam_off = CMD_BEAM_OFF.format(sel=SPINDLE_SELECT)
+
+    if style == "pointille":
+        for chain in chains:
+            for p in dot_positions(chain, dot_spacing):
+                _goto(p.x, p.y, z_base)
+                lines.append(beam_on)
+                lines.append("G4 P{:.3f}".format(dot_dwell_s))
+                lines.append(beam_off)
+    elif style == "tirets":
+        for chain in chains:
+            pieces = dash_chain(chain, dash_len, gap_len)
+            if not pieces:
+                continue
+            first = pieces[0][0][0]
+            _goto(first.x, first.y, z_base)
+            for piece, on in pieces:
+                if on:
+                    lines.append(beam_on)
+                for p in piece[1:]:
+                    lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(p.x, p.y, feed))
+                if on:
+                    lines.append(beam_off)
+    elif style == "vague":
+        for chain in chains:
+            samples = wave_resample(chain, wave_period, wave_amplitude)
+            if len(samples) < 2:
+                continue
+            p0, dz0 = samples[0]
+            _goto(p0.x, p0.y, z_base + dz0)
+            lines.append(beam_on)
+            for p, dz in samples[1:]:
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                    p.x, p.y, z_base + dz, feed))
+            lines.append(beam_off)
+    else:  # "plein"
+        for chain in chains:
+            _goto(chain[0].x, chain[0].y, z_base)
+            lines.append(beam_on)
+            for p in chain[1:]:
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(p.x, p.y, feed))
+            lines.append(beam_off)
+
+    if started[0]:
+        lines.append("G0 Z{:.4f}".format(z_safe))
+    return "\n".join(lines)
+
+
+# ==========================================================================
 # MODE : GRAVURE REMPLIE (NOIR) -- remplissage défocus + contour au foyer
 # ==========================================================================
 def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0, add_perimeter=True):
@@ -2924,6 +3362,8 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
                                      fill_power, fill_feed,
                                      draw_contour=True, contour_power=300.0, contour_feed=1000.0,
                                      contour_z_offset=0.0, marge_survol=5.0,
+                                     fill_style="plein", contour_style="plein",
+                                     fill_style_params=None, contour_style_params=None,
                                      pre_gcode="", post_gcode="", frame_only=False, quiet=False):
     """Grave une forme/texte à plat en NOIR PLEIN : d'abord le remplissage
     par hachures gravé en DÉFOCUS (point élargi, cf. remplissage défocus du
@@ -2939,15 +3379,48 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
     = None) et body_only : un plancher de retrait commun (min_safe_z)
     garantit un transit sûr entre les deux hauteurs.
 
+    fill_style / contour_style : style de trait ("plein" = comportement
+    historique, "tirets", "pointille", "vague" -- cf. la section STYLES DE
+    TRAIT). fill_style_params / contour_style_params : dict d'arguments
+    nommés de generate_flat_styled_body (dash_len, gap_len, dot_spacing,
+    dot_dwell_s, wave_period, wave_amplitude). En "vague", le Z de BASE
+    du corps est le FOYER (z_focus) et le trait oscille jusqu'à
+    z_focus + wave_amplitude -- defocus/contour_z_offset ne s'appliquent
+    pas à ce style (la vague EST la modulation de défocus).
+
     frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
-    z_fill = z_focus + defocus
-    z_contour = z_focus + contour_z_offset
+    fill_style_params = dict(fill_style_params or {})
+    contour_style_params = dict(contour_style_params or {})
+
+    z_fill = z_focus if fill_style == "vague" else z_focus + defocus
+    z_contour = z_focus if contour_style == "vague" else z_focus + contour_z_offset
+    z_fill_top = z_fill + (fill_style_params.get("wave_amplitude", 0.0)
+                           if fill_style == "vague" else 0.0)
+    z_contour_top = z_contour + (contour_style_params.get("wave_amplitude", 0.0)
+                                 if contour_style == "vague" else 0.0)
 
     has_contour = bool(draw_contour and contour_edges)
     # Hauteur de sécurité commune (marquage à plat : Z natif = 0, donc
     # z_safe = niveau de travail + marge + 5, cf. generate_gcode_curved).
-    safe_levels = [z_fill] + ([z_contour] if has_contour else [])
+    # En vague, le "niveau de travail" est le sommet de l'oscillation.
+    safe_levels = [z_fill_top] + ([z_contour_top] if has_contour else [])
     global_min_safe_z = max(safe_levels) + marge_survol + 5.0
+
+    if not quiet:
+        for what, style, params, feed in (
+                ("remplissage", fill_style, fill_style_params, fill_feed),
+                ("contour", contour_style, contour_style_params, contour_feed)):
+            if style != "vague":
+                continue
+            peak = wave_peak_z_feed(params.get("wave_amplitude", 0.0), feed,
+                                    params.get("wave_period", 5.0))
+            if peak > Z_MAX_FEED_MM_MIN:
+                FreeCAD.Console.PrintWarning(
+                    "Vague ({}) : vitesse Z crête ~{:.0f}mm/min > limite Z supposée "
+                    "({:.0f}mm/min, cf. Préférences) -- LinuxCNC ralentira le trajet "
+                    "pour suivre (pas de danger, job juste plus lent que le feed "
+                    "programmé). Allonger la période ou réduire l'amplitude/le feed "
+                    "pour l'éviter.\n".format(what, peak, Z_MAX_FEED_MM_MIN))
 
     if frame_only:
         all_edges = list(fill_edges or []) + (list(contour_edges) if has_contour else [])
@@ -2969,28 +3442,43 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
         lines.append("M2")
         return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
-    # Corps : remplissage d'abord, contour ensuite (repassé propre).
+    # Corps : remplissage d'abord, contour ensuite (repassé propre). Le
+    # style "plein" garde le chemin historique (generate_gcode_curved à
+    # plat) ; les autres styles passent par generate_flat_styled_body.
+    def _make_body(edges, style, params, s_power, s_feed, z_base):
+        if not edges:
+            return None
+        if style == "plein":
+            return generate_gcode_curved(
+                edges, s_power, s_feed, z_base, marge_survol,
+                reference_shape=None, body_only=True, quiet=quiet,
+                min_safe_z=global_min_safe_z)
+        return generate_flat_styled_body(
+            chain_edges(edges), s_power, s_feed, z_base, style,
+            marge_survol=marge_survol, min_safe_z=global_min_safe_z, **params)
+
     bodies = []
-    fill_body = generate_gcode_curved(
-        fill_edges, fill_power, fill_feed, z_fill, marge_survol,
-        reference_shape=None, body_only=True, quiet=quiet, min_safe_z=global_min_safe_z)
+    fill_body = _make_body(fill_edges, fill_style, fill_style_params,
+                           fill_power, fill_feed, z_fill)
     if fill_body:
         bodies.append(("Remplissage defocus", fill_body))
     if has_contour:
-        contour_body = generate_gcode_curved(
-            contour_edges, contour_power, contour_feed, z_contour, marge_survol,
-            reference_shape=None, body_only=True, quiet=quiet, min_safe_z=global_min_safe_z)
+        contour_body = _make_body(contour_edges, contour_style, contour_style_params,
+                                  contour_power, contour_feed, z_contour)
         if contour_body:
             bodies.append(("Contour", contour_body))
     if not bodies:
         return None
 
+    style_names = {"plein": "trait plein", "tirets": "tirets",
+                   "pointille": "pointille", "vague": "vague defocus"}
     lines = []
     lines.append("(G-Code Laser - Gravure remplie noir)")
-    lines.append("(Remplissage Z={:.4f} defocus={:.4f} S{:.0f} F{:.0f})".format(
-        z_fill, defocus, fill_power, fill_feed))
+    lines.append("(Remplissage Z={:.4f} defocus={:.4f} S{:.0f} F{:.0f} style={})".format(
+        z_fill, defocus, fill_power, fill_feed, style_names.get(fill_style, fill_style)))
     if any(label == "Contour" for label, _ in bodies):
-        lines.append("(Contour Z={:.4f} S{:.0f} F{:.0f})".format(z_contour, contour_power, contour_feed))
+        lines.append("(Contour Z={:.4f} S{:.0f} F{:.0f} style={})".format(
+            z_contour, contour_power, contour_feed, style_names.get(contour_style, contour_style)))
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
@@ -3161,6 +3649,139 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
     lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
     lines.append("M2")
 
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
+# ==========================================================================
+# MODE : GRAVURE PHOTO (TRAME DE POINTS)
+# ==========================================================================
+# Une image en niveaux de gris devient une grille de POINTS laser au pas
+# `pitch` : c'est le motif "pointillé" poussé au bout -- chaque point
+# encode la noirceur locale de l'image. Deux tramages :
+#   - "duree"     : un point par case non blanche, durée du pulse (G4)
+#                   proportionnelle à la noirceur (modulation d'amplitude,
+#                   rendu doux, dépend de la réponse du matériau) ;
+#   - "diffusion" : tramage Floyd-Steinberg -- points TOUS identiques
+#                   (dwell_max), c'est leur DENSITÉ locale qui rend le
+#                   gris (plus robuste : un point est brûlé ou pas, pas de
+#                   demi-teinte à calibrer).
+# L'image est fournie en NOIRCEUR (0..1, 1 = noir plein), lignes du HAUT
+# vers le BAS -- la conversion image -> grille est faite par le panneau
+# (QImage, couche UI) pour garder ce module sans dépendance Qt.
+def floyd_steinberg_dither(darkness_rows):
+    """Diffusion d'erreur Floyd-Steinberg sur une grille de noirceur
+    (0..1). Renvoie une grille de 0/1 (1 = point gravé) : l'erreur de
+    quantification de chaque case est répartie sur ses voisines pas
+    encore traitées (7/16 à droite, 3/16-5/16-1/16 dessous), ce qui
+    préserve la noirceur moyenne locale."""
+    rows = [list(r) for r in darkness_rows]
+    h = len(rows)
+    w = len(rows[0]) if h else 0
+    out = [[0] * w for _ in range(h)]
+    for y in range(h):
+        for x in range(w):
+            old = rows[y][x]
+            new = 1.0 if old >= 0.5 else 0.0
+            out[y][x] = int(new)
+            err = old - new
+            if x + 1 < w:
+                rows[y][x + 1] += err * (7.0 / 16.0)
+            if y + 1 < h:
+                if x > 0:
+                    rows[y + 1][x - 1] += err * (3.0 / 16.0)
+                rows[y + 1][x] += err * (5.0 / 16.0)
+                if x + 1 < w:
+                    rows[y + 1][x + 1] += err * (1.0 / 16.0)
+    return out
+
+
+def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
+                            dwell_min_s, dwell_max_s,
+                            mode="diffusion", white_threshold=0.08,
+                            pre_gcode="", post_gcode="", frame_only=False, quiet=False):
+    """G-code de gravure photo en trame de points (cf. bloc de
+    commentaires ci-dessus). darkness_rows : grille de noirceur 0..1
+    (lignes haut -> bas). L'image est posée coin bas-gauche en X0 Y0,
+    parcourue en serpentin (une ligne sur deux inversée) pour minimiser
+    les transits. white_threshold (mode duree) : noirceur en-dessous de
+    laquelle AUCUN point n'est gravé -- évite de piqueter les blancs.
+    Renvoie None si la grille est vide ou toute blanche."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1:
+        return None
+
+    dots = []  # (x, y, dwell_s)
+    if mode == "diffusion":
+        binary = floyd_steinberg_dither(darkness_rows)
+        for row in range(h):
+            y = (h - 1 - row) * pitch
+            cols = range(w) if row % 2 == 0 else range(w - 1, -1, -1)
+            for col in cols:
+                if binary[row][col]:
+                    dots.append((col * pitch, y, dwell_max_s))
+    else:
+        for row in range(h):
+            y = (h - 1 - row) * pitch
+            cols = range(w) if row % 2 == 0 else range(w - 1, -1, -1)
+            for col in cols:
+                d = min(1.0, max(0.0, darkness_rows[row][col]))
+                if d < white_threshold:
+                    continue
+                dots.append((col * pitch, y,
+                             dwell_min_s + (dwell_max_s - dwell_min_s) * d))
+    if not dots:
+        return None
+
+    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    total_dwell = sum(dw for _, _, dw in dots)
+
+    lines = []
+    lines.append("(G-Code Laser - Gravure photo : trame de points)")
+    lines.append("(Image : {} x {} cases au pas {:.2f}mm = {:.1f} x {:.1f}mm)".format(
+        w, h, pitch, (w - 1) * pitch, (h - 1) * pitch))
+    lines.append("(Tramage : {} -- {} points, {:.0f}s de pulses cumules)".format(
+        "diffusion Floyd-Steinberg" if mode == "diffusion" else "duree variable",
+        len(dots), total_dwell))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append(CMD_TOOL_COMP)
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(0.0, (w - 1) * pitch, 0.0, (h - 1) * pitch, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    x0, y0, _ = dots[0]
+    lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x0, y0, z_safe))
+    lines.append("G0 Z{:.4f}".format(z_work))
+    beam_off = CMD_BEAM_OFF.format(sel=SPINDLE_SELECT)
+    beam_on = CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power)
+    first = True
+    for x, y, dwell in dots:
+        if not first:
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+        first = False
+        lines.append(beam_on)
+        lines.append("G4 P{:.3f}".format(dwell))
+        lines.append(beam_off)
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 

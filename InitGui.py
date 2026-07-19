@@ -47,6 +47,7 @@ class LaserAtelierWorkbench(Workbench):
             # -- Gravure à plat --
             "LaserAtelier_Hatch",
             "LaserAtelier_FilledEngraving",
+            "LaserAtelier_Halftone",
             "Separator",
             # -- Sur surface 3D --
             "LaserAtelier_Project",

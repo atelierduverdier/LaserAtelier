@@ -190,6 +190,58 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path):
     return True
 
 
+# --- Mémorisation des derniers réglages par panneau ----------------------
+# Chaque panneau enregistre self._last_fields = {clé: widget} puis appelle
+# _restore_last_values à la fin de son __init__ et _save_last_values dans
+# accept() : rouvrir un panneau retrouve les valeurs de la dernière fois au
+# lieu de repartir des défauts (les préréglages matériau nommés restent le
+# mécanisme explicite ; ceci est un "dernier état" implicite, clé
+# "last_<panneau>" du même laser_atelier_config.json).
+def _widget_get(w):
+    if isinstance(w, QtWidgets.QComboBox):
+        return w.currentIndex()
+    if isinstance(w, QtWidgets.QCheckBox):
+        return w.isChecked()
+    if isinstance(w, (QtWidgets.QDoubleSpinBox, QtWidgets.QSpinBox)):
+        return w.value()
+    if isinstance(w, QtWidgets.QLineEdit):
+        return w.text()
+    return None
+
+
+def _widget_set(w, v):
+    try:
+        if isinstance(w, QtWidgets.QComboBox):
+            idx = int(v)
+            if 0 <= idx < w.count():
+                w.setCurrentIndex(idx)
+        elif isinstance(w, QtWidgets.QCheckBox):
+            w.setChecked(bool(v))
+        elif isinstance(w, QtWidgets.QSpinBox):
+            w.setValue(int(v))
+        elif isinstance(w, QtWidgets.QDoubleSpinBox):
+            w.setValue(float(v))
+        elif isinstance(w, QtWidgets.QLineEdit):
+            w.setText(str(v))
+    except Exception:
+        pass  # valeur stockée invalide : le défaut du widget reste
+
+
+def _restore_last_values(panel_key, fields):
+    values = core.load_config().get("last_" + panel_key)
+    if not isinstance(values, dict):
+        return
+    for name, widget in fields.items():
+        if name in values:
+            _widget_set(widget, values[name])
+
+
+def _save_last_values(panel_key, fields):
+    cfg = core.load_config()
+    cfg["last_" + panel_key] = {name: _widget_get(w) for name, w in fields.items()}
+    core.save_config(cfg)
+
+
 # ==========================================================================
 # MODE : HACHURES 2D
 # ==========================================================================
@@ -331,11 +383,19 @@ class TaskPanelHatch:
         info.setWordWrap(True)
         form.addRow(info)
 
+        self._last_fields = {
+            "filltype": self.combo_filltype, "spacing": self.spn_spacing,
+            "angle": self.spn_angle, "dfocus": self.spn_dfocus,
+            "ztest": self.spn_ztest, "dtest": self.spn_dtest,
+        }
+        _restore_last_values("hatch", self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Hachures 2D")
         self.form.setWindowIcon(_icon("hatch.svg"))
 
     def accept(self):
+        _save_last_values("hatch", self._last_fields)
         fill_type_map = {0: "paralleles", 1: "croisees", 2: "defocus"}
         fill_type = fill_type_map.get(self.combo_filltype.currentIndex(), "paralleles")
         obj, err = core.run_hatch_generation(
@@ -540,6 +600,99 @@ class TaskPanelFilledEngraving:
         self.chk_contour.toggled.connect(self.spn_contour_feed.setEnabled)
         self.chk_contour.toggled.connect(self.spn_contour_width.setEnabled)
 
+        _section(form, "Styles de trait", "sect_options.svg")
+        style_items = ["Trait plein", "Tirets", "Pointillé", "Vague défocus"]
+        style_tooltip = (
+            "Trait plein : trait continu (comportement historique).\n"
+            "Tirets : faisceau pulsé le long du tracé (mouvement continu).\n"
+            "Pointillé : vrais points ronds -- arrêt + pulse à chaque point\n"
+            "(plus lent ; en défocus, gros points doux).\n"
+            "Vague défocus : le Z oscille entre le foyer et un défocus max,\n"
+            "le trait varie continûment en largeur et en intensité (effet\n"
+            "calligraphique). Nécessite la calibration du point ci-dessus.")
+
+        self.combo_fill_style = QtWidgets.QComboBox()
+        self.combo_fill_style.addItems(style_items)
+        self.combo_fill_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_fill_style.setMinimumContentsLength(14)
+        self.combo_fill_style.setToolTip("Style des traits du REMPLISSAGE.\n" + style_tooltip)
+        form.addRow("Style remplissage :", self.combo_fill_style)
+
+        self.combo_contour_style = QtWidgets.QComboBox()
+        self.combo_contour_style.addItems(style_items)
+        self.combo_contour_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_contour_style.setMinimumContentsLength(14)
+        self.combo_contour_style.setToolTip(
+            "Style du trait de CONTOUR.\n" + style_tooltip +
+            "\nEn Vague, « Épaisseur trait contour » (ci-dessus) devient la\n"
+            "largeur MAX de la vague (au foyer le trait reste le plus fin).")
+        form.addRow("Style contour :", self.combo_contour_style)
+
+        self.spn_dash_len = QtWidgets.QDoubleSpinBox()
+        self.spn_dash_len.setRange(0.2, 50.0)
+        self.spn_dash_len.setValue(3.0)
+        self.spn_dash_len.setSuffix(" mm")
+        self.spn_dash_len.setToolTip("Longueur de chaque tiret (style Tirets).")
+        form.addRow("Longueur tiret :", self.spn_dash_len)
+
+        self.spn_gap_len = QtWidgets.QDoubleSpinBox()
+        self.spn_gap_len.setRange(0.2, 50.0)
+        self.spn_gap_len.setValue(2.0)
+        self.spn_gap_len.setSuffix(" mm")
+        self.spn_gap_len.setToolTip("Espace entre deux tirets (style Tirets).")
+        form.addRow("Espace entre tirets :", self.spn_gap_len)
+
+        self.spn_dot_spacing = QtWidgets.QDoubleSpinBox()
+        self.spn_dot_spacing.setRange(0.2, 50.0)
+        self.spn_dot_spacing.setValue(1.5)
+        self.spn_dot_spacing.setSuffix(" mm")
+        self.spn_dot_spacing.setToolTip("Espacement des points le long du tracé (style Pointillé).")
+        form.addRow("Espacement points :", self.spn_dot_spacing)
+
+        self.spn_dot_dwell = QtWidgets.QDoubleSpinBox()
+        self.spn_dot_dwell.setRange(5.0, 2000.0)
+        self.spn_dot_dwell.setDecimals(0)
+        self.spn_dot_dwell.setValue(50.0)
+        self.spn_dot_dwell.setSuffix(" ms")
+        self.spn_dot_dwell.setToolTip(
+            "Durée du pulse laser sur chaque point (style Pointillé). Plus\n"
+            "long = point plus marqué/profond. La machine s'arrête à chaque\n"
+            "point : le job est nettement plus lent qu'un trait continu.")
+        form.addRow("Durée du pulse :", self.spn_dot_dwell)
+
+        self.spn_wave_period = QtWidgets.QDoubleSpinBox()
+        self.spn_wave_period.setRange(0.5, 100.0)
+        self.spn_wave_period.setValue(5.0)
+        self.spn_wave_period.setSuffix(" mm")
+        self.spn_wave_period.setToolTip(
+            "Période de l'oscillation Z (style Vague) : distance le long du\n"
+            "tracé entre deux points fins (au foyer). Une période courte à\n"
+            "grande vitesse peut dépasser la vitesse de l'axe Z (voir\n"
+            "l'avertissement calculé plus bas).")
+        form.addRow("Période de la vague :", self.spn_wave_period)
+
+        self.spn_fill_wave_width = QtWidgets.QDoubleSpinBox()
+        self.spn_fill_wave_width.setRange(0.1, 10.0)
+        self.spn_fill_wave_width.setDecimals(2)
+        self.spn_fill_wave_width.setValue(1.5)
+        self.spn_fill_wave_width.setSuffix(" mm")
+        self.spn_fill_wave_width.setToolTip(
+            "Largeur MAX du trait de remplissage en Vague (au sommet de\n"
+            "l'oscillation) -- l'amplitude Z est calculée via la calibration\n"
+            "du point. Le trait oscille entre le point au foyer et cette\n"
+            "largeur.")
+        form.addRow("Largeur max vague (rempl.) :", self.spn_fill_wave_width)
+
+        self.lbl_style_info = QtWidgets.QLabel("")
+        self.lbl_style_info.setWordWrap(True)
+        form.addRow(self.lbl_style_info)
+
+        self._style_param_widgets = {
+            "tirets": [self.spn_dash_len, self.spn_gap_len],
+            "pointille": [self.spn_dot_spacing, self.spn_dot_dwell],
+            "vague": [self.spn_wave_period],
+        }
+
         def _update_defocus_preview():
             half_angle = core.defocus_divergence_half_angle(
                 self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
@@ -570,6 +723,53 @@ class TaskPanelFilledEngraving:
         self.spn_ztest.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_dtest.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_contour_width.valueChanged.connect(lambda _v: _update_defocus_preview())
+
+        def _update_style_preview():
+            # Visibilité : n'affiche que les paramètres des styles choisis.
+            style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague"}
+            fill_s = style_map[self.combo_fill_style.currentIndex()]
+            contour_s = style_map[self.combo_contour_style.currentIndex()]
+            active = {fill_s, contour_s}
+            for style, widgets in self._style_param_widgets.items():
+                for w in widgets:
+                    w.setVisible(style in active)
+            self.spn_fill_wave_width.setVisible(fill_s == "vague")
+
+            # Avertissement vitesse Z crête pour les vagues.
+            infos = []
+            half_angle = core.defocus_divergence_half_angle(
+                self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+            period = self.spn_wave_period.value()
+            checks = []
+            if fill_s == "vague":
+                amp = core.defocus_for_fill_spacing(
+                    self.spn_fill_wave_width.value(), self.spn_dfocus.value(),
+                    half_angle, overlap=1.0)
+                checks.append(("remplissage", amp, self.spn_fill_feed.value()))
+            if contour_s == "vague":
+                checks.append(("contour", self._contour_offset(half_angle),
+                               self.spn_contour_feed.value()))
+            for what, amp, feed in checks:
+                if amp is None:
+                    infos.append("Vague {} : calibration du point invalide.".format(what))
+                    continue
+                peak = core.wave_peak_z_feed(amp, feed, period)
+                txt = "Vague {} : amplitude {:.2f} mm, vitesse Z crête ~{:.0f} mm/min".format(
+                    what, amp, peak)
+                if peak > core.Z_MAX_FEED_MM_MIN:
+                    txt += " -- AU-DELÀ de la limite Z supposée ({:.0f}, cf. Préférences) : le trajet sera ralenti".format(
+                        core.Z_MAX_FEED_MM_MIN)
+                infos.append(txt + ".")
+            self.lbl_style_info.setText("\n".join(infos))
+            self.lbl_style_info.setVisible(bool(infos))
+
+        self._update_style_preview = _update_style_preview
+        self.combo_fill_style.currentIndexChanged.connect(lambda _i: _update_style_preview())
+        self.combo_contour_style.currentIndexChanged.connect(lambda _i: _update_style_preview())
+        for w in (self.spn_wave_period, self.spn_fill_wave_width, self.spn_fill_feed,
+                  self.spn_contour_feed, self.spn_dfocus, self.spn_ztest, self.spn_dtest,
+                  self.spn_contour_width):
+            w.valueChanged.connect(lambda _v: _update_style_preview())
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.txt_pre = QtWidgets.QPlainTextEdit()
@@ -607,12 +807,28 @@ class TaskPanelFilledEngraving:
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
 
+        self._last_fields = {
+            "spacing": self.spn_spacing, "angle": self.spn_angle,
+            "fill_power": self.spn_fill_power, "fill_feed": self.spn_fill_feed,
+            "perimeter": self.chk_perimeter, "dfocus": self.spn_dfocus,
+            "ztest": self.spn_ztest, "dtest": self.spn_dtest,
+            "zwork": self.spn_zwork, "marge": self.spn_marge,
+            "contour": self.chk_contour, "contour_power": self.spn_contour_power,
+            "contour_feed": self.spn_contour_feed, "contour_width": self.spn_contour_width,
+            "fill_style": self.combo_fill_style, "contour_style": self.combo_contour_style,
+            "dash_len": self.spn_dash_len, "gap_len": self.spn_gap_len,
+            "dot_spacing": self.spn_dot_spacing, "dot_dwell_ms": self.spn_dot_dwell,
+            "wave_period": self.spn_wave_period, "fill_wave_width": self.spn_fill_wave_width,
+        }
+        _restore_last_values("filled", self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Gravure remplie (noir)")
         self.form.setWindowIcon(_icon("filled.svg"))
 
         self._populate_preset_combo()
         _update_defocus_preview()
+        _update_style_preview()
 
     # --- Préréglages nommés (catégorie "filled") ---
     @staticmethod
@@ -658,6 +874,14 @@ class TaskPanelFilledEngraving:
             "contour_power": self.spn_contour_power.value(),
             "contour_feed": self.spn_contour_feed.value(),
             "contour_width": self.spn_contour_width.value(),
+            "fill_style": self.combo_fill_style.currentIndex(),
+            "contour_style": self.combo_contour_style.currentIndex(),
+            "dash_len": self.spn_dash_len.value(),
+            "gap_len": self.spn_gap_len.value(),
+            "dot_spacing": self.spn_dot_spacing.value(),
+            "dot_dwell_ms": self.spn_dot_dwell.value(),
+            "wave_period": self.spn_wave_period.value(),
+            "fill_wave_width": self.spn_fill_wave_width.value(),
         }
 
     def _on_preset_selected(self, index):
@@ -681,6 +905,14 @@ class TaskPanelFilledEngraving:
         self.spn_contour_power.setValue(v.get("contour_power", self.spn_contour_power.value()))
         self.spn_contour_feed.setValue(v.get("contour_feed", self.spn_contour_feed.value()))
         self.spn_contour_width.setValue(v.get("contour_width", self.spn_contour_width.value()))
+        self.combo_fill_style.setCurrentIndex(v.get("fill_style", self.combo_fill_style.currentIndex()))
+        self.combo_contour_style.setCurrentIndex(v.get("contour_style", self.combo_contour_style.currentIndex()))
+        self.spn_dash_len.setValue(v.get("dash_len", self.spn_dash_len.value()))
+        self.spn_gap_len.setValue(v.get("gap_len", self.spn_gap_len.value()))
+        self.spn_dot_spacing.setValue(v.get("dot_spacing", self.spn_dot_spacing.value()))
+        self.spn_dot_dwell.setValue(v.get("dot_dwell_ms", self.spn_dot_dwell.value()))
+        self.spn_wave_period.setValue(v.get("wave_period", self.spn_wave_period.value()))
+        self.spn_fill_wave_width.setValue(v.get("fill_wave_width", self.spn_fill_wave_width.value()))
         self.lbl_preset_summary.setText(self._preset_summary(v))
         self.lbl_preset_summary.setVisible(True)
 
@@ -750,6 +982,28 @@ class TaskPanelFilledEngraving:
         return fill_edges, contour_edges, defocus, self._contour_offset(half_angle)
 
     def _gen_kwargs(self, defocus, contour_z_offset):
+        style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague"}
+        fill_style = style_map.get(self.combo_fill_style.currentIndex(), "plein")
+        contour_style = style_map.get(self.combo_contour_style.currentIndex(), "plein")
+        common = {
+            "dash_len": self.spn_dash_len.value(),
+            "gap_len": self.spn_gap_len.value(),
+            "dot_spacing": self.spn_dot_spacing.value(),
+            "dot_dwell_s": self.spn_dot_dwell.value() / 1000.0,
+            "wave_period": self.spn_wave_period.value(),
+        }
+        fill_params = dict(common)
+        contour_params = dict(common)
+        half_angle = core.defocus_divergence_half_angle(
+            self.spn_dfocus.value(), self.spn_dtest.value(), self.spn_ztest.value())
+        if fill_style == "vague":
+            amp = core.defocus_for_fill_spacing(
+                self.spn_fill_wave_width.value(), self.spn_dfocus.value(),
+                half_angle, overlap=1.0)
+            fill_params["wave_amplitude"] = amp or 0.0
+        if contour_style == "vague":
+            # « Épaisseur trait contour » = largeur max de la vague.
+            contour_params["wave_amplitude"] = self._contour_offset(half_angle)
         return {
             "z_focus": self.spn_zwork.value(),
             "defocus": defocus,
@@ -760,6 +1014,10 @@ class TaskPanelFilledEngraving:
             "contour_feed": self.spn_contour_feed.value(),
             "contour_z_offset": contour_z_offset,
             "marge_survol": self.spn_marge.value(),
+            "fill_style": fill_style,
+            "contour_style": contour_style,
+            "fill_style_params": fill_params,
+            "contour_style_params": contour_params,
         }
 
     def _update_duration_preview(self):
@@ -799,6 +1057,7 @@ class TaskPanelFilledEngraving:
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
 
     def accept(self):
+        _save_last_values("filled", self._last_fields)
         fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
         if fill_edges is None:
             return False
@@ -1082,6 +1341,16 @@ class TaskPanelDefocusCalibration:
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
 
+        self._last_fields = {
+            "zstart": self.spn_zstart, "zstep": self.spn_zstep,
+            "nmarks": self.spn_nmarks, "length": self.spn_length,
+            "rowgap": self.spn_rowgap, "power": self.spn_power,
+            "power_end": self.spn_power_end, "feed": self.spn_feed,
+            "labels": self.chk_labels, "power_labels": self.chk_power_labels,
+            "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
+        }
+        _restore_last_values("defocus_calib", self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Bande de calibration défocus")
         self.form.setWindowIcon(_icon("defocus.svg"))
@@ -1129,6 +1398,7 @@ class TaskPanelDefocusCalibration:
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
 
     def accept(self):
+        _save_last_values("defocus_calib", self._last_fields)
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_defocus_calibration(
@@ -1284,6 +1554,15 @@ class TaskPanelOffsetTest:
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
 
+        self._last_fields = {
+            "half": self.spn_half, "surface_z": self.spn_surface_z,
+            "mill_tool": self.spn_mill_tool, "rpm": self.spn_rpm,
+            "mill_feed": self.spn_mill_feed, "depth": self.spn_depth,
+            "zfocus": self.spn_zfocus, "power": self.spn_power,
+            "laser_feed": self.spn_laser_feed,
+        }
+        _restore_last_values("offset_test", self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test des offsets X/Y du laser")
         self.form.setWindowIcon(_icon("offset_test.svg"))
@@ -1321,6 +1600,7 @@ class TaskPanelOffsetTest:
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
 
     def accept(self):
+        _save_last_values("offset_test", self._last_fields)
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_offset_test(
@@ -1335,6 +1615,307 @@ class TaskPanelOffsetTest:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
         return _write_gcode_with_dialog(self.form, gcode, "/tmp/test_offsets_laser.ngc")
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
+# MODE : GRAVURE PHOTO (TRAME DE POINTS)
+# ==========================================================================
+class TaskPanelHalftone:
+    """Convertit une image en trame de points laser (cf.
+    generate_gcode_halftone). La conversion image -> grille de noirceur se
+    fait ici (QImage, couche UI) pour garder laser_core sans Qt."""
+
+    def __init__(self):
+        self._img_cache = (None, None)  # (chemin, QImage) -- évite de recharger à chaque aperçu
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        _panel_header(form, "halftone.svg", "Gravure photo (trame de points)")
+        info = QtWidgets.QLabel(
+            "Grave une image en niveaux de gris sous forme de TRAME DE\n"
+            "POINTS laser : chaque point encode la noirceur locale, soit\n"
+            "par sa densité (tramage par diffusion, recommandé), soit par\n"
+            "la durée de son pulse. Image posée coin bas-gauche en X0 Y0.\n"
+            "Zéro X/Y sur la pièce, zéro Z sur sa surface. La machine\n"
+            "s'arrête à chaque point : compter ~2-4 points/seconde.")
+        info.setWordWrap(True)
+        form.addRow(info)
+
+        _section(form, "Image", "sect_preview.svg")
+        self.edt_image = QtWidgets.QLineEdit()
+        self.edt_image.setToolTip("Chemin de l'image (PNG/JPG/BMP...). Convertie en niveaux de gris.")
+        btn_browse = QtWidgets.QPushButton("Parcourir...")
+        btn_browse.clicked.connect(self._on_browse)
+        row = QtWidgets.QWidget()
+        row_layout = QtWidgets.QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(self.edt_image, 1)
+        row_layout.addWidget(btn_browse, 0)
+        form.addRow("Image :", row)
+
+        self.spn_width = QtWidgets.QDoubleSpinBox()
+        self.spn_width.setRange(5.0, 500.0)
+        self.spn_width.setValue(60.0)
+        self.spn_width.setSuffix(" mm")
+        self.spn_width.setToolTip(
+            "Largeur gravée. La hauteur suit les proportions de l'image.")
+        form.addRow("Largeur cible :", self.spn_width)
+
+        self.spn_pitch = QtWidgets.QDoubleSpinBox()
+        self.spn_pitch.setRange(0.1, 3.0)
+        self.spn_pitch.setDecimals(2)
+        self.spn_pitch.setValue(0.4)
+        self.spn_pitch.setSuffix(" mm")
+        self.spn_pitch.setToolTip(
+            "Pas de la trame (distance entre deux points). Repère : le\n"
+            "diamètre du point au foyer (~0.15-0.3mm) ; plus fin = plus de\n"
+            "détail mais beaucoup plus de points (durée en carré inverse\n"
+            "du pas).")
+        form.addRow("Pas de trame :", self.spn_pitch)
+
+        self.chk_invert = QtWidgets.QCheckBox("Inverser (négatif)")
+        self.chk_invert.setToolTip(
+            "Par défaut, les zones SOMBRES de l'image sont gravées (la\n"
+            "brûlure fonce le matériau clair). Inverser pour graver les\n"
+            "zones claires (matériau foncé, ardoise...).")
+        form.addRow(self.chk_invert)
+
+        self.lbl_grid = QtWidgets.QLabel("Grille : --")
+        self.lbl_grid.setWordWrap(True)
+        form.addRow(self.lbl_grid)
+
+        _section(form, "Tramage & puissance", "sect_power.svg")
+        self.combo_mode = QtWidgets.QComboBox()
+        self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable"])
+        self.combo_mode.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_mode.setMinimumContentsLength(17)
+        self.combo_mode.setToolTip(
+            "Diffusion : points TOUS identiques (durée max), leur densité\n"
+            "locale rend le gris -- robuste, pas de demi-teinte à calibrer.\n"
+            "Durée variable : un point par case non blanche, durée du pulse\n"
+            "proportionnelle à la noirceur -- rendu plus doux, mais dépend\n"
+            "de la réponse du matériau (à valider sur une chute).")
+        form.addRow("Tramage :", self.combo_mode)
+
+        self.spn_power = QtWidgets.QDoubleSpinBox()
+        self.spn_power.setRange(0, 1000)
+        self.spn_power.setValue(500)
+        self.spn_power.setToolTip("Puissance (S) des pulses.")
+        form.addRow("Puissance :", self.spn_power)
+
+        self.spn_dwell_min = QtWidgets.QDoubleSpinBox()
+        self.spn_dwell_min.setRange(1.0, 2000.0)
+        self.spn_dwell_min.setDecimals(0)
+        self.spn_dwell_min.setValue(10.0)
+        self.spn_dwell_min.setSuffix(" ms")
+        self.spn_dwell_min.setToolTip(
+            "Durée du pulse des points les plus PÂLES (tramage Durée\n"
+            "variable uniquement).")
+        form.addRow("Pulse min :", self.spn_dwell_min)
+
+        self.spn_dwell_max = QtWidgets.QDoubleSpinBox()
+        self.spn_dwell_max.setRange(1.0, 2000.0)
+        self.spn_dwell_max.setDecimals(0)
+        self.spn_dwell_max.setValue(60.0)
+        self.spn_dwell_max.setSuffix(" ms")
+        self.spn_dwell_max.setToolTip(
+            "Durée du pulse des points les plus NOIRS (et de TOUS les\n"
+            "points en tramage Diffusion).")
+        form.addRow("Pulse max :", self.spn_dwell_max)
+
+        self.spn_white = QtWidgets.QDoubleSpinBox()
+        self.spn_white.setRange(0.0, 50.0)
+        self.spn_white.setDecimals(0)
+        self.spn_white.setValue(8.0)
+        self.spn_white.setSuffix(" %")
+        self.spn_white.setToolTip(
+            "Seuil blanc (tramage Durée variable) : aucune case dont la\n"
+            "noirceur est sous ce seuil n'est gravée -- évite de piqueter\n"
+            "les blancs.")
+        form.addRow("Seuil blanc :", self.spn_white)
+
+        def _sync_mode():
+            is_duree = self.combo_mode.currentIndex() == 1
+            self.spn_dwell_min.setEnabled(is_duree)
+            self.spn_white.setEnabled(is_duree)
+        self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
+        _sync_mode()
+
+        _section(form, "Z de travail", "sect_zheight.svg")
+        self.spn_zwork = QtWidgets.QDoubleSpinBox()
+        self.spn_zwork.setRange(-50, 200)
+        self.spn_zwork.setDecimals(2)
+        self.spn_zwork.setValue(8.5)
+        self.spn_zwork.setSuffix(" mm")
+        self.spn_zwork.setToolTip(
+            "Z de gravure : le foyer pour des points fins/nets, ou un léger\n"
+            "défocus pour des points plus gros et doux (grain plus visible,\n"
+            "permet un pas de trame plus grand).")
+        form.addRow("Z de travail :", self.spn_zwork)
+
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
+        self.txt_pre = QtWidgets.QPlainTextEdit()
+        self.txt_pre.setMaximumHeight(50)
+        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        form.addRow("G-code avant :", self.txt_pre)
+
+        self.txt_post = QtWidgets.QPlainTextEdit()
+        self.txt_post.setMaximumHeight(50)
+        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        form.addRow("G-code après :", self.txt_post)
+
+        cfg = core.load_config()
+        self.txt_pre.setPlainText(cfg.get("pre_ht", ""))
+        self.txt_post.setPlainText(cfg.get("post_ht", ""))
+
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
+            "Dominée par les pulses (G4) et les arrêts à chaque point.")
+
+        self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
+        self.btn_frame_preview.setToolTip(
+            "Fichier à part traçant le rectangle englobant de l'image, à\n"
+            "lancer seul pour vérifier le positionnement avant le vrai job.")
+        self.btn_frame_preview.clicked.connect(self._on_frame_preview)
+        form.addRow(self.btn_frame_preview)
+
+        self._last_fields = {
+            "image": self.edt_image, "width": self.spn_width,
+            "pitch": self.spn_pitch, "invert": self.chk_invert,
+            "mode": self.combo_mode, "power": self.spn_power,
+            "dwell_min": self.spn_dwell_min, "dwell_max": self.spn_dwell_max,
+            "white": self.spn_white, "zwork": self.spn_zwork,
+        }
+        _restore_last_values("halftone", self._last_fields)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Gravure photo (trame de points)")
+        self.form.setWindowIcon(_icon("halftone.svg"))
+
+        self.edt_image.textChanged.connect(lambda _t: self._update_grid_info())
+        self.spn_width.valueChanged.connect(lambda _v: self._update_grid_info())
+        self.spn_pitch.valueChanged.connect(lambda _v: self._update_grid_info())
+        self._update_grid_info()
+
+    def _on_browse(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self.form, "Choisir une image", self.edt_image.text() or os.path.expanduser("~"),
+            "Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;Tous les fichiers (*)")
+        if path:
+            self.edt_image.setText(path)
+
+    def _load_image(self):
+        """QImage de l'image choisie (avec cache), ou None."""
+        path = self.edt_image.text().strip()
+        if not path or not os.path.isfile(path):
+            return None
+        if self._img_cache[0] == path and self._img_cache[1] is not None:
+            return self._img_cache[1]
+        img = QtGui.QImage(path)
+        if img.isNull() or img.width() < 2 or img.height() < 2:
+            return None
+        self._img_cache = (path, img)
+        return img
+
+    def _grid_size(self, img):
+        cols = max(2, int(round(self.spn_width.value() / self.spn_pitch.value())) + 1)
+        rows = max(2, int(round(cols * img.height() / float(img.width()))))
+        return cols, rows
+
+    def _build_rows(self, silent=False):
+        """Grille de noirceur 0..1 (lignes haut -> bas) depuis l'image, ou
+        None (message d'erreur sauf si silent)."""
+        img = self._load_image()
+        if img is None:
+            if not silent:
+                QtWidgets.QMessageBox.critical(
+                    self.form, "Erreur", "Choisis d'abord une image valide.")
+            return None
+        cols, rows = self._grid_size(img)
+        scaled = img.scaled(cols, rows, QtCore.Qt.IgnoreAspectRatio,
+                            QtCore.Qt.SmoothTransformation)
+        scaled = scaled.convertToFormat(QtGui.QImage.Format_Grayscale8)
+        invert = self.chk_invert.isChecked()
+        darkness = []
+        for y in range(scaled.height()):
+            drow = []
+            for x in range(scaled.width()):
+                g = QtGui.qGray(scaled.pixel(x, y)) / 255.0
+                drow.append(g if invert else 1.0 - g)
+            darkness.append(drow)
+        return darkness
+
+    def _update_grid_info(self):
+        img = self._load_image()
+        if img is None:
+            self.lbl_grid.setText("Grille : -- (aucune image valide)")
+            return
+        cols, rows = self._grid_size(img)
+        pitch = self.spn_pitch.value()
+        self.lbl_grid.setText(
+            "Grille : {} x {} cases = {:.0f} x {:.0f} mm ({} points max).".format(
+                cols, rows, (cols - 1) * pitch, (rows - 1) * pitch, cols * rows))
+
+    def _gen_kwargs(self):
+        return {
+            "pitch": self.spn_pitch.value(),
+            "z_work": self.spn_zwork.value(),
+            "power": self.spn_power.value(),
+            "dwell_min_s": self.spn_dwell_min.value() / 1000.0,
+            "dwell_max_s": self.spn_dwell_max.value() / 1000.0,
+            "mode": "duree" if self.combo_mode.currentIndex() == 1 else "diffusion",
+            "white_threshold": self.spn_white.value() / 100.0,
+        }
+
+    def _update_duration_preview(self):
+        rows = self._build_rows(silent=True)
+        if rows is None:
+            self.lbl_duration.setText("Durée estimée : -- (aucune image valide)")
+            return
+        gcode = core.generate_gcode_halftone(rows, quiet=True, **self._gen_kwargs())
+        if not gcode:
+            self.lbl_duration.setText("Durée estimée : -- (image toute blanche ?)")
+            return
+        seconds = core.estimate_job_time_seconds(gcode)
+        self.lbl_duration.setText("Durée estimée : {}".format(core.format_duration(seconds)))
+
+    def _on_frame_preview(self):
+        rows = self._build_rows()
+        if rows is None:
+            return
+        gcode = core.generate_gcode_halftone(rows, frame_only=True, **self._gen_kwargs())
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_photo.ngc")
+
+    def accept(self):
+        _save_last_values("halftone", self._last_fields)
+        rows = self._build_rows()
+        if rows is None:
+            return False
+
+        pre_text = self.txt_pre.toPlainText()
+        post_text = self.txt_post.toPlainText()
+        gcode = core.generate_gcode_halftone(
+            rows, pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs())
+
+        cfg = core.load_config()
+        cfg["pre_ht"] = pre_text
+        cfg["post_ht"] = post_text
+        core.save_config(cfg)
+
+        if not gcode:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur",
+                "Aucun G-code généré (image toute blanche au seuil actuel ?).")
+            return False
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/gravure_photo.ngc")
 
     def reject(self):
         return True
@@ -1783,6 +2364,22 @@ class TaskPanelTestGrid:
         self.txt_pre.setPlainText(cfg.get("pre_t", ""))
         self.txt_post.setPlainText(cfg.get("post_t", ""))
 
+        self._last_fields = {
+            "mode": self.combo_mode, "power_min": self.spn_power_min,
+            "power_max": self.spn_power_max, "power_steps": self.spn_power_steps,
+            "feed_min": self.spn_feed_min, "feed_max": self.spn_feed_max,
+            "feed_steps": self.spn_feed_steps, "cell_size": self.spn_cell_size,
+            "gap": self.spn_gap, "filltype": self.combo_filltype,
+            "hatch_spacing": self.spn_hatch_spacing, "hatch_angle": self.spn_hatch_angle,
+            "dfocus": self.spn_dfocus, "ztest": self.spn_ztest, "dtest": self.spn_dtest,
+            "zwork": self.spn_zwork, "proximity": self.chk_proximity,
+            "labels": self.chk_labels, "label_power": self.spn_label_power,
+            "label_feed": self.spn_label_feed, "border": self.chk_border,
+            "border_z": self.spn_border_z, "border_power": self.spn_border_power,
+            "border_feed": self.spn_border_feed,
+        }
+        _restore_last_values("testgrid", self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Grille de test puissance/vitesse")
         self.form.setWindowIcon(_icon("testgrid.svg"))
@@ -2066,6 +2663,7 @@ class TaskPanelTestGrid:
             QtWidgets.QMessageBox.critical(
                 self.form, "Erreur", "Vitesse max doit être >= vitesse min.")
             return False
+        _save_last_values("testgrid", self._last_fields)
 
         mode, fill_type, cells, cell_z_offset = self._build_cells()
         if cells is None:
@@ -2273,6 +2871,12 @@ class TaskPanelCurved:
         self.txt_pre.setPlainText(cfg.get("pre_c", ""))
         self.txt_post.setPlainText(cfg.get("post_c", ""))
 
+        self._last_fields = {
+            "power": self.spn_power, "feed": self.spn_feed,
+            "z_focus": self.spn_zfocus, "marge": self.spn_marge,
+        }
+        _restore_last_values("curved", self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Marquage sur surface courbe")
         self.form.setWindowIcon(_icon("curved.svg"))
@@ -2390,6 +2994,7 @@ class TaskPanelCurved:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
 
+        _save_last_values("curved", self._last_fields)
         FreeCAD.Console.PrintMessage(
             "Chaînage des segments connectés... ({})\n".format(
                 "objet 3D de référence détecté" if self._reference_shape is not None else "pas d'objet 3D, interpolation"))
@@ -2611,6 +3216,86 @@ class TaskPanelFlat:
             "chaque palier trou/extérieur si les deux options sont actives.")
         form.addRow(self.chk_proximity)
 
+        _section(form, "Attaches & amorce", "sect_safety.svg")
+        self.spn_tab_count = QtWidgets.QSpinBox()
+        self.spn_tab_count.setRange(0, 12)
+        self.spn_tab_count.setValue(0)
+        self.spn_tab_count.setToolTip(
+            "Nombre d'ATTACHES par contour fermé (0 = désactivé) : des ponts\n"
+            "de matière non coupés, régulièrement répartis, qui retiennent\n"
+            "la pièce dans la planche jusqu'à la fin du job (à couper au\n"
+            "cutter ensuite). S'applique aussi aux trous : la chute d'un\n"
+            "trou reste attachée au lieu de tomber dans la machine.")
+        form.addRow("Nombre d'attaches :", self.spn_tab_count)
+
+        self.spn_tab_length = QtWidgets.QDoubleSpinBox()
+        self.spn_tab_length.setRange(0.5, 20.0)
+        self.spn_tab_length.setValue(4.0)
+        self.spn_tab_length.setSuffix(" mm")
+        self.spn_tab_length.setToolTip("Longueur de chaque attache le long du contour.")
+        form.addRow("Longueur d'attache :", self.spn_tab_length)
+
+        self.spn_tab_height = QtWidgets.QDoubleSpinBox()
+        self.spn_tab_height.setRange(0.1, 10.0)
+        self.spn_tab_height.setDecimals(1)
+        self.spn_tab_height.setValue(1.0)
+        self.spn_tab_height.setSuffix(" mm")
+        self.spn_tab_height.setToolTip(
+            "Épaisseur de matière laissée sous chaque attache : seules les\n"
+            "passes qui attaqueraient ces derniers mm sautent les zones\n"
+            "d'attache (faisceau éteint), les passes hautes coupent normalement.")
+        form.addRow("Hauteur d'attache :", self.spn_tab_height)
+
+        self.spn_tab_count.valueChanged.connect(
+            lambda v: (self.spn_tab_length.setEnabled(v > 0), self.spn_tab_height.setEnabled(v > 0)))
+        self.spn_tab_length.setEnabled(False)
+        self.spn_tab_height.setEnabled(False)
+
+        self.spn_lead_in = QtWidgets.QDoubleSpinBox()
+        self.spn_lead_in.setRange(0.0, 10.0)
+        self.spn_lead_in.setDecimals(1)
+        self.spn_lead_in.setValue(0.0)
+        self.spn_lead_in.setSuffix(" mm")
+        self.spn_lead_in.setToolTip(
+            "AMORCE de découpe (0 = désactivé) : le faisceau s'allume à\n"
+            "cette distance du contour, DANS LA CHUTE (extérieur d'une\n"
+            "pièce, intérieur d'un trou), puis rejoint le contour en\n"
+            "coupant -- la verrue du point d'allumage reste hors du bord\n"
+            "fini. Contours fermés uniquement.")
+        form.addRow("Amorce (lead-in) :", self.spn_lead_in)
+
+        _section(form, "Copies en matrice", "sect_options.svg")
+        self.spn_copies_x = QtWidgets.QSpinBox()
+        self.spn_copies_x.setRange(1, 50)
+        self.spn_copies_x.setValue(1)
+        self.spn_copies_x.setToolTip(
+            "Nombre de copies en X (1 = pas de copie). La sélection est\n"
+            "répliquée en matrice au pas ci-dessous : n pièces identiques\n"
+            "découpées en un seul job.")
+        form.addRow("Copies en X :", self.spn_copies_x)
+
+        self.spn_copies_y = QtWidgets.QSpinBox()
+        self.spn_copies_y.setRange(1, 50)
+        self.spn_copies_y.setValue(1)
+        self.spn_copies_y.setToolTip("Nombre de copies en Y (1 = pas de copie).")
+        form.addRow("Copies en Y :", self.spn_copies_y)
+
+        self.spn_copy_dx = QtWidgets.QDoubleSpinBox()
+        self.spn_copy_dx.setRange(1.0, 1000.0)
+        self.spn_copy_dx.setValue(30.0)
+        self.spn_copy_dx.setSuffix(" mm")
+        self.spn_copy_dx.setToolTip(
+            "Pas entre deux copies en X (d'origine à origine : prévoir la\n"
+            "largeur de la pièce + un espace + le kerf).")
+        form.addRow("Pas X :", self.spn_copy_dx)
+
+        self.spn_copy_dy = QtWidgets.QDoubleSpinBox()
+        self.spn_copy_dy.setRange(1.0, 1000.0)
+        self.spn_copy_dy.setValue(30.0)
+        self.spn_copy_dy.setSuffix(" mm")
+        self.spn_copy_dy.setToolTip("Pas entre deux copies en Y.")
+        form.addRow("Pas Y :", self.spn_copy_dy)
+
         _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
@@ -2662,6 +3347,21 @@ class TaskPanelFlat:
         self.txt_pre.setPlainText(cfg.get("pre_f", ""))
         self.txt_post.setPlainText(cfg.get("post_f", ""))
 
+        self._last_fields = {
+            "power": self.spn_power, "feed": self.spn_feed,
+            "thickness": self.spn_thickness, "n_passes": self.spn_passes,
+            "zoverride": self.chk_zoverride, "zstart": self.spn_zstart,
+            "use_finish": self.chk_finish, "finish_feed": self.spn_finish_feed,
+            "use_power_ramp": self.chk_power_ramp, "power_end": self.spn_power_end,
+            "kerf": self.spn_kerf, "hole_first": self.chk_hole_first,
+            "proximity": self.chk_proximity,
+            "tab_count": self.spn_tab_count, "tab_length": self.spn_tab_length,
+            "tab_height": self.spn_tab_height, "lead_in": self.spn_lead_in,
+            "copies_x": self.spn_copies_x, "copies_y": self.spn_copies_y,
+            "copy_dx": self.spn_copy_dx, "copy_dy": self.spn_copy_dy,
+        }
+        _restore_last_values("flat", self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Découpe multi-passes (matériau plat)")
         self.form.setWindowIcon(_icon("flat.svg"))
@@ -2692,6 +3392,10 @@ class TaskPanelFlat:
         self.chk_power_ramp.setChecked(values.get("use_power_ramp", False))
         self.spn_power_end.setValue(values.get("power_end", self.spn_power_end.value()))
         self.spn_kerf.setValue(values.get("kerf_width", self.spn_kerf.value()))
+        self.spn_tab_count.setValue(values.get("tab_count", self.spn_tab_count.value()))
+        self.spn_tab_length.setValue(values.get("tab_length", self.spn_tab_length.value()))
+        self.spn_tab_height.setValue(values.get("tab_height", self.spn_tab_height.value()))
+        self.spn_lead_in.setValue(values.get("lead_in", self.spn_lead_in.value()))
 
     def _on_save_preset(self):
         name, ok = QtWidgets.QInputDialog.getText(self.form, "Sauvegarder le préréglage", "Nom du préréglage :")
@@ -2708,6 +3412,10 @@ class TaskPanelFlat:
             "use_power_ramp": self.chk_power_ramp.isChecked(),
             "power_end": self.spn_power_end.value(),
             "kerf_width": self.spn_kerf.value(),
+            "tab_count": self.spn_tab_count.value(),
+            "tab_length": self.spn_tab_length.value(),
+            "tab_height": self.spn_tab_height.value(),
+            "lead_in": self.spn_lead_in.value(),
         })
         self._populate_preset_combo()
         idx = self.combo_preset.findText(name)
@@ -2732,7 +3440,7 @@ class TaskPanelFlat:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return
         gcode = core.generate_gcode_flat_multipass(
-            self._edges, self.spn_power.value(), self.spn_feed.value(),
+            self._edges_for_job(), self.spn_power.value(), self.spn_feed.value(),
             self.spn_thickness.value(), self.spn_passes.value(),
             quiet=True, **self._build_gcode_kwargs(),
         )
@@ -2753,14 +3461,25 @@ class TaskPanelFlat:
             kerf_width=self.spn_kerf.value(),
             use_hole_first=self.chk_hole_first.isChecked(),
             use_proximity=self.chk_proximity.isChecked(),
+            tab_count=self.spn_tab_count.value(),
+            tab_length=self.spn_tab_length.value(),
+            tab_height=self.spn_tab_height.value(),
+            lead_in_mm=self.spn_lead_in.value(),
         )
+
+    def _edges_for_job(self):
+        """Edges de la sélection, répliquées en matrice si des copies sont
+        demandées -- partagé par accept, aperçus et estimation de durée."""
+        return core.replicate_edges(
+            self._edges, self.spn_copies_x.value(), self.spn_copies_y.value(),
+            self.spn_copy_dx.value(), self.spn_copy_dy.value())
 
     def _update_duration_preview(self):
         if not self._edges:
             self.lbl_duration.setText("Durée estimée : -- (aucun segment dans la sélection)")
             return
         gcode = core.generate_gcode_flat_multipass(
-            self._edges, self.spn_power.value(), self.spn_feed.value(),
+            self._edges_for_job(), self.spn_power.value(), self.spn_feed.value(),
             self.spn_thickness.value(), self.spn_passes.value(),
             quiet=True, **self._build_gcode_kwargs(),
         )
@@ -2775,7 +3494,7 @@ class TaskPanelFlat:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return
         gcode = core.generate_gcode_flat_multipass(
-            self._edges, self.spn_power.value(), self.spn_feed.value(),
+            self._edges_for_job(), self.spn_power.value(), self.spn_feed.value(),
             self.spn_thickness.value(), self.spn_passes.value(),
             frame_only=True, **self._build_gcode_kwargs(),
         )
@@ -2789,12 +3508,13 @@ class TaskPanelFlat:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
 
+        _save_last_values("flat", self._last_fields)
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
 
         FreeCAD.Console.PrintMessage("Chaînage des segments connectés...\n")
         gcode = core.generate_gcode_flat_multipass(
-            self._edges,
+            self._edges_for_job(),
             self.spn_power.value(),
             self.spn_feed.value(),
             self.spn_thickness.value(),
@@ -3016,6 +3736,17 @@ class TaskPanelCurvedCut:
         self.txt_pre.setPlainText(cfg.get("pre_cc", ""))
         self.txt_post.setPlainText(cfg.get("post_cc", ""))
 
+        self._last_fields = {
+            "power": self.spn_power, "feed": self.spn_feed,
+            "z_focus": self.spn_zfocus, "marge": self.spn_marge,
+            "thickness": self.spn_thickness, "n_passes": self.spn_passes,
+            "use_finish": self.chk_finish, "finish_feed": self.spn_finish_feed,
+            "use_power_ramp": self.chk_power_ramp, "power_end": self.spn_power_end,
+            "kerf": self.spn_kerf, "hole_first": self.chk_hole_first,
+            "proximity": self.chk_proximity,
+        }
+        _restore_last_values("curved_cut", self._last_fields)
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Découpe multi-passes sur surface courbée")
         self.form.setWindowIcon(_icon("curved_cut.svg"))
@@ -3161,6 +3892,7 @@ class TaskPanelCurvedCut:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
 
+        _save_last_values("curved_cut", self._last_fields)
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
 
@@ -3988,6 +4720,31 @@ class TaskPanelSettings:
             "premier trait.")
         form.addRow("Temporisation d'armement :", self.spn_dwell)
 
+        self.spn_z_max_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_z_max_feed.setRange(10.0, 20000.0)
+        self.spn_z_max_feed.setDecimals(0)
+        self.spn_z_max_feed.setValue(settings["z_max_feed_mm_min"])
+        self.spn_z_max_feed.setSuffix(" mm/min")
+        self.spn_z_max_feed.setToolTip(
+            "Vitesse max supposée de l'axe Z (MAX_VELOCITY de l'axe dans\n"
+            "LinuxCNC). Sert uniquement à AVERTIR quand un trait en Vague\n"
+            "défocus demanderait plus vite (le trajet serait alors ralenti\n"
+            "par la machine). N'affecte jamais le G-code.")
+        form.addRow("Vitesse Z max (avertissement) :", self.spn_z_max_feed)
+
+        self.spn_accel = QtWidgets.QDoubleSpinBox()
+        self.spn_accel.setRange(10.0, 20000.0)
+        self.spn_accel.setDecimals(0)
+        self.spn_accel.setValue(settings["accel_mm_s2"])
+        self.spn_accel.setSuffix(" mm/s2")
+        self.spn_accel.setToolTip(
+            "Accélération machine supposée, pour l'estimation de durée\n"
+            "(profil trapézoïdal par course : chaque départ/arrêt paie son\n"
+            "accélération -- décisif sur les remplissages faits de milliers\n"
+            "de traits courts). Mettre la MAX_ACCELERATION des axes X/Y de\n"
+            "ton LinuxCNC. N'affecte jamais le G-code.")
+        form.addRow("Accélération (estimation) :", self.spn_accel)
+
         _section(form, "Sécurité découpe", "sect_safety.svg")
         self.spn_safe_height = QtWidgets.QDoubleSpinBox()
         self.spn_safe_height.setRange(0.0, 20.0)
@@ -4096,6 +4853,8 @@ class TaskPanelSettings:
             "spindle_select": self.edt_spindle.text().strip(),
             "arm_dwell_s": self.spn_dwell.value(),
             "rapid_feed_mm_min": self.spn_rapid.value(),
+            "z_max_feed_mm_min": self.spn_z_max_feed.value(),
+            "accel_mm_s2": self.spn_accel.value(),
             "travel_clearance_mm": self.spn_clearance.value(),
             "frame_power": self.spn_frame_power.value(),
             "frame_feed_mm_min": self.spn_frame_feed.value(),

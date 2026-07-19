@@ -8,7 +8,8 @@ Les modes sont regroupés par thème dans la barre d'outils et le menu.
 
 **Gravure à plat**
 - **Hachures 2D** : remplissage (parallèles / croisées / défocus) sur une face 2D — crée la géométrie des hachures.
-- **Gravure remplie (noir)** : grave un texte/forme 2D en **noir plein** — remplissage par hachures en défocus (point élargi, automatiquement **rentré du rayon de point** pour ne pas déborder du bord, avec un liseré qui ferme les blancs le long des bords) **puis** contour repassé net au foyer (épaisseur de trait réglable). Préréglages matériau.
+- **Gravure remplie (noir)** : grave un texte/forme 2D en **noir plein** — remplissage par hachures en défocus (point élargi, automatiquement **rentré du rayon de point** pour ne pas déborder du bord, avec un liseré qui ferme les blancs le long des bords) **puis** contour repassé net au foyer (épaisseur de trait réglable). Préréglages matériau. **Styles de trait** au choix pour le remplissage et le contour : trait plein, **tirets** (faisceau pulsé, mouvement continu), **pointillé** (vrais points ronds au pulse G4 — gros points doux en défocus), ou **vague défocus** (le Z oscille entre le foyer et un défocus max : le trait varie continûment en largeur et en intensité, effet calligraphique ; amplitude calculée par la calibration du point, avertissement si la vitesse Z crête dépasse la limite de l'axe).
+- **Gravure photo (trame de points)** : convertit une image (PNG/JPG…) en **trame de points laser** — tramage par **diffusion Floyd-Steinberg** (points identiques, la densité rend le gris) ou par **durée de pulse variable** (chaque point dure proportionnellement à la noirceur locale), parcours en serpentin, option négatif pour matériaux foncés.
 
 **Sur surface 3D**
 - **Projection sur surface 3D** : projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée même sur un remplissage dense).
@@ -16,7 +17,7 @@ Les modes sont regroupés par thème dans la barre d'outils et le menu.
 - **Découpe multi-passes sur surface courbée** : combine le suivi de relief du marquage courbe avec la logique multi-passes/kerf/imbrication de la découpe à plat.
 
 **Découpe**
-- **Découpe multi-passes (matériau plat)** : passes progressives, compensation de kerf, ordre trous-avant-contour, rampe de puissance, dernière passe ralentie.
+- **Découpe multi-passes (matériau plat)** : passes progressives, compensation de kerf, ordre trous-avant-contour, rampe de puissance, dernière passe ralentie. **Attaches (tabs)** : ponts de matière non coupés (nombre/longueur/hauteur réglables) qui retiennent la pièce — et la chute des trous — jusqu'à la fin du job, seules les passes profondes les sautent. **Amorce (lead-in)** : le faisceau s'allume dans la chute (extérieur d'une pièce, intérieur d'un trou) puis rejoint le contour — la verrue d'allumage reste hors du bord fini. **Copies en matrice** : réplique la sélection en n×m au pas choisi pour découper une série en un seul job. Les tracés **ouverts** sont coupés en aller-retour (sens alterné à chaque passe).
 
 **Tests & calibration**
 - **Calibration kerf** : génère un carré test pour mesurer le kerf réel du laser.
@@ -27,7 +28,7 @@ Les modes sont regroupés par thème dans la barre d'outils et le menu.
 **Assemblage**
 - **Job combiné** : empile plusieurs opérations (marquage, découpe, grille de test) dans un seul fichier G-code avec un seul armement du laser, transition de sécurité anti-collision entre opérations.
 
-Communs à tous les modes : estimation de durée en direct, aperçu de trajet dans la vue 3D, aperçu de cadrage en fichier séparé (avec faisceau de visée à très faible puissance optionnel) pour vérifier le positionnement avant de lancer, préréglages matériau et préférences globales.
+Communs à tous les modes : estimation de durée **tenant compte des accélérations** (profil trapézoïdal par course, accélération réglable dans les Préférences — décisif sur les remplissages faits de milliers de traits courts), aperçu de trajet dans la vue 3D, aperçu de cadrage en fichier séparé (avec faisceau de visée à très faible puissance optionnel) pour vérifier le positionnement avant de lancer, préréglages matériau, préférences globales, et **mémorisation des derniers réglages** de chaque panneau (rouvrir un mode retrouve les valeurs de la dernière fois).
 
 ## Modèle de défocus (remplissage noir)
 
@@ -150,6 +151,8 @@ Les réglages généraux de l'atelier s'éditent depuis la commande **Préféren
 | Marge de survol (transits) | `settings.travel_clearance_mm` | `10.0` | Marge ajoutée au Z de travail pour les déplacements à vide et le début/fin de job (modes Grille de test et Découpe à plat — les modes courbes ont leur champ Marge de sécurité par panneau). `0` = transits au Z de travail |
 | Puissance de cadrage (S) | `settings.frame_power` | `0` | Puissance du faisceau pendant l'aperçu cadrage, pour visualiser la zone de travail sur la pièce. `0` = laser éteint. Sinon **très faible** (S5–S20 typiquement) : juste de quoi voir le point sans marquer — à valider sur une chute |
 | Vitesse de cadrage | `settings.frame_feed_mm_min` | `1500` | Vitesse du tracé de cadrage quand le faisceau de visée est allumé (sans effet à puissance 0 : le tracé se fait en rapides G0) |
+| Vitesse Z max (avertissement) | `settings.z_max_feed_mm_min` | `1500` | Vitesse max supposée de l'axe Z — sert uniquement à avertir quand un trait en **vague défocus** demanderait plus vite (le trajet serait ralenti par la machine). N'affecte jamais le G-code |
+| Accélération (estimation) | `settings.accel_mm_s2` | `800` | Accélération machine supposée pour l'estimation de durée (mettre la `MAX_ACCELERATION` X/Y du LinuxCNC). N'affecte jamais le G-code |
 | Sélecteur broche | `settings.spindle_select` | `$1` | Sélecteur multi-broche ajouté aux commandes `S`/`M3`/`M5` (LinuxCNC : laser = spindle 1) |
 | Temporisation d'armement | `settings.arm_dwell_s` | `2.0` | Pause `G4` après l'armement (`M3` à puissance nulle), le temps que l'électronique du module soit prête |
 | Hauteur bec minimale | `settings.safe_min_nozzle_height_mm` | `1.5` | Butée de sécurité : le bec ne descend jamais plus près de la surface, quelle que soit la passe — garde-fou anti-collision |
