@@ -788,16 +788,40 @@ def defocus_for_fill_spacing(spacing, d_focus, half_angle, overlap=0.85):
     return (target - d_focus) / (2.0 * math.tan(half_angle))
 
 
-def run_hatch_generation(selection, spacing, angle, fill_type="paralleles"):
+def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inset=0.0):
     """Crée l'objet 'Hachures_...' dans le document (vert), comme
     hachure.fcmacro, avec 3 types de remplissage possibles :
     parallèles (défaut), croisées (2 passes à angle+90), défocus
     (remplissage noir plein -- même tracé que parallèles, seul le Z de
     travail change au moment de la gravure, cf. defocus_for_fill_spacing).
+
+    inset : RETRAIT DU BORD (mm). Les hachures sont calculées sur les
+    faces RENTRÉES de cette marge (makeOffset2D vers l'intérieur, même
+    mécanique que la Gravure remplie) : le trait laser ayant une largeur
+    (surtout en défocus / pointillé / vague, où le point est élargi), des
+    hachures bord à bord font déborder la brûlure de la forme d'environ
+    un rayon de point -- rentrer les hachures de ce rayon garde la
+    brûlure À L'INTÉRIEUR du contour. 0 = bord à bord (historique). Une
+    face plus fine que 2*inset disparaît du remplissage (comme en
+    Gravure remplie).
+
     Renvoie l'objet créé, ou None en cas d'échec."""
     faces = get_faces_from_selection_for_hatch(selection)
     if not faces:
         return None, "Aucune face 2D fermée trouvée dans la sélection."
+
+    if inset > 0:
+        inset_faces = []
+        for f in faces:
+            try:
+                off = f.makeOffset2D(-inset)
+                inset_faces.extend(off.Faces)
+            except Exception:
+                pass  # face plus fine que 2*inset : pas de remplissage ici
+        if not inset_faces:
+            return None, ("Retrait du bord trop grand : plus aucune surface à "
+                          "hachurer (réduire le retrait ou agrandir la forme).")
+        faces = inset_faces
 
     if fill_type == "croisees":
         edges = generate_hatch_edges(faces, spacing, angle) + generate_hatch_edges(faces, spacing, angle + 90.0)

@@ -305,6 +305,22 @@ class TaskPanelHatch:
             "est automatiquement à cet angle + 90 deg.")
         form.addRow("Angle :", self.spn_angle)
 
+        self.spn_inset = QtWidgets.QDoubleSpinBox()
+        self.spn_inset.setRange(0.0, 20.0)
+        self.spn_inset.setDecimals(2)
+        self.spn_inset.setValue(0.0)
+        self.spn_inset.setSuffix(" mm")
+        self.spn_inset.setToolTip(
+            "RETRAIT DU BORD : rentre les hachures de cette marge vers\n"
+            "l'intérieur de la forme (0 = bord à bord). Le trait laser a\n"
+            "une largeur -- surtout en défocus, pointillé ou vague (mode\n"
+            "Marquage), où le point est élargi : bord à bord, la brûlure\n"
+            "DÉBORDE de la forme d'environ un rayon de point. Mettre ici\n"
+            "le rayon du point élargi garde la brûlure à l'intérieur (la\n"
+            "valeur recommandée s'affiche plus bas en mode Défocus).\n"
+            "La Gravure remplie fait ce retrait automatiquement.")
+        form.addRow("Retrait du bord :", self.spn_inset)
+
         self.lbl_defocus_calib = QtWidgets.QLabel(
             "<b>Calibration du point laser</b> -- brûle 2 points test (au\n"
             "foyer, puis à un défocus connu) et mesure leur diamètre :")
@@ -362,9 +378,13 @@ class TaskPanelHatch:
                     "mesuré au défocus de test doit être strictement plus\n"
                     "large que celui mesuré au foyer)")
             else:
+                spot = core.spot_diameter_at_defocus(defocus, self.spn_dfocus.value(), half_angle)
                 self.lbl_defocus_result.setText(
                     "Défocus calculé : {:.3f} mm -- à AJOUTER au Z de travail\n"
-                    "(mode Marquage/Découpe) pour cette passe de remplissage.".format(defocus))
+                    "(mode Marquage/Découpe) pour cette passe de remplissage.\n"
+                    "Point élargi : {:.2f} mm -- Retrait du bord recommandé :\n"
+                    "{:.2f} mm (rayon du point) pour que la brûlure ne déborde\n"
+                    "pas de la forme.".format(defocus, spot, spot / 2.0))
 
         def _on_filltype_changed(idx):
             is_defocus = (idx == 2)
@@ -385,8 +405,9 @@ class TaskPanelHatch:
 
         self._last_fields = {
             "filltype": self.combo_filltype, "spacing": self.spn_spacing,
-            "angle": self.spn_angle, "dfocus": self.spn_dfocus,
-            "ztest": self.spn_ztest, "dtest": self.spn_dtest,
+            "angle": self.spn_angle, "inset": self.spn_inset,
+            "dfocus": self.spn_dfocus, "ztest": self.spn_ztest,
+            "dtest": self.spn_dtest,
         }
         _restore_last_values("hatch", self._last_fields)
 
@@ -399,7 +420,8 @@ class TaskPanelHatch:
         fill_type_map = {0: "paralleles", 1: "croisees", 2: "defocus"}
         fill_type = fill_type_map.get(self.combo_filltype.currentIndex(), "paralleles")
         obj, err = core.run_hatch_generation(
-            self.selection, self.spn_spacing.value(), self.spn_angle.value(), fill_type=fill_type)
+            self.selection, self.spn_spacing.value(), self.spn_angle.value(),
+            fill_type=fill_type, inset=self.spn_inset.value())
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False
