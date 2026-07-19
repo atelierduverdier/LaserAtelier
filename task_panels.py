@@ -2460,6 +2460,22 @@ class TaskPanelTestGrid:
             "prononcé) ne déborde visuellement sur sa voisine.")
         form.addRow("Espacement cellules :", self.spn_gap)
 
+        self.spn_zwork = QtWidgets.QDoubleSpinBox()
+        self.spn_zwork.setRange(-50.0, 200.0)
+        self.spn_zwork.setDecimals(2)
+        self.spn_zwork.setValue(core.Z_WORK_MM)
+        self.spn_zwork.setSuffix(" mm")
+        self.spn_zwork.setToolTip(
+            "Hauteur du bec (Z) à laquelle TOUTE la grille est gravée --\n"
+            "par défaut la focale des Préférences ({:.2f} mm). Change-la\n"
+            "pour tester la même matrice puissance/vitesse à une AUTRE\n"
+            "hauteur (bec écarté du foyer = point élargi/défocalisé) : tu\n"
+            "balaies ainsi plusieurs hauteurs proprement, une grille par\n"
+            "hauteur, sans toucher aux Préférences. En remplissage Défocus,\n"
+            "cette valeur reste la base et le défocus calculé s'ajoute\n"
+            "par-dessus pour les cellules.".format(core.Z_WORK_MM))
+        form.addRow("Hauteur (Z) de test :", self.spn_zwork)
+
         _section(form, "Remplissage", "sect_fill.svg")
         self.combo_filltype = QtWidgets.QComboBox()
         self.combo_filltype.addItems(["Parallèles", "Croisées (grille)", "Défocus (noir)"])
@@ -2695,7 +2711,7 @@ class TaskPanelTestGrid:
             "power_max": self.spn_power_max, "power_steps": self.spn_power_steps,
             "feed_min": self.spn_feed_min, "feed_max": self.spn_feed_max,
             "feed_steps": self.spn_feed_steps, "cell_size": self.spn_cell_size,
-            "gap": self.spn_gap, "filltype": self.combo_filltype,
+            "gap": self.spn_gap, "zwork": self.spn_zwork, "filltype": self.combo_filltype,
             "hatch_spacing": self.spn_hatch_spacing, "hatch_angle": self.spn_hatch_angle,
             "proximity": self.chk_proximity,
             "labels": self.chk_labels, "label_power": self.spn_label_power,
@@ -2725,8 +2741,8 @@ class TaskPanelTestGrid:
             values.get("power_steps", 0),
             values.get("feed_min", 0), values.get("feed_max", 0),
             values.get("feed_steps", 0))]
-        line2 = "Cellules {:g} mm, espace {:g} mm".format(
-            values.get("cell_size", 0), values.get("gap", 0))
+        line2 = "Cellules {:g} mm, espace {:g} mm, Z {:g} mm".format(
+            values.get("cell_size", 0), values.get("gap", 0), values.get("zwork", 0))
         if mode == 0:
             filltypes = ("Parallèles", "Croisées", "Défocus")
             filltype = values.get("filltype", 0)
@@ -2747,7 +2763,7 @@ class TaskPanelTestGrid:
         accept, aperçu trajet et estimation de durée)."""
         return {
             "draw_border": self.chk_border.isChecked(),
-            "z_border": core.Z_WORK_MM,
+            "z_border": self.spn_zwork.value(),
             "border_power": self.spn_border_power.value(),
             "border_feed": self.spn_border_feed.value(),
         }
@@ -2777,6 +2793,7 @@ class TaskPanelTestGrid:
             "feed_steps": self.spn_feed_steps.value(),
             "cell_size": self.spn_cell_size.value(),
             "gap": self.spn_gap.value(),
+            "zwork": self.spn_zwork.value(),
             "filltype": self.combo_filltype.currentIndex(),
             "hatch_spacing": self.spn_hatch_spacing.value(),
             "hatch_angle": self.spn_hatch_angle.value(),
@@ -2805,6 +2822,7 @@ class TaskPanelTestGrid:
         self.spn_feed_steps.setValue(values.get("feed_steps", self.spn_feed_steps.value()))
         self.spn_cell_size.setValue(values.get("cell_size", self.spn_cell_size.value()))
         self.spn_gap.setValue(values.get("gap", self.spn_gap.value()))
+        self.spn_zwork.setValue(values.get("zwork", self.spn_zwork.value()))
         self.combo_filltype.setCurrentIndex(values.get("filltype", self.combo_filltype.currentIndex()))
         self.spn_hatch_spacing.setValue(values.get("hatch_spacing", self.spn_hatch_spacing.value()))
         self.spn_hatch_angle.setValue(values.get("hatch_angle", self.spn_hatch_angle.value()))
@@ -2857,7 +2875,7 @@ class TaskPanelTestGrid:
         # use_proximity transmis comme dans accept() : sans lui, la durée
         # affichée est celle du trajet NON optimisé, pas du job réel.
         gcode = core.generate_gcode_test_grid(
-            cells, core.Z_WORK_MM,
+            cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
@@ -2938,7 +2956,7 @@ class TaskPanelTestGrid:
         # réel (z_border compte dans son calcul) -- c'est la garantie
         # documentée de l'aperçu cadrage.
         gcode = core.generate_gcode_test_grid(
-            cells, core.Z_WORK_MM,
+            cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, frame_only=True, **self._border_kwargs()
@@ -2957,7 +2975,7 @@ class TaskPanelTestGrid:
             return
         _, _, label_edges = self._build_label_edges(cells)
         gcode = core.generate_gcode_test_grid(
-            cells, core.Z_WORK_MM,
+            cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(), quiet=True,
@@ -3000,7 +3018,7 @@ class TaskPanelTestGrid:
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_test_grid(
-            cells, core.Z_WORK_MM,
+            cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(),
             label_feed=self.spn_label_feed.value(),
