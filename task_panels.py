@@ -1943,11 +1943,14 @@ class TaskPanelTestGrid:
             self.lbl_duration.setText("Durée estimée : -- (calibration défocus invalide)")
             return
         _, _, label_edges = self._build_label_edges(cells)
+        # use_proximity transmis comme dans accept() : sans lui, la durée
+        # affichée est celle du trajet NON optimisé, pas du job réel.
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
-            cell_z_offset=cell_z_offset, quiet=True, **self._border_kwargs()
+            cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
+            quiet=True, **self._border_kwargs()
         )
         if not gcode:
             self.lbl_duration.setText("Durée estimée : --")
@@ -2018,11 +2021,15 @@ class TaskPanelTestGrid:
         if cells is None:
             return
         _, _, label_edges = self._build_label_edges(cells)
+        # Les paramètres du cadre sont transmis aussi en cadrage : le Z de
+        # sécurité du fichier d'aperçu doit être LE MÊME que celui du job
+        # réel (z_border compte dans son calcul) -- c'est la garantie
+        # documentée de l'aperçu cadrage.
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
-            cell_z_offset=cell_z_offset, frame_only=True,
+            cell_z_offset=cell_z_offset, frame_only=True, **self._border_kwargs()
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")

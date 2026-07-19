@@ -159,6 +159,7 @@ attentes de sélection, voir le message si rien n'est sélectionné).
 ------------------------------------------------------------------------
 """
 
+import heapq
 import math
 import json
 import os
@@ -219,7 +220,18 @@ def load_config():
     try:
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
-    except Exception:
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        # Fichier présent mais illisible (JSON corrompu...) : avertir au
+        # lieu d'échouer en silence -- la PROCHAINE sauvegarde (un simple
+        # OK de panneau) repartirait d'un config vide et écraserait le
+        # fichier, perdant tous les préréglages matériau sans un mot.
+        FreeCAD.Console.PrintWarning(
+            "Config {} illisible ({}) : réglages par défaut utilisés. "
+            "Sauvegarder depuis l'atelier écrasera ce fichier (préréglages "
+            "compris) -- à récupérer/supprimer à la main d'abord si besoin.\n".format(
+                CONFIG_FILE, exc))
         return {}
 
 
@@ -1380,7 +1392,6 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
     if not cell_band and not label_band and not border_band:
         return None
 
-    all_pts = [p for item in cell_band + label_band + border_band for p in item[0]]
     z_safe = max(z_work, z_cells, z_border if draw_border else z_work) + TRAVEL_CLEARANCE_MM
     if min_safe_z is not None:
         z_safe = max(z_safe, min_safe_z)
@@ -1407,12 +1418,11 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
     lines.append("G0 Z{:.4f}".format(z_safe))
 
     if frame_only:
+        all_pts = [p for item in cell_band + label_band + border_band for p in item[0]]
         if all_pts:
-            fx_min = min(p.x for p in all_pts)
-            fx_max = max(p.x for p in all_pts)
-            fy_min = min(p.y for p in all_pts)
-            fy_max = max(p.y for p in all_pts)
-            lines.extend(build_frame_trace(fx_min, fx_max, fy_min, fy_max, z_safe))
+            lines.extend(build_frame_trace(
+                min(p.x for p in all_pts), max(p.x for p in all_pts),
+                min(p.y for p in all_pts), max(p.y for p in all_pts), z_safe))
         if not body_only:
             lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
             lines.append("M2")
@@ -1491,8 +1501,10 @@ class _IDWHeight(object):
         if not self.points:
             return None
         dists = [((px - x) ** 2 + (py - y) ** 2, pz) for px, py, pz in self.points]
-        dists.sort(key=lambda t: t[0])
-        nearest = dists[:self.k]
+        # nsmallest (O(N log k)) au lieu d'un tri complet (O(N log N)) :
+        # appelé à chaque pas de transit, sur un nuage qui peut compter
+        # des dizaines de milliers de points projetés.
+        nearest = heapq.nsmallest(self.k, dists, key=lambda t: t[0])
         for d2, z in nearest:
             if d2 < 1e-9:
                 return z
@@ -1713,13 +1725,10 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe_start_end))
 
-    fx_min = min(p.x for p in all_pts)
-    fx_max = max(p.x for p in all_pts)
-    fy_min = min(p.y for p in all_pts)
-    fy_max = max(p.y for p in all_pts)
-
     if frame_only:
-        lines.extend(build_frame_trace(fx_min, fx_max, fy_min, fy_max, z_safe_start_end))
+        lines.extend(build_frame_trace(
+            min(p.x for p in all_pts), max(p.x for p in all_pts),
+            min(p.y for p in all_pts), max(p.y for p in all_pts), z_safe_start_end))
         if not body_only:
             lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
             lines.append("M2")
@@ -2435,14 +2444,11 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
-    all_pts_flat = [p for c in chains for p in c]
-    fx_min = min(p.x for p in all_pts_flat)
-    fx_max = max(p.x for p in all_pts_flat)
-    fy_min = min(p.y for p in all_pts_flat)
-    fy_max = max(p.y for p in all_pts_flat)
-
     if frame_only:
-        lines.extend(build_frame_trace(fx_min, fx_max, fy_min, fy_max, z_safe))
+        all_pts_flat = [p for c in chains for p in c]
+        lines.extend(build_frame_trace(
+            min(p.x for p in all_pts_flat), max(p.x for p in all_pts_flat),
+            min(p.y for p in all_pts_flat), max(p.y for p in all_pts_flat), z_safe))
         if not body_only:
             lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
             lines.append("M2")
@@ -2634,13 +2640,10 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
-    fx_min = min(p.x for p in all_pts)
-    fx_max = max(p.x for p in all_pts)
-    fy_min = min(p.y for p in all_pts)
-    fy_max = max(p.y for p in all_pts)
-
     if frame_only:
-        lines.extend(build_frame_trace(fx_min, fx_max, fy_min, fy_max, z_safe))
+        lines.extend(build_frame_trace(
+            min(p.x for p in all_pts), max(p.x for p in all_pts),
+            min(p.y for p in all_pts), max(p.y for p in all_pts), z_safe))
         if not body_only:
             lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
             lines.append("M2")
@@ -3051,8 +3054,12 @@ def _operation_intrinsic_safe_z(op_type, params):
         if not cells:
             return None
         z_work = params.get("z_work", 0.0)
-        z_cells = z_work + params.get("cell_z_offset", 0.0)
-        return max(z_work, z_cells) + TRAVEL_CLEARANCE_MM
+        z_levels = [z_work, z_work + params.get("cell_z_offset", 0.0)]
+        if params.get("draw_border"):
+            # Même formule que z_safe dans generate_gcode_test_grid : le
+            # cadre au foyer a son propre Z, à compter dans le plancher.
+            z_levels.append(params.get("z_border", 0.0))
+        return max(z_levels) + TRAVEL_CLEARANCE_MM
     return None
 
 
