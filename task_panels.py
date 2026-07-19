@@ -1149,6 +1149,198 @@ class TaskPanelDefocusCalibration:
 
 
 # ==========================================================================
+# MODE : TEST DES OFFSETS X/Y DU LASER (T100)
+# ==========================================================================
+class TaskPanelOffsetTest:
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        info = QtWidgets.QLabel(
+            "Job MIXTE : fraise une croix centrée sur X0 Y0, puis grave une\n"
+            "croix laser au MÊME X0 Y0 programmé. L'écart entre les deux\n"
+            "croix = l'erreur d'offsets X/Y du T100 dans tool.tbl\n"
+            "(X_nouveau = X_actuel - dX, idem Y ; dX = X laser - X fraisé).\n"
+            "AVANT de lancer : chute de bois sur le martyre (prévoir LARGE\n"
+            "si un signe d'offset est faux), fraise à graver montée à la\n"
+            "main, zéro X/Y à l'oeil au centre de la chute. Monter la\n"
+            "glissière laser pendant la pause du 2e changement d'outil.\n"
+            "Lunettes laser obligatoires. Aucune sélection requise.")
+        info.setWordWrap(True)
+        _panel_header(form, "offset_test.svg", "Test des offsets X/Y du laser")
+        form.addRow(info)
+
+        _section(form, "Croix (géométrie)", "sect_options.svg")
+        self.spn_half = QtWidgets.QDoubleSpinBox()
+        self.spn_half.setRange(2.0, 100.0)
+        self.spn_half.setValue(10.0)
+        self.spn_half.setSuffix(" mm")
+        self.spn_half.setToolTip(
+            "Demi-longueur des branches de chaque croix (10 mm = croix de\n"
+            "20 x 20 mm). Assez grand pour poser le pied à coulisse.")
+        form.addRow("Demi-longueur des branches :", self.spn_half)
+
+        self.spn_surface_z = QtWidgets.QDoubleSpinBox()
+        self.spn_surface_z.setRange(-100.0, 200.0)
+        self.spn_surface_z.setDecimals(2)
+        self.spn_surface_z.setValue(0.0)
+        self.spn_surface_z.setSuffix(" mm")
+        self.spn_surface_z.setToolTip(
+            "Z du dessus de la chute dans le WCS courant : l'épaisseur de\n"
+            "la chute (pied à coulisse) si le zéro Z est fait sur le\n"
+            "martyre, 0 si le zéro Z est fait sur la chute elle-même.")
+        form.addRow("Z du dessus de la chute :", self.spn_surface_z)
+
+        _section(form, "Croix fraisée", "sect_contour.svg")
+        self.spn_mill_tool = QtWidgets.QSpinBox()
+        self.spn_mill_tool.setRange(1, 99)
+        self.spn_mill_tool.setValue(2)
+        self.spn_mill_tool.setToolTip(
+            "Numéro (tool.tbl) de la fraise à graver/fraise fine montée.\n"
+            "Le job fait T<n> M6 (palpage auto) -- pas T100, réservé au laser.")
+        form.addRow("Numéro d'outil fraise :", self.spn_mill_tool)
+
+        self.spn_rpm = QtWidgets.QDoubleSpinBox()
+        self.spn_rpm.setRange(1000, 30000)
+        self.spn_rpm.setDecimals(0)
+        self.spn_rpm.setValue(18000)
+        self.spn_rpm.setSuffix(" tr/min")
+        self.spn_rpm.setToolTip("Vitesse de la broche VFD pour la croix fraisée.")
+        form.addRow("Vitesse broche :", self.spn_rpm)
+
+        self.spn_mill_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_mill_feed.setRange(10, 5000)
+        self.spn_mill_feed.setValue(600)
+        self.spn_mill_feed.setSuffix(" mm/min")
+        self.spn_mill_feed.setToolTip(
+            "Avance de fraisage des branches (la plongée se fait à la\n"
+            "moitié de cette avance).")
+        form.addRow("Avance de fraisage :", self.spn_mill_feed)
+
+        self.spn_depth = QtWidgets.QDoubleSpinBox()
+        self.spn_depth.setRange(0.05, 5.0)
+        self.spn_depth.setDecimals(2)
+        self.spn_depth.setSingleStep(0.1)
+        self.spn_depth.setValue(0.4)
+        self.spn_depth.setSuffix(" mm")
+        self.spn_depth.setToolTip(
+            "Profondeur de la croix sous la surface de la chute. Juste\n"
+            "assez pour un trait net et mesurable.")
+        form.addRow("Profondeur de gravure :", self.spn_depth)
+
+        _section(form, "Croix laser", "sect_focus.svg")
+        self.spn_zfocus = QtWidgets.QDoubleSpinBox()
+        self.spn_zfocus.setRange(0.0, 100.0)
+        self.spn_zfocus.setDecimals(2)
+        self.spn_zfocus.setValue(7.0)
+        self.spn_zfocus.setSuffix(" mm")
+        self.spn_zfocus.setToolTip(
+            "Hauteur de focale du nez laser au-dessus de la surface\n"
+            "(mesurée avec la bande de calibration défocus) : un trait au\n"
+            "foyer est fin, donc facile à pointer au pied à coulisse.")
+        form.addRow("Focale laser :", self.spn_zfocus)
+
+        self.spn_power = QtWidgets.QDoubleSpinBox()
+        self.spn_power.setRange(0, 1000)
+        self.spn_power.setValue(300)
+        self.spn_power.setToolTip(
+            "Puissance (S, 0-1000) de la croix laser. Juste de quoi marquer\n"
+            "net : une brûlure trop large fausserait le pointage.")
+        form.addRow("Puissance laser :", self.spn_power)
+
+        self.spn_laser_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_laser_feed.setRange(1, 20000)
+        self.spn_laser_feed.setValue(1000)
+        self.spn_laser_feed.setSuffix(" mm/min")
+        self.spn_laser_feed.setToolTip("Vitesse de gravure de la croix laser.")
+        form.addRow("Vitesse laser :", self.spn_laser_feed)
+
+        _section(form, "G-code & aperçus", "sect_gcode.svg")
+        self.txt_pre = QtWidgets.QPlainTextEdit()
+        self.txt_pre.setMaximumHeight(50)
+        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        form.addRow("G-code avant :", self.txt_pre)
+
+        self.txt_post = QtWidgets.QPlainTextEdit()
+        self.txt_post.setMaximumHeight(50)
+        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        form.addRow("G-code après :", self.txt_post)
+
+        cfg = core.load_config()
+        self.txt_pre.setPlainText(cfg.get("pre_ot", ""))
+        self.txt_post.setPlainText(cfg.get("post_ot", ""))
+
+        self.lbl_duration = _duration_row(
+            form, self._update_duration_preview,
+            "Hors changements d'outil et palpages (durée machine réelle\n"
+            "nettement plus longue).")
+
+        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview.setToolTip(
+            "Trace les deux croix dans la vue 3D (superposées par\n"
+            "construction : c'est la machine qui révèle l'écart réel).")
+        self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
+        form.addRow(self.btn_toolpath_preview)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Test des offsets X/Y du laser")
+        self.form.setWindowIcon(_icon("offset_test.svg"))
+
+        self._update_duration_preview()
+
+    def _gen_kwargs(self):
+        return {
+            "mill_tool": self.spn_mill_tool.value(),
+            "mill_rpm": self.spn_rpm.value(),
+            "mill_feed": self.spn_mill_feed.value(),
+            "mill_depth": self.spn_depth.value(),
+            "half_length": self.spn_half.value(),
+            "surface_z": self.spn_surface_z.value(),
+            "z_focus": self.spn_zfocus.value(),
+            "laser_power": self.spn_power.value(),
+            "laser_feed": self.spn_laser_feed.value(),
+        }
+
+    def _update_duration_preview(self):
+        gcode = core.generate_gcode_offset_test(quiet=True, **self._gen_kwargs())
+        if not gcode:
+            self.lbl_duration.setText("Durée estimée : --")
+            return
+        seconds = core.estimate_job_time_seconds(gcode)
+        self.lbl_duration.setText(
+            "Durée estimée : {} (hors changements d'outil)".format(core.format_duration(seconds)))
+
+    def _on_toolpath_preview(self):
+        gcode = core.generate_gcode_offset_test(quiet=True, **self._gen_kwargs())
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
+            return
+        rapid, mark = core.parse_gcode_toolpath(gcode)
+        core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+
+    def accept(self):
+        pre_text = self.txt_pre.toPlainText()
+        post_text = self.txt_post.toPlainText()
+        gcode = core.generate_gcode_offset_test(
+            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs())
+
+        cfg = core.load_config()
+        cfg["pre_ot"] = pre_text
+        cfg["post_ot"] = post_text
+        core.save_config(cfg)
+
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
+            return False
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/test_offsets_laser.ngc")
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
 # MODE : GRILLE DE TEST PUISSANCE / VITESSE
 # ==========================================================================
 class TaskPanelTestGrid:

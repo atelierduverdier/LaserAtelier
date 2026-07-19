@@ -132,6 +132,23 @@ class DefocusCalibrationCommand:
         Gui.Control.showDialog(task_panels.TaskPanelDefocusCalibration())
 
 
+class OffsetTestCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("offset_test.svg"),
+            "MenuText": "Test des offsets X/Y du laser",
+            "ToolTip": "Job mixte fraise+laser : croix fraisée puis croix laser au même X0 Y0 -- "
+                       "l'écart entre les deux croix donne la correction des offsets X/Y du T100 "
+                       "dans tool.tbl (aucune sélection requise)",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelOffsetTest())
+
+
 class CurvedCommand:
     def GetResources(self):
         return {
@@ -243,6 +260,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
     Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())
     Gui.addCommand("LaserAtelier_DefocusCalibration", DefocusCalibrationCommand())
+    Gui.addCommand("LaserAtelier_OffsetTest", OffsetTestCommand())
     Gui.addCommand("LaserAtelier_Curved", CurvedCommand())
     Gui.addCommand("LaserAtelier_CurvedCut", CurvedCutCommand())
     Gui.addCommand("LaserAtelier_Flat", FlatCommand())

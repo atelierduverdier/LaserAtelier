@@ -3157,6 +3157,121 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
+# ==========================================================================
+# MODE : TEST DES OFFSETS X/Y DU LASER (VALIDATION tool.tbl T100)
+# ==========================================================================
+def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
+                               mill_depth=0.4, half_length=10.0, surface_z=0.0,
+                               z_focus=7.0, laser_power=300.0, laser_feed=1000.0,
+                               pre_gcode="", post_gcode="", quiet=False):
+    """Job MIXTE fraise + laser pour valider les offsets X/Y de l'outil
+    laser (T100) dans tool.tbl : fraise une croix centrée sur X0 Y0, puis
+    grave une croix laser au MÊME X0 Y0 programmé. Si les offsets X/Y de
+    T100 sont justes, les deux croix se superposent ; sinon, l'écart entre
+    les deux croix EST l'erreur d'offset (au pied à coulisse, écarts
+    SIGNÉS dans le sens des axes machine) :
+
+        dX = X croix laser - X croix fraisée
+        dY = Y croix laser - Y croix fraisée
+        tool.tbl T100 :  X_nouveau = X_actuel - dX
+                         Y_nouveau = Y_actuel - dY
+
+    puis recharger la table d'outils (QtDragon) et relancer ce test pour
+    confirmer (superposition à ~0.1 mm attendue). Un écart Y d'environ
+    2x l'offset (~180 mm pour un offset a 90), ou un refus soft-limit au
+    moment de la croix laser, est le symptôme classique d'un SIGNE
+    d'offset inversé dans tool.tbl.
+
+    Contrairement aux autres modes de l'atelier (laser seul, prérequis
+    « T100 M6 fait avant » + G43 H100 en tête), ce job fait ses PROPRES
+    changements d'outil : T<fraise> M6 puis T100 M6, chacun avec le
+    palpage auto et la pause M1 du toolchange de la machine -- monter la
+    glissière laser pendant la pause du second. La croix fraisée tourne
+    sur la broche VFD (M3 sans sélecteur, spindle.0), la croix laser sur
+    la broche laser habituelle (SPINDLE_SELECT).
+
+    Préparation côté machine (rappelée en commentaires dans le fichier) :
+    chute de bois assez grande (prévoir LARGE en Y si le signe est faux),
+    zéro X/Y à l'oeil au centre de la chute, fraise à graver montée à la
+    main. surface_z : Z du dessus de la chute dans le WCS courant (= son
+    épaisseur si le zéro Z est sur le martyre). z_focus : hauteur de
+    focale du nez laser au-dessus de la surface (cf. bande de calibration
+    défocus). Lunettes laser obligatoires, surveillance permanente."""
+    mill_tool = int(mill_tool)
+    if mill_tool == 100:
+        if not quiet:
+            FreeCAD.Console.PrintWarning(
+                "Test d'offsets : l'outil fraise ne peut pas être T100 (réservé au laser).\n")
+        return None
+    if half_length <= 0:
+        return None
+
+    z_laser = surface_z + z_focus
+    z_hop = surface_z + 2.0        # petit saut entre les deux branches fraisées
+    z_clear = surface_z + 5.0      # dégagement avant M5 / retrait broche
+    plunge_feed = max(1.0, mill_feed / 2.0)
+
+    lines = []
+    lines.append("(G-Code MIXTE fraise+laser - Test des offsets X/Y du laser T100)")
+    lines.append("(Croix fraisee T{} puis croix laser T100 au meme X0 Y0 programme)".format(mill_tool))
+    lines.append("(Prerequis : zero X/Y au centre de la chute, fraise montee a la main)")
+    lines.append("(Mesure : dX = X laser - X fraise ; dY = Y laser - Y fraise [signes])")
+    lines.append("(Correction tool.tbl T100 : X_nouveau = X_actuel - dX ; Y_nouveau = Y_actuel - dY)")
+    lines.append("(Ecart Y ~2x l'offset ou refus soft-limit = signe d'offset inverse)")
+    lines.append("(SECURITE : lunettes laser obligatoires, surveillance permanente)")
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+
+    # --- Étape 1 : croix FRAISÉE centrée sur X0 Y0 -----------------------
+    lines.append("(===== Etape 1 : croix fraisee T{} =====)".format(mill_tool))
+    lines.append("T{} M6 (palpage auto - RESUME apres le M1 du toolchange)".format(mill_tool))
+    lines.append("G43 H{}".format(mill_tool))
+    lines.append("M3 S{:.0f} (broche VFD)".format(mill_rpm))
+    lines.append("G0 X{:.4f} Y0".format(-half_length))
+    lines.append("G0 Z{:.4f}".format(z_hop))
+    lines.append("G1 Z{:.4f} F{:.0f}".format(surface_z - mill_depth, plunge_feed))
+    lines.append("G1 X{:.4f} F{:.0f}".format(half_length, mill_feed))
+    lines.append("G0 Z{:.4f}".format(z_hop))
+    lines.append("G0 X0 Y{:.4f}".format(-half_length))
+    lines.append("G1 Z{:.4f} F{:.0f}".format(surface_z - mill_depth, plunge_feed))
+    lines.append("G1 Y{:.4f} F{:.0f}".format(half_length, mill_feed))
+    lines.append("G0 Z{:.4f}".format(z_clear))
+    lines.append("M5")
+    lines.append("G53 G0 Z0")
+
+    # --- Étape 2 : croix LASER au même X0 Y0 programmé -------------------
+    lines.append("(===== Etape 2 : croix laser T100 =====)")
+    lines.append("(MSG, Monter la glissiere laser pendant la pause du changement d'outil)")
+    lines.append("T100 M6 (palpage decale auto du nez laser)")
+    lines.append("G43 H100")
+    lines.append("M5 {sel} (securite avant armement)".format(sel=SPINDLE_SELECT))
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    lines.append("G0 X{:.4f} Y0".format(-half_length))
+    lines.append("G0 Z{:.4f}".format(z_laser))
+    lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=laser_power))
+    lines.append("G1 X{:.4f} F{:.0f}".format(half_length, laser_feed))
+    lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+    lines.append("G0 X0 Y{:.4f}".format(-half_length))
+    lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=laser_power))
+    lines.append("G1 Y{:.4f} F{:.0f}".format(half_length, laser_feed))
+    lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("G53 G0 Z0")
+
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+
+    lines.append("(MSG, Test termine - mesurer dX dY entre les 2 croix et corriger tool.tbl T100)")
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
 # Appliquée en FIN de module : les réglages listés dans _USER_SETTINGS
 # surchargent des globales définies tout au long du fichier
 # (SAFE_MIN_NOZZLE_HEIGHT_MM etc.), elles doivent toutes exister avant.

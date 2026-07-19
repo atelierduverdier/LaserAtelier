@@ -60,6 +60,7 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_Kerf",
             "LaserAtelier_TestGrid",
             "LaserAtelier_DefocusCalibration",
+            "LaserAtelier_OffsetTest",
             "Separator",
             # -- Assemblage --
             "LaserAtelier_Combined",
