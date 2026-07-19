@@ -1648,9 +1648,20 @@ def split_selection(selection):
 
 
 def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_shape=None,
+                           style="plein", style_params=None,
                            pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
                            min_safe_z=None, probe=None):
-    """frame_only : ne génère QUE le rectangle englobant (laser éteint),
+    """style / style_params : style de trait ("plein" = trait continu
+    historique, "tirets", "pointille", "vague" -- cf. la section STYLES DE
+    TRAIT). Les styles suivent le RELIEF comme le trait plein : les tirets
+    et la vague sont découpés/rééchantillonnés le long de la chaîne (Z
+    natif interpolé), les points du pointillé se posent sur la surface
+    (petits G0 directs entre points voisins -- distance trop courte pour
+    qu'un relief passe entre deux points sous le bec). En "vague", le Z
+    machine oscille de 0 à wave_amplitude AU-DESSUS du suivi de relief
+    normal (foyer) -- la hauteur de sécurité en tient compte.
+
+    frame_only : ne génère QUE le rectangle englobant (laser éteint),
     en réutilisant le même calcul de Z de sécurité que le job réel --
     pour un fichier de VÉRIFICATION DE CADRAGE SÉPARÉ du job (à lancer
     seul sur la machine avant de graver pour de vrai), plutôt qu'un
@@ -1697,11 +1708,29 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     if not chains:
         return None
 
+    style_params = dict(style_params or {})
+    dash_len = style_params.get("dash_len", 3.0)
+    gap_len = style_params.get("gap_len", 2.0)
+    dot_spacing = style_params.get("dot_spacing", 1.5)
+    dot_dwell_s = style_params.get("dot_dwell_s", 0.05)
+    wave_period = style_params.get("wave_period", 5.0)
+    wave_amp = style_params.get("wave_amplitude", 0.0) if style == "vague" else 0.0
+
+    if not quiet and style == "vague":
+        peak = wave_peak_z_feed(wave_amp, feed, wave_period)
+        if peak > Z_MAX_FEED_MM_MIN:
+            FreeCAD.Console.PrintWarning(
+                "Vague : vitesse Z crête ~{:.0f}mm/min > limite Z supposée "
+                "({:.0f}mm/min, cf. Préférences) -- LinuxCNC ralentira le trajet "
+                "pour suivre (pas de danger, job juste plus lent). Allonger la "
+                "période ou réduire l'amplitude/le feed pour l'éviter.\n".format(
+                    peak, Z_MAX_FEED_MM_MIN))
+
     all_pts = [p for chain in chains for p in chain]
     z_min = min(p.z for p in all_pts)
     z_max = max(p.z for p in all_pts)
     z_offset = z_focus - z_min
-    z_safe_start_end = z_max + z_offset + marge_survol + 5.0
+    z_safe_start_end = z_max + z_offset + wave_amp + marge_survol + 5.0
     if min_safe_z is not None:
         z_safe_start_end = max(z_safe_start_end, min_safe_z)
 
@@ -1721,8 +1750,11 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         return z_native + z_offset
 
     lines = []
-    lines.append("(G-Code Laser - Marquage courbe : chaînes + transit continu)")
+    lines.append("(G-Code Laser - Marquage : chaînes + transit continu)")
     lines.append("(Chaînes : {} (à partir de {} segments d'origine))".format(len(chains), len(edges)))
+    if style != "plein":
+        style_names = {"tirets": "tirets", "pointille": "pointille", "vague": "vague defocus"}
+        lines.append("(Style de trait : {})".format(style_names.get(style, style)))
     lines.append("(Transit : hauteur de travail + {:.2f}mm, {})".format(marge_survol, probe_kind))
     lines.append("(Contrôle bec (cône {:.0f}mm) : {})".format(
         NOZZLE_CONE_TOP_RADIUS * 2, "actif" if nozzle_check_active else "inactif (pas de sonde exacte)"))
@@ -1750,6 +1782,28 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     state_armed = body_only
     current_pos = None
     nozzle_marking_warnings = 0
+    check_state = {"last": None}
+
+    def _mark_check(p):
+        # Pendant la gravure, le Z est imposé par le focus correct : un
+        # désaccord avec le bec est seulement signalé, jamais corrigé (le
+        # corriger changerait le focus). Contrôlé tous les
+        # NOZZLE_CHECK_INTERVAL_MM (pas à chaque point discrétisé --
+        # inutile pour un cône de 16mm, et ruineux en performance sur un
+        # remplissage dense).
+        nonlocal nozzle_marking_warnings
+        if not nozzle_check_active:
+            return
+        lp = check_state["last"]
+        if lp is not None and math.hypot(p.x - lp.x, p.y - lp.y) < NOZZLE_CHECK_INTERVAL_MM:
+            return
+        required = nozzle_clearance_z(p.x, p.y, p.z, height_probe.z_at, 0.0)
+        if required > p.z + 0.05:
+            nozzle_marking_warnings += 1
+        check_state["last"] = p
+
+    beam_on = CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power)
+    beam_off = CMD_BEAM_OFF.format(sel=SPINDLE_SELECT)
 
     for chain in chains:
         p0 = chain[0]
@@ -1776,24 +1830,49 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         if not state_armed:
             lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
             state_armed = True
-        lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power))
 
-        last_check_pos = p0
-        for p in chain[1:]:
-            # Pendant la gravure, le Z est imposé par le focus correct :
-            # un désaccord avec le bec est seulement signalé, jamais
-            # corrigé (le corriger changerait le focus). Contrôlé tous les
-            # NOZZLE_CHECK_INTERVAL_MM (pas à chaque point discrétisé --
-            # inutile pour un cône de 16mm, et ruineux en performance sur
-            # un remplissage dense).
-            if nozzle_check_active and math.hypot(p.x - last_check_pos.x, p.y - last_check_pos.y) >= NOZZLE_CHECK_INTERVAL_MM:
-                required = nozzle_clearance_z(p.x, p.y, p.z, height_probe.z_at, 0.0)
-                if required > p.z + 0.05:
-                    nozzle_marking_warnings += 1
-                last_check_pos = p
-            lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(p.x, p.y, to_machine_z(p.z), feed))
+        check_state["last"] = p0
 
-        lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+        if style == "pointille":
+            # Points sur la surface : pulse à chaque point, petits G0
+            # directs entre points voisins (dot_spacing) -- le suivi de
+            # relief est porté par le Z de chaque point.
+            first = True
+            for d in dot_positions(chain, dot_spacing):
+                if not first:
+                    lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(
+                        d.x, d.y, to_machine_z(d.z)))
+                first = False
+                _mark_check(d)
+                lines.append(beam_on)
+                lines.append("G4 P{:.3f}".format(dot_dwell_s))
+                lines.append(beam_off)
+        elif style == "tirets":
+            for piece, on in dash_chain(chain, dash_len, gap_len):
+                if on:
+                    lines.append(beam_on)
+                for p in piece[1:]:
+                    _mark_check(p)
+                    lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                        p.x, p.y, to_machine_z(p.z), feed))
+                if on:
+                    lines.append(beam_off)
+        elif style == "vague":
+            samples = wave_resample(chain, wave_period, wave_amp)
+            lines.append(beam_on)
+            for p, dz in samples[1:]:
+                _mark_check(p)
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                    p.x, p.y, to_machine_z(p.z) + dz, feed))
+            lines.append(beam_off)
+        else:
+            lines.append(beam_on)
+            for p in chain[1:]:
+                _mark_check(p)
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                    p.x, p.y, to_machine_z(p.z), feed))
+            lines.append(beam_off)
+
         current_pos = chain[-1]
 
     lines.append("G0 Z{:.4f}".format(z_safe_start_end))

@@ -2736,7 +2736,7 @@ class TaskPanelCurved:
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
-        _panel_header(form, "curved.svg", "Marquage sur surface courbe")
+        _panel_header(form, "curved.svg", "Marquage de motif (plat ou courbe)")
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -2748,14 +2748,15 @@ class TaskPanelCurved:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         info = QtWidgets.QLabel(
-            "Pour que la gravure SUIVE FIDÈLEMENT LES COURBES du modèle\n"
-            "3D, sélectionne à la fois le motif projeté (Hachures_3D, issu\n"
-            "du mode Projection) ET le modèle 3D d'origine, TOUS LES DEUX\n"
-            "EN MÊME TEMPS, avant de lancer ce mode. Le modèle 3D permet\n"
-            "une sonde exacte du relief pendant le marquage -- si tu ne\n"
-            "sélectionnes que le motif seul, le Z est seulement interpolé\n"
-            "entre les points déjà projetés (moins fidèle, surtout si la\n"
-            "courbure est marquée entre deux points).")
+            "Grave un motif filaire (hachures, tracés...), à PLAT ou sur\n"
+            "SURFACE COURBE.\n"
+            "Pièce PLATE : sélectionne juste le motif 2D (ex: Hachures du\n"
+            "mode Hachures 2D) -- rien d'autre.\n"
+            "Surface COURBE : sélectionne le motif projeté (Hachures_3D,\n"
+            "issu du mode Projection) ET le modèle 3D d'origine, TOUS LES\n"
+            "DEUX EN MÊME TEMPS -- le modèle 3D permet une sonde exacte du\n"
+            "relief pendant le marquage (sans lui, le Z est seulement\n"
+            "interpolé entre les points déjà projetés).")
         info.setWordWrap(True)
         form.addRow(info)
 
@@ -2818,6 +2819,103 @@ class TaskPanelCurved:
             "sinon interpolation.")
         form.addRow("Marge de sécurité (transit) :", self.spn_marge)
 
+        _section(form, "Style de trait", "sect_options.svg")
+        self.combo_style = QtWidgets.QComboBox()
+        self.combo_style.addItems(["Trait plein", "Tirets", "Pointillé", "Vague défocus"])
+        self.combo_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_style.setMinimumContentsLength(14)
+        self.combo_style.setToolTip(
+            "Trait plein : trait continu (comportement historique).\n"
+            "Tirets : faisceau pulsé le long du tracé (mouvement continu).\n"
+            "Pointillé : vrais points ronds -- arrêt + pulse à chaque point\n"
+            "(plus lent). Vague défocus : le Z oscille entre le foyer et\n"
+            "l'amplitude ci-dessous AU-DESSUS du suivi de relief -- trait\n"
+            "qui varie continûment en largeur et en intensité. Tous les\n"
+            "styles suivent le relief comme le trait plein.")
+        form.addRow("Style de trait :", self.combo_style)
+
+        self.spn_dash_len = QtWidgets.QDoubleSpinBox()
+        self.spn_dash_len.setRange(0.2, 50.0)
+        self.spn_dash_len.setValue(3.0)
+        self.spn_dash_len.setSuffix(" mm")
+        self.spn_dash_len.setToolTip("Longueur de chaque tiret (style Tirets).")
+        form.addRow("Longueur tiret :", self.spn_dash_len)
+
+        self.spn_gap_len = QtWidgets.QDoubleSpinBox()
+        self.spn_gap_len.setRange(0.2, 50.0)
+        self.spn_gap_len.setValue(2.0)
+        self.spn_gap_len.setSuffix(" mm")
+        self.spn_gap_len.setToolTip("Espace entre deux tirets (style Tirets).")
+        form.addRow("Espace entre tirets :", self.spn_gap_len)
+
+        self.spn_dot_spacing = QtWidgets.QDoubleSpinBox()
+        self.spn_dot_spacing.setRange(0.2, 50.0)
+        self.spn_dot_spacing.setValue(1.5)
+        self.spn_dot_spacing.setSuffix(" mm")
+        self.spn_dot_spacing.setToolTip("Espacement des points le long du tracé (style Pointillé).")
+        form.addRow("Espacement points :", self.spn_dot_spacing)
+
+        self.spn_dot_dwell = QtWidgets.QDoubleSpinBox()
+        self.spn_dot_dwell.setRange(5.0, 2000.0)
+        self.spn_dot_dwell.setDecimals(0)
+        self.spn_dot_dwell.setValue(50.0)
+        self.spn_dot_dwell.setSuffix(" ms")
+        self.spn_dot_dwell.setToolTip(
+            "Durée du pulse laser sur chaque point (style Pointillé). La\n"
+            "machine s'arrête à chaque point : job nettement plus lent.")
+        form.addRow("Durée du pulse :", self.spn_dot_dwell)
+
+        self.spn_wave_period = QtWidgets.QDoubleSpinBox()
+        self.spn_wave_period.setRange(0.5, 100.0)
+        self.spn_wave_period.setValue(5.0)
+        self.spn_wave_period.setSuffix(" mm")
+        self.spn_wave_period.setToolTip(
+            "Période de l'oscillation Z (style Vague) : distance le long\n"
+            "du tracé entre deux points fins (au foyer).")
+        form.addRow("Période de la vague :", self.spn_wave_period)
+
+        self.spn_wave_amp = QtWidgets.QDoubleSpinBox()
+        self.spn_wave_amp.setRange(0.1, 30.0)
+        self.spn_wave_amp.setDecimals(2)
+        self.spn_wave_amp.setValue(2.0)
+        self.spn_wave_amp.setSuffix(" mm")
+        self.spn_wave_amp.setToolTip(
+            "Amplitude de l'oscillation Z (style Vague) : défocus max\n"
+            "atteint au sommet de la vague, en mm de remontée du bec\n"
+            "au-dessus du foyer. La largeur du trait au sommet se lit sur\n"
+            "la bande de calibration défocus (trait gravé à cette hauteur).")
+        form.addRow("Amplitude de la vague :", self.spn_wave_amp)
+
+        self.lbl_style_info = QtWidgets.QLabel("")
+        self.lbl_style_info.setWordWrap(True)
+        form.addRow(self.lbl_style_info)
+
+        def _update_style_ui():
+            idx = self.combo_style.currentIndex()
+            for w in (self.spn_dash_len, self.spn_gap_len):
+                w.setVisible(idx == 1)
+            for w in (self.spn_dot_spacing, self.spn_dot_dwell):
+                w.setVisible(idx == 2)
+            for w in (self.spn_wave_period, self.spn_wave_amp):
+                w.setVisible(idx == 3)
+            if idx == 3:
+                peak = core.wave_peak_z_feed(
+                    self.spn_wave_amp.value(), self.spn_feed.value(),
+                    self.spn_wave_period.value())
+                txt = "Vague : vitesse Z crête ~{:.0f} mm/min".format(peak)
+                if peak > core.Z_MAX_FEED_MM_MIN:
+                    txt += (" -- AU-DELÀ de la limite Z supposée ({:.0f}, cf. Préférences) :"
+                            " le trajet sera ralenti").format(core.Z_MAX_FEED_MM_MIN)
+                self.lbl_style_info.setText(txt + ".")
+                self.lbl_style_info.setVisible(True)
+            else:
+                self.lbl_style_info.setVisible(False)
+
+        self._update_style_ui = _update_style_ui
+        self.combo_style.currentIndexChanged.connect(lambda _i: _update_style_ui())
+        for w in (self.spn_wave_amp, self.spn_wave_period, self.spn_feed):
+            w.valueChanged.connect(lambda _v: _update_style_ui())
+
         _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
@@ -2874,20 +2972,39 @@ class TaskPanelCurved:
         self._last_fields = {
             "power": self.spn_power, "feed": self.spn_feed,
             "z_focus": self.spn_zfocus, "marge": self.spn_marge,
+            "style": self.combo_style, "dash_len": self.spn_dash_len,
+            "gap_len": self.spn_gap_len, "dot_spacing": self.spn_dot_spacing,
+            "dot_dwell_ms": self.spn_dot_dwell, "wave_period": self.spn_wave_period,
+            "wave_amp": self.spn_wave_amp,
         }
         _restore_last_values("curved", self._last_fields)
 
         self.form = _scrollable(inner)
-        self.form.setWindowTitle("Marquage sur surface courbe")
+        self.form.setWindowTitle("Marquage de motif (plat ou courbe)")
         self.form.setWindowIcon(_icon("curved.svg"))
 
         self._populate_preset_combo()
+        _update_style_ui()
         self._update_duration_preview()
 
     def _get_edges(self):
         edge_sel, reference_shape = core.split_selection(self.selection)
         edges = core.get_all_edges_from_selection(edge_sel)
         return edges, reference_shape
+
+    def _style_kwargs(self):
+        style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague"}
+        return {
+            "style": style_map.get(self.combo_style.currentIndex(), "plein"),
+            "style_params": {
+                "dash_len": self.spn_dash_len.value(),
+                "gap_len": self.spn_gap_len.value(),
+                "dot_spacing": self.spn_dot_spacing.value(),
+                "dot_dwell_s": self.spn_dot_dwell.value() / 1000.0,
+                "wave_period": self.spn_wave_period.value(),
+                "wave_amplitude": self.spn_wave_amp.value(),
+            },
+        }
 
     def _populate_preset_combo(self):
         self.combo_preset.blockSignals(True)
@@ -2907,6 +3024,13 @@ class TaskPanelCurved:
         self.spn_feed.setValue(values.get("feed", self.spn_feed.value()))
         self.spn_zfocus.setValue(values.get("z_focus", self.spn_zfocus.value()))
         self.spn_marge.setValue(values.get("marge", self.spn_marge.value()))
+        self.combo_style.setCurrentIndex(values.get("style", self.combo_style.currentIndex()))
+        self.spn_dash_len.setValue(values.get("dash_len", self.spn_dash_len.value()))
+        self.spn_gap_len.setValue(values.get("gap_len", self.spn_gap_len.value()))
+        self.spn_dot_spacing.setValue(values.get("dot_spacing", self.spn_dot_spacing.value()))
+        self.spn_dot_dwell.setValue(values.get("dot_dwell_ms", self.spn_dot_dwell.value()))
+        self.spn_wave_period.setValue(values.get("wave_period", self.spn_wave_period.value()))
+        self.spn_wave_amp.setValue(values.get("wave_amp", self.spn_wave_amp.value()))
 
     def _on_save_preset(self):
         name, ok = QtWidgets.QInputDialog.getText(self.form, "Sauvegarder le préréglage", "Nom du préréglage :")
@@ -2918,6 +3042,13 @@ class TaskPanelCurved:
             "feed": self.spn_feed.value(),
             "z_focus": self.spn_zfocus.value(),
             "marge": self.spn_marge.value(),
+            "style": self.combo_style.currentIndex(),
+            "dash_len": self.spn_dash_len.value(),
+            "gap_len": self.spn_gap_len.value(),
+            "dot_spacing": self.spn_dot_spacing.value(),
+            "dot_dwell_ms": self.spn_dot_dwell.value(),
+            "wave_period": self.spn_wave_period.value(),
+            "wave_amp": self.spn_wave_amp.value(),
         })
         self._populate_preset_combo()
         idx = self.combo_preset.findText(name)
@@ -2945,6 +3076,7 @@ class TaskPanelCurved:
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
+            **self._style_kwargs()
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -2968,6 +3100,7 @@ class TaskPanelCurved:
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
+            **self._style_kwargs()
         )
         if not gcode:
             self.lbl_duration.setText("Durée estimée : --")
@@ -2983,6 +3116,7 @@ class TaskPanelCurved:
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
             reference_shape=self._reference_shape, frame_only=True, probe=self._probe,
+            **self._style_kwargs()
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -3011,6 +3145,7 @@ class TaskPanelCurved:
             pre_gcode=pre_text,
             post_gcode=post_text,
             probe=self._probe,
+            **self._style_kwargs()
         )
 
         cfg = core.load_config()

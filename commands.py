@@ -170,9 +170,11 @@ class CurvedCommand:
     def GetResources(self):
         return {
             "Pixmap": _icon_path("curved.svg"),
-            "MenuText": "Marquage sur surface courbe",
-            "ToolTip": "Génère le G-code de marquage sur une surface courbe (objets projetés par le mode Projection). "
-                       "Sélectionne le motif ET le modèle 3D ensemble pour que la gravure suive fidèlement ses courbes.",
+            "MenuText": "Marquage de motif (plat ou courbe)",
+            "ToolTip": "Génère le G-code de marquage d'un motif filaire (hachures, tracés), avec styles de "
+                       "trait (plein/tirets/pointillé/vague défocus). Pièce plate : sélectionne juste le motif "
+                       "2D. Surface courbe : sélectionne le motif projeté ET le modèle 3D ensemble pour que la "
+                       "gravure suive fidèlement ses courbes.",
         }
 
     def IsActive(self):
@@ -182,11 +184,13 @@ class CurvedCommand:
         selection = Gui.Selection.getSelectionEx()
         if not selection:
             _warn_selection(
-                "Sélectionne les Hachures_3D (motif projeté) ET le modèle 3D\n"
-                "d'origine, TOUS LES DEUX EN MÊME TEMPS -- le modèle 3D permet\n"
-                "une sonde exacte du relief pour que la gravure suive\n"
-                "fidèlement ses courbes (sans lui, le Z n'est qu'interpolé\n"
-                "entre les points déjà projetés).")
+                "Pièce PLATE : sélectionne juste le motif 2D (hachures,\n"
+                "tracés...).\n"
+                "Surface COURBE : sélectionne les Hachures_3D (motif projeté)\n"
+                "ET le modèle 3D d'origine, TOUS LES DEUX EN MÊME TEMPS -- le\n"
+                "modèle 3D permet une sonde exacte du relief pour que la\n"
+                "gravure suive fidèlement ses courbes (sans lui, le Z n'est\n"
+                "qu'interpolé entre les points déjà projetés).")
             return
         Gui.Control.showDialog(task_panels.TaskPanelCurved(selection))
 
