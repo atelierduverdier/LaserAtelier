@@ -4199,7 +4199,7 @@ class TaskPanelCurved:
         _section(form, "Style de trait", "sect_options.svg")
         self.combo_style = QtWidgets.QComboBox()
         self.combo_style.addItems(
-            ["Trait plein", "Tirets", "Pointillé", "Vague défocus", "Défocus (point élargi)"])
+            ["Trait plein", "Tirets", "Pointillé", "Vague défocus", "Défocus (point élargi)", "Dégradé (Z croissant)"])
         self.combo_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_style.setMinimumContentsLength(14)
         self.combo_style.setToolTip(
@@ -4256,6 +4256,22 @@ class TaskPanelCurved:
             "du tracé entre deux points fins (au foyer).")
         form.addRow("Période de la vague :", self.spn_wave_period)
 
+        self.spn_deg_angle = QtWidgets.QDoubleSpinBox()
+        self.spn_deg_angle.setRange(0, 360); self.spn_deg_angle.setValue(0.0)
+        self.spn_deg_angle.setSuffix(" °")
+        self.spn_deg_angle.setToolTip("Direction du dégradé (0° = de gauche à droite).")
+        form.addRow("Dégradé -- direction :", self.spn_deg_angle)
+        self.spn_deg_w0 = QtWidgets.QDoubleSpinBox()
+        self.spn_deg_w0.setRange(0.05, 30.0); self.spn_deg_w0.setDecimals(2)
+        self.spn_deg_w0.setValue(0.3); self.spn_deg_w0.setSuffix(" mm")
+        self.spn_deg_w0.setToolTip("Largeur du trait au DÉBUT du dégradé (fin/net = point au foyer).")
+        form.addRow("Dégradé -- largeur début :", self.spn_deg_w0)
+        self.spn_deg_w1 = QtWidgets.QDoubleSpinBox()
+        self.spn_deg_w1.setRange(0.05, 30.0); self.spn_deg_w1.setDecimals(2)
+        self.spn_deg_w1.setValue(2.0); self.spn_deg_w1.setSuffix(" mm")
+        self.spn_deg_w1.setToolTip("Largeur du trait à la FIN du dégradé (large/doux = défocalisé).")
+        form.addRow("Dégradé -- largeur fin :", self.spn_deg_w1)
+
         self.spn_wave_width = QtWidgets.QDoubleSpinBox()
         self.spn_wave_width.setRange(0.1, 30.0)
         self.spn_wave_width.setDecimals(2)
@@ -4298,6 +4314,8 @@ class TaskPanelCurved:
             for w in (self.spn_wave_period, self.spn_wave_width):
                 _set_row_visible(form, w, idx == 3)
             _set_row_visible(form, self.spn_spot_width, idx == 4)
+            for w in (self.spn_deg_angle, self.spn_deg_w0, self.spn_deg_w1):
+                _set_row_visible(form, w, idx == 5)
             # Compensation puissance/défocus : seulement pour le style
             # Défocus (point élargi), le seul à point élargi constant.
             self._fluence["container"].setVisible(idx == 4)
@@ -4493,7 +4511,7 @@ class TaskPanelCurved:
         # Le style « Défocus » (index 4) est un trait PLEIN gravé plus haut
         # (cf. _z_focus) : le point élargi fait le noir, le tracé reste
         # continu. D'où style="plein" ici, la différence est portée par le Z.
-        style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague", 4: "plein"}
+        style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague", 4: "plein", 5: "degrade"}
         # Vague : la largeur max voulue -> amplitude de défocus (Z) via la
         # calibration du point.
         wave_amp = core.defocus_for_spot_diameter(
@@ -4507,6 +4525,9 @@ class TaskPanelCurved:
                 "dot_dwell_s": self.spn_dot_dwell.value() / 1000.0,
                 "wave_period": self.spn_wave_period.value(),
                 "wave_amplitude": wave_amp or 0.0,
+                "deg_angle": self.spn_deg_angle.value(),
+                "deg_z_min": core.defocus_for_spot_diameter(self.spn_deg_w0.value(), core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0,
+                "deg_z_max": core.defocus_for_spot_diameter(self.spn_deg_w1.value(), core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0,
             },
         }
 

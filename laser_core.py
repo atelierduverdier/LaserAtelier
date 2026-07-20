@@ -2229,6 +2229,25 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     beam_on = CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power)
     beam_off = CMD_BEAM_OFF.format(sel=SPINDLE_SELECT)
 
+    # Style "degrade" : le DÉFOCUS varie linéairement le long d'une
+    # direction (deg_angle), de deg_z_min à deg_z_max (mm au-dessus du
+    # suivi normal) -- hachures dont la largeur/l'intensité évoluent d'un
+    # bord à l'autre de la pièce. Variation LENTE (à l'échelle de la
+    # pièce), le Z suit sans peine contrairement à une modulation par
+    # pixel. Projection normalisée sur l'emprise réelle des chaînes.
+    deg_dz = None
+    if style == "degrade" and chains:
+        ang = math.radians(style_params.get("deg_angle", 0.0))
+        ux, uy = math.cos(ang), math.sin(ang)
+        projs = [p.x * ux + p.y * uy for c in chains for p in c]
+        pmin, pmax = min(projs), max(projs)
+        span = max(pmax - pmin, 1e-9)
+        z0 = style_params.get("deg_z_min", 0.0)
+        z1 = style_params.get("deg_z_max", 0.0)
+        def deg_dz(p):
+            t = (p.x * ux + p.y * uy - pmin) / span
+            return z0 + (z1 - z0) * t
+
     for chain in chains:
         p0 = chain[0]
 
@@ -2288,6 +2307,14 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                 _mark_check(p)
                 lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
                     p.x, p.y, to_machine_z(p.z) + dz, feed))
+            lines.append(beam_off)
+        elif style == "degrade" and deg_dz is not None:
+            samples = chain      # déjà discrétisé dense (DISCRETIZE_DISTANCE)
+            lines.append(beam_on)
+            for p in samples[1:]:
+                _mark_check(p)
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                    p.x, p.y, to_machine_z(p.z) + deg_dz(p), feed))
             lines.append(beam_off)
         else:
             lines.append(beam_on)
