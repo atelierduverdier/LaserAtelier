@@ -151,7 +151,7 @@
   .mode .shot{background:var(--bg-3); border-bottom:1px solid var(--line); padding:14px;
     display:grid; place-items:center; min-height:150px}
   .mode .shot img{max-width:100%; max-height:340px; height:auto; border-radius:8px;
-    box-shadow:0 4px 14px rgba(0,0,0,.14)}
+    box-shadow:0 4px 14px rgba(0,0,0,.14); cursor:zoom-in}
   .mode .body{padding:16px 18px 18px}
   .mode .head{display:flex; align-items:center; gap:10px; margin-bottom:6px}
   .mode .mi{width:30px;height:30px;border-radius:8px;background:var(--orange-soft);
@@ -201,7 +201,7 @@
   /* schémas : couleurs fixes (slate/orange) -> fond clair fixe, lisible dans les 2 thèmes */
   .diagram{background:#fdfdfd; border:1px solid var(--line); border-radius:12px;
     padding:16px 18px; margin:8px 0; box-shadow:var(--shadow)}
-  .diagram img{display:block; width:100%; max-width:520px; height:auto; margin:0 auto}
+  .diagram img{display:block; width:100%; max-width:520px; height:auto; margin:0 auto; cursor:zoom-in}
   .diagram figcaption{text-align:center; color:#5a626e; font-size:.85rem; margin-top:10px}
   .diagram figcaption code{background:#eef0f3; color:#2f3540}
   .diagram-row{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:18px 0}
@@ -214,6 +214,20 @@
   .muted{color:var(--fg-3); font-size:.85rem}
   .pill{display:inline-block; background:var(--bg-3); border:1px solid var(--line);
     border-radius:8px; padding:2px 9px; font-size:.82rem; color:var(--fg-2)}
+
+  /* ---------- lightbox (clic sur une image pour l'agrandir) ---------- */
+  .lightbox{position:fixed; inset:0; z-index:200; display:none;
+    align-items:center; justify-content:center; padding:24px;
+    background:rgba(10,12,15,.92); cursor:zoom-out}
+  .lightbox.open{display:flex}
+  .lightbox img{max-width:96vw; max-height:92vh; width:auto; height:auto;
+    border-radius:10px; box-shadow:0 12px 48px rgba(0,0,0,.6); background:#fff}
+  .lightbox .lb-close{position:absolute; top:14px; right:18px; width:42px; height:42px;
+    border-radius:50%; border:none; cursor:pointer; font-size:1.6rem; line-height:1;
+    background:rgba(255,255,255,.14); color:#fff}
+  .lightbox .lb-close:hover{background:rgba(255,255,255,.28)}
+  .lightbox .lb-hint{position:absolute; bottom:18px; left:0; right:0; text-align:center;
+    color:rgba(255,255,255,.6); font-size:.82rem}
 </style>
 </head>
 <body>
@@ -713,6 +727,12 @@
   </div>
 </footer>
 
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image agrandie">
+  <button class="lb-close" id="lbClose" aria-label="Fermer">&times;</button>
+  <img id="lbImg" src="" alt="">
+  <div class="lb-hint">Cliquer ou Échap pour fermer</div>
+</div>
+
 <script>
 (function(){
   var root=document.documentElement, btn=document.getElementById('themeBtn');
@@ -728,6 +748,28 @@
     root.setAttribute('data-theme',next);
     try{localStorage.setItem('la-theme',next);}catch(e){}
   });
+})();
+
+// Lightbox : clic sur une capture / un schéma pour l'agrandir.
+(function(){
+  var lb=document.getElementById('lightbox'),
+      img=document.getElementById('lbImg'),
+      close=document.getElementById('lbClose');
+  function openLb(src,alt){
+    img.src=src; img.alt=alt||'';
+    lb.classList.add('open');
+    document.body.style.overflow='hidden';
+  }
+  function closeLb(){
+    lb.classList.remove('open'); img.src='';
+    document.body.style.overflow='';
+  }
+  document.querySelectorAll('.mode .shot img, .diagram img').forEach(function(el){
+    el.addEventListener('click',function(){ openLb(el.currentSrc||el.src, el.alt); });
+  });
+  lb.addEventListener('click',closeLb);
+  close.addEventListener('click',function(e){ e.stopPropagation(); closeLb(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeLb(); });
 })();
 </script>
 </body>
