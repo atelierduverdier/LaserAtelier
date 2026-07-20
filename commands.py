@@ -26,6 +26,15 @@ def _warn_selection(message):
     QtWidgets.QMessageBox.warning(None, "Sélection", message)
 
 
+def _show(panel):
+    """Ouvre un panneau de tâches en fermant d'abord une éventuelle fenêtre
+    de tâches DÉJÀ active -- sinon FreeCAD refuse (« Active task dialog
+    found ») quand on lance une commande alors qu'un panneau est ouvert."""
+    if Gui.Control.activeDialog():
+        Gui.Control.closeDialog()
+    Gui.Control.showDialog(panel)
+
+
 class GuideCommand:
     def GetResources(self):
         return {
@@ -40,7 +49,7 @@ class GuideCommand:
         return True
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelGuide())
+        _show(task_panels.TaskPanelGuide())
 
 
 class HatchCommand:
@@ -60,7 +69,7 @@ class HatchCommand:
         if not selection:
             _warn_selection("Sélectionne le motif (face/sketch) avant de lancer ce mode.")
             return
-        Gui.Control.showDialog(task_panels.TaskPanelHatch(selection))
+        _show(task_panels.TaskPanelHatch(selection))
 
 
 class FilledEngravingCommand:
@@ -80,7 +89,7 @@ class FilledEngravingCommand:
         if not selection:
             _warn_selection("Sélectionne le motif 2D (face/sketch/ShapeString) avant de lancer ce mode.")
             return
-        Gui.Control.showDialog(task_panels.TaskPanelFilledEngraving(selection))
+        _show(task_panels.TaskPanelFilledEngraving(selection))
 
 
 class HalftoneCommand:
@@ -97,7 +106,7 @@ class HalftoneCommand:
         return True
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelHalftone())
+        _show(task_panels.TaskPanelHalftone())
 
 
 class ProjectCommand:
@@ -114,7 +123,7 @@ class ProjectCommand:
         return FreeCAD.ActiveDocument is not None
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelProject())
+        _show(task_panels.TaskPanelProject())
 
 
 class KerfCommand:
@@ -129,7 +138,7 @@ class KerfCommand:
         return FreeCAD.ActiveDocument is not None
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelKerf())
+        _show(task_panels.TaskPanelKerf())
 
 
 class TestGridCommand:
@@ -144,7 +153,7 @@ class TestGridCommand:
         return FreeCAD.ActiveDocument is not None
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelTestGrid())
+        _show(task_panels.TaskPanelTestGrid())
 
 
 class PowerRampCommand:
@@ -161,7 +170,7 @@ class PowerRampCommand:
         return FreeCAD.ActiveDocument is not None
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelPowerRamp())
+        _show(task_panels.TaskPanelPowerRamp())
 
 
 class DefocusCalibrationCommand:
@@ -177,7 +186,7 @@ class DefocusCalibrationCommand:
         return FreeCAD.ActiveDocument is not None
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelDefocusCalibration())
+        _show(task_panels.TaskPanelDefocusCalibration())
 
 
 class NuancierCommand:
@@ -195,7 +204,7 @@ class NuancierCommand:
         return True
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelNuancier())
+        _show(task_panels.TaskPanelNuancier())
 
 
 class OffsetTestCommand:
@@ -212,7 +221,7 @@ class OffsetTestCommand:
         return FreeCAD.ActiveDocument is not None
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelOffsetTest())
+        _show(task_panels.TaskPanelOffsetTest())
 
 
 class CurvedCommand:
@@ -241,7 +250,7 @@ class CurvedCommand:
                 "gravure suive fidèlement ses courbes (sans lui, le Z n'est\n"
                 "qu'interpolé entre les points déjà projetés).")
             return
-        Gui.Control.showDialog(task_panels.TaskPanelCurved(selection))
+        _show(task_panels.TaskPanelCurved(selection))
 
 
 class CurvedCutCommand:
@@ -266,7 +275,7 @@ class CurvedCutCommand:
                 "une sonde exacte du relief pour que la découpe suive\n"
                 "fidèlement ses courbes.")
             return
-        Gui.Control.showDialog(task_panels.TaskPanelCurvedCut(selection))
+        _show(task_panels.TaskPanelCurvedCut(selection))
 
 
 class FlatCommand:
@@ -285,7 +294,7 @@ class FlatCommand:
         if not selection:
             _warn_selection("Sélectionne le(s) contour(s) à découper.")
             return
-        Gui.Control.showDialog(task_panels.TaskPanelFlat(selection))
+        _show(task_panels.TaskPanelFlat(selection))
 
 
 class CombinedCommand:
@@ -302,7 +311,7 @@ class CombinedCommand:
         return FreeCAD.ActiveDocument is not None
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelCombined())
+        _show(task_panels.TaskPanelCombined())
 
 
 class SettingsCommand:
@@ -319,7 +328,7 @@ class SettingsCommand:
         return True
 
     def Activated(self):
-        Gui.Control.showDialog(task_panels.TaskPanelSettings())
+        _show(task_panels.TaskPanelSettings())
 
 
 def register_commands():
