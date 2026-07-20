@@ -2649,6 +2649,72 @@ def all_presets(category):
     return merged
 
 
+# ==========================================================================
+# NUANCIER MATÉRIAU (tons de gris MESURÉS)
+# ==========================================================================
+# La palette de gris calibrée d'un matériau : chaque TON = un réglage
+# reproductible (puissance, vitesse, défocus) + ce qu'il produit RÉELLEMENT
+# sur ce matériau, mesuré sur chute (noirceur en % à l'oeil : 0 = intact,
+# 100 = noir max ; largeur du trait en mm). La noirceur n'est PAS linéaire
+# avec la puissance (seuil, saturation, carbonisation) : plutôt que de la
+# modéliser, on interpole entre les tons mesurés -- même philosophie « on
+# mesure, on ne devine pas » que la calibration du point. Alimenté à la
+# main depuis les grilles/rampes de test, via le panneau Nuancier.
+#
+# Ton = dict {"darkness": 0-100, "power": S, "feed": mm/min,
+#             "z_offset": mm au-dessus du foyer (0 = net),
+#             "width": largeur mesurée du trait en mm, "label": libre}.
+def load_shades(material):
+    """Liste des tons du matériau, triée par noirceur croissante."""
+    cfg = load_config()
+    shades = cfg.get("nuancier", {}).get(material, [])
+    return sorted(shades, key=lambda s: s.get("darkness", 0))
+
+
+def save_shades(material, shades):
+    """Remplace la liste des tons du matériau (liste vide = suppression
+    du matériau du nuancier)."""
+    cfg = load_config()
+    nuancier = cfg.get("nuancier", {})
+    if shades:
+        nuancier[material] = shades
+    else:
+        nuancier.pop(material, None)
+    cfg["nuancier"] = nuancier
+    save_config(cfg)
+
+
+def shade_materials():
+    """Noms des matériaux présents dans le nuancier, triés."""
+    return sorted(load_config().get("nuancier", {}))
+
+
+def shade_for_darkness(material, target_pct):
+    """Le ton mesuré dont la noirceur est LA PLUS PROCHE de target_pct
+    (0-100), ou None si le matériau n'a aucun ton. Choix du plus proche
+    plutôt qu'une interpolation : interpoler la puissance entre deux tons
+    de vitesses différentes n'aurait pas de sens physique -- on reste sur
+    des réglages réellement testés."""
+    shades = load_shades(material)
+    if not shades:
+        return None
+    return min(shades, key=lambda s: abs(s.get("darkness", 0) - target_pct))
+
+
+def shade_summary(shade):
+    """Résumé court d'un ton pour un sélecteur : « 45% -- S600 F800
+    déf 2.0 (0.80mm) »."""
+    parts = "{:.0f}% -- S{:.0f} F{:.0f}".format(
+        shade.get("darkness", 0), shade.get("power", 0), shade.get("feed", 0))
+    if shade.get("z_offset", 0):
+        parts += " déf {:.1f}".format(shade["z_offset"])
+    if shade.get("width", 0):
+        parts += " ({:.2f}mm)".format(shade["width"])
+    if shade.get("label"):
+        parts += " " + shade["label"]
+    return parts
+
+
 def estimate_job_time_seconds(gcode_text, rapid_feed=None, accel=None):
     """Estime le temps total du job en secondes, en reparcourant le
     G-code déjà généré : G1 selon la distance/avance programmée, G0 à

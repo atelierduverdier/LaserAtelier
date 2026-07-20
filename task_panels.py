@@ -613,6 +613,206 @@ class TaskPanelGuide:
 
 
 # ==========================================================================
+# NUANCIER MATÉRIAU (tons de gris mesurés)
+# ==========================================================================
+class TaskPanelNuancier:
+    """Éditeur du nuancier : la palette de gris MESURÉE d'un matériau
+    (cf. load_shades dans laser_core). On y consigne, après une grille ou
+    une rampe de test, chaque ton jugé utile : réglage (S/F/défocus) +
+    résultat mesuré (noirceur %, largeur). Les modes Marquage et Gravure
+    remplie proposent ensuite « Appliquer ce ton » d'un clic."""
+
+    _COLS = ("Noirceur %", "Puissance S", "Vitesse F", "Défocus mm",
+             "Largeur mm", "Libellé")
+    _KEYS = ("darkness", "power", "feed", "z_offset", "width", "label")
+
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        _panel_header(form, "nuancier.svg", "Nuancier matériau")
+        _intro(form,
+               "Ta palette de gris MESURÉE, par matériau : chaque ton = un "
+               "réglage (S, F, défocus) + ce qu'il produit réellement "
+               "(noirceur 0-100 % à l'oeil, largeur du trait).",
+               "Alimente-le après une Grille ou une Rampe de test : garde "
+               "les cases/zones qui te plaisent, note leur noirceur en les "
+               "comparant entre elles (0 = matériau intact, 100 = le noir "
+               "max de ce matériau) et leur largeur au pied à coulisse. "
+               "La noirceur n'étant pas linéaire avec la puissance, le "
+               "logiciel s'appuiera sur CES mesures (ton le plus proche) "
+               "pour les dégradés, photos et choix rapides -- « on mesure, "
+               "on ne devine pas ». OK enregistre le tableau.")
+
+        self.combo_mat = QtWidgets.QComboBox()
+        self.combo_mat.setEditable(True)
+        self.combo_mat.setToolTip(
+            "Choisis un matériau existant, ou TAPE un nouveau nom (ex.\n"
+            "« MDF 6mm ») : OK créera son nuancier avec le tableau saisi.")
+        form.addRow("Matériau :", self.combo_mat)
+
+        self.table = QtWidgets.QTableWidget(0, len(self._COLS))
+        self.table.setHorizontalHeaderLabels(list(self._COLS))
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setMinimumHeight(220)
+        self.table.setToolTip(
+            "Un ton par ligne. Noirceur : 0-100 % à l'oeil. Défocus : mm\n"
+            "au-dessus du foyer (0 = trait net). Largeur : trait mesuré.\n"
+            "Libellé libre (ex. « gris moyen », « brun chaud »).")
+        form.addRow(self.table)
+
+        btn_add = QtWidgets.QPushButton("+ Ajouter un ton")
+        btn_add.clicked.connect(self._on_add_row)
+        form.addRow(btn_add)
+        btn_del = QtWidgets.QPushButton("Supprimer le ton sélectionné")
+        btn_del.clicked.connect(self._on_del_row)
+        form.addRow(btn_del)
+
+        self._reload_materials()
+        self.combo_mat.activated.connect(lambda _i: self._load_material())
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Nuancier matériau")
+        self.form.setWindowIcon(_icon("nuancier.svg"))
+
+    def _reload_materials(self):
+        current = self.combo_mat.currentText()
+        self.combo_mat.blockSignals(True)
+        self.combo_mat.clear()
+        self.combo_mat.addItems(core.shade_materials())
+        if current:
+            self.combo_mat.setCurrentText(current)
+        self.combo_mat.blockSignals(False)
+        self._load_material()
+
+    def _load_material(self):
+        shades = core.load_shades(self.combo_mat.currentText().strip())
+        self.table.setRowCount(0)
+        for s in shades:
+            self._append_row(s)
+
+    def _append_row(self, shade=None):
+        shade = shade or {}
+        r = self.table.rowCount()
+        self.table.insertRow(r)
+        defaults = {"darkness": 50, "power": 500, "feed": 800,
+                    "z_offset": 0.0, "width": 0.0, "label": ""}
+        for c, key in enumerate(self._KEYS):
+            val = shade.get(key, defaults[key])
+            text = val if key == "label" else "{:g}".format(val)
+            self.table.setItem(r, c, QtWidgets.QTableWidgetItem(str(text)))
+
+    def _on_add_row(self):
+        self._append_row()
+
+    def _on_del_row(self):
+        r = self.table.currentRow()
+        if r >= 0:
+            self.table.removeRow(r)
+
+    def _table_shades(self):
+        """Relit le tableau -> liste de tons ; les lignes dont un nombre
+        est illisible sont ignorées avec un avertissement."""
+        shades = []
+        for r in range(self.table.rowCount()):
+            shade = {}
+            ok = True
+            for c, key in enumerate(self._KEYS):
+                item = self.table.item(r, c)
+                text = item.text().strip() if item else ""
+                if key == "label":
+                    shade[key] = text
+                    continue
+                try:
+                    shade[key] = float(text.replace(",", "."))
+                except ValueError:
+                    ok = False
+                    break
+            if ok:
+                shade["darkness"] = min(100.0, max(0.0, shade["darkness"]))
+                shades.append(shade)
+            else:
+                FreeCAD.Console.PrintWarning(
+                    "Nuancier : ligne {} illisible, ignorée.\n".format(r + 1))
+        return shades
+
+    def accept(self):
+        material = self.combo_mat.currentText().strip()
+        if not material:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Donne un nom de matériau (ex. « MDF 6mm »).")
+            return False
+        core.save_shades(material, self._table_shades())
+        FreeCAD.Console.PrintMessage(
+            "Nuancier « {} » enregistré ({} ton(s)).\n".format(
+                material, self.table.rowCount()))
+        return True
+
+    def reject(self):
+        return True
+
+
+def _make_shade_picker(form, on_apply):
+    """Bloc « Nuancier matériau » réutilisable dans un panneau de mode :
+    sélecteur matériau + ton mesuré + bouton « Appliquer ce ton »
+    (on_apply(shade) est appelé avec le dict du ton). Renvoie ses widgets ;
+    l'appelant appelle ["reload"]() en fin d'__init__."""
+    _section(form, "Nuancier matériau", "sect_preset.svg")
+    combo_mat = QtWidgets.QComboBox()
+    combo_mat.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    combo_mat.setMinimumContentsLength(14)
+    combo_mat.setToolTip(
+        "Matériau du nuancier (tons de gris MESURÉS, cf. le mode Nuancier\n"
+        "dans Tests & calibration).")
+    form.addRow("Matériau :", combo_mat)
+
+    combo_shade = QtWidgets.QComboBox()
+    combo_shade.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    combo_shade.setMinimumContentsLength(18)
+    combo_shade.setToolTip("Ton mesuré : noirceur % -- réglage (largeur).")
+    form.addRow("Ton :", combo_shade)
+
+    btn = QtWidgets.QPushButton("Appliquer ce ton")
+    btn.setToolTip(
+        "Remplit puissance/vitesse (et défocus si le ton en a un) avec ce\n"
+        "réglage MESURÉ -- le rendu sur la pièce sera celui constaté lors\n"
+        "du test.")
+    form.addRow(btn)
+
+    def _reload_shades():
+        combo_shade.clear()
+        m = combo_mat.currentData()
+        if not m:
+            combo_shade.addItem("-- (aucun ton) --", None)
+            return
+        for s in core.load_shades(m):
+            combo_shade.addItem(core.shade_summary(s), s)
+
+    def _reload():
+        combo_mat.blockSignals(True)
+        combo_mat.clear()
+        mats = core.shade_materials()
+        if not mats:
+            combo_mat.addItem("-- (nuancier vide) --", None)
+        for m in mats:
+            combo_mat.addItem(m, m)
+        combo_mat.blockSignals(False)
+        _reload_shades()
+
+    combo_mat.currentIndexChanged.connect(lambda _i: _reload_shades())
+
+    def _apply():
+        s = combo_shade.currentData()
+        if s:
+            on_apply(s)
+    btn.clicked.connect(_apply)
+
+    return {"mat": combo_mat, "shade": combo_shade, "reload": _reload}
+
+
+# ==========================================================================
 # MODE : HACHURES 2D
 # ==========================================================================
 class TaskPanelHatch:
@@ -811,6 +1011,14 @@ class TaskPanelFilledEngraving:
         self.btn_delete_preset = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
         form.addRow(self.btn_delete_preset)
+
+        def _apply_shade(s):
+            # Ton mesuré du nuancier -> puissance/vitesse du REMPLISSAGE
+            # (le défocus du remplissage reste calculé depuis l'espacement).
+            self.spn_fill_power.setValue(s.get("power", self.spn_fill_power.value()))
+            self.spn_fill_feed.setValue(s.get("feed", self.spn_fill_feed.value()))
+            self._update_defocus_preview()
+        self._shade_picker = _make_shade_picker(form, _apply_shade)
 
         _section(form, "Remplissage", "sect_fill.svg")
         self.spn_spacing = QtWidgets.QDoubleSpinBox()
@@ -1139,6 +1347,7 @@ class TaskPanelFilledEngraving:
         self.form.setWindowIcon(_icon("filled.svg"))
 
         self._populate_preset_combo()
+        self._shade_picker["reload"]()
         _update_defocus_preview()
         _update_style_preview()
 
@@ -2423,18 +2632,20 @@ class TaskPanelHalftone:
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
         _sync_mode()
 
-        _section(form, "Z de travail", "sect_zheight.svg")
-        self.spn_zoffset = QtWidgets.QDoubleSpinBox()
-        self.spn_zoffset.setRange(0.0, 30.0)
-        self.spn_zoffset.setDecimals(2)
-        self.spn_zoffset.setValue(0.0)
-        self.spn_zoffset.setSuffix(" mm")
-        self.spn_zoffset.setToolTip(
-            "Décalage AJOUTÉ au Z de travail des Préférences (le foyer).\n"
-            "0 = points fins/nets au foyer ; un léger défocus donne des\n"
-            "points plus gros et doux (grain plus visible, permet un pas\n"
-            "de trame plus grand).")
-        form.addRow("Décalage Z (défocus) :", self.spn_zoffset)
+        _section(form, "Taille des points", "sect_zheight.svg")
+        self.spn_spot_width = QtWidgets.QDoubleSpinBox()
+        self.spn_spot_width.setRange(0.0, 30.0)
+        self.spn_spot_width.setDecimals(2)
+        self.spn_spot_width.setValue(0.0)
+        self.spn_spot_width.setSuffix(" mm")
+        self.spn_spot_width.setToolTip(
+            "LARGEUR de point voulue -- l'atelier calcule la hauteur de\n"
+            "défocus correspondante via la calibration des Préférences.\n"
+            "0 (ou <= point au foyer) = points fins/nets au foyer ; plus\n"
+            "large = gros points doux (grain visible, permet un pas de\n"
+            "trame plus grand). Repère : la largeur du point devrait être\n"
+            "proche du pas de trame pour des points qui se touchent presque.")
+        form.addRow("Largeur du point :", self.spn_spot_width)
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
         self.txt_pre = QtWidgets.QPlainTextEdit()
@@ -2475,7 +2686,7 @@ class TaskPanelHalftone:
             "pitch": self.spn_pitch, "invert": self.chk_invert,
             "mode": self.combo_mode, "power": self.spn_power,
             "dwell_min": self.spn_dwell_min, "dwell_max": self.spn_dwell_max,
-            "white": self.spn_white, "zoffset": self.spn_zoffset,
+            "white": self.spn_white, "spot_width": self.spn_spot_width,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -2626,7 +2837,9 @@ class TaskPanelHalftone:
     def _gen_kwargs(self):
         return {
             "pitch": self.spn_pitch.value(),
-            "z_work": core.Z_WORK_MM + self.spn_zoffset.value(),
+            "z_work": core.Z_WORK_MM + (core.defocus_for_spot_diameter(
+                self.spn_spot_width.value(), core.SPOT_FOCUS_MM,
+                core.calibrated_half_angle()) or 0.0),
             "power": self.spn_power.value(),
             "dwell_min_s": self.spn_dwell_min.value() / 1000.0,
             "dwell_max_s": self.spn_dwell_max.value() / 1000.0,
@@ -3498,6 +3711,23 @@ class TaskPanelCurved:
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
         form.addRow(self.btn_delete_preset)
 
+        def _apply_shade(s):
+            # Applique un ton MESURÉ du nuancier : puissance, vitesse, et
+            # si le ton était défocalisé, style « Défocus (point élargi) »
+            # à la largeur constatée -- le rendu sera celui du test.
+            self.spn_power.setValue(s.get("power", self.spn_power.value()))
+            self.spn_feed.setValue(s.get("feed", self.spn_feed.value()))
+            if s.get("z_offset", 0) > 0:
+                self.combo_style.setCurrentIndex(4)
+                width = s.get("width", 0) or core.spot_diameter_at_defocus(
+                    s["z_offset"], core.SPOT_FOCUS_MM, core.calibrated_half_angle())
+                self.spn_spot_width.setValue(width)
+            else:
+                self.combo_style.setCurrentIndex(0)
+            self._update_style_ui()
+            self._update_duration_preview()
+        self._shade_picker = _make_shade_picker(form, _apply_shade)
+
         self.spn_power = QtWidgets.QDoubleSpinBox()
         self.spn_power.setRange(0, 1000)
         self.spn_power.setValue(0)
@@ -3735,6 +3965,7 @@ class TaskPanelCurved:
         self.form.setWindowIcon(_icon("curved.svg"))
 
         self._populate_preset_combo()
+        self._shade_picker["reload"]()
         _update_style_ui()
         self._update_duration_preview()
 

@@ -66,6 +66,7 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_PowerRamp",
             "LaserAtelier_DefocusCalibration",
             "LaserAtelier_OffsetTest",
+            "LaserAtelier_Nuancier",
             "Separator",
             # -- Assemblage --
             "LaserAtelier_Combined",

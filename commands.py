@@ -180,6 +180,24 @@ class DefocusCalibrationCommand:
         Gui.Control.showDialog(task_panels.TaskPanelDefocusCalibration())
 
 
+class NuancierCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("nuancier.svg"),
+            "MenuText": "Nuancier matériau",
+            "ToolTip": "La palette de gris MESURÉE d'un matériau : chaque ton = un réglage (S/F/défocus) + "
+                       "son résultat constaté (noirceur %, largeur). Alimenté après les grilles/rampes de test, "
+                       "appliqué d'un clic dans Marquage et Gravure remplie",
+        }
+
+    def IsActive(self):
+        # Simple éditeur de données : toujours disponible.
+        return True
+
+    def Activated(self):
+        Gui.Control.showDialog(task_panels.TaskPanelNuancier())
+
+
 class OffsetTestCommand:
     def GetResources(self):
         return {
@@ -316,6 +334,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_PowerRamp", PowerRampCommand())
     Gui.addCommand("LaserAtelier_DefocusCalibration", DefocusCalibrationCommand())
     Gui.addCommand("LaserAtelier_OffsetTest", OffsetTestCommand())
+    Gui.addCommand("LaserAtelier_Nuancier", NuancierCommand())
     Gui.addCommand("LaserAtelier_Curved", CurvedCommand())
     Gui.addCommand("LaserAtelier_CurvedCut", CurvedCutCommand())
     Gui.addCommand("LaserAtelier_Flat", FlatCommand())

@@ -11,7 +11,7 @@ Les modes sont regroupés par thème dans la barre d'outils et le menu. Le **Gui
 **Gravure à plat**
 - **Hachures 2D (géométrie)** : remplissage (parallèles / croisées / défocus) sur une face 2D — crée la géométrie des hachures.
 - **Gravure remplie (noir)** : grave un texte/forme 2D en **noir plein** — remplissage par hachures en défocus (point élargi, automatiquement **rentré du rayon de point** pour ne pas déborder du bord, avec un liseré qui ferme les blancs le long des bords) **puis** contour repassé net au foyer (épaisseur de trait réglable). Préréglages matériau. **Styles de trait** au choix pour le remplissage et le contour : trait plein, **tirets** (faisceau pulsé, mouvement continu), **pointillé** (vrais points ronds au pulse G4 — gros points doux en défocus), ou **vague défocus** (le Z oscille entre le foyer et un défocus max : le trait varie continûment en largeur et en intensité, effet calligraphique ; amplitude calculée par la calibration du point, avertissement si la vitesse Z crête dépasse la limite de l'axe).
-- **Gravure photo (trame de points)** : convertit une image (PNG/JPG…) en **trame de points laser** — tramage par **diffusion Floyd-Steinberg** (points identiques, la densité rend le gris) ou par **durée de pulse variable** (chaque point dure proportionnellement à la noirceur locale), parcours en serpentin, option négatif pour matériaux foncés.
+- **Gravure photo (trame de points)** : convertit une image (PNG/JPG…) en **trame de points laser** — tramage par **diffusion Floyd-Steinberg** (points identiques, la densité rend le gris) ou par **durée de pulse variable** (chaque point dure proportionnellement à la noirceur locale), parcours en serpentin, option négatif pour matériaux foncés, et **largeur du point** réglable (la hauteur de défocus est calculée via la calibration — gros points doux pour trames larges).
 
 **Sur surface 3D**
 - **Projection sur surface 3D** : projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée même sur un remplissage dense). Le panneau s'ouvre d'abord, puis on sélectionne les motifs 2D et la surface 3D dans la vue (état reconnu affiché en direct) avant de valider.
@@ -30,6 +30,8 @@ Les modes sont regroupés par thème dans la barre d'outils et le menu. Le **Gui
 
 **Assemblage**
 - **Job combiné** : empile plusieurs opérations (marquage, découpe, grille de test) dans un seul fichier G-code avec un seul armement du laser, transition de sécurité anti-collision entre opérations.
+
+**Nuancier matériau** : la palette de gris **mesurée** d'un matériau — chaque ton = un réglage (puissance, vitesse, défocus) + son résultat constaté sur chute (noirceur 0-100 % à l'œil, largeur du trait). On l'alimente après les grilles/rampes de test (mode Nuancier, dans Tests & calibration), et les modes **Marquage** et **Gravure remplie** proposent « Appliquer ce ton » : puissance/vitesse (et style Défocus à la largeur mesurée, le cas échéant) réglés d'un clic sur un rendu déjà validé. La noirceur n'étant pas linéaire avec la puissance, le logiciel s'appuie sur ces mesures (ton le plus proche) plutôt que sur un modèle — fondation des futurs dégradés calibrés et photos calibrées.
 
 Tous les modes de **test & calibration** (Grille, Rampe, Bande de calibration défocus, Kerf, Offsets) ont un sélecteur de **préréglages** : des **préréglages d'usine** (★, points de départ prêts à l'emploi, non supprimables) qu'on charge d'un clic, plus les siens (sauvegarde/suppression comme les préréglages matériau des autres modes).
 
