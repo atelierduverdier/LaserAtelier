@@ -2790,6 +2790,19 @@ class TaskPanelHalftone:
             "zones claires (matériau foncé, ardoise...).")
         form.addRow(self.chk_invert)
 
+        self.spn_gamma = QtWidgets.QDoubleSpinBox()
+        self.spn_gamma.setRange(0.3, 3.0)
+        self.spn_gamma.setDecimals(2)
+        self.spn_gamma.setSingleStep(0.1)
+        self.spn_gamma.setValue(1.0)
+        self.spn_gamma.setToolTip(
+            "Correction de tonalité (gamma sur la noirceur) : > 1 ÉCLAIRCIT\n"
+            "les tons moyens (une photo colorée/saturée sort souvent trop\n"
+            "foncée en gris -- essaye 1.5 à 2.0), < 1 assombrit. Les zones\n"
+            "éclaircies passent sous le Seuil blanc et ne sont plus gravées.\n"
+            "L'aperçu suit en direct.")
+        form.addRow("Tonalité (gamma) :", self.spn_gamma)
+
         self.lbl_grid = _WrapLabel("Grille : --")
         form.addRow(self.lbl_grid)
 
@@ -2957,7 +2970,7 @@ class TaskPanelHalftone:
             "mode": self.combo_mode, "power": self.spn_power,
             "dwell_min": self.spn_dwell_min, "dwell_max": self.spn_dwell_max,
             "white": self.spn_white, "spot_width": self.spn_spot_width,
-            "line_feed": self.spn_line_feed,
+            "line_feed": self.spn_line_feed, "gamma": self.spn_gamma,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -2966,7 +2979,8 @@ class TaskPanelHalftone:
         self.form.setWindowIcon(_icon("halftone.svg"))
 
         for _sig in (self.edt_image.textChanged, self.spn_width.valueChanged,
-                     self.spn_pitch.valueChanged, self.spn_white.valueChanged):
+                     self.spn_pitch.valueChanged, self.spn_white.valueChanged,
+                     self.spn_gamma.valueChanged):
             _sig.connect(lambda *_a: self._update_grid_info())
         self.combo_mode.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.combo_rotation.currentIndexChanged.connect(lambda _i: self._update_grid_info())
@@ -3037,12 +3051,16 @@ class TaskPanelHalftone:
                             QtCore.Qt.SmoothTransformation)
         scaled = scaled.convertToFormat(QtGui.QImage.Format_Grayscale8)
         invert = self.chk_invert.isChecked()
+        gamma = self.spn_gamma.value()
         darkness = []
         for y in range(scaled.height()):
             drow = []
             for x in range(scaled.width()):
                 g = QtGui.qGray(scaled.pixel(x, y)) / 255.0
-                drow.append(g if invert else 1.0 - g)
+                d = g if invert else 1.0 - g
+                if gamma != 1.0:
+                    d = d ** gamma       # >1 : tons moyens éclaircis
+                drow.append(d)
             darkness.append(drow)
         return darkness
 
