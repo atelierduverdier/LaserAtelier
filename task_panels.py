@@ -5265,11 +5265,11 @@ class _OperationDialogCurved(QtWidgets.QDialog):
         super().__init__(parent)
         self.edges = edges
         self.reference_shape = reference_shape
-        self.setWindowTitle("Ajouter une opération : Marquage sur surface courbe")
+        self.setWindowTitle("Ajouter une opération : Marquage (plat ou courbe)")
         form = QtWidgets.QFormLayout(self)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        self.txt_label = QtWidgets.QLineEdit("Marquage courbe")
+        self.txt_label = QtWidgets.QLineEdit("Marquage")
         form.addRow("Nom de l'opération :", self.txt_label)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
@@ -5295,7 +5295,7 @@ class _OperationDialogCurved(QtWidgets.QDialog):
     def build_operation(self):
         return {
             "type": "curved",
-            "label": self.txt_label.text().strip() or "Marquage courbe",
+            "label": self.txt_label.text().strip() or "Marquage",
             "params": dict(
                 edges=self.edges,
                 power=self.spn_power.value(),
@@ -5445,6 +5445,19 @@ class _OperationDialogFlat(QtWidgets.QDialog):
         self.chk_proximity.setChecked(True)
         form.addRow(self.chk_proximity)
 
+        # Mémorise les réglages de découpe du job combiné (dont le kerf, qui
+        # repartait à 0 à chaque ajout). À la toute première utilisation,
+        # hérite des derniers réglages du mode Découpe autonome (mêmes clés).
+        self._last_fields = {
+            "power": self.spn_power, "feed": self.spn_feed,
+            "thickness": self.spn_thickness, "n_passes": self.spn_passes,
+            "kerf": self.spn_kerf, "hole_first": self.chk_hole_first,
+            "proximity": self.chk_proximity,
+        }
+        _restore_last_values(
+            "combined_cut" if "last_combined_cut" in core.load_config() else "flat",
+            self._last_fields)
+
         info = _WrapLabel("{} segment(s) sélectionné(s).".format(len(edges)))
         form.addRow(info)
 
@@ -5454,6 +5467,7 @@ class _OperationDialogFlat(QtWidgets.QDialog):
         form.addRow(buttons)
 
     def build_operation(self):
+        _save_last_values("combined_cut", self._last_fields)
         return {
             "type": "flat",
             "label": self.txt_label.text().strip() or "Decoupe",
@@ -5639,7 +5653,7 @@ class TaskPanelCombined:
 
         _panel_header(form, "combined.svg", "Job combiné")
         info = _WrapLabel(
-            "Empile plusieurs opérations (Marquage courbe / Découpe\n"
+            "Empile plusieurs opérations (Marquage (plat/courbe) / Découpe\n"
             "courbe / Découpe multi-passes / Grille de test) dans UN SEUL\n"
             "job -- UN SEUL armement (M3) au début, UN SEUL désarmement\n"
             "(M5)/fin de programme (M2) à la fin, exécutées dans l'ordre\n"
@@ -5652,7 +5666,7 @@ class TaskPanelCombined:
         self.list_ops.setToolTip("Opérations empilées, exécutées dans cet ordre.")
         form.addRow(self.list_ops)
 
-        self.btn_add_curved = QtWidgets.QPushButton("+ Ajouter : Marquage sur surface courbe")
+        self.btn_add_curved = QtWidgets.QPushButton("+ Ajouter : Marquage (plat ou courbe)")
         self.btn_add_curved.clicked.connect(self._on_add_curved)
         form.addRow(self.btn_add_curved)
 
@@ -5739,7 +5753,7 @@ class TaskPanelCombined:
 
     def _type_display(self, op_type):
         return {
-            "curved": "Marquage courbe",
+            "curved": "Marquage",
             "curved_cut": "Découpe courbe",
             "flat": "Découpe multi-passes",
             "testgrid": "Grille de test",
@@ -5761,8 +5775,9 @@ class TaskPanelCombined:
         if not selection:
             QtWidgets.QMessageBox.warning(
                 self.form, "Sélection",
-                "Sélectionne les Hachures_3D (motif projeté) ET le modèle 3D\n"
-                "ensemble avant d'ajouter une opération de marquage courbe.")
+                "Sélectionne le motif (tracés 2D) à marquer avant d'ajouter\n"
+                "cette opération. Sur une surface COURBE, sélectionne AUSSI le\n"
+                "modèle 3D avec le motif ; à PLAT, le motif seul suffit.")
             return
         edge_sel, reference_shape = core.split_selection(selection)
         edges = core.get_all_edges_from_selection(edge_sel)
