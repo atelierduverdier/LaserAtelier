@@ -46,8 +46,15 @@ match. (This CLAUDE.md is the exception.)
   `build_filled_engraving_edges`, `text_to_edges`), monkeypatch the specific helper
   (`core.chain_edges`, `core.generate_hatch_edges`, `core.text_to_edges`) or `core.generate_gcode_curved`
   to capture arguments, rather than reimplementing OpenCascade. Assert on the produced G-code string.
-- **`task_panels.py` needs PySide6 + a running FreeCAD** — verify UI changes by the user restarting
-  FreeCAD (or reloading the workbench). It cannot be exercised headless.
+- **`task_panels.py` CAN be exercised headless** (system PySide6 is available outside FreeCAD):
+  stub `FreeCAD` (Vector also needs `distanceToPoint`/`isEqual`), `FreeCADGui`
+  (`Selection.getSelectionEx` classmethod returning a controllable list — keep it EMPTY when
+  instantiating panels, fake shapes lack `BoundBox`), and `Part`
+  (`LineSegment(+toShape→edge with discretize(Distance=…))`, `Wire`/`Face`/`Compound` as identity
+  lambdas), monkeypatch `core.generate_hatch_edges = lambda *a: []`, create a `QApplication`, then
+  instantiate every `TaskPanel*` — catches wiring errors without launching FreeCAD. Visibility
+  asserts need `isVisibleTo(parent)` (plain `isVisible()` is False offscreen). Final visual check
+  still means the user restarting FreeCAD.
 - The repo lives in the user's `Mod` dir; a **FreeCAD restart** picks up changes. Commit + push are
   routine for this personal project.
 
@@ -55,15 +62,38 @@ match. (This CLAUDE.md is the exception.)
 
 Four modules, cleanly layered — keep the layering:
 
-- **`laser_core.py`** (~3k lines): ALL geometry + G-code logic. **No Qt.** This is where generators,
-  the defocus model, the vector font, config persistence, and geometry helpers live. Organized into
-  banner-commented sections, one per mode. This is the layer you unit-test headless.
-- **`task_panels.py`** (~3.7k lines): one `TaskPanel*` class per mode (PySide6/Qt). Builds the form,
+- **`laser_core.py`** (~4.5k lines): ALL geometry + G-code logic. **No Qt** (the photo mode's
+  QImage→darkness-grid conversion lives in the panel; core takes plain float grids). This is where
+  generators, the defocus model, the vector font, config persistence, and geometry helpers live.
+  Organized into banner-commented sections, one per mode. This is the layer you unit-test headless.
+  Notable shared sections beyond the per-mode generators: STYLES DE TRAIT (curvilinear helpers
+  `_chain_cumlen`/`slice_chain`/`dash_chain`/`dot_positions`/`wave_resample`, used by stroke styles
+  AND cutting tabs), fluence (`line_fluence`/`power_for_line_fluence`), the measured-tones nuancier
+  (`load_shades`/`shade_for_darkness`), factory presets (`_FACTORY_PRESETS`/`all_presets`), and
+  centralized machine settings (`Z_WORK_MM`, `TRANSIT_MARGIN_MM`, `SPOT_FOCUS_MM`… via
+  `_USER_SETTINGS`; panels read these instead of exposing their own Z fields — cutting modes keep
+  per-job Z because nozzle height is thickness-dependent safety).
+- **`task_panels.py`** (~5.5k lines): one `TaskPanel*` class per mode (PySide6/Qt). Builds the form,
   reads widgets, calls `core.*` generators, writes the file via `_write_gcode_with_dialog`. Pure UI;
-  no geometry math beyond calling core. Shared UI helpers: `_panel_header(form, icon, title)` (mode
-  banner) and `_section(form, title, icon)` (bold section header + rule) structure the dense panels —
-  both fall back to text if the SVG picto fails to render (`_icon_pixmap` returns None). Preset
-  save/load (material presets) reuses `core.load_presets/save_preset/delete_preset` per category.
+  no geometry math beyond calling core. Shared UI helpers (use them, don't reinvent):
+  - `_panel_header(form, icon, title)` / `_section(form, title, icon)` — mode banner & section rules
+    (fall back to text if the SVG picto fails, `_icon_pixmap` returns None).
+  - `_WrapLabel` — paragraph label: word-wrap on, **collapses manual `\n` into spaces** (mixing both
+    caused stair-stepped text). Never put an enumeration in ONE `_WrapLabel` — use
+    `_bullet_list(form, items)` (one label per item) instead.
+  - `_intro(form, resume, details)` — short always-visible summary + details folded behind an
+    "En savoir plus" toggle. `_diagram(form, "diag_*.svg")` — explanatory schematics rows.
+  - `_set_row_visible(form, widget, bool)` — hides label+field together (plain `setVisible` leaves
+    orphan labels in a QFormLayout).
+  - Last-session persistence: each panel builds `self._last_fields = {key: widget}`, calls
+    `_restore_last_values(key, fields)` at end of `__init__` and `_save_last_values` in `accept()`
+    (`_widget_get/_widget_set` handle combo/checkbox/spin/lineedit). Priority: last values >
+    Preferences defaults.
+  - `_PresetController(form, parent, category, fields_getter)` — preset selector block backed by
+    `core.factory_presets` (★, non-deletable) + user presets.
+  - `_make_fluence_widgets` / `_fluence_advice` — "Puissance vs défocus" section (power compensation
+    from a measured reference, model F ∝ P/(d·v)).
+  - `_make_shade_picker(form, on_apply)` — "Nuancier matériau" block (apply a measured gray tone).
 - **`commands.py`**: one `*Command` class per mode (`GetResources`/`IsActive`/`Activated`) that opens
   the matching task panel; `register_commands()` registers them all.
 - **`InitGui.py`**: the `Workbench` class — toolbar/menu order (`command_list`), lazy imports in
