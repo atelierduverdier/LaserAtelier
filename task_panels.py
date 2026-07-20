@@ -1795,12 +1795,13 @@ class TaskPanelKerf:
         form.addRow("Pas de jeu :", self.spn_clr_step)
 
         self.lbl_fit = _WrapLabel(
-            "Tout se découpe EN UNE SEULE FOIS (pas de carré à couper d'abord) : "
-            "le tenon est la pièce mâle isolée, les mortaises sont les trous. "
-            "Découpe avec ta Compensation de kerf, puis insère le tenon dans "
-            "chaque mortaise et retiens le jeu (gravé sous chacune) qui donne "
-            "l'ajustement voulu -- serré pour un collage, glissant pour du "
-            "démontable.")
+            "Le tenon (pièce mâle isolée) et les mortaises (trous, jeu indiqué "
+            "sous chacun) se découpent EN UNE FOIS -- pas de carré à couper "
+            "d'abord. Un objet « gravure » séparé porte la cote sur le tenon "
+            "(repère de la pièce de référence), à marquer à faible puissance -- "
+            "facultatif. Découpe avec ta Compensation de kerf, insère le tenon "
+            "dans chaque mortaise et retiens le jeu qui donne l'ajustement "
+            "voulu (serré pour un collage, glissant pour du démontable).")
         form.addRow(self.lbl_fit)
 
         self._square_rows = [self.spn_size, self.lbl_square]
@@ -1829,12 +1830,20 @@ class TaskPanelKerf:
 
     def accept(self):
         if self.combo_test.currentIndex() == 1:
-            obj, err = core.create_fit_test_pattern(
+            objs, err = core.create_fit_test_pattern(
                 self.spn_tenon_w.value(), self.spn_tenon_h.value(),
                 self.spn_nslots.value(), self.spn_clr_start.value(),
                 self.spn_clr_step.value())
-        else:
-            obj, err = core.create_kerf_test_pattern(self.spn_size.value())
+            if err:
+                QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
+                return False
+            noms = ", ".join(o.Name for o in objs)
+            FreeCAD.Console.PrintMessage(
+                "Succès : {} créé(s). Graver « ...gravure » (cote du tenon, "
+                "faible puissance) et découper « ...decoupe » avec ta "
+                "Compensation de kerf.\n".format(noms))
+            return True
+        obj, err = core.create_kerf_test_pattern(self.spn_size.value())
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False

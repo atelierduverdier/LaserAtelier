@@ -1306,7 +1306,11 @@ def create_fit_test_pattern(tenon_w=20.0, tenon_h=10.0, n_slots=5,
     nominal mais avec un jeu croissant, chacune étiquetée de son jeu en mm.
     À utiliser APRÈS avoir mesuré le kerf sur le carré : découper avec cette
     Compensation de kerf, puis insérer le tenon dans chaque mortaise pour
-    retenir le jeu qui donne le bon ajustement. Renvoie (objet, erreur)."""
+    retenir le jeu qui donne le bon ajustement.
+    Crée DEUX objets : « Test_Ajustement_decoupe » (contours + jeux, à
+    découper) et « Test_Ajustement_gravure » (la cote nominale gravée sur le
+    tenon, repère de la pièce de référence, à MARQUER à faible puissance --
+    opération distincte de la découpe). Renvoie (liste d'objets, erreur)."""
     doc = FreeCAD.ActiveDocument
     if doc is None:
         return None, "Aucun document actif -- cree ou ouvre un document d'abord."
@@ -1324,18 +1328,37 @@ def create_fit_test_pattern(tenon_w=20.0, tenon_h=10.0, n_slots=5,
              FreeCAD.Vector(x0, y0, 0)]
         return Part.Wire([Part.LineSegment(p[i], p[i + 1]).toShape() for i in range(4)])
 
-    shapes = [rect_wire(x0, y0, w, h) for (x0, y0, w, h, _role) in rects]
-    for (txt, lx, ly, lh) in labels:
-        shapes.extend(text_to_edges(txt, lx, ly, lh))
-    compound = Part.Compound(shapes)
+    cut_shapes = [rect_wire(x0, y0, w, h) for (x0, y0, w, h, _role) in rects]
+    for (txt, lx, ly, lh) in labels:          # étiquettes de jeu (découpées avec les contours)
+        cut_shapes.extend(text_to_edges(txt, lx, ly, lh))
+    cut_obj = doc.addObject("Part::Feature", "Test_Ajustement_decoupe")
+    cut_obj.Shape = Part.Compound(cut_shapes)
+    if hasattr(cut_obj, 'ViewObject'):
+        cut_obj.ViewObject.LineColor = (1.0, 0.6, 0.0)
+        cut_obj.ViewObject.LineWidth = 2.0
+    objs = [cut_obj]
 
-    obj = doc.addObject("Part::Feature", "Test_Ajustement_tenon_mortaise")
-    obj.Shape = compound
-    if hasattr(obj, 'ViewObject'):
-        obj.ViewObject.LineColor = (1.0, 0.6, 0.0)
-        obj.ViewObject.LineWidth = 2.0
+    # Repère GRAVÉ (faible puissance) sur le tenon : sa cote nominale, pour
+    # reconnaître la pièce de référence parmi les chutes. Objet séparé car le
+    # marquage est une opération distincte de la découpe.
+    tenon = next((r for r in rects if r[4] == "tenon"), None)
+    if tenon is not None:
+        tx, ty, tw, th_, _role = tenon
+        mark_h = max(3.0, min(th_ * 0.5, tw * 0.45))
+        mark_txt = "{:g}".format(tw)
+        mark_w = text_width(mark_txt, mark_h)
+        mark = text_to_edges(mark_txt, tx + (tw - mark_w) / 2.0,
+                             ty + (th_ - mark_h) / 2.0, mark_h)
+        if mark:
+            eng_obj = doc.addObject("Part::Feature", "Test_Ajustement_gravure")
+            eng_obj.Shape = Part.Compound(mark)
+            if hasattr(eng_obj, 'ViewObject'):
+                eng_obj.ViewObject.LineColor = (0.2, 0.5, 1.0)
+                eng_obj.ViewObject.LineWidth = 1.0
+            objs.append(eng_obj)
+
     doc.recompute()
-    return obj, None
+    return objs, None
 
 
 # ==========================================================================
