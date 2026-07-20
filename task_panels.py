@@ -2063,10 +2063,22 @@ class TaskPanelDefocusCalibration:
         self.spn_label_feed.setToolTip("Vitesse d'avance des étiquettes.")
         form.addRow("Vitesse étiquettes :", self.spn_label_feed)
 
+        self.spn_label_z = QtWidgets.QDoubleSpinBox()
+        self.spn_label_z.setRange(-50, 200)
+        self.spn_label_z.setDecimals(2)
+        self.spn_label_z.setValue(core.Z_WORK_MM)
+        self.spn_label_z.setSuffix(" mm")
+        self.spn_label_z.setToolTip(
+            "Hauteur (Z) de gravure des étiquettes -- FIXE, indépendante du\n"
+            "défocus des traits, pour qu'elles restent nettes et lisibles.\n"
+            "Défaut : la focale (Z de travail des Préférences).")
+        form.addRow("Hauteur (Z) étiquettes :", self.spn_label_z)
+
         def _sync_label_fields():
             on = self.chk_labels.isChecked() or self.chk_power_labels.isChecked()
             self.spn_label_power.setEnabled(on)
             self.spn_label_feed.setEnabled(on)
+            self.spn_label_z.setEnabled(on)
         self.chk_labels.toggled.connect(lambda _v: _sync_label_fields())
         self.chk_power_labels.toggled.connect(lambda _v: _sync_label_fields())
 
@@ -2121,6 +2133,7 @@ class TaskPanelDefocusCalibration:
             "band_gap": self.spn_band_gap,
             "labels": self.chk_labels, "power_labels": self.chk_power_labels,
             "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
+            "label_z": self.spn_label_z,
         }
         _restore_last_values("defocus_calib", self._last_fields)
         # Un préréglage chargé rafraîchit la plage affichée et la durée.
@@ -2150,6 +2163,7 @@ class TaskPanelDefocusCalibration:
             "draw_power_labels": self.chk_power_labels.isChecked(),
             "label_power": self.spn_label_power.value(),
             "label_feed": self.spn_label_feed.value(),
+            "label_z": self.spn_label_z.value(),
         }
 
     def _update_duration_preview(self):
