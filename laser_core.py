@@ -3699,7 +3699,8 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     # Pas horizontal entre bandes = largeur locale (traits + étiquettes + un
     # libellé vitesse type) + band_gap, pour un espace CONSTANT = band_gap.
     feed_label_y = n_marks * row_gap       # libellé de vitesse, au-dessus de la bande
-    _sample = [p for chain, _, _ in local_marks for p in chain] + list(local_labels)
+    _sample = ([p for chain, _, _ in local_marks for p in chain]
+               + [p for chain in local_labels for p in chain])
     _sample += [p for chain in chain_edges(text_to_edges(
         "F{:.0f}".format(max(feed, feed_end or feed)), 0.0, feed_label_y, label_height))
         for p in chain]
