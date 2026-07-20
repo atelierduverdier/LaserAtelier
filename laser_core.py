@@ -4772,6 +4772,103 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
+def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed):
+    """Émission SERPENTIN partagée des trames en lignes (photo calibrée et
+    diffusion en lignes) : grid[row][col] = S par cellule (0 = blanc). Une
+    ligne = plages de S constant fusionnées en un G1 chacune (S0 inclus
+    entre deux plages marquées : trajet fluide, faisceau coupé). Lignes
+    toutes blanches sautées, G0 direct entre lignes."""
+    sel = SPINDLE_SELECT
+    h = len(grid)
+    started = False
+    for row in range(h):
+        y = (h - 1 - row) * pitch
+        cells = grid[row]
+        nz = [c for c in range(len(cells)) if cells[c] > 0]
+        if not nz:
+            continue
+        reverse = row % 2 == 1
+        c0, c1 = nz[0], nz[-1]
+        if not reverse:
+            x_entry = c0 * pitch
+            rng = range(c0, c1 + 1)
+        else:
+            x_entry = (c1 + 1) * pitch
+            rng = range(c1, c0 - 1, -1)
+        if not started:
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x_entry, y, z_safe))
+            lines.append("G0 Z{:.4f}".format(z_work))
+            started = True
+        else:
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x_entry, y))
+        cur_s = None
+        for c in rng:
+            s = cells[c]
+            edge = (c + 1) * pitch if not reverse else c * pitch
+            if s != cur_s:
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
+                    edge, y, feed, s, sel))
+                cur_s = s
+            else:
+                lines[-1] = "G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
+                    edge, y, feed, cur_s, sel)
+        lines.append("S0 {}".format(sel))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+
+def generate_gcode_photo_dither_lines(darkness_rows, pitch, z_work, power, feed,
+                                      pre_gcode="", post_gcode="",
+                                      frame_only=False, quiet=False):
+    """Photo en POINTS rapides : l'image est tramée en points (diffusion
+    Floyd-Steinberg, comme le tramage Diffusion) mais au lieu d'un pulse
+    G4 par point (machine à l'arrêt), chaque ligne est balayée EN CONTINU
+    (G64, serpentin) avec le faisceau ALLUMÉ/ÉTEINT par pixel à puissance
+    FIXE -- le rendu points d'un tramage classique, à la vitesse d'un
+    balayage. Point fin au foyer conseillé (z_work = foyer). Renvoie None
+    si grille vide ou toute blanche."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or power <= 0 or feed <= 0:
+        return None
+    binary = floyd_steinberg_dither(darkness_rows)
+    grid = [[int(power) if v else 0 for v in row] for row in binary]
+    if not any(any(c > 0 for c in row) for row in grid):
+        return None
+
+    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    lines = []
+    lines.append("(G-Code Laser - Photo : diffusion en lignes [points rapides])")
+    lines.append("(Image : {} x {} px au pas {:.2f}mm, S{:.0f} F{:.0f})".format(
+        w, h, pitch, power, feed))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append("G64")
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(0.0, w * pitch, 0.0, (h - 1) * pitch, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed)
+
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
 def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
                                material, white_threshold=0.05,
                                pre_gcode="", post_gcode="", frame_only=False,
@@ -4858,43 +4955,7 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
         lines.append(pre_gcode.strip())
 
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
-    sel = SPINDLE_SELECT
-    started = False
-    for row in range(h):
-        y = (h - 1 - row) * pitch
-        cells = grid[row]
-        nz = [c for c in range(w) if cells[c] > 0]
-        if not nz:
-            continue
-        reverse = row % 2 == 1
-        c0, c1 = nz[0], nz[-1]              # 1re/dernière cellule marquée
-        if not reverse:
-            x_entry, x_exit = c0 * pitch, (c1 + 1) * pitch
-            rng = range(c0, c1 + 1)
-        else:
-            x_entry, x_exit = (c1 + 1) * pitch, c0 * pitch
-            rng = range(c1, c0 - 1, -1)
-        if not started:
-            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x_entry, y, z_safe))
-            lines.append("G0 Z{:.4f}".format(z_work))
-            started = True
-        else:
-            lines.append("G0 X{:.4f} Y{:.4f}".format(x_entry, y))
-        # Plages de S constant -> un G1 par plage (S0 inclus : le trajet
-        # reste fluide, faisceau coupé sur les blancs intérieurs).
-        cur_s = None
-        for c in rng:
-            s = cells[c]
-            edge = (c + 1) * pitch if not reverse else c * pitch
-            if s != cur_s:
-                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-                    edge, y, feed, s, sel))
-                cur_s = s
-            else:
-                lines[-1] = "G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-                    edge, y, feed, cur_s, sel)
-        lines.append("S0 {}".format(sel))
-    lines.append("G0 Z{:.4f}".format(z_safe))
+    _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed)
 
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")

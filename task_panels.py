@@ -2807,7 +2807,8 @@ class TaskPanelHalftone:
         _section(form, "Tramage & puissance", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
         self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable",
-                                  "Lignes calibrées (nuancier)"])
+                                  "Lignes calibrées (nuancier)",
+                                  "Diffusion en lignes (points fins, rapide)"])
         self.combo_mode.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_mode.setMinimumContentsLength(17)
         self.combo_mode.setToolTip(
@@ -2819,7 +2820,11 @@ class TaskPanelHalftone:
             "Lignes calibrées : chaque ligne balayée EN CONTINU, puissance\n"
             "modulée pixel par pixel via la courbe noirceur->fluence du\n"
             "NUANCIER (tons mesurés) -- gris calibrés, et bien plus rapide\n"
-            "que les points (pas d'arrêt par pixel).")
+            "que les points (pas d'arrêt par pixel).\n"
+            "Diffusion en lignes : le MÊME rendu points que Diffusion, mais\n"
+            "balayé en continu, faisceau allumé/éteint par pixel à puissance\n"
+            "fixe -- l'esthétique des points, à la vitesse d'un balayage\n"
+            "(point fin au foyer : largeur du point à 0).")
         form.addRow("Tramage :", self.combo_mode)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
@@ -2886,12 +2891,13 @@ class TaskPanelHalftone:
             idx = self.combo_mode.currentIndex()
             is_duree = idx == 1
             is_lignes = idx == 2
+            is_dither_l = idx == 3
             self.spn_dwell_min.setEnabled(is_duree)
-            self.spn_dwell_max.setEnabled(not is_lignes)
-            self.spn_power.setEnabled(not is_lignes)   # calculée par pixel
+            self.spn_dwell_max.setEnabled(idx in (0, 1))
+            self.spn_power.setEnabled(not is_lignes)   # calculée par pixel (mode 2)
             self.spn_white.setEnabled(is_duree or is_lignes)
             _set_row_visible(form, self.combo_photo_mat, is_lignes)
-            _set_row_visible(form, self.spn_line_feed, is_lignes)
+            _set_row_visible(form, self.spn_line_feed, is_lignes or is_dither_l)
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
         _sync_mode()
 
@@ -3149,7 +3155,8 @@ class TaskPanelHalftone:
         """Route vers le bon générateur selon le tramage : points
         (generate_gcode_halftone) ou lignes calibrées nuancier
         (generate_gcode_photo_lines)."""
-        if self.combo_mode.currentIndex() == 2:
+        idx = self.combo_mode.currentIndex()
+        if idx == 2:
             k = self._gen_kwargs()
             width = self.spn_spot_width.value()
             if width <= 0:
@@ -3162,6 +3169,12 @@ class TaskPanelHalftone:
                 feed=self.spn_line_feed.value(), line_width=width,
                 material=self.combo_photo_mat.currentData(),
                 white_threshold=k["white_threshold"], **extra)
+        if idx == 3:
+            k = self._gen_kwargs()
+            return core.generate_gcode_photo_dither_lines(
+                rows, pitch=k["pitch"], z_work=k["z_work"],
+                power=self.spn_power.value(), feed=self.spn_line_feed.value(),
+                **extra)
         return core.generate_gcode_halftone(rows, **self._gen_kwargs(), **extra)
 
     def _update_duration_preview(self):
