@@ -2806,7 +2806,8 @@ class TaskPanelHalftone:
 
         _section(form, "Tramage & puissance", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
-        self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable"])
+        self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable",
+                                  "Lignes calibrées (nuancier)"])
         self.combo_mode.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_mode.setMinimumContentsLength(17)
         self.combo_mode.setToolTip(
@@ -2814,7 +2815,11 @@ class TaskPanelHalftone:
             "locale rend le gris -- robuste, pas de demi-teinte à calibrer.\n"
             "Durée variable : un point par case non blanche, durée du pulse\n"
             "proportionnelle à la noirceur -- rendu plus doux, mais dépend\n"
-            "de la réponse du matériau (à valider sur une chute).")
+            "de la réponse du matériau (à valider sur une chute).\n"
+            "Lignes calibrées : chaque ligne balayée EN CONTINU, puissance\n"
+            "modulée pixel par pixel via la courbe noirceur->fluence du\n"
+            "NUANCIER (tons mesurés) -- gris calibrés, et bien plus rapide\n"
+            "que les points (pas d'arrêt par pixel).")
         form.addRow("Tramage :", self.combo_mode)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
@@ -2849,15 +2854,44 @@ class TaskPanelHalftone:
         self.spn_white.setValue(8.0)
         self.spn_white.setSuffix(" %")
         self.spn_white.setToolTip(
-            "Seuil blanc (tramage Durée variable) : aucune case dont la\n"
-            "noirceur est sous ce seuil n'est gravée -- évite de piqueter\n"
-            "les blancs.")
+            "Seuil blanc (Durée variable et Lignes calibrées) : aucune case\n"
+            "dont la noirceur est sous ce seuil n'est gravée -- évite de\n"
+            "piqueter/hâler les blancs.")
         form.addRow("Seuil blanc :", self.spn_white)
 
+        # --- Lignes calibrées (nuancier) : matériau + vitesse de balayage ---
+        self.combo_photo_mat = QtWidgets.QComboBox()
+        self.combo_photo_mat.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_photo_mat.setMinimumContentsLength(14)
+        self.combo_photo_mat.setToolTip(
+            "Matériau du nuancier : la courbe noirceur->fluence de ses tons\n"
+            "MESURÉS (en défocus) pilote la puissance de chaque pixel.")
+        for m in core.shade_materials():
+            self.combo_photo_mat.addItem(m, m)
+        if self.combo_photo_mat.count() == 0:
+            self.combo_photo_mat.addItem("-- (nuancier vide) --", None)
+        form.addRow("Matériau (nuancier) :", self.combo_photo_mat)
+
+        self.spn_line_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_line_feed.setRange(1, 20000)
+        self.spn_line_feed.setValue(1000)
+        self.spn_line_feed.setSuffix(" mm/min")
+        self.spn_line_feed.setToolTip(
+            "Vitesse de balayage des lignes. La puissance de chaque pixel =\n"
+            "fluence(noirceur) x largeur x vitesse : si trop de pixels\n"
+            "saturent à S max (commentaire en tête du G-code), ralentir.")
+        form.addRow("Vitesse des lignes :", self.spn_line_feed)
+
         def _sync_mode():
-            is_duree = self.combo_mode.currentIndex() == 1
+            idx = self.combo_mode.currentIndex()
+            is_duree = idx == 1
+            is_lignes = idx == 2
             self.spn_dwell_min.setEnabled(is_duree)
-            self.spn_white.setEnabled(is_duree)
+            self.spn_dwell_max.setEnabled(not is_lignes)
+            self.spn_power.setEnabled(not is_lignes)   # calculée par pixel
+            self.spn_white.setEnabled(is_duree or is_lignes)
+            _set_row_visible(form, self.combo_photo_mat, is_lignes)
+            _set_row_visible(form, self.spn_line_feed, is_lignes)
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
         _sync_mode()
 
@@ -2917,6 +2951,7 @@ class TaskPanelHalftone:
             "mode": self.combo_mode, "power": self.spn_power,
             "dwell_min": self.spn_dwell_min, "dwell_max": self.spn_dwell_max,
             "white": self.spn_white, "spot_width": self.spn_spot_width,
+            "line_feed": self.spn_line_feed,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -3110,14 +3145,33 @@ class TaskPanelHalftone:
             "white_threshold": self.spn_white.value() / 100.0,
         }
 
+    def _generate(self, rows, **extra):
+        """Route vers le bon générateur selon le tramage : points
+        (generate_gcode_halftone) ou lignes calibrées nuancier
+        (generate_gcode_photo_lines)."""
+        if self.combo_mode.currentIndex() == 2:
+            k = self._gen_kwargs()
+            width = self.spn_spot_width.value()
+            if width <= 0:
+                # Sans largeur choisie : le pas de trame (lignes jointives).
+                width = max(k["pitch"], core.SPOT_FOCUS_MM)
+            return core.generate_gcode_photo_lines(
+                rows, pitch=k["pitch"],
+                z_work=core.Z_WORK_MM + (core.defocus_for_spot_diameter(
+                    width, core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0),
+                feed=self.spn_line_feed.value(), line_width=width,
+                material=self.combo_photo_mat.currentData(),
+                white_threshold=k["white_threshold"], **extra)
+        return core.generate_gcode_halftone(rows, **self._gen_kwargs(), **extra)
+
     def _update_duration_preview(self):
         rows = self._build_rows(silent=True)
         if rows is None:
             self.lbl_duration.setText("Durée estimée : -- (aucune image valide)")
             return
-        gcode = core.generate_gcode_halftone(rows, quiet=True, **self._gen_kwargs())
+        gcode = self._generate(rows, quiet=True)
         if not gcode:
-            self.lbl_duration.setText("Durée estimée : -- (image toute blanche ?)")
+            self.lbl_duration.setText("Durée estimée : -- (image blanche, ou nuancier insuffisant ?)")
             return
         seconds = core.estimate_job_time_seconds(gcode)
         self.lbl_duration.setText("Durée estimée : {}".format(core.format_duration(seconds)))
@@ -3126,7 +3180,7 @@ class TaskPanelHalftone:
         rows = self._build_rows()
         if rows is None:
             return
-        gcode = core.generate_gcode_halftone(rows, frame_only=True, **self._gen_kwargs())
+        gcode = self._generate(rows, frame_only=True)
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
@@ -3140,8 +3194,7 @@ class TaskPanelHalftone:
 
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
-        gcode = core.generate_gcode_halftone(
-            rows, pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs())
+        gcode = self._generate(rows, pre_gcode=pre_text, post_gcode=post_text)
 
         cfg = core.load_config()
         cfg["pre_ht"] = pre_text
@@ -3151,7 +3204,8 @@ class TaskPanelHalftone:
         if not gcode:
             QtWidgets.QMessageBox.critical(
                 self.form, "Erreur",
-                "Aucun G-code généré (image toute blanche au seuil actuel ?).")
+                "Aucun G-code généré : image toute blanche au seuil actuel, ou "
+                "(tramage Lignes calibrées) nuancier sans 2 tons en défocus.")
             return False
         return _write_gcode_with_dialog(self.form, gcode, "/tmp/gravure_photo.ngc")
 

@@ -4772,6 +4772,138 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
+def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
+                               material, white_threshold=0.05,
+                               pre_gcode="", post_gcode="", frame_only=False,
+                               quiet=False):
+    """Photo CALIBRÉE en lignes balayées : chaque ligne de l'image est
+    parcourue en continu (serpentin), la puissance S modulée pixel par
+    pixel pour viser la noirceur du pixel via la courbe noirceur->fluence
+    du NUANCIER du matériau (tons mesurés, cf. darkness_fluence_curve).
+    S = fluence(noirceur) · largeur · vitesse. Sous la noirceur minimale
+    mesurée, la fluence est prolongée linéairement vers 0 (hautes lumières
+    progressives) ; les S au-delà de S_MAX sont plafonnés (compteur en
+    commentaire -- ralentir la vitesse si trop nombreux). G64 + S en ligne
+    sur les G1 : mouvement fluide, pas d'arrêt entre pixels.
+    line_width : largeur du trait (le défocus correspondant est à porter
+    dans z_work par l'appelant). Renvoie None si grille vide, image toute
+    blanche, ou nuancier insuffisant (< 2 tons en défocus)."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or line_width <= 0 or feed <= 0:
+        return None
+    curve = darkness_fluence_curve(material)
+    if len(curve) < 2:
+        if not quiet:
+            FreeCAD.Console.PrintWarning(
+                "Photo calibrée : le nuancier « {} » n'a pas assez de tons en "
+                "défocus (2 minimum) pour interpoler.\n".format(material))
+        return None
+    dmin, fmin = curve[0]
+    dmax, fmax = curve[-1]
+
+    clamped = [0]
+    def _cell_power(d):
+        t = min(max(d, 0.0), 1.0) * 100.0
+        if t < white_threshold * 100.0:
+            return 0
+        if t <= dmin:
+            fl = fmin * (t / dmin) if dmin > 0 else fmin
+        elif t >= dmax:
+            fl = fmax
+        else:
+            fl = None
+            for (d0, f0), (d1, f1) in zip(curve, curve[1:]):
+                if d0 <= t <= d1:
+                    r = (t - d0) / (d1 - d0) if d1 > d0 else 0.5
+                    fl = f0 + (f1 - f0) * r
+                    break
+            if fl is None:
+                fl = fmax
+        s = fl * line_width * feed
+        if s > S_MAX:
+            clamped[0] += 1
+            s = S_MAX
+        return int(round(s / 5.0) * 5)      # quantifié : fusionne les segments
+
+    # S par cellule, puis émission en serpentin par plages de S constant.
+    grid = [[_cell_power(dv) for dv in row] for row in darkness_rows]
+    if not any(any(s > 0 for s in row) for row in grid):
+        return None
+
+    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    lines = []
+    lines.append("(G-Code Laser - Photo calibree : lignes, nuancier {})".format(material))
+    lines.append("(Image : {} x {} px au pas {:.2f}mm, trait {:.2f}mm, F{:.0f})".format(
+        w, h, pitch, line_width, feed))
+    if clamped[0]:
+        lines.append("(ATTENTION : {} pixel(s) plafonnes a S{:.0f} -- ralentir "
+                     "la vitesse pour les rendre)".format(clamped[0], S_MAX))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append("G64")
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(0.0, w * pitch, 0.0, (h - 1) * pitch, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    sel = SPINDLE_SELECT
+    started = False
+    for row in range(h):
+        y = (h - 1 - row) * pitch
+        cells = grid[row]
+        nz = [c for c in range(w) if cells[c] > 0]
+        if not nz:
+            continue
+        reverse = row % 2 == 1
+        c0, c1 = nz[0], nz[-1]              # 1re/dernière cellule marquée
+        if not reverse:
+            x_entry, x_exit = c0 * pitch, (c1 + 1) * pitch
+            rng = range(c0, c1 + 1)
+        else:
+            x_entry, x_exit = (c1 + 1) * pitch, c0 * pitch
+            rng = range(c1, c0 - 1, -1)
+        if not started:
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x_entry, y, z_safe))
+            lines.append("G0 Z{:.4f}".format(z_work))
+            started = True
+        else:
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x_entry, y))
+        # Plages de S constant -> un G1 par plage (S0 inclus : le trajet
+        # reste fluide, faisceau coupé sur les blancs intérieurs).
+        cur_s = None
+        for c in rng:
+            s = cells[c]
+            edge = (c + 1) * pitch if not reverse else c * pitch
+            if s != cur_s:
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
+                    edge, y, feed, s, sel))
+                cur_s = s
+            else:
+                lines[-1] = "G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
+                    edge, y, feed, cur_s, sel)
+        lines.append("S0 {}".format(sel))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
 # ==========================================================================
 # MODE : TEST DES OFFSETS X/Y DU LASER (VALIDATION tool.tbl)
 # ==========================================================================
