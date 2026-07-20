@@ -245,7 +245,7 @@
       <div class="badges">
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC</b></span>
-        <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W</b></span>
+        <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
       </div>
       <h1>Du dessin FreeCAD<br>au G-code laser.</h1>
       <p class="lede">Un atelier FreeCAD qui transforme votre géométrie 2D/3D en G-code de marquage et de découpe laser pour CNC : gravure noir plein, photo tramée, suivi de surfaces courbes, découpe multi-passes, et une série d'outils de test et de calibration guidés.</p>
@@ -272,7 +272,7 @@
   <div class="cols" style="margin-top:24px">
     <div class="panel">
       <h3>Pour qui&nbsp;?</h3>
-      <p>Pour qui pilote un module laser monté sur une fraiseuse CNC sous LinuxCNC et veut générer proprement ses parcours depuis FreeCAD, sans écrire de G-code à la main. L'atelier a été développé sur une <b>PrintNC</b> équipée d'un module diode <b>LT-80W</b>, mais le profil machine se règle entièrement depuis les Préférences.</p>
+      <p>Pour qui pilote un module laser monté sur une fraiseuse CNC sous LinuxCNC et veut générer proprement ses parcours depuis FreeCAD, sans écrire de G-code à la main. L'atelier a été développé sur une <b>PrintNC</b> équipée d'un module diode <b>LT-80W-AA-PRO</b>, mais le profil machine se règle entièrement depuis les Préférences.</p>
     </div>
     <div class="panel">
       <h3>La philosophie&nbsp;: on mesure, on ne devine pas</h3>
@@ -684,7 +684,7 @@
   <details class="faq">
     <summary><span class="q">Je n'ai pas la même machine ni le même laser. Ça marche&nbsp;?</span><span class="chev">›</span></summary>
     <div class="a">
-      <p>Oui, pour l'essentiel via les Préférences : profil du bec (anti-collision), Z de travail, calibration du point, numéro d'outil laser, échelle de puissance S, sélecteur de broche. Deux points restent dans le code : la fonction <code>cmd_tool_comp()</code> (pour un contrôleur sans <code>G43</code>) et le tableau <code>FOCUS_TABLE</code> (hauteur de bec par épaisseur pour la découpe à plat, propre au LT-80W). Le mode Test des offsets suppose une machine mixte fraise + laser sous LinuxCNC.</p>
+      <p>Oui, pour l'essentiel via les Préférences : profil du bec (anti-collision), Z de travail, calibration du point, numéro d'outil laser, échelle de puissance S, sélecteur de broche. Deux points restent dans le code : la fonction <code>cmd_tool_comp()</code> (pour un contrôleur sans <code>G43</code>) et le tableau <code>FOCUS_TABLE</code> (hauteur de bec par épaisseur pour la découpe à plat, propre au LT-80W-AA-PRO). Le mode Test des offsets suppose une machine mixte fraise + laser sous LinuxCNC.</p>
     </div>
   </details>
 
@@ -702,7 +702,7 @@
   <div class="wrap foot-grid">
     <div>
       <div class="brand" style="margin-bottom:8px"><span class="dot"><img src="assets/workbench.svg" alt=""></span> Atelier Laser</div>
-      <p class="muted" style="margin:.2em 0 0">Workbench FreeCAD pour la génération de G-code laser sur CNC LinuxCNC.<br>Développé pour l'Atelier du Verdier · PrintNC + LT-80W.</p>
+      <p class="muted" style="margin:.2em 0 0">Workbench FreeCAD pour la génération de G-code laser sur CNC LinuxCNC.<br>Développé pour l'Atelier du Verdier · PrintNC + LT-80W-AA-PRO.</p>
     </div>
     <div class="foot-links">
       <a href="https://github.com/atelierduverdier/LaserAtelier" target="_blank" rel="noopener">Dépôt GitHub</a>
