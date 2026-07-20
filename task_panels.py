@@ -2504,7 +2504,15 @@ class TaskPanelHalftone:
     fait ici (QImage, couche UI) pour garder laser_core sans Qt."""
 
     def __init__(self):
-        self._img_cache = (None, None)  # (chemin, QImage) -- évite de recharger à chaque aperçu
+        self._img_cache = (None, None)  # ((chemin, angle), QImage) -- évite de recharger à chaque aperçu
+        self._img_error = None          # raison du dernier échec de chargement (affichée)
+        # Les photos d'appareil moderne peuvent dépasser la limite
+        # d'allocation par défaut de Qt (128-256 Mo) : on la relève, sinon
+        # l'image est refusée SANS message. (API Qt 6 ; ignoré si absente.)
+        try:
+            QtGui.QImageReader.setAllocationLimit(1024)
+        except AttributeError:
+            pass
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
@@ -2726,7 +2734,11 @@ class TaskPanelHalftone:
         verticale qui apparaissait horizontale ici), puis la rotation
         manuelle du panneau."""
         path = self.edt_image.text().strip()
-        if not path or not os.path.isfile(path):
+        if not path:
+            self._img_error = None
+            return None
+        if not os.path.isfile(path):
+            self._img_error = "fichier introuvable"
             return None
         angle = self.combo_rotation.currentIndex() * 90
         if self._img_cache[0] == (path, angle) and self._img_cache[1] is not None:
@@ -2735,7 +2747,11 @@ class TaskPanelHalftone:
         reader.setAutoTransform(True)  # applique l'orientation EXIF
         img = reader.read()
         if img.isNull() or img.width() < 2 or img.height() < 2:
+            # Raison précise plutôt qu'un échec muet (format non géré,
+            # limite d'allocation, fichier corrompu...).
+            self._img_error = reader.errorString() or "format non lisible"
             return None
+        self._img_error = None
         if angle:
             img = img.transformed(QtGui.QTransform().rotate(angle))
         self._img_cache = ((path, angle), img)
@@ -2772,13 +2788,22 @@ class TaskPanelHalftone:
     def _update_grid_info(self):
         img = self._load_image()
         if img is None:
-            self.lbl_grid.setText("Grille : -- (aucune image valide)")
+            if self._img_error:
+                self.lbl_grid.setText(
+                    "Grille : -- image NON CHARGÉE : {}.".format(self._img_error))
+            else:
+                self.lbl_grid.setText("Grille : -- (choisis une image)")
             self.lbl_halftone_preview.setVisible(False)
             return
         cols, rows = self._grid_size(img)
         pitch = self.spn_pitch.value()
+        # Dimensions et orientation affichées : permet de vérifier d'un
+        # coup d'oeil que l'image est chargée dans le bon sens (EXIF).
         self.lbl_grid.setText(
-            "Grille : {} x {} cases = {:.0f} x {:.0f} mm ({} points max).".format(
+            "Image {} x {} px ({}) -- grille {} x {} cases = {:.0f} x {:.0f} mm "
+            "({} points max).".format(
+                img.width(), img.height(),
+                "portrait" if img.height() > img.width() else "paysage",
                 cols, rows, (cols - 1) * pitch, (rows - 1) * pitch, cols * rows))
         self._update_halftone_preview()
 
