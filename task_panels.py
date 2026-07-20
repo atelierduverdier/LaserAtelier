@@ -1727,6 +1727,16 @@ class TaskPanelKerf:
             "Tenon + mortaise : pour VALIDER l'ajustement une fois le kerf connu.")
         form.addRow("Test :", self.combo_test)
 
+        self.lbl_fit_diag = QtWidgets.QLabel()
+        self.lbl_fit_diag.setAlignment(QtCore.Qt.AlignHCenter)
+        try:
+            _pm = _icon("diag_fit.svg").pixmap(260, 120)
+            if not _pm.isNull():
+                self.lbl_fit_diag.setPixmap(_pm)
+        except Exception:
+            pass
+        form.addRow(self.lbl_fit_diag)
+
         # --- Carré (mesure du kerf) ---
         self.spn_size = QtWidgets.QDoubleSpinBox()
         self.spn_size.setRange(1.0, 200.0)
@@ -1785,14 +1795,18 @@ class TaskPanelKerf:
         form.addRow("Pas de jeu :", self.spn_clr_step)
 
         self.lbl_fit = _WrapLabel(
-            "Découpe avec ta Compensation de kerf. Le tenon est la pièce isolée ; "
-            "insère-le dans chaque mortaise et retiens le jeu (gravé sous "
-            "chacune) qui donne l'ajustement voulu.")
+            "Tout se découpe EN UNE SEULE FOIS (pas de carré à couper d'abord) : "
+            "le tenon est la pièce mâle isolée, les mortaises sont les trous. "
+            "Découpe avec ta Compensation de kerf, puis insère le tenon dans "
+            "chaque mortaise et retiens le jeu (gravé sous chacune) qui donne "
+            "l'ajustement voulu -- serré pour un collage, glissant pour du "
+            "démontable.")
         form.addRow(self.lbl_fit)
 
         self._square_rows = [self.spn_size, self.lbl_square]
-        self._fit_rows = [self.spn_tenon_w, self.spn_tenon_h, self.spn_nslots,
-                          self.spn_clr_start, self.spn_clr_step, self.lbl_fit]
+        self._fit_rows = [self.lbl_fit_diag, self.spn_tenon_w, self.spn_tenon_h,
+                          self.spn_nslots, self.spn_clr_start, self.spn_clr_step,
+                          self.lbl_fit]
         self.combo_test.currentIndexChanged.connect(lambda _i: self._sync_mode())
         self._sync_mode()
 
