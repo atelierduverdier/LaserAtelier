@@ -94,8 +94,16 @@ Four modules, cleanly layered — keep the layering:
   - `_make_fluence_widgets` / `_fluence_advice` — "Puissance vs défocus" section (power compensation
     from a measured reference, model F ∝ P/(d·v)).
   - `_make_shade_picker(form, on_apply)` — "Nuancier matériau" block (apply a measured gray tone).
+  - **Job combiné**: operations are NOT added via bespoke mini-dialogs anymore. Each combinable mode
+    (Flat cut, Curved cut, Curved marking, Test grid) has a `_build_combined_operation()` returning
+    `{type,label,params}` (params = the exact kwargs its own generator uses, full-featured) and a
+    `_combined_add_button(form, self._on_add_to_combined)` that appends to the module-level list
+    `_COMBINED_OPS` (in-memory: params carry Part edges/probe, not JSON-serializable). `TaskPanelCombined`
+    reads `_COMBINED_OPS` (its `self.operations` IS that list), reorders/removes/clears, and generates.
+    Reuse this pattern for any new combinable mode instead of a simplified duplicate dialog.
 - **`commands.py`**: one `*Command` class per mode (`GetResources`/`IsActive`/`Activated`) that opens
-  the matching task panel; `register_commands()` registers them all.
+  the matching task panel via `_show(panel)` (closes any active task dialog first — FreeCAD refuses a
+  second one otherwise); `register_commands()` registers them all.
 - **`InitGui.py`**: the `Workbench` class — toolbar/menu order (`command_list`), lazy imports in
   `Initialize()`. Runs at FreeCAD startup.
 

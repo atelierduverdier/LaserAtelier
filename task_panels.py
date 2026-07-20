@@ -332,6 +332,36 @@ def _save_last_values(panel_key, fields):
     core.save_config(cfg)
 
 
+# --- Job combiné : opérations empilées depuis les vrais modes ---------------
+# En MÉMOIRE pour la session FreeCAD (les params portent des edges/probe =
+# objets Part, non sérialisables en config). Chaque mode y ajoute son réglage
+# COMPLET via « Ajouter au job combiné » ; le mode Job combiné lit cette liste.
+_COMBINED_OPS = []
+
+
+def _add_to_combined_job(operation):
+    """Ajoute une opération {type,label,params} au job combiné et informe."""
+    _COMBINED_OPS.append(operation)
+    QtWidgets.QMessageBox.information(
+        None, "Job combiné",
+        "\u00ab {} \u00bb ajouté au job combiné ({} opération(s) en attente).\n\n"
+        "Ouvre le mode \u00ab Job combiné \u00bb pour les ordonner et générer "
+        "le fichier unique.".format(operation.get("label", "Opération"), len(_COMBINED_OPS)))
+
+
+def _combined_add_button(form, handler):
+    """Bouton « Ajouter au job combiné » partagé par les modes combinables."""
+    btn = QtWidgets.QPushButton("\u2795 Ajouter au job combiné")
+    btn.setToolTip(
+        "Empile CE réglage (avec toutes ses options) comme une opération du\n"
+        "Job combiné, au lieu de générer un fichier tout de suite. Ouvre\n"
+        "ensuite \u00ab Job combiné \u00bb pour les ordonner et générer un\n"
+        "seul fichier (armement unique).")
+    btn.clicked.connect(handler)
+    form.addRow(btn)
+    return btn
+
+
 class _PresetController:
     """Bloc de préréglages (sélecteur + Sauvegarder + Supprimer) réutilisable,
     adossé aux préréglages d'USINE + UTILISATEUR d'une catégorie. Un
@@ -3432,6 +3462,7 @@ class TaskPanelTestGrid:
             "laser allumé (G1). Purement visuel, ne génère aucun fichier.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
+        _combined_add_button(form, self._on_add_to_combined)
 
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
@@ -3749,6 +3780,24 @@ class TaskPanelTestGrid:
             return
         rapid, mark = core.parse_gcode_toolpath(gcode)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+
+    def _build_combined_operation(self):
+        _mode, _fill, cells, cell_z_offset = self._build_cells()
+        if cells is None:
+            return None
+        _pw, _fd, label_edges = self._build_label_edges(cells)
+        return {"type": "testgrid", "label": "Grille de test",
+                "params": dict(cells=cells, z_work=self.spn_zwork.value(),
+                               label_edges=label_edges if self.chk_labels.isChecked() else None,
+                               label_power=self.spn_label_power.value(),
+                               label_feed=self.spn_label_feed.value(),
+                               cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
+                               **self._border_kwargs())}
+
+    def _on_add_to_combined(self):
+        op = self._build_combined_operation()
+        if op:
+            _add_to_combined_job(op)
 
     def accept(self):
         if self.spn_power_max.value() < self.spn_power_min.value():
@@ -4088,6 +4137,7 @@ class TaskPanelCurved:
             "(G1). Purement visuel, ne génère aucun fichier.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
+        _combined_add_button(form, self._on_add_to_combined)
 
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
@@ -4305,6 +4355,22 @@ class TaskPanelCurved:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
         _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_courbe.ngc")
+
+    def _build_combined_operation(self):
+        if not self._edges:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
+            return None
+        return {"type": "curved",
+                "label": "Marquage (S{:.0f})".format(self._effective_power()),
+                "params": dict(edges=self._edges, power=self._effective_power(),
+                               feed=self.spn_feed.value(), z_focus=self._z_focus(),
+                               marge_survol=core.TRANSIT_MARGIN_MM, reference_shape=self._reference_shape,
+                               probe=self._probe, **self._style_kwargs())}
+
+    def _on_add_to_combined(self):
+        op = self._build_combined_operation()
+        if op:
+            _add_to_combined_job(op)
 
     def accept(self):
         if not self._edges:
@@ -4641,6 +4707,7 @@ class TaskPanelFlat:
             "(G1). Purement visuel, ne génère aucun fichier.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
+        _combined_add_button(form, self._on_add_to_combined)
 
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
@@ -4819,6 +4886,22 @@ class TaskPanelFlat:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
         _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_decoupe.ngc")
+
+    def _build_combined_operation(self):
+        if not self._edges:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
+            return None
+        return {"type": "flat",
+                "label": "Découpe multi-passes ({:.0f} passes, S{:.0f})".format(
+                    self.spn_passes.value(), self.spn_power.value()),
+                "params": dict(edges=self._edges_for_job(), power=self.spn_power.value(),
+                               feed=self.spn_feed.value(), thickness=self.spn_thickness.value(),
+                               n_passes=self.spn_passes.value(), **self._build_gcode_kwargs())}
+
+    def _on_add_to_combined(self):
+        op = self._build_combined_operation()
+        if op:
+            _add_to_combined_job(op)
 
     def accept(self):
         if not self._edges:
@@ -5038,6 +5121,7 @@ class TaskPanelCurvedCut:
             "surface du modèle, comme la vraie profondeur de coupe.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
+        _combined_add_button(form, self._on_add_to_combined)
 
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
@@ -5204,6 +5288,24 @@ class TaskPanelCurvedCut:
         mark = core.shift_segments_z(mark, -z_offset)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
 
+    def _build_combined_operation(self):
+        if not self._edges:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
+            return None
+        return {"type": "curved_cut",
+                "label": "Découpe courbe ({:.0f} passes, S{:.0f})".format(
+                    self.spn_passes.value(), self.spn_power.value()),
+                "params": dict(edges=self._edges, power=self.spn_power.value(),
+                               feed=self.spn_feed.value(), thickness=self.spn_thickness.value(),
+                               n_passes=self.spn_passes.value(), z_focus=self.spn_zfocus.value(),
+                               marge_survol=self.spn_marge.value(), reference_shape=self._reference_shape,
+                               probe=self._probe, **self._build_gcode_kwargs())}
+
+    def _on_add_to_combined(self):
+        op = self._build_combined_operation()
+        if op:
+            _add_to_combined_job(op)
+
     def accept(self):
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
@@ -5260,391 +5362,9 @@ class TaskPanelCurvedCut:
 # boîte d'ajout) : un job combiné sert avant tout à enchaîner plusieurs
 # opérations déjà calibrées séparément, pas à explorer tous les réglages
 # fins en même temps.
-class _OperationDialogCurved(QtWidgets.QDialog):
-    def __init__(self, edges, reference_shape, parent=None):
-        super().__init__(parent)
-        self.edges = edges
-        self.reference_shape = reference_shape
-        self.setWindowTitle("Ajouter une opération : Marquage (plat ou courbe)")
-        form = QtWidgets.QFormLayout(self)
-        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
-
-        self.txt_label = QtWidgets.QLineEdit("Marquage")
-        form.addRow("Nom de l'opération :", self.txt_label)
-
-        self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, core.S_MAX)
-        self.spn_power.setValue(0)
-        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
-
-        self.spn_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_feed.setRange(1, 20000)
-        self.spn_feed.setValue(1000)
-        self.spn_feed.setSuffix(" mm/min")
-        form.addRow("Avance (Feed) :", self.spn_feed)
-
-        info = _WrapLabel("{} segment(s) sélectionné(s){}.\nZ de travail et marge : Préférences.".format(
-            len(edges), " -- sonde exacte sur objet 3D" if reference_shape is not None else " -- interpolation (pas d'objet 3D de référence)"))
-        form.addRow(info)
-
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
-
-    def build_operation(self):
-        return {
-            "type": "curved",
-            "label": self.txt_label.text().strip() or "Marquage",
-            "params": dict(
-                edges=self.edges,
-                power=self.spn_power.value(),
-                feed=self.spn_feed.value(),
-                z_focus=core.Z_WORK_MM,
-                marge_survol=core.TRANSIT_MARGIN_MM,
-                reference_shape=self.reference_shape,
-            ),
-        }
-
-
-class _OperationDialogCurvedCut(QtWidgets.QDialog):
-    def __init__(self, edges, reference_shape, parent=None):
-        super().__init__(parent)
-        self.edges = edges
-        self.reference_shape = reference_shape
-        self.setWindowTitle("Ajouter une opération : Découpe multi-passes sur surface courbée")
-        form = QtWidgets.QFormLayout(self)
-        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
-
-        self.txt_label = QtWidgets.QLineEdit("Découpe courbe")
-        form.addRow("Nom de l'opération :", self.txt_label)
-
-        self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, core.S_MAX)
-        self.spn_power.setValue(0)
-        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
-
-        self.spn_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_feed.setRange(1, 20000)
-        self.spn_feed.setValue(300)
-        self.spn_feed.setSuffix(" mm/min")
-        form.addRow("Avance (Feed) :", self.spn_feed)
-
-        self.spn_zfocus = QtWidgets.QDoubleSpinBox()
-        self.spn_zfocus.setRange(-50, 200)
-        self.spn_zfocus.setValue(core.Z_WORK_MM)
-        self.spn_zfocus.setSuffix(" mm")
-        form.addRow("Z Travail (Cale, 1ère passe) :", self.spn_zfocus)
-
-        self.spn_marge = QtWidgets.QDoubleSpinBox()
-        self.spn_marge.setRange(0.0, 20)
-        self.spn_marge.setValue(core.TRANSIT_MARGIN_MM)
-        self.spn_marge.setSuffix(" mm")
-        form.addRow("Marge de sécurité (retrait) :", self.spn_marge)
-
-        self.spn_thickness = QtWidgets.QDoubleSpinBox()
-        self.spn_thickness.setRange(0.1, 30)
-        self.spn_thickness.setValue(5.0)
-        self.spn_thickness.setSuffix(" mm")
-        form.addRow("Épaisseur matériau :", self.spn_thickness)
-
-        self.spn_passes = QtWidgets.QSpinBox()
-        self.spn_passes.setRange(1, 50)
-        self.spn_passes.setValue(3)
-        form.addRow("Nombre de passes :", self.spn_passes)
-
-        self.spn_kerf = QtWidgets.QDoubleSpinBox()
-        self.spn_kerf.setRange(0.0, 5.0)
-        self.spn_kerf.setDecimals(3)
-        self.spn_kerf.setValue(0.0)
-        self.spn_kerf.setSuffix(" mm")
-        form.addRow("Compensation de kerf :", self.spn_kerf)
-
-        self.chk_hole_first = QtWidgets.QCheckBox("Découper les trous/îlots avant le contour englobant")
-        self.chk_hole_first.setChecked(True)
-        form.addRow(self.chk_hole_first)
-
-        self.chk_proximity = QtWidgets.QCheckBox("Optimiser l'ordre par proximité")
-        self.chk_proximity.setChecked(True)
-        form.addRow(self.chk_proximity)
-
-        info = _WrapLabel("{} segment(s) sélectionné(s){}.".format(
-            len(edges), " -- sonde exacte sur objet 3D" if reference_shape is not None else " -- interpolation (pas d'objet 3D de référence)"))
-        form.addRow(info)
-
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
-
-    def build_operation(self):
-        return {
-            "type": "curved_cut",
-            "label": self.txt_label.text().strip() or "Decoupe courbe",
-            "params": dict(
-                edges=self.edges,
-                power=self.spn_power.value(),
-                feed=self.spn_feed.value(),
-                thickness=self.spn_thickness.value(),
-                n_passes=self.spn_passes.value(),
-                z_focus=self.spn_zfocus.value(),
-                marge_survol=self.spn_marge.value(),
-                reference_shape=self.reference_shape,
-                kerf_width=self.spn_kerf.value(),
-                use_hole_first=self.chk_hole_first.isChecked(),
-                use_proximity=self.chk_proximity.isChecked(),
-            ),
-        }
-
-
-class _OperationDialogFlat(QtWidgets.QDialog):
-    def __init__(self, edges, parent=None):
-        super().__init__(parent)
-        self.edges = edges
-        self.setWindowTitle("Ajouter une opération : Découpe multi-passes")
-        form = QtWidgets.QFormLayout(self)
-        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
-
-        self.txt_label = QtWidgets.QLineEdit("Découpe")
-        form.addRow("Nom de l'opération :", self.txt_label)
-
-        self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, core.S_MAX)
-        self.spn_power.setValue(0)
-        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
-
-        self.spn_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_feed.setRange(1, 20000)
-        self.spn_feed.setValue(300)
-        self.spn_feed.setSuffix(" mm/min")
-        form.addRow("Avance (Feed) :", self.spn_feed)
-
-        self.spn_thickness = QtWidgets.QDoubleSpinBox()
-        self.spn_thickness.setRange(0.1, 30)
-        self.spn_thickness.setValue(5.0)
-        self.spn_thickness.setSuffix(" mm")
-        form.addRow("Épaisseur matériau :", self.spn_thickness)
-
-        self.spn_passes = QtWidgets.QSpinBox()
-        self.spn_passes.setRange(1, 50)
-        self.spn_passes.setValue(3)
-        form.addRow("Nombre de passes :", self.spn_passes)
-
-        self.spn_kerf = QtWidgets.QDoubleSpinBox()
-        self.spn_kerf.setRange(0.0, 5.0)
-        self.spn_kerf.setDecimals(3)
-        self.spn_kerf.setValue(0.0)
-        self.spn_kerf.setSuffix(" mm")
-        form.addRow("Compensation de kerf :", self.spn_kerf)
-
-        self.chk_hole_first = QtWidgets.QCheckBox("Découper les trous/îlots avant le contour englobant")
-        self.chk_hole_first.setChecked(True)
-        form.addRow(self.chk_hole_first)
-
-        self.chk_proximity = QtWidgets.QCheckBox("Optimiser l'ordre par proximité")
-        self.chk_proximity.setChecked(True)
-        form.addRow(self.chk_proximity)
-
-        # Mémorise les réglages de découpe du job combiné (dont le kerf, qui
-        # repartait à 0 à chaque ajout). À la toute première utilisation,
-        # hérite des derniers réglages du mode Découpe autonome (mêmes clés).
-        self._last_fields = {
-            "power": self.spn_power, "feed": self.spn_feed,
-            "thickness": self.spn_thickness, "n_passes": self.spn_passes,
-            "kerf": self.spn_kerf, "hole_first": self.chk_hole_first,
-            "proximity": self.chk_proximity,
-        }
-        _restore_last_values(
-            "combined_cut" if "last_combined_cut" in core.load_config() else "flat",
-            self._last_fields)
-
-        info = _WrapLabel("{} segment(s) sélectionné(s).".format(len(edges)))
-        form.addRow(info)
-
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
-
-    def build_operation(self):
-        _save_last_values("combined_cut", self._last_fields)
-        return {
-            "type": "flat",
-            "label": self.txt_label.text().strip() or "Decoupe",
-            "params": dict(
-                edges=self.edges,
-                power=self.spn_power.value(),
-                feed=self.spn_feed.value(),
-                thickness=self.spn_thickness.value(),
-                n_passes=self.spn_passes.value(),
-                kerf_width=self.spn_kerf.value(),
-                use_hole_first=self.chk_hole_first.isChecked(),
-                use_proximity=self.chk_proximity.isChecked(),
-            ),
-        }
-
-
-class _OperationDialogTestGrid(QtWidgets.QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Ajouter une opération : Grille de test puissance/vitesse")
-        form = QtWidgets.QFormLayout(self)
-        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
-
-        self.txt_label = QtWidgets.QLineEdit("Grille de test")
-        form.addRow("Nom de l'opération :", self.txt_label)
-
-        self.combo_mode = QtWidgets.QComboBox()
-        self.combo_mode.addItems(["Gravure", "Découpe"])
-        form.addRow("Mode :", self.combo_mode)
-
-        self.combo_filltype = QtWidgets.QComboBox()
-        self.combo_filltype.addItems(["Parallèles", "Croisées (grille)"])
-        self.combo_filltype.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        self.combo_filltype.setMinimumContentsLength(17)
-        form.addRow("Type de remplissage :", self.combo_filltype)
-        self.combo_mode.currentIndexChanged.connect(lambda idx: self.combo_filltype.setEnabled(idx == 0))
-
-        self.spn_power_min = QtWidgets.QDoubleSpinBox()
-        self.spn_power_min.setRange(0, core.S_MAX)
-        self.spn_power_min.setValue(200)
-        form.addRow("Puissance min :", self.spn_power_min)
-
-        self.spn_power_max = QtWidgets.QDoubleSpinBox()
-        self.spn_power_max.setRange(0, core.S_MAX)
-        self.spn_power_max.setValue(800)
-        form.addRow("Puissance max :", self.spn_power_max)
-
-        self.spn_power_steps = QtWidgets.QSpinBox()
-        self.spn_power_steps.setRange(2, 20)
-        self.spn_power_steps.setValue(4)
-        form.addRow("Nb de paliers puissance :", self.spn_power_steps)
-
-        self.spn_feed_min = QtWidgets.QDoubleSpinBox()
-        self.spn_feed_min.setRange(1, 20000)
-        self.spn_feed_min.setValue(200)
-        self.spn_feed_min.setSuffix(" mm/min")
-        form.addRow("Vitesse min :", self.spn_feed_min)
-
-        self.spn_feed_max = QtWidgets.QDoubleSpinBox()
-        self.spn_feed_max.setRange(1, 20000)
-        self.spn_feed_max.setValue(2000)
-        self.spn_feed_max.setSuffix(" mm/min")
-        form.addRow("Vitesse max :", self.spn_feed_max)
-
-        self.spn_feed_steps = QtWidgets.QSpinBox()
-        self.spn_feed_steps.setRange(2, 20)
-        self.spn_feed_steps.setValue(4)
-        form.addRow("Nb de paliers vitesse :", self.spn_feed_steps)
-
-        self.spn_cell_size = QtWidgets.QDoubleSpinBox()
-        self.spn_cell_size.setRange(2, 100)
-        self.spn_cell_size.setValue(10)
-        self.spn_cell_size.setSuffix(" mm")
-        form.addRow("Taille cellule :", self.spn_cell_size)
-
-        self.spn_gap = QtWidgets.QDoubleSpinBox()
-        self.spn_gap.setRange(0, 20)
-        self.spn_gap.setValue(2)
-        self.spn_gap.setSuffix(" mm")
-        form.addRow("Espace entre cellules :", self.spn_gap)
-
-        self.spn_hatch_spacing = QtWidgets.QDoubleSpinBox()
-        self.spn_hatch_spacing.setRange(0.05, 10)
-        self.spn_hatch_spacing.setDecimals(2)
-        self.spn_hatch_spacing.setValue(0.2)
-        self.spn_hatch_spacing.setSuffix(" mm")
-        form.addRow("Espacement hachures (Gravure) :", self.spn_hatch_spacing)
-
-        self.spn_hatch_angle = QtWidgets.QDoubleSpinBox()
-        self.spn_hatch_angle.setRange(-360, 360)
-        self.spn_hatch_angle.setValue(45)
-        self.spn_hatch_angle.setSuffix(" deg")
-        form.addRow("Angle hachures (Gravure) :", self.spn_hatch_angle)
-
-        self.chk_proximity = QtWidgets.QCheckBox("Optimiser l'ordre par proximité")
-        self.chk_proximity.setChecked(True)
-        form.addRow(self.chk_proximity)
-
-        self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes puissance/vitesse")
-        self.chk_labels.setChecked(True)
-        form.addRow(self.chk_labels)
-
-        self.spn_label_power = QtWidgets.QDoubleSpinBox()
-        self.spn_label_power.setRange(0, core.S_MAX)
-        self.spn_label_power.setValue(300)
-        form.addRow("Puissance étiquettes :", self.spn_label_power)
-
-        self.spn_label_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_label_feed.setRange(1, 20000)
-        self.spn_label_feed.setValue(1500)
-        self.spn_label_feed.setSuffix(" mm/min")
-        form.addRow("Vitesse étiquettes :", self.spn_label_feed)
-
-        self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
-        self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
-
-        info = _WrapLabel(
-            "Le remplissage Défocus n'est pas disponible ici (calibration\n"
-            "dédiée) -- utilise le panneau Grille de test seul pour ce cas.")
-        form.addRow(info)
-
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
-
-    def accept(self):
-        if self.spn_power_max.value() < self.spn_power_min.value():
-            QtWidgets.QMessageBox.critical(self, "Erreur", "Puissance max doit être >= puissance min.")
-            return
-        if self.spn_feed_max.value() < self.spn_feed_min.value():
-            QtWidgets.QMessageBox.critical(self, "Erreur", "Vitesse max doit être >= vitesse min.")
-            return
-        super().accept()
-
-    def build_operation(self):
-        mode = "gravure" if self.combo_mode.currentIndex() == 0 else "decoupe"
-        fill_type_map = {0: "paralleles", 1: "croisees"}
-        fill_type = fill_type_map.get(self.combo_filltype.currentIndex(), "paralleles") if mode == "gravure" else "paralleles"
-
-        cells = core.build_test_grid_cells(
-            mode,
-            self.spn_power_min.value(), self.spn_power_max.value(), self.spn_power_steps.value(),
-            self.spn_feed_min.value(), self.spn_feed_max.value(), self.spn_feed_steps.value(),
-            self.spn_cell_size.value(), self.spn_gap.value(),
-            fill_type=fill_type,
-            hatch_spacing=self.spn_hatch_spacing.value(), hatch_angle=self.spn_hatch_angle.value(),
-        )
-
-        label_edges = None
-        if self.chk_labels.isChecked():
-            power_labels, feed_labels = core.build_test_grid_axis_labels(
-                cells, self.spn_power_steps.value(), self.spn_feed_steps.value(),
-                self.spn_cell_size.value(), self.spn_gap.value())
-            label_edges = []
-            for lbl in power_labels:
-                label_edges.extend(lbl["edges"])
-            for lbl in feed_labels:
-                label_edges.extend(lbl["edges"])
-
-        return {
-            "type": "testgrid",
-            "label": self.txt_label.text().strip() or "Grille de test",
-            "params": dict(
-                cells=cells,
-                z_work=core.Z_WORK_MM,
-                label_edges=label_edges,
-                label_power=self.spn_label_power.value(),
-                label_feed=self.spn_label_feed.value(),
-                use_proximity=self.chk_proximity.isChecked(),
-            ),
-        }
-
-
 class TaskPanelCombined:
     def __init__(self):
-        self.operations = []
+        self.operations = _COMBINED_OPS
 
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
@@ -5653,34 +5373,21 @@ class TaskPanelCombined:
 
         _panel_header(form, "combined.svg", "Job combiné")
         info = _WrapLabel(
-            "Empile plusieurs opérations (Marquage (plat/courbe) / Découpe\n"
-            "courbe / Découpe multi-passes / Grille de test) dans UN SEUL\n"
-            "job -- UN SEUL armement (M3) au début, UN SEUL désarmement\n"
-            "(M5)/fin de programme (M2) à la fin, exécutées dans l'ordre\n"
-            "de la liste. Sélectionne la géométrie voulue AVANT de cliquer\n"
-            "sur \"+ Ajouter\" pour chaque opération -- la sélection est\n"
-            "capturée à l'ajout, pas au moment de lancer le job.")
+            "Assemble plusieurs opérations en UN SEUL fichier -- un seul "
+            "armement (M3) au début, un seul désarmement (M5)/M2 à la fin, "
+            "exécutées dans l'ordre de la liste.")
         form.addRow(info)
+        howto = _WrapLabel(
+            "Pour AJOUTER une opération : ouvre son mode normal (Découpe, "
+            "Marquage, Grille de test...), règle tout comme d'habitude, puis "
+            "clique \u00ab \u2795 Ajouter au job combiné \u00bb dans ce mode. "
+            "Reviens ici pour ordonner la liste et générer le fichier.")
+        form.addRow(howto)
 
         self.list_ops = QtWidgets.QListWidget()
         self.list_ops.setToolTip("Opérations empilées, exécutées dans cet ordre.")
         form.addRow(self.list_ops)
 
-        self.btn_add_curved = QtWidgets.QPushButton("+ Ajouter : Marquage (plat ou courbe)")
-        self.btn_add_curved.clicked.connect(self._on_add_curved)
-        form.addRow(self.btn_add_curved)
-
-        self.btn_add_curved_cut = QtWidgets.QPushButton("+ Ajouter : Découpe sur surface courbée")
-        self.btn_add_curved_cut.clicked.connect(self._on_add_curved_cut)
-        form.addRow(self.btn_add_curved_cut)
-
-        self.btn_add_flat = QtWidgets.QPushButton("+ Ajouter : Découpe multi-passes")
-        self.btn_add_flat.clicked.connect(self._on_add_flat)
-        form.addRow(self.btn_add_flat)
-
-        self.btn_add_testgrid = QtWidgets.QPushButton("+ Ajouter : Grille de test puissance/vitesse")
-        self.btn_add_testgrid.clicked.connect(self._on_add_testgrid)
-        form.addRow(self.btn_add_testgrid)
 
         self.btn_move_up = QtWidgets.QPushButton("Monter l'opération sélectionnée")
         self.btn_move_up.clicked.connect(self._on_move_up)
@@ -5693,6 +5400,10 @@ class TaskPanelCombined:
         self.btn_remove = QtWidgets.QPushButton("Supprimer l'opération sélectionnée")
         self.btn_remove.clicked.connect(self._on_remove)
         form.addRow(self.btn_remove)
+
+        self.btn_clear = QtWidgets.QPushButton("Vider la liste")
+        self.btn_clear.clicked.connect(self._on_clear)
+        form.addRow(self.btn_clear)
 
         self.lbl_duration = _WrapLabel("Durée estimée : -- (aucune opération)")
         self.lbl_duration.setToolTip(
@@ -5751,78 +5462,22 @@ class TaskPanelCombined:
 
         self._refresh_list()
 
-    def _type_display(self, op_type):
-        return {
-            "curved": "Marquage",
-            "curved_cut": "Découpe courbe",
-            "flat": "Découpe multi-passes",
-            "testgrid": "Grille de test",
-        }.get(op_type, op_type)
-
     def _refresh_list(self):
         self.list_ops.clear()
         for i, op in enumerate(self.operations):
-            self.list_ops.addItem("{}. [{}] {}".format(i + 1, self._type_display(op["type"]), op["label"]))
+            self.list_ops.addItem("{}. {}".format(i + 1, op["label"]))
         self._update_duration_preview()
 
-    def _add_operation(self, op):
-        self.operations.append(op)
-        self._refresh_list()
-        self.list_ops.setCurrentRow(len(self.operations) - 1)
-
-    def _on_add_curved(self):
-        selection = Gui.Selection.getSelectionEx()
-        if not selection:
-            QtWidgets.QMessageBox.warning(
-                self.form, "Sélection",
-                "Sélectionne le motif (tracés 2D) à marquer avant d'ajouter\n"
-                "cette opération. Sur une surface COURBE, sélectionne AUSSI le\n"
-                "modèle 3D avec le motif ; à PLAT, le motif seul suffit.")
+    def _on_clear(self):
+        if not self.operations:
             return
-        edge_sel, reference_shape = core.split_selection(selection)
-        edges = core.get_all_edges_from_selection(edge_sel)
-        if not edges:
-            QtWidgets.QMessageBox.warning(self.form, "Sélection", "Aucun segment trouvé dans la sélection.")
-            return
-        dlg = _OperationDialogCurved(edges, reference_shape, self.form)
-        if dlg.exec() == QtWidgets.QDialog.Accepted:
-            self._add_operation(dlg.build_operation())
-
-    def _on_add_curved_cut(self):
-        selection = Gui.Selection.getSelectionEx()
-        if not selection:
-            QtWidgets.QMessageBox.warning(
-                self.form, "Sélection",
-                "Sélectionne les Hachures_3D (motif projeté) ET le modèle 3D\n"
-                "ensemble avant d'ajouter une opération de découpe courbe.")
-            return
-        edge_sel, reference_shape = core.split_selection(selection)
-        edges = core.get_all_edges_from_selection(edge_sel)
-        if not edges:
-            QtWidgets.QMessageBox.warning(self.form, "Sélection", "Aucun segment trouvé dans la sélection.")
-            return
-        dlg = _OperationDialogCurvedCut(edges, reference_shape, self.form)
-        if dlg.exec() == QtWidgets.QDialog.Accepted:
-            self._add_operation(dlg.build_operation())
-
-    def _on_add_flat(self):
-        selection = Gui.Selection.getSelectionEx()
-        if not selection:
-            QtWidgets.QMessageBox.warning(
-                self.form, "Sélection", "Sélectionne le(s) contour(s) à découper avant d'ajouter cette opération.")
-            return
-        edges = core.get_all_edges_from_selection(selection)
-        if not edges:
-            QtWidgets.QMessageBox.warning(self.form, "Sélection", "Aucun segment trouvé dans la sélection.")
-            return
-        dlg = _OperationDialogFlat(edges, self.form)
-        if dlg.exec() == QtWidgets.QDialog.Accepted:
-            self._add_operation(dlg.build_operation())
-
-    def _on_add_testgrid(self):
-        dlg = _OperationDialogTestGrid(self.form)
-        if dlg.exec() == QtWidgets.QDialog.Accepted:
-            self._add_operation(dlg.build_operation())
+        reply = QtWidgets.QMessageBox.question(
+            self.form, "Vider",
+            "Retirer toutes les opérations du job combiné ?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if reply == QtWidgets.QMessageBox.Yes:
+            del self.operations[:]
+            self._refresh_list()
 
     def _on_move_up(self):
         i = self.list_ops.currentRow()
