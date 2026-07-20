@@ -51,6 +51,8 @@ Défocaliser étale la **même** puissance sur un point plus large : l'énergie 
 
 ## Captures d'écran
 
+Chaque panneau de l'atelier est présenté (capture complète) dans la **[galerie des panneaux](docs/panneaux.md)**.
+
 | | |
 |---|---|
 | ![Résultat coloré](docs/screenshots/resultat-colore.png) | ![Job combiné](docs/screenshots/job-combine.png) |
