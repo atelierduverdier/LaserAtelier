@@ -3001,6 +3001,84 @@ def shade_summary(shade):
     return parts
 
 
+def darkness_fluence_curve(material):
+    """Courbe noirceur (%) -> fluence P/(d·v), interpolable, construite sur
+    les tons MESURÉS du matériau. Seuls les tons en DÉFOCUS (z_offset > 0,
+    largeur et vitesse connues) sont utilisés : un trait fin au foyer n'est
+    pas comparable à l'œil avec un trait large (régime différent), il
+    fausserait la courbe. La noirceur saturant avec l'énergie (au-delà du
+    seuil de carbonisation, plus d'énergie ne noircit plus beaucoup), les
+    inversions de mesure sont lissées par une régression isotone (PAVA :
+    les voisins en violation sont moyennés) pour garantir une courbe
+    croissante. Renvoie [(noirceur, fluence), ...] trié (>= 2 points), ou
+    [] si le matériau n'a pas assez de tons exploitables."""
+    pts = []
+    for s in load_shades(material):
+        if (s.get("z_offset", 0) > 0 and s.get("width", 0) > 0
+                and s.get("feed", 0) > 0 and s.get("power", 0) > 0):
+            pts.append((float(s["darkness"]),
+                        line_fluence(s["power"], s["feed"], s["width"])))
+    pts.sort(key=lambda p: p[0])
+    if len(pts) < 2:
+        return []
+    # Régression isotone (pool adjacent violators) sur la fluence.
+    blocks = [[d, f, 1] for d, f in pts]   # [somme noirceur, somme fluence, n]
+    i = 0
+    while i < len(blocks) - 1:
+        if blocks[i][1] / blocks[i][2] > blocks[i + 1][1] / blocks[i + 1][2]:
+            blocks[i][0] += blocks[i + 1][0]
+            blocks[i][1] += blocks[i + 1][1]
+            blocks[i][2] += blocks[i + 1][2]
+            del blocks[i + 1]
+            if i > 0:
+                i -= 1
+        else:
+            i += 1
+    # Réétale la fluence lissée sur les noirceurs d'origine.
+    smoothed = []
+    k = 0
+    for b in blocks:
+        for _ in range(b[2]):
+            smoothed.append((pts[k][0], b[1] / b[2]))
+            k += 1
+    return smoothed
+
+
+def fluence_for_darkness(material, target_pct):
+    """Fluence interpolée pour viser une noirceur (%) sur le matériau, à
+    partir de la courbe mesurée (interpolation LINÉAIRE entre les tons,
+    bornée aux extrêmes mesurés -- pas d'extrapolation). Renvoie
+    (fluence, noirceur réellement visée après bornage) ou None."""
+    curve = darkness_fluence_curve(material)
+    if not curve:
+        return None
+    t = min(max(float(target_pct), curve[0][0]), curve[-1][0])
+    for (d0, f0), (d1, f1) in zip(curve, curve[1:]):
+        if d0 <= t <= d1:
+            if d1 - d0 < 1e-9:
+                return (f0 + f1) / 2.0, t
+            r = (t - d0) / (d1 - d0)
+            return f0 + (f1 - f0) * r, t
+    return curve[-1][1], t
+
+
+def feed_for_custom_shade(material, darkness_pct, width, power):
+    """Ton SUR MESURE : pour une largeur de trait et une noirceur voulues,
+    à puissance donnée, renvoie (vitesse, fluence, noirceur bornée) --
+    inversion de fluence = P/(d·v). La largeur pilote le défocus (via la
+    calibration du point) ; la vitesse pilote la noirceur. None si le
+    nuancier n'a pas assez de tons en défocus, ou entrées invalides."""
+    if width <= 0 or power <= 0:
+        return None
+    res = fluence_for_darkness(material, darkness_pct)
+    if res is None:
+        return None
+    fluence, clamped = res
+    if fluence <= 0:
+        return None
+    return power / (fluence * width), fluence, clamped
+
+
 def estimate_job_time_seconds(gcode_text, rapid_feed=None, accel=None):
     """Estime le temps total du job en secondes, en reparcourant le
     G-code déjà généré : G1 selon la distance/avance programmée, G0 à

@@ -4010,6 +4010,43 @@ class TaskPanelCurved:
             self._update_duration_preview()
         self._shade_picker = _make_shade_picker(form, _apply_shade)
 
+        # --- Ton sur mesure : largeur + noirceur choisies, vitesse calculée
+        # par interpolation ENTRE les tons mesurés du nuancier (courbe
+        # noirceur -> fluence P/(d·v), tons en défocus uniquement).
+        self.spn_custom_width = QtWidgets.QDoubleSpinBox()
+        self.spn_custom_width.setRange(0.05, 30.0)
+        self.spn_custom_width.setDecimals(2)
+        self.spn_custom_width.setValue(1.0)
+        self.spn_custom_width.setSuffix(" mm")
+        self.spn_custom_width.setToolTip(
+            "Largeur de trait voulue -- pilote le DÉFOCUS via la calibration\n"
+            "du point (comme le style Défocus).")
+        form.addRow("Sur mesure -- largeur :", self.spn_custom_width)
+
+        self.spn_custom_dark = QtWidgets.QDoubleSpinBox()
+        self.spn_custom_dark.setRange(0, 100)
+        self.spn_custom_dark.setDecimals(0)
+        self.spn_custom_dark.setValue(60)
+        self.spn_custom_dark.setSuffix(" %")
+        self.spn_custom_dark.setToolTip(
+            "Noirceur visée -- pilote la VITESSE, interpolée entre les tons\n"
+            "mesurés du nuancier (bornée aux noirceurs mesurées, pas\n"
+            "d'extrapolation).")
+        form.addRow("Sur mesure -- noirceur :", self.spn_custom_dark)
+
+        self.btn_custom_shade = QtWidgets.QPushButton("Calculer le réglage (interpolé)")
+        self.btn_custom_shade.setToolTip(
+            "À la puissance S courante (champ ci-dessous), calcule la vitesse\n"
+            "qui donne la noirceur visée pour cette largeur, par interpolation\n"
+            "entre les tons MESURÉS du matériau sélectionné ci-dessus --\n"
+            "et règle style Défocus + largeur + vitesse. Interpolé = à\n"
+            "valider sur une chute (les tons mesurés restent la référence).")
+        self.btn_custom_shade.clicked.connect(self._on_custom_shade)
+        form.addRow(self.btn_custom_shade)
+
+        self.lbl_custom_shade = _WrapLabel("")
+        form.addRow(self.lbl_custom_shade)
+
         self.spn_power = QtWidgets.QDoubleSpinBox()
         self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(0)
@@ -4256,6 +4293,48 @@ class TaskPanelCurved:
         edge_sel, reference_shape = core.split_selection(self.selection)
         edges = core.get_all_edges_from_selection(edge_sel)
         return edges, reference_shape
+
+    def _on_custom_shade(self):
+        material = self._shade_picker["mat"].currentData()
+        if not material:
+            QtWidgets.QMessageBox.information(
+                self.form, "Ton sur mesure",
+                "Le nuancier est vide : mesure d'abord quelques tons (mode "
+                "Nuancier) -- l'interpolation se fait entre des tons MESURÉS.")
+            return
+        power = self.spn_power.value()
+        if power <= 0:
+            power = core.S_MAX
+            self.spn_power.setValue(power)
+        width = self.spn_custom_width.value()
+        res = core.feed_for_custom_shade(
+            material, self.spn_custom_dark.value(), width, power)
+        if res is None:
+            QtWidgets.QMessageBox.information(
+                self.form, "Ton sur mesure",
+                "Pas assez de tons exploitables sur « {} » : il faut au moins "
+                "2 tons EN DÉFOCUS (largeur, vitesse et puissance renseignées) "
+                "pour interpoler.".format(material))
+            return
+        feed, fluence, clamped = res
+        self.combo_style.setCurrentIndex(4)      # style Défocus (point élargi)
+        self.spn_spot_width.setValue(width)
+        self.spn_feed.setValue(feed)
+        defocus = core.defocus_for_spot_diameter(
+            width, core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0
+        txt = ("Interpolé : style Défocus, largeur {:.2f} mm (défocus "
+               "{:.1f} mm), S{:.0f}, F{:.0f} -> noirceur visée {:.0f}%".format(
+                   width, defocus, power, feed, clamped))
+        if abs(clamped - self.spn_custom_dark.value()) > 0.5:
+            txt += " (borné : noirceur mesurée de {:.0f}% max/min sur ce matériau)".format(clamped)
+        if feed > 6000:
+            txt += " -- vitesse très élevée : baisse la puissance S ou vise plus foncé."
+        elif feed < 30:
+            txt += " -- vitesse très basse : trait large + foncé au-delà du raisonnable à cette S."
+        txt += " À valider sur une chute."
+        self.lbl_custom_shade.setText(txt)
+        self._update_style_ui()
+        self._update_duration_preview()
 
     def _z_focus(self):
         """Z de travail effectif : foyer des Préférences, remonté du
