@@ -399,7 +399,7 @@
       <div class="shot"><img src="screenshots/panneaux/04_gravure_photo.png" alt="Panneau Gravure photo"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/halftone.svg" alt=""></span><h4>Gravure photo (trame de points)</h4></div>
-        <p>Convertit une image en <b>trame de points laser</b> : tramage par diffusion Floyd-Steinberg ou par durée de pulse variable, aperçu du tramage en direct, option négatif, largeur de point réglable.</p>
+        <p>Convertit une image en gravure laser, <b>5 tramages</b> : points (diffusion Floyd-Steinberg, durée variable), <b>lignes calibrées</b> (photo calibrée : puissance modulée par pixel via le nuancier mesuré), <b>diffusion en lignes</b> (points fins rapides) et <b>gros points Z</b> (taille de point = noirceur, artistique). Tonalité (gamma) avec aperçu en direct, et <b>mire des tramages</b> pour comparer les styles sur chute.</p>
         <div class="when"><b>Quand&nbsp;?</b> Graver une photo, un portrait, un dégradé photographique.</div>
       </div>
     </div>
@@ -421,7 +421,7 @@
       <div class="shot"><img src="screenshots/panneaux/06_marquage.png" alt="Panneau Marquage de motif"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/curved.svg" alt=""></span><h4>Marquage de motif (plat ou courbe)</h4></div>
-        <p>Grave un motif filaire, à plat ou en suivant le relief d'un modèle 3D, avec 5 styles de trait (plein, tirets, pointillé, vague défocus, défocus point élargi) et le nuancier matériau.</p>
+        <p>Grave un motif filaire, à plat ou en suivant le relief d'un modèle 3D, avec 6 styles de trait (plein, tirets, pointillé, vague défocus, défocus point élargi, <b>dégradé Z</b>), le nuancier matériau et le <b>ton sur mesure interpolé</b> (largeur + noirceur → vitesse calculée).</p>
         <div class="when"><b>Quand&nbsp;?</b> Générer le G-code d'un tracé filaire, sur pièce plane ou courbe.</div>
       </div>
     </div>
@@ -481,7 +481,7 @@
       <div class="shot"><img src="screenshots/panneaux/12_calibration_defocus.png" alt="Panneau Bande de calibration défocus"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/defocus.svg" alt=""></span><h4>Bande de calibration défocus</h4></div>
-        <p>Rangée de courts traits à hauteurs de bec croissantes, étiquetés en hauteur et en puissance — pour mesurer le foyer (trait le plus fin) et la divergence du point, puis renseigner la calibration.</p>
+        <p>Rangée de courts traits à hauteurs de bec croissantes, étiquetés en hauteur et en puissance — pour mesurer le foyer et la divergence. Option <b>multi-bandes</b> : plusieurs bandes côte à côte, une par vitesse, tous les niveaux de gris en un seul job.</p>
         <div class="when"><b>Quand&nbsp;?</b> Une fois, pour caler le modèle de défocus dans les Préférences.</div>
       </div>
     </div>
@@ -511,7 +511,7 @@
       <div class="shot"><img src="screenshots/panneaux/15_job_combine.png" alt="Panneau Job combiné"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/combined.svg" alt=""></span><h4>Job combiné</h4></div>
-        <p>Empile plusieurs opérations (marquage, découpe, grille) dans un seul fichier G-code, avec un seul armement du laser et une transition anti-collision entre opérations.</p>
+        <p>Assemble plusieurs opérations en un seul fichier (un armement, transitions anti-collision). Chaque opération s'ajoute <b>depuis son vrai mode</b> (bouton « ➕ Ajouter au job combiné ») avec toutes ses options — plus de fenêtres simplifiées.</p>
         <div class="when"><b>Quand&nbsp;?</b> Enchaîner marquage puis découpe d'une même pièce sans relancer.</div>
       </div>
     </div>
@@ -519,7 +519,7 @@
       <div class="shot"><img src="screenshots/panneaux/16_preferences.png" alt="Panneau Préférences"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/settings.svg" alt=""></span><h4>Préférences</h4></div>
-        <p>Tous les réglages machine centralisés : calibration du point, Z de travail, marge de survol, profil du bec, numéro d'outil laser, échelle de puissance, sécurité… appliqués immédiatement, sans redémarrer.</p>
+        <p>Tous les réglages machine centralisés, avec des <b>profils laser</b> (un par module : outil, calibration du point, Z, bec, échelle S — prêt pour un 2ᵉ laser IR) : appliqués immédiatement, sans redémarrer.</p>
         <div class="when"><b>Quand&nbsp;?</b> À l'installation, puis dès qu'un réglage machine change.</div>
       </div>
     </div>

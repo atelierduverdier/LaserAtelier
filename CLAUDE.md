@@ -171,6 +171,24 @@ section (combo + clone/rename/delete) that re-applies + reloads fields on switch
 plus `.` and `-`) so labels ("S400", "8.25") need no external font file. Extend `_FONT_GLYPHS` (or the
 `.` special-case) if a new glyph is needed.
 
+### Photo engraving & nuancier-driven tone (July 2026)
+
+- Photo mode has 5 tramages: FS dots, variable-duration dots, **calibrated lines**
+  (`generate_gcode_photo_lines`: per-pixel S via the measured nuancier curve), **dither lines**
+  (`generate_gcode_photo_dither_lines`: FS dither, fixed-S on/off per pixel), **Z dots**
+  (`generate_gcode_photo_zdots`: dot DIAMETER renders darkness via per-dot Z, Z moves between dots).
+  Shared serpentine emitter `_emit_raster_rows`. Gamma tone control lives in the panel (`spn_gamma`,
+  applied in `_build_rows`). `generate_gcode_photo_sampler` = comparison strip of all tramages.
+- Nuancier interpolation: `darkness_fluence_curve(material)` (defocused tones only, isotonic/PAVA
+  smoothing), `fluence_for_darkness`, `feed_for_custom_shade` — used by Marquage's "ton sur mesure"
+  and the calibrated photo modes. Marquage also has style `"degrade"` (linear defocus along a
+  direction, `deg_angle`/`deg_z_min`/`deg_z_max` in style_params).
+- **MACHINE CONSTRAINT (critical): never emit a G4 dwell with beam on.** The user's HAL scales laser
+  power by real/requested velocity → at standstill power is forced to 0, so G4-pulse dots engrave
+  NOTHING. All dot-like marks must be micro-strokes (short G1 whose feed reproduces the exposure
+  time) — see the dot emission in `generate_gcode_halftone`/`_emit_dots`/zdots. The Marquage
+  "pointillé" style still uses G4 dwells (known gap; convert the same way if the user needs it).
+
 ## Hardware context
 
 Default profile is the **LT-80W-AA-PRO** diode module with the square shroud removed (so it can
