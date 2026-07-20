@@ -2355,6 +2355,17 @@ class TaskPanelHalftone:
         self.lbl_grid = _WrapLabel("Grille : --")
         form.addRow(self.lbl_grid)
 
+        # Aperçu du rendu tramé (l'image telle qu'elle sera piquetée) --
+        # LE retour visuel qui compte pour une photo, mis à jour avec les
+        # réglages. Pixellisé volontairement : chaque pixel = un point.
+        self.lbl_halftone_preview = QtWidgets.QLabel()
+        self.lbl_halftone_preview.setAlignment(QtCore.Qt.AlignHCenter)
+        self.lbl_halftone_preview.setToolTip(
+            "Aperçu du TRAMAGE : ce que les points graveront (noir = point,\n"
+            "blanc = rien). Se met à jour avec l'image, la largeur, le pas,\n"
+            "le tramage, le négatif et le seuil blanc.")
+        form.addRow(self.lbl_halftone_preview)
+
         _section(form, "Tramage & puissance", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
         self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable"])
@@ -2451,6 +2462,14 @@ class TaskPanelHalftone:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
+        self.btn_dots_preview = QtWidgets.QPushButton("Aperçu des points (vue 3D)")
+        self.btn_dots_preview.setToolTip(
+            "Dessine chaque point de la trame (petite croix) dans la vue 3D,\n"
+            "à sa position réelle -- pour vérifier l'emprise et la densité\n"
+            "sur le modèle. Purement visuel.")
+        self.btn_dots_preview.clicked.connect(self._on_dots_preview)
+        form.addRow(self.btn_dots_preview)
+
         self._last_fields = {
             "image": self.edt_image, "width": self.spn_width,
             "pitch": self.spn_pitch, "invert": self.chk_invert,
@@ -2464,9 +2483,11 @@ class TaskPanelHalftone:
         self.form.setWindowTitle("Gravure photo (trame de points)")
         self.form.setWindowIcon(_icon("halftone.svg"))
 
-        self.edt_image.textChanged.connect(lambda _t: self._update_grid_info())
-        self.spn_width.valueChanged.connect(lambda _v: self._update_grid_info())
-        self.spn_pitch.valueChanged.connect(lambda _v: self._update_grid_info())
+        for _sig in (self.edt_image.textChanged, self.spn_width.valueChanged,
+                     self.spn_pitch.valueChanged, self.spn_white.valueChanged):
+            _sig.connect(lambda *_a: self._update_grid_info())
+        self.combo_mode.currentIndexChanged.connect(lambda _i: self._update_grid_info())
+        self.chk_invert.toggled.connect(lambda _v: self._update_grid_info())
         self._update_grid_info()
 
     def _on_browse(self):
@@ -2521,12 +2542,86 @@ class TaskPanelHalftone:
         img = self._load_image()
         if img is None:
             self.lbl_grid.setText("Grille : -- (aucune image valide)")
+            self.lbl_halftone_preview.setVisible(False)
             return
         cols, rows = self._grid_size(img)
         pitch = self.spn_pitch.value()
         self.lbl_grid.setText(
             "Grille : {} x {} cases = {:.0f} x {:.0f} mm ({} points max).".format(
                 cols, rows, (cols - 1) * pitch, (rows - 1) * pitch, cols * rows))
+        self._update_halftone_preview()
+
+    _PREVIEW_MAX_CELLS = 250000  # au-delà, le tramage d'aperçu deviendrait lent
+
+    def _update_halftone_preview(self):
+        """Rendu du tramage dans le panneau : une image pixel-par-point
+        (noir = point gravé), agrandie SANS lissage pour que la trame
+        reste visible -- exactement les points que le job gravera."""
+        darkness = self._build_rows(silent=True)
+        if darkness is None:
+            self.lbl_halftone_preview.setVisible(False)
+            return
+        h = len(darkness)
+        w = len(darkness[0])
+        if h * w > self._PREVIEW_MAX_CELLS:
+            self.lbl_halftone_preview.setText(
+                "(aperçu tramé désactivé : trame très fine, {} points)".format(h * w))
+            self.lbl_halftone_preview.setVisible(True)
+            return
+        mode = "duree" if self.combo_mode.currentIndex() == 1 else "diffusion"
+        white = self.spn_white.value() / 100.0
+        buf = bytearray(w * h)
+        if mode == "diffusion":
+            binary = core.floyd_steinberg_dither(darkness)
+            for y in range(h):
+                base = y * w
+                rowb = binary[y]
+                for x in range(w):
+                    buf[base + x] = 0 if rowb[x] else 255
+        else:
+            for y in range(h):
+                base = y * w
+                rowd = darkness[y]
+                for x in range(w):
+                    d = rowd[x]
+                    buf[base + x] = 255 if d < white else 255 - int(d * 255)
+        img = QtGui.QImage(bytes(buf), w, h, w, QtGui.QImage.Format_Grayscale8).copy()
+        pm = QtGui.QPixmap.fromImage(img)
+        target_w = 240
+        pm = pm.scaledToWidth(target_w, QtCore.Qt.FastTransformation)
+        self.lbl_halftone_preview.setPixmap(pm)
+        self.lbl_halftone_preview.setVisible(True)
+
+    def _on_dots_preview(self):
+        doc = FreeCAD.ActiveDocument
+        if doc is None:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Ouvre (ou crée) un document d'abord.")
+            return
+        rows = self._build_rows()
+        if rows is None:
+            return
+        kw = self._gen_kwargs()
+        dots = core.halftone_dots(rows, kw["pitch"], kw["dwell_min_s"], kw["dwell_max_s"],
+                                  mode=kw["mode"], white_threshold=kw["white_threshold"])
+        if not dots:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur",
+                                           "Aucun point (image toute blanche ?).")
+            return
+        if len(dots) > 20000:
+            reply = QtWidgets.QMessageBox.question(
+                self.form, "Beaucoup de points",
+                "{} points à dessiner : la vue 3D peut ramer. Continuer ?".format(len(dots)),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            if reply != QtWidgets.QMessageBox.Yes:
+                return
+        # Une petite croix par point, à sa position réelle.
+        r = kw["pitch"] * 0.3
+        segs = []
+        for x, y, _dw in dots:
+            segs.append((FreeCAD.Vector(x - r, y, 0), FreeCAD.Vector(x + r, y, 0)))
+            segs.append((FreeCAD.Vector(x, y - r, 0), FreeCAD.Vector(x, y + r, 0)))
+        core.create_toolpath_preview_objects(doc, [], segs, name_prefix="Apercu_Photo")
 
     def _gen_kwargs(self):
         return {

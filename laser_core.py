@@ -4188,23 +4188,18 @@ def floyd_steinberg_dither(darkness_rows):
     return out
 
 
-def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
-                            dwell_min_s, dwell_max_s,
-                            mode="diffusion", white_threshold=0.08,
-                            pre_gcode="", post_gcode="", frame_only=False, quiet=False):
-    """G-code de gravure photo en trame de points (cf. bloc de
-    commentaires ci-dessus). darkness_rows : grille de noirceur 0..1
-    (lignes haut -> bas). L'image est posée coin bas-gauche en X0 Y0,
-    parcourue en serpentin (une ligne sur deux inversée) pour minimiser
-    les transits. white_threshold (mode duree) : noirceur en-dessous de
-    laquelle AUCUN point n'est gravé -- évite de piqueter les blancs.
-    Renvoie None si la grille est vide ou toute blanche."""
+def halftone_dots(darkness_rows, pitch, dwell_min_s, dwell_max_s,
+                  mode="diffusion", white_threshold=0.08):
+    """Liste des points [(x, y, dwell_s), ...] de la trame, dans l'ordre
+    de parcours (serpentin : une ligne sur deux inversée, pour minimiser
+    les transits). Partagée par le générateur G-code ET l'aperçu des
+    points dans la vue 3D (même trame exactement). Image posée coin
+    bas-gauche en X0 Y0."""
     h = len(darkness_rows)
     w = len(darkness_rows[0]) if h else 0
     if h < 1 or w < 1:
-        return None
-
-    dots = []  # (x, y, dwell_s)
+        return []
+    dots = []
     if mode == "diffusion":
         binary = floyd_steinberg_dither(darkness_rows)
         for row in range(h):
@@ -4223,6 +4218,27 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
                     continue
                 dots.append((col * pitch, y,
                              dwell_min_s + (dwell_max_s - dwell_min_s) * d))
+    return dots
+
+
+def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
+                            dwell_min_s, dwell_max_s,
+                            mode="diffusion", white_threshold=0.08,
+                            pre_gcode="", post_gcode="", frame_only=False, quiet=False):
+    """G-code de gravure photo en trame de points (cf. bloc de
+    commentaires ci-dessus). darkness_rows : grille de noirceur 0..1
+    (lignes haut -> bas). L'image est posée coin bas-gauche en X0 Y0,
+    parcourue en serpentin (une ligne sur deux inversée) pour minimiser
+    les transits. white_threshold (mode duree) : noirceur en-dessous de
+    laquelle AUCUN point n'est gravé -- évite de piqueter les blancs.
+    Renvoie None si la grille est vide ou toute blanche."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1:
+        return None
+
+    dots = halftone_dots(darkness_rows, pitch, dwell_min_s, dwell_max_s,
+                         mode=mode, white_threshold=white_threshold)
     if not dots:
         return None
 
