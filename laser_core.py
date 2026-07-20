@@ -4772,7 +4772,7 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
-def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed):
+def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed, y0=0.0):
     """Émission SERPENTIN partagée des trames en lignes (photo calibrée et
     diffusion en lignes) : grid[row][col] = S par cellule (0 = blanc). Une
     ligne = plages de S constant fusionnées en un G1 chacune (S0 inclus
@@ -4782,7 +4782,7 @@ def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed):
     h = len(grid)
     started = False
     for row in range(h):
-        y = (h - 1 - row) * pitch
+        y = y0 + (h - 1 - row) * pitch
         cells = grid[row]
         nz = [c for c in range(len(cells)) if cells[c] > 0]
         if not nz:
@@ -4957,6 +4957,116 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed)
 
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
+def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
+                                 feed, line_width, material,
+                                 white_threshold=0.05, n_levels=10,
+                                 patch_mm=8.0, band_h_mm=8.0, gap_mm=5.0,
+                                 label_power=300.0, label_feed=1500.0,
+                                 pre_gcode="", post_gcode="", frame_only=False,
+                                 quiet=False):
+    """MIRE COMPARATIVE des tramages photo : le même dégradé en paliers
+    (n_levels patchs de patch_mm, 10%..100%) gravé par chaque tramage, en
+    bandes empilées étiquetées 1..4 :
+      1 = Diffusion (points G4)   2 = Durée variable
+      3 = Lignes calibrées (nuancier)   4 = Diffusion en lignes
+    Un seul test pour comparer les styles et lire quels gris chaque
+    tramage rend réellement sur le matériau. La bande 3 est sautée (avec
+    avertissement) si le nuancier n'a pas 2 tons en défocus."""
+    cols = max(2, int(round(n_levels * patch_mm / pitch)))
+    rows_per = max(2, int(round(band_h_mm / pitch)))
+    grid = [[(min(n_levels - 1, int(c * n_levels / cols)) + 1) / float(n_levels)
+             for c in range(cols)] for _r in range(rows_per)]
+
+    curve = darkness_fluence_curve(material) if material else []
+    bands = [(0, "diffusion"), (1, "duree"), (2, "calibre"), (3, "dither_lignes")]
+    band_step = band_h_mm + gap_mm
+    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    total_h = 4 * band_step - gap_mm
+
+    lines = []
+    lines.append("(G-Code Laser - Mire des tramages photo : degrade {}%..100%)".format(
+        int(100.0 / n_levels)))
+    lines.append("(1=Diffusion points  2=Duree variable  3=Lignes calibrees {}  4=Diffusion en lignes)".format(material or "-"))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append("G64")
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(-8.0, cols * pitch, 0.0, total_h, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    sel = SPINDLE_SELECT
+
+    def _emit_dots(dots, y_off):
+        first = True
+        for x, y, dw in dots:
+            lines.append("G0 X{:.4f} Y{:.4f}{}".format(
+                x, y + y_off, " Z{:.4f}".format(z_work) if first else ""))
+            first = False
+            lines.append(CMD_BEAM_ON.format(sel=sel, power=power))
+            lines.append("G4 P{:.3f}".format(dw))
+            lines.append(CMD_BEAM_OFF.format(sel=sel))
+
+    for b, kind in bands:
+        y_off = (3 - b) * band_step        # bande 1 en haut
+        lines.append("(===== Bande {} : {} =====)".format(b + 1, kind))
+        # étiquette (chiffre) à gauche, au foyer/label
+        for chain in chain_edges(text_to_edges(str(b + 1), -7.0,
+                                               y_off + band_h_mm / 2.0 - 2.0, 4.0)):
+            p0 = chain[0]
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(p0.x, p0.y, z_work))
+            lines.append(CMD_BEAM_ON.format(sel=sel, power=label_power))
+            for pt in chain[1:]:
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(pt.x, pt.y, label_feed))
+            lines.append(CMD_BEAM_OFF.format(sel=sel))
+        if kind == "diffusion":
+            _emit_dots(halftone_dots(grid, pitch, dwell_max_s, dwell_max_s,
+                                     mode="diffusion"), y_off)
+        elif kind == "duree":
+            _emit_dots(halftone_dots(grid, pitch, dwell_min_s, dwell_max_s,
+                                     mode="duree", white_threshold=white_threshold), y_off)
+        elif kind == "calibre":
+            if len(curve) < 2:
+                if not quiet:
+                    FreeCAD.Console.PrintWarning(
+                        "Mire : bande Lignes calibrées sautée (nuancier insuffisant).\n")
+                continue
+            level_s = {}
+            sgrid = []
+            for row in grid:
+                srow = []
+                for d in row:
+                    if d not in level_s:
+                        res = fluence_for_darkness(material, d * 100.0)
+                        sval = min(S_MAX, res[0] * line_width * feed) if res else 0
+                        level_s[d] = int(round(sval / 5.0) * 5)
+                    srow.append(level_s[d])
+                sgrid.append(srow)
+            _emit_raster_rows(lines, sgrid, pitch, z_work, z_safe, feed, y0=y_off)
+        else:                              # dither_lignes
+            binary = floyd_steinberg_dither(grid)
+            dgrid = [[int(power) if v else 0 for v in row] for row in binary]
+            _emit_raster_rows(lines, dgrid, pitch, z_work, z_safe, feed, y0=y_off)
+
+    lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")
         lines.append(post_gcode.strip())

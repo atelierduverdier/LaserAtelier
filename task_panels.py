@@ -2817,6 +2817,16 @@ class TaskPanelHalftone:
             "le tramage, le négatif et le seuil blanc.")
         form.addRow(self.lbl_halftone_preview)
 
+        self.btn_sampler = QtWidgets.QPushButton("Mire des tramages (comparatif sur chute)")
+        self.btn_sampler.setToolTip(
+            "Génère un fichier de TEST : le même dégradé de gris (10 patchs,\n"
+            "10 à 100 %) gravé par CHAQUE tramage, en 4 bandes étiquetées\n"
+            "1=Diffusion points, 2=Durée variable, 3=Lignes calibrées,\n"
+            "4=Diffusion en lignes -- avec les réglages courants du panneau.\n"
+            "À graver sur une chute pour comparer les styles et choisir.")
+        self.btn_sampler.clicked.connect(self._on_sampler)
+        form.addRow(self.btn_sampler)
+
         _section(form, "Tramage & puissance", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
         self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable",
@@ -3216,6 +3226,27 @@ class TaskPanelHalftone:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
         _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_photo.ngc")
+
+    def _on_sampler(self):
+        """Mire comparative : le même dégradé gravé par les 4 tramages
+        (bandes étiquetées 1-4), avec les réglages courants du panneau."""
+        k = self._gen_kwargs()
+        width = self.spn_spot_width.value()
+        if width <= 0:
+            width = max(k["pitch"], core.SPOT_FOCUS_MM)
+        gcode = core.generate_gcode_photo_sampler(
+            pitch=k["pitch"],
+            z_work=core.Z_WORK_MM + (core.defocus_for_spot_diameter(
+                width, core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0),
+            dwell_min_s=k["dwell_min_s"], dwell_max_s=k["dwell_max_s"],
+            power=self.spn_power.value() or core.S_MAX / 2.0,
+            feed=self.spn_line_feed.value(), line_width=width,
+            material=self.combo_photo_mat.currentData(),
+            white_threshold=k["white_threshold"])
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code de mire généré.")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/mire_tramages_photo.ngc")
 
     def accept(self):
         _save_last_values("halftone", self._last_fields)
