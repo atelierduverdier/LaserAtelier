@@ -248,11 +248,22 @@ def save_config(data):
 # ==========================================================================
 SPINDLE_SELECT = "$1"
 ARM_DWELL_S = 2.0
-# Compensation d'outil laser : applique les offsets X/Y (tool.tbl) et
-# le Z palpé au dernier T100 M6. Sans elle, le Z de foyer et les XY
-# seraient interprétés en coordonnées broche, pas nez laser.
-# PRÉREQUIS MACHINE : avoir fait T100 M6 dans la session LinuxCNC.
-CMD_TOOL_COMP = "G43 H100 (compensation T100 - prerequis: T100 M6 fait dans la session)"
+LASER_TOOL = 100     # numéro (tool.tbl) de l'outil laser -- réglable en Préférences
+S_MAX = 1000.0       # échelle de puissance max de la broche laser (valeur S pleine
+                     # puissance) -- dépend de la config machine, réglable en Préférences
+
+
+def cmd_tool_comp():
+    """Ligne de compensation d'outil laser en tête de chaque job :
+    applique les offsets X/Y (tool.tbl) et le Z palpé au dernier
+    T<laser> M6. Sans elle, le Z de foyer et les XY seraient interprétés
+    en coordonnées broche, pas nez laser. PRÉREQUIS MACHINE : avoir fait
+    T<laser> M6 dans la session LinuxCNC. Fonction (pas une constante)
+    pour suivre le numéro d'outil des Préférences (LASER_TOOL)."""
+    return ("G43 H{n} (compensation T{n} - prerequis: T{n} M6 fait dans la "
+            "session)".format(n=int(LASER_TOOL)))
+
+
 CMD_ARM = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"
 CMD_DISARM = "S0 {sel}\nM5 {sel}"
 CMD_BEAM_ON = "S{power:.0f} {sel}"
@@ -301,10 +312,12 @@ SPOT_TEST_DIAMETER_MM = 1.0           # diamètre du point mesuré à ce défocu
 _USER_SETTINGS = (
     ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
     ("spindle_select", "SPINDLE_SELECT", str, lambda v: bool(v.strip())),
+    ("laser_tool", "LASER_TOOL", int, lambda v: 1 <= v <= 999),
+    ("s_max", "S_MAX", float, lambda v: v > 0),
     ("arm_dwell_s", "ARM_DWELL_S", float, lambda v: v >= 0),
     ("rapid_feed_mm_min", "RAPID_FEED_MM_MIN", float, lambda v: v > 0),
     ("travel_clearance_mm", "TRAVEL_CLEARANCE_MM", float, lambda v: v >= 0),
-    ("frame_power", "FRAME_POWER", float, lambda v: 0 <= v <= 1000),
+    ("frame_power", "FRAME_POWER", float, lambda v: v >= 0),
     ("frame_feed_mm_min", "FRAME_FEED_MM_MIN", float, lambda v: v > 0),
     ("z_max_feed_mm_min", "Z_MAX_FEED_MM_MIN", float, lambda v: v > 0),
     ("accel_mm_s2", "ACCEL_MM_S2", float, lambda v: v > 0),
@@ -1560,7 +1573,7 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
-        lines.append(CMD_TOOL_COMP)
+        lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -1900,7 +1913,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
-        lines.append(CMD_TOOL_COMP)
+        lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe_start_end))
 
@@ -2977,7 +2990,7 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
-        lines.append(CMD_TOOL_COMP)
+        lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -3222,7 +3235,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
-        lines.append(CMD_TOOL_COMP)
+        lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -3409,7 +3422,7 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
-    lines.append(CMD_TOOL_COMP)
+    lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -3576,7 +3589,7 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
     # colinéaires de la rampe s'enchaînent en un mouvement FLUIDE à vitesse
     # constante, seule la puissance change palier par palier.
     lines.append("G64")
-    lines.append(CMD_TOOL_COMP)
+    lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -3991,7 +4004,7 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
-        lines.append(CMD_TOOL_COMP)
+        lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
         lines.append("G0 Z{:.4f}".format(global_min_safe_z))
         lines.extend(build_frame_trace(
@@ -4041,7 +4054,7 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
-    lines.append(CMD_TOOL_COMP)
+    lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     if pre_gcode.strip():
         lines.append("(-- G-code personnalisé (avant) --)")
@@ -4321,7 +4334,7 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
-    lines.append(CMD_TOOL_COMP)
+    lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -4361,22 +4374,23 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
 
 
 # ==========================================================================
-# MODE : TEST DES OFFSETS X/Y DU LASER (VALIDATION tool.tbl T100)
+# MODE : TEST DES OFFSETS X/Y DU LASER (VALIDATION tool.tbl)
 # ==========================================================================
 def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
                                mill_depth=0.4, half_length=10.0, surface_z=0.0,
                                z_focus=7.0, laser_power=300.0, laser_feed=1000.0,
                                pre_gcode="", post_gcode="", quiet=False):
     """Job MIXTE fraise + laser pour valider les offsets X/Y de l'outil
-    laser (T100) dans tool.tbl : fraise une croix centrée sur X0 Y0, puis
+    laser (LASER_TOOL, T100 par défaut) dans tool.tbl : fraise une croix
+    centrée sur X0 Y0, puis
     grave une croix laser au MÊME X0 Y0 programmé. Si les offsets X/Y de
-    T100 sont justes, les deux croix se superposent ; sinon, l'écart entre
+    du laser sont justes, les deux croix se superposent ; sinon, l'écart entre
     les deux croix EST l'erreur d'offset (au pied à coulisse, écarts
     SIGNÉS dans le sens des axes machine) :
 
         dX = X croix laser - X croix fraisée
         dY = Y croix laser - Y croix fraisée
-        tool.tbl T100 :  X_nouveau = X_actuel - dX
+        tool.tbl (outil laser) :  X_nouveau = X_actuel - dX
                          Y_nouveau = Y_actuel - dY
 
     puis recharger la table d'outils (QtDragon) et relancer ce test pour
@@ -4386,8 +4400,8 @@ def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
     d'offset inversé dans tool.tbl.
 
     Contrairement aux autres modes de l'atelier (laser seul, prérequis
-    « T100 M6 fait avant » + G43 H100 en tête), ce job fait ses PROPRES
-    changements d'outil : T<fraise> M6 puis T100 M6, chacun avec le
+    « T<laser> M6 fait avant » + G43 en tête), ce job fait ses PROPRES
+    changements d'outil : T<fraise> M6 puis T<laser> M6, chacun avec le
     palpage auto et la pause M1 du toolchange de la machine -- monter la
     glissière laser pendant la pause du second. La croix fraisée tourne
     sur la broche VFD (M3 sans sélecteur, spindle.0), la croix laser sur
@@ -4401,10 +4415,10 @@ def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
     focale du nez laser au-dessus de la surface (cf. bande de calibration
     défocus). Lunettes laser obligatoires, surveillance permanente."""
     mill_tool = int(mill_tool)
-    if mill_tool == 100:
+    if mill_tool == int(LASER_TOOL):
         if not quiet:
             FreeCAD.Console.PrintWarning(
-                "Test d'offsets : l'outil fraise ne peut pas être T100 (réservé au laser).\n")
+                "Test d'offsets : l'outil fraise ne peut pas être T{} (réservé au laser).\n".format(int(LASER_TOOL)))
         return None
     if half_length <= 0:
         return None
@@ -4415,11 +4429,11 @@ def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
     plunge_feed = max(1.0, mill_feed / 2.0)
 
     lines = []
-    lines.append("(G-Code MIXTE fraise+laser - Test des offsets X/Y du laser T100)")
-    lines.append("(Croix fraisee T{} puis croix laser T100 au meme X0 Y0 programme)".format(mill_tool))
+    lines.append("(G-Code MIXTE fraise+laser - Test des offsets X/Y du laser T{})".format(int(LASER_TOOL)))
+    lines.append("(Croix fraisee T{} puis croix laser T{} au meme X0 Y0 programme)".format(mill_tool, int(LASER_TOOL)))
     lines.append("(Prerequis : zero X/Y au centre de la chute, fraise montee a la main)")
     lines.append("(Mesure : dX = X laser - X fraise ; dY = Y laser - Y fraise [signes])")
-    lines.append("(Correction tool.tbl T100 : X_nouveau = X_actuel - dX ; Y_nouveau = Y_actuel - dY)")
+    lines.append("(Correction tool.tbl T{} : X_nouveau = X_actuel - dX ; Y_nouveau = Y_actuel - dY)".format(int(LASER_TOOL)))
     lines.append("(Ecart Y ~2x l'offset ou refus soft-limit = signe d'offset inverse)")
     lines.append("(SECURITE : lunettes laser obligatoires, surveillance permanente)")
     lines.append("G21")
@@ -4448,10 +4462,10 @@ def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
     lines.append("G53 G0 Z0")
 
     # --- Étape 2 : croix LASER au même X0 Y0 programmé -------------------
-    lines.append("(===== Etape 2 : croix laser T100 =====)")
+    lines.append("(===== Etape 2 : croix laser T{} =====)".format(int(LASER_TOOL)))
     lines.append("(MSG, Monter la glissiere laser pendant la pause du changement d'outil)")
-    lines.append("T100 M6 (palpage decale auto du nez laser)")
-    lines.append("G43 H100")
+    lines.append("T{} M6 (palpage decale auto du nez laser)".format(int(LASER_TOOL)))
+    lines.append("G43 H{}".format(int(LASER_TOOL)))
     lines.append("M5 {sel} (securite avant armement)".format(sel=SPINDLE_SELECT))
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     lines.append("G0 X{:.4f} Y0".format(-half_length))
@@ -4470,7 +4484,7 @@ def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
         lines.append("(-- G-code personnalisé (après) --)")
         lines.append(post_gcode.strip())
 
-    lines.append("(MSG, Test termine - mesurer dX dY entre les 2 croix et corriger tool.tbl T100)")
+    lines.append("(MSG, Test termine - mesurer dX dY entre les 2 croix et corriger tool.tbl T{})".format(int(LASER_TOOL)))
     lines.append("M2")
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 

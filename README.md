@@ -26,7 +26,7 @@ Les modes sont regroupés par thème dans la barre d'outils et le menu. Le **Gui
 - **Grille de test puissance/vitesse** : job unique en grille de cellules à puissance/vitesse variables, avec étiquettes de repérage, **cadre net au foyer** autour de chaque cellule, optimisation du trajet par proximité, remplissage défocus et préréglages matériau. Champ **Hauteur (Z) de test** : par défaut la focale des Préférences, modifiable pour rejouer la même matrice puissance/vitesse à une autre hauteur (bec défocalisé) — on balaie plusieurs hauteurs proprement, une grille par hauteur.
 - **Test rampe puissance/vitesse (lignes)** : grave de longues lignes, **une par vitesse**, chacune parcourue avec une puissance qui **monte progressivement** de gauche (min) à droite (max). On lit d'un coup, à chaque vitesse, à partir de quelle puissance le trait commence à marquer et où il sature — le complément **continu** de la grille de cellules discrètes. Option **rampe de hauteur (Z)** : la hauteur du bec monte *aussi* le long de chaque ligne, de la focale (gauche) à une hauteur de fin (droite), en même temps que la puissance — pour tester à chaque vitesse l'effet combiné puissance croissante + défocus croissant. Étiquettes vitesse (F) à gauche, et **règle de graduation de puissance** sous la première ligne : traits verticaux à des valeurs de S rondes (bornes + paliers intermédiaires), valeurs écrites en **chiffres verticaux** (empilés) pour tenir dans l'espacement serré — on lit d'un coup la puissance sous n'importe quel point du trait.
 - **Bande de calibration défocus** : grave une rangée de courts traits à hauteurs de bec croissantes, étiquetés en **hauteur** (à gauche) et en **puissance** (à droite), avec **rampe de puissance** optionnelle — pour mesurer le foyer (trait le plus fin) et la divergence du point, et renseigner la calibration défocus une bonne fois.
-- **Test des offsets X/Y du laser** : job **mixte fraise + laser** qui fraise une croix centrée sur X0 Y0 puis grave une croix laser au même X0 Y0 programmé — l'écart mesuré entre les deux croix donne directement la correction des offsets X/Y de l'outil laser (T100) dans `tool.tbl` (X_nouveau = X_actuel − dX, idem Y). Seul mode de l'atelier à faire ses propres changements d'outil (`T<fraise> M6` puis `T100 M6`, glissière laser montée pendant la pause du second) ; les autres modes supposent le `T100 M6` déjà fait.
+- **Test des offsets X/Y du laser** : job **mixte fraise + laser** qui fraise une croix centrée sur X0 Y0 puis grave une croix laser au même X0 Y0 programmé — l'écart mesuré entre les deux croix donne directement la correction des offsets X/Y de l'outil laser dans `tool.tbl` (X_nouveau = X_actuel − dX, idem Y). Seul mode de l'atelier à faire ses propres changements d'outil (`T<fraise> M6` puis `T<laser> M6`, glissière laser montée pendant la pause du second) ; les autres modes supposent le `T<laser> M6` déjà fait.
 
 **Assemblage**
 - **Job combiné** : empile plusieurs opérations (marquage, découpe, grille de test) dans un seul fichier G-code avec un seul armement du laser, transition de sécurité anti-collision entre opérations.
@@ -120,19 +120,21 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
 
 - FreeCAD (testé sur la série 1.1)
 - Le laser doit accepter du G-code au format généré (voir `laser_core.py`) :
-  en-tête `G21`/`G90`/`G94`/`G43 H100`, armement unique par `M3 $1`
+  en-tête `G21`/`G90`/`G94`/`G43 H<outil laser>`, armement unique par `M3 $1`
   (faisceau à zéro), puissance par segment `S… $1`, `S0 $1` sur les
   rapides, désarmement `M5 $1`, arrêt de job propre au `M2`
 - **Prérequis machine avant de lancer un fichier généré** : avoir fait
-  `T100 M6` dans la session LinuxCNC. Le `G43 H100` de l'en-tête
-  applique les offsets X/Y et le Z palpé de l'outil laser (T100) à ce
+  `T<outil laser> M6` dans la session LinuxCNC (T100 par défaut,
+  réglable en Préférences). Le `G43 H<outil laser>` de l'en-tête
+  applique les offsets X/Y et le Z palpé de l'outil laser à ce
   moment-là ; sans lui, les coordonnées seraient interprétées en
   position broche et non nez laser (focus faux, X/Y décalés). Le
   prérequis est rappelé en commentaire dans chaque fichier généré.
 - Le sélecteur multi-broche `$1` et la compensation d'outil sont pensés
-  pour LinuxCNC (laser = spindle 1, outil T100). Pour un contrôleur qui
-  ne les supporte pas (GRBL...), changer le sélecteur broche dans les
-  Préférences de l'atelier et adapter `CMD_TOOL_COMP` dans
+  pour LinuxCNC (laser = spindle 1, outil T100 par défaut). Le sélecteur
+  broche, le numéro d'outil laser et l'échelle de puissance S se changent
+  dans les Préférences de l'atelier ; pour un contrôleur sans
+  compensation d'outil (GRBL...), adapter `cmd_tool_comp()` dans
   `laser_core.py`
 
 ## Installation
@@ -172,6 +174,8 @@ Les réglages généraux de l'atelier s'éditent depuis la commande **Préféren
 | Z de travail (foyer) par défaut | `settings.z_work_mm` | `8.5` | Z de travail **proposé par défaut** dans tous les panneaux (= focale du nez avec le zéro Z sur la surface). Chaque panneau reste modifiable et retient sa dernière valeur |
 | Marge de survol (marquage) par défaut | `settings.transit_margin_mm` | `0.5` | Marge de transit proposée par défaut dans les modes de marquage (`0` recommandé sur pièce plate) |
 | Sélecteur broche | `settings.spindle_select` | `$1` | Sélecteur multi-broche ajouté aux commandes `S`/`M3`/`M5` (LinuxCNC : laser = spindle 1) |
+| Numéro d'outil laser | `settings.laser_tool` | `100` | Numéro (tool.tbl) de l'outil laser : compensation `G43 H<n>` en tête de job (prérequis `T<n> M6`) et Test des offsets X/Y |
+| Échelle de puissance max (S) | `settings.s_max` | `1000` | Valeur `S` correspondant à la pleine puissance de la broche laser (config LinuxCNC). Fixe le maximum des champs de puissance et le plafond de la compensation de fluence |
 | Temporisation d'armement | `settings.arm_dwell_s` | `2.0` | Pause `G4` après l'armement (`M3` à puissance nulle), le temps que l'électronique du module soit prête |
 | Hauteur bec minimale | `settings.safe_min_nozzle_height_mm` | `1.5` | Butée de sécurité : le bec ne descend jamais plus près de la surface, quelle que soit la passe — garde-fou anti-collision |
 | Épaisseur max sans avertir | `settings.max_thickness_warning_mm` | `12.0` | Au-delà, avertissement à la génération d'une découpe (n'empêche pas de générer) |
@@ -186,7 +190,7 @@ Quelques constantes restent volontairement dans le code (`laser_core.py`) — le
 
 | Constante | Défaut | Rôle |
 |---|---|---|
-| `CMD_TOOL_COMP` | `G43 H100 (...)` | Ligne de compensation d'outil en tête de chaque job (offsets X/Y + Z palpé du T100). À adapter pour un contrôleur sans compensation d'outil (GRBL...) |
+| `cmd_tool_comp()` | `G43 H<outil laser> (...)` | Ligne de compensation d'outil en tête de chaque job (offsets X/Y + Z palpé de l'outil laser des Préférences). À adapter pour un contrôleur sans compensation d'outil (GRBL...) |
 | `FOCUS_TABLE` | `{2: 7, 3: 7, ...}` | Tableau constructeur épaisseur (mm) → hauteur de bec (mm) pour la découpe à plat (LT-80W). À refaire pour un autre module laser |
 | `CHAIN_TOLERANCE` | `0.001` mm | Tolérance de jonction entre segments pour le chaînage des contours |
 | `DISCRETIZE_DISTANCE` | `0.3` mm | Résolution de discrétisation des tracés (plus petit = plus fidèle mais G-code plus gros) |

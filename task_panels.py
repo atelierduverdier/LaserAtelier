@@ -466,7 +466,7 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
     inner.addRow(chk)
 
     ref_power_w = QtWidgets.QDoubleSpinBox()
-    ref_power_w.setRange(0, 1000)
+    ref_power_w.setRange(0, core.S_MAX)
     ref_power_w.setValue(ref_power)
     ref_power_w.setToolTip("Puissance (S) du réglage de référence connu bon.")
     inner.addRow("Réf. puissance (S) :", ref_power_w)
@@ -513,10 +513,10 @@ def _fluence_advice(spot, power, feed, w):
         if p_eff is None:
             return ("Référence invalide : renseigne puissance/vitesse/largeur.",
                     "#b0740a", None)
-        clipped = min(p_eff, 1000.0)
+        clipped = min(p_eff, core.S_MAX)
         txt = "Puissance compensée : S{:.0f}".format(clipped)
-        if p_eff > 1000.0:
-            txt += " (plafonnée à 1000 -- la référence demande S{:.0f}, hors échelle : ralentir ou point plus fin)".format(p_eff)
+        if p_eff > core.S_MAX:
+            txt += " (plafonnée à {:g} -- la référence demande S{:.0f}, hors échelle : ralentir ou point plus fin)".format(core.S_MAX, p_eff)
         txt += " -- pour un point de {:.2f} mm.".format(spot)
         return (txt, "#2e7d32", clipped)
     ratio = core.relative_line_fluence(power, feed, spot, ref_power, ref_feed, ref_spot)
@@ -535,7 +535,7 @@ def _fluence_advice(spot, power, feed, w):
         txt += " -- proche de la référence."
         color = "#2e7d32"
     if suggested is not None:
-        txt += " Pour l'égaler : S{:.0f}.".format(min(suggested, 1000.0))
+        txt += " Pour l'égaler : S{:.0f}.".format(min(suggested, core.S_MAX))
     return (txt, color, None)
 
 
@@ -560,7 +560,7 @@ class TaskPanelGuide:
         _bullet_list(form, [
             "1. CALIBRER (une fois) : Préférences (engrenage) -- focale, "
             "calibration du point via la Bande de calibration défocus, "
-            "offsets T100 via le Test des offsets.",
+            "offsets de l'outil laser via le Test des offsets.",
             "2. TESTER sur une chute : Grille de test ou Rampe "
             "puissance/vitesse pour trouver les bons réglages du matériau.",
             "3. MOTIF : Hachures 2D (remplissage), texte/forme (Gravure "
@@ -571,8 +571,8 @@ class TaskPanelGuide:
             "5. CADRAGE : chaque mode propose un fichier d'aperçu séparé "
             "(rectangle englobant, laser éteint) à lancer d'abord pour "
             "vérifier le positionnement.",
-            "6. GRAVER : sur LinuxCNC, faire T100 M6 AVANT de lancer le "
-            "fichier (rappelé dans chaque G-code généré).",
+            "6. GRAVER : sur LinuxCNC, faire T{} M6 AVANT de lancer le "
+            "fichier (rappelé dans chaque G-code généré).".format(int(core.LASER_TOOL)),
         ])
 
         _section(form, "Quel mode pour quoi ?", "sect_gcode.svg")
@@ -1040,7 +1040,7 @@ class TaskPanelFilledEngraving:
         form.addRow("Angle hachures :", self.spn_angle)
 
         self.spn_fill_power = QtWidgets.QDoubleSpinBox()
-        self.spn_fill_power.setRange(0, 1000)
+        self.spn_fill_power.setRange(0, core.S_MAX)
         self.spn_fill_power.setValue(500)
         self.spn_fill_power.setToolTip("Puissance (S) du remplissage.")
         form.addRow("Puissance remplissage :", self.spn_fill_power)
@@ -1078,7 +1078,7 @@ class TaskPanelFilledEngraving:
         form.addRow(self.chk_contour)
 
         self.spn_contour_power = QtWidgets.QDoubleSpinBox()
-        self.spn_contour_power.setRange(0, 1000)
+        self.spn_contour_power.setRange(0, core.S_MAX)
         self.spn_contour_power.setValue(300)
         self.spn_contour_power.setToolTip("Puissance (S) du contour.")
         form.addRow("Puissance contour :", self.spn_contour_power)
@@ -1817,7 +1817,7 @@ class TaskPanelDefocusCalibration:
         form.addRow("Espacement des traits :", self.spn_rowgap)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(300)
         self.spn_power.setToolTip(
             "Puissance (S) du 1er trait (le plus bas, près du foyer).\n"
@@ -1826,7 +1826,7 @@ class TaskPanelDefocusCalibration:
         form.addRow("Puissance 1er trait (bas) :", self.spn_power)
 
         self.spn_power_end = QtWidgets.QDoubleSpinBox()
-        self.spn_power_end.setRange(0, 1000)
+        self.spn_power_end.setRange(0, core.S_MAX)
         self.spn_power_end.setValue(800)
         self.spn_power_end.setToolTip(
             "Puissance (S) du DERNIER trait (le plus défocalisé). Plus haute\n"
@@ -1862,7 +1862,7 @@ class TaskPanelDefocusCalibration:
         form.addRow(self.chk_power_labels)
 
         self.spn_label_power = QtWidgets.QDoubleSpinBox()
-        self.spn_label_power.setRange(0, 1000)
+        self.spn_label_power.setRange(0, core.S_MAX)
         self.spn_label_power.setValue(300)
         self.spn_label_power.setToolTip("Puissance (S) des étiquettes.")
         form.addRow("Puissance étiquettes :", self.spn_label_power)
@@ -2069,7 +2069,7 @@ class TaskPanelPowerRamp:
 
         _section(form, "Rampe de puissance", "sect_power.svg")
         self.spn_power_min = QtWidgets.QDoubleSpinBox()
-        self.spn_power_min.setRange(0, 1000)
+        self.spn_power_min.setRange(0, core.S_MAX)
         self.spn_power_min.setValue(0)
         self.spn_power_min.setToolTip(
             "Puissance (S) au DÉBUT de chaque ligne (gauche). 0 = la ligne\n"
@@ -2078,7 +2078,7 @@ class TaskPanelPowerRamp:
         form.addRow("Puissance min (gauche) :", self.spn_power_min)
 
         self.spn_power_max = QtWidgets.QDoubleSpinBox()
-        self.spn_power_max.setRange(0, 1000)
+        self.spn_power_max.setRange(0, core.S_MAX)
         self.spn_power_max.setValue(800)
         self.spn_power_max.setToolTip("Puissance (S) à la FIN de chaque ligne (droite).")
         form.addRow("Puissance max (droite) :", self.spn_power_max)
@@ -2137,7 +2137,7 @@ class TaskPanelPowerRamp:
         form.addRow(self.chk_labels)
 
         self.spn_label_power = QtWidgets.QDoubleSpinBox()
-        self.spn_label_power.setRange(0, 1000)
+        self.spn_label_power.setRange(0, core.S_MAX)
         self.spn_label_power.setValue(300)
         self.spn_label_power.setToolTip(
             "Puissance (S) qui GRAVE les étiquettes elles-mêmes (les F à\n"
@@ -2290,7 +2290,7 @@ class TaskPanelPowerRamp:
 
 
 # ==========================================================================
-# MODE : TEST DES OFFSETS X/Y DU LASER (T100)
+# MODE : TEST DES OFFSETS X/Y DU LASER
 # ==========================================================================
 class TaskPanelOffsetTest:
     def __init__(self):
@@ -2303,8 +2303,8 @@ class TaskPanelOffsetTest:
         _intro(form,
                "Job MIXTE fraise + laser : fraise une croix sur X0 Y0, puis "
                "grave une croix laser au même X0 Y0 programmé. L'écart mesuré "
-               "entre les deux croix = l'erreur d'offsets X/Y du T100 dans "
-               "tool.tbl. Lunettes laser obligatoires.",
+               "entre les deux croix = l'erreur d'offsets X/Y du T{} dans "
+               "tool.tbl. Lunettes laser obligatoires.".format(int(core.LASER_TOOL)),
                "Correction : X_nouveau = X_actuel - dX (idem Y), avec dX = X "
                "laser - X fraisé (écarts signés, sens machine). AVANT de "
                "lancer : chute de bois sur le martyre (prévoir LARGE si un "
@@ -2343,7 +2343,7 @@ class TaskPanelOffsetTest:
         self.spn_mill_tool.setValue(2)
         self.spn_mill_tool.setToolTip(
             "Numéro (tool.tbl) de la fraise à graver/fraise fine montée.\n"
-            "Le job fait T<n> M6 (palpage auto) -- pas T100, réservé au laser.")
+            "Le job fait T<n> M6 (palpage auto) -- pas T{}, réservé au laser.".format(int(core.LASER_TOOL)))
         form.addRow("Numéro d'outil fraise :", self.spn_mill_tool)
 
         self.spn_rpm = QtWidgets.QDoubleSpinBox()
@@ -2387,10 +2387,10 @@ class TaskPanelOffsetTest:
         form.addRow("Focale laser :", self.spn_zfocus)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(300)
         self.spn_power.setToolTip(
-            "Puissance (S, 0-1000) de la croix laser. Juste de quoi marquer\n"
+            "Puissance (S, 0-{:g}) de la croix laser. Juste de quoi marquer\n".format(core.S_MAX) +
             "net : une brûlure trop large fausserait le pointage.")
         form.addRow("Puissance laser :", self.spn_power)
 
@@ -2605,7 +2605,7 @@ class TaskPanelHalftone:
         form.addRow("Tramage :", self.combo_mode)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(500)
         self.spn_power.setToolTip("Puissance (S) des pulses.")
         form.addRow("Puissance :", self.spn_power)
@@ -3023,7 +3023,7 @@ class TaskPanelTestGrid:
         form.addRow("Mode de test :", self.combo_mode)
 
         self.spn_power_min = QtWidgets.QDoubleSpinBox()
-        self.spn_power_min.setRange(0, 1000)
+        self.spn_power_min.setRange(0, core.S_MAX)
         self.spn_power_min.setValue(200)
         self.spn_power_min.setToolTip(
             "Puissance (valeur S) de la 1ère colonne (X minimal) de la\n"
@@ -3031,7 +3031,7 @@ class TaskPanelTestGrid:
         form.addRow("Puissance min (S) :", self.spn_power_min)
 
         self.spn_power_max = QtWidgets.QDoubleSpinBox()
-        self.spn_power_max.setRange(0, 1000)
+        self.spn_power_max.setRange(0, core.S_MAX)
         self.spn_power_max.setValue(800)
         self.spn_power_max.setToolTip(
             "Puissance (valeur S) de la dernière colonne (X maximal) de\n"
@@ -3236,7 +3236,7 @@ class TaskPanelTestGrid:
         form.addRow(self.chk_labels)
 
         self.spn_label_power = QtWidgets.QDoubleSpinBox()
-        self.spn_label_power.setRange(0, 1000)
+        self.spn_label_power.setRange(0, core.S_MAX)
         self.spn_label_power.setValue(300)
         self.spn_label_power.setToolTip(
             "Puissance (valeur S) FIXE pour graver les étiquettes --\n"
@@ -3270,7 +3270,7 @@ class TaskPanelTestGrid:
 
 
         self.spn_border_power = QtWidgets.QDoubleSpinBox()
-        self.spn_border_power.setRange(0, 1000)
+        self.spn_border_power.setRange(0, core.S_MAX)
         self.spn_border_power.setValue(300)
         self.spn_border_power.setToolTip(
             "Puissance (valeur S) FIXE du cadre -- séparée des puissances\n"
@@ -3779,13 +3779,13 @@ class TaskPanelCurved:
         self._shade_picker = _make_shade_picker(form, _apply_shade)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(0)
         self.spn_power.setToolTip(
-            "Puissance du laser pendant la gravure (valeur S, 0-1000 selon\n"
+            "Puissance du laser pendant la gravure (valeur S, selon\n"
             "l'échelle de la machine). 0 = laser éteint -- utile pour\n"
             "vérifier le trajet (avec l'aperçu cadrage) sans marquer.")
-        form.addRow("Puissance (S 0-1000) :", self.spn_power)
+        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
 
         self.spn_feed = QtWidgets.QDoubleSpinBox()
         self.spn_feed.setRange(1, 20000)
@@ -4275,13 +4275,13 @@ class TaskPanelFlat:
         form.addRow(self.btn_delete_preset)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(0)
         self.spn_power.setToolTip(
-            "Puissance du laser pendant la découpe (valeur S, 0-1000 selon\n"
+            "Puissance du laser pendant la découpe (valeur S, selon\n"
             "l'échelle de la machine). Fixe pour toutes les passes, sauf si\n"
             "la rampe de puissance ci-dessous est activée.")
-        form.addRow("Puissance (S 0-1000) :", self.spn_power)
+        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
 
         self.spn_feed = QtWidgets.QDoubleSpinBox()
         self.spn_feed.setRange(1, 20000)
@@ -4380,7 +4380,7 @@ class TaskPanelFlat:
         form.addRow(self.chk_power_ramp)
 
         self.spn_power_end = QtWidgets.QDoubleSpinBox()
-        self.spn_power_end.setRange(0, 1000)
+        self.spn_power_end.setRange(0, core.S_MAX)
         self.spn_power_end.setValue(0)
         self.spn_power_end.setEnabled(False)
         self.spn_power_end.setToolTip(
@@ -4791,13 +4791,13 @@ class TaskPanelCurvedCut:
         form.addRow(self.btn_delete_preset)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(0)
         self.spn_power.setToolTip(
-            "Puissance du laser pendant la découpe (valeur S, 0-1000 selon\n"
+            "Puissance du laser pendant la découpe (valeur S, selon\n"
             "l'échelle de la machine). Fixe pour toutes les passes, sauf si\n"
             "la rampe de puissance ci-dessous est activée.")
-        form.addRow("Puissance (S 0-1000) :", self.spn_power)
+        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
 
         self.spn_feed = QtWidgets.QDoubleSpinBox()
         self.spn_feed.setRange(1, 20000)
@@ -4869,7 +4869,7 @@ class TaskPanelCurvedCut:
         form.addRow(self.chk_power_ramp)
 
         self.spn_power_end = QtWidgets.QDoubleSpinBox()
-        self.spn_power_end.setRange(0, 1000)
+        self.spn_power_end.setRange(0, core.S_MAX)
         self.spn_power_end.setValue(0)
         self.spn_power_end.setEnabled(False)
         self.spn_power_end.setToolTip(
@@ -5159,9 +5159,9 @@ class _OperationDialogCurved(QtWidgets.QDialog):
         form.addRow("Nom de l'opération :", self.txt_label)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(0)
-        form.addRow("Puissance (S 0-1000) :", self.spn_power)
+        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
 
         self.spn_feed = QtWidgets.QDoubleSpinBox()
         self.spn_feed.setRange(1, 20000)
@@ -5206,9 +5206,9 @@ class _OperationDialogCurvedCut(QtWidgets.QDialog):
         form.addRow("Nom de l'opération :", self.txt_label)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(0)
-        form.addRow("Puissance (S 0-1000) :", self.spn_power)
+        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
 
         self.spn_feed = QtWidgets.QDoubleSpinBox()
         self.spn_feed.setRange(1, 20000)
@@ -5295,9 +5295,9 @@ class _OperationDialogFlat(QtWidgets.QDialog):
         form.addRow("Nom de l'opération :", self.txt_label)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
-        self.spn_power.setRange(0, 1000)
+        self.spn_power.setRange(0, core.S_MAX)
         self.spn_power.setValue(0)
-        form.addRow("Puissance (S 0-1000) :", self.spn_power)
+        form.addRow("Puissance (S 0-{:g}) :".format(core.S_MAX), self.spn_power)
 
         self.spn_feed = QtWidgets.QDoubleSpinBox()
         self.spn_feed.setRange(1, 20000)
@@ -5378,12 +5378,12 @@ class _OperationDialogTestGrid(QtWidgets.QDialog):
         self.combo_mode.currentIndexChanged.connect(lambda idx: self.combo_filltype.setEnabled(idx == 0))
 
         self.spn_power_min = QtWidgets.QDoubleSpinBox()
-        self.spn_power_min.setRange(0, 1000)
+        self.spn_power_min.setRange(0, core.S_MAX)
         self.spn_power_min.setValue(200)
         form.addRow("Puissance min :", self.spn_power_min)
 
         self.spn_power_max = QtWidgets.QDoubleSpinBox()
-        self.spn_power_max.setRange(0, 1000)
+        self.spn_power_max.setRange(0, core.S_MAX)
         self.spn_power_max.setValue(800)
         form.addRow("Puissance max :", self.spn_power_max)
 
@@ -5443,7 +5443,7 @@ class _OperationDialogTestGrid(QtWidgets.QDialog):
         form.addRow(self.chk_labels)
 
         self.spn_label_power = QtWidgets.QDoubleSpinBox()
-        self.spn_label_power.setRange(0, 1000)
+        self.spn_label_power.setRange(0, core.S_MAX)
         self.spn_label_power.setValue(300)
         form.addRow("Puissance étiquettes :", self.spn_label_power)
 
@@ -5899,6 +5899,29 @@ class TaskPanelSettings:
             "premier trait.")
         form.addRow("Temporisation d'armement :", self.spn_dwell)
 
+        self.spn_laser_tool = QtWidgets.QSpinBox()
+        self.spn_laser_tool.setRange(1, 999)
+        self.spn_laser_tool.setValue(int(settings["laser_tool"]))
+        self.spn_laser_tool.setToolTip(
+            "Numéro (tool.tbl) de l'OUTIL LASER sur ta machine. Utilisé\n"
+            "par la compensation G43 H<n> en tête de chaque job (prérequis\n"
+            "T<n> M6) et par le Test des offsets X/Y. 100 par défaut --\n"
+            "à adapter si ton laser est un autre outil de la table.")
+        form.addRow("Numéro d'outil laser :", self.spn_laser_tool)
+
+        self.spn_s_max = QtWidgets.QDoubleSpinBox()
+        self.spn_s_max.setRange(1.0, 100000.0)
+        self.spn_s_max.setDecimals(0)
+        self.spn_s_max.setValue(settings["s_max"])
+        self.spn_s_max.setToolTip(
+            "Échelle de puissance de la broche laser : la valeur S qui\n"
+            "correspond à la PLEINE puissance sur ta machine (dépend de la\n"
+            "config broche LinuxCNC ; 1000 par défaut). Fixe le maximum de\n"
+            "tous les champs de puissance de l'atelier et le plafond de la\n"
+            "compensation de fluence. Les panneaux ouverts doivent être\n"
+            "rouverts pour voir la nouvelle plage.")
+        form.addRow("Échelle de puissance max (S) :", self.spn_s_max)
+
         self.spn_z_max_feed = QtWidgets.QDoubleSpinBox()
         self.spn_z_max_feed.setRange(10.0, 20000.0)
         self.spn_z_max_feed.setDecimals(0)
@@ -6092,6 +6115,8 @@ class TaskPanelSettings:
             "gcode_dir": self.edt_gcode_dir.text().strip(),
             "spindle_select": self.edt_spindle.text().strip(),
             "arm_dwell_s": self.spn_dwell.value(),
+            "laser_tool": self.spn_laser_tool.value(),
+            "s_max": self.spn_s_max.value(),
             "rapid_feed_mm_min": self.spn_rapid.value(),
             "z_max_feed_mm_min": self.spn_z_max_feed.value(),
             "accel_mm_s2": self.spn_accel.value(),
