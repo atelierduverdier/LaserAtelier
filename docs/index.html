@@ -198,6 +198,15 @@
   kbd{font:inherit; font-size:.85em; background:var(--bg-3); border:1px solid var(--line-2);
     border-bottom-width:2px; border-radius:6px; padding:1px 7px}
 
+  /* schémas : couleurs fixes (slate/orange) -> fond clair fixe, lisible dans les 2 thèmes */
+  .diagram{background:#fdfdfd; border:1px solid var(--line); border-radius:12px;
+    padding:16px 18px; margin:8px 0; box-shadow:var(--shadow)}
+  .diagram img{display:block; width:100%; max-width:520px; height:auto; margin:0 auto}
+  .diagram figcaption{text-align:center; color:#5a626e; font-size:.85rem; margin-top:10px}
+  .diagram figcaption code{background:#eef0f3; color:#2f3540}
+  .diagram-row{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:18px 0}
+  @media(max-width:640px){ .diagram-row{grid-template-columns:1fr} }
+
   /* ---------- footer ---------- */
   footer{padding:44px 0 60px; color:var(--fg-2)}
   .foot-grid{display:flex; flex-wrap:wrap; gap:24px; align-items:center; justify-content:space-between}
@@ -512,6 +521,17 @@
   <h3>Le point &amp; le modèle de défocus</h3>
   <p>Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un <b>cône de divergence linéaire</b> calibré à partir de deux mesures réelles — le point au foyer, puis le point à un défocus connu — jamais deviné. La <b>Bande de calibration défocus</b> fournit ces mesures ; on les saisit une seule fois dans les Préférences («&nbsp;point au foyer&nbsp;», «&nbsp;défocus de test&nbsp;», «&nbsp;point au défocus de test&nbsp;») et tous les modes concernés les réutilisent. Le remplissage est automatiquement <b>rentré du rayon de point</b> pour rester à l'intérieur du contour.</p>
 
+  <div class="diagram-row">
+    <figure class="diagram" style="margin:0">
+      <img src="assets/diag_defocus.svg" alt="Schéma : plus le bec remonte, plus le point s'élargit">
+      <figcaption>Remonter le bec (défocus) élargit le point : c'est ce qui permet de noircir en un passage.</figcaption>
+    </figure>
+    <figure class="diagram" style="margin:0">
+      <img src="assets/diag_filled.svg" alt="Schéma : remplissage défocus rentré du bord puis contour net au foyer">
+      <figcaption>Gravure remplie : remplissage en défocus rentré du bord, puis contour repassé net au foyer.</figcaption>
+    </figure>
+  </div>
+
   <h3>Puissance vs défocus (la fluence)</h3>
   <p>Défocaliser étale la <b>même</b> puissance sur un point plus large : l'énergie déposée par unité de surface — la <b>fluence</b> — baisse, et sous un seuil le trait ne marque plus. Pour un trait balayé à la vitesse <code>v</code>, avec un point de diamètre <code>d</code> et une puissance <code>P</code>, la fluence vaut&nbsp;:</p>
   <div class="callout note" style="text-align:center;font-size:1.15rem">
@@ -530,6 +550,11 @@
       </tbody>
     </table>
   </div>
+  <figure class="diagram">
+    <img src="assets/diag_offset.svg" alt="Schéma : écart entre la croix fraisée et la croix laser = erreur d'offset">
+    <figcaption>L'écart entre la croix fraisée (broche) et la croix laser au même point programmé donne la correction à porter dans <code>tool.tbl</code>.</figcaption>
+  </figure>
+
   <div class="callout warn">
     <span class="ci">Prévoir large</span>
     <p>Si un signe d'offset est faux, la croix laser peut partir loin. Faites le test sur une chute large, lunettes laser obligatoires. C'est le seul mode qui fait ses propres changements d'outil (<code>T&lt;fraise&gt; M6</code> puis <code>T&lt;laser&gt; M6</code>).</p>
