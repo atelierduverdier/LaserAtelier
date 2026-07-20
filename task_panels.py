@@ -2762,9 +2762,12 @@ class TaskPanelHalftone:
         rows = max(2, int(round(cols * img.height() / float(img.width()))))
         return cols, rows
 
-    def _build_rows(self, silent=False):
+    def _build_rows(self, silent=False, max_cells=None):
         """Grille de noirceur 0..1 (lignes haut -> bas) depuis l'image, ou
-        None (message d'erreur sauf si silent)."""
+        None (message d'erreur sauf si silent). max_cells : plafonne la
+        grille en réduisant cols/rows proportionnellement -- utilisé par
+        l'APERÇU seulement (rendu représentatif à coût borné) ; la
+        génération réelle utilise toujours la grille exacte."""
         img = self._load_image()
         if img is None:
             if not silent:
@@ -2772,6 +2775,10 @@ class TaskPanelHalftone:
                     self.form, "Erreur", "Choisis d'abord une image valide.")
             return None
         cols, rows = self._grid_size(img)
+        if max_cells and cols * rows > max_cells:
+            factor = (max_cells / float(cols * rows)) ** 0.5
+            cols = max(2, int(cols * factor))
+            rows = max(2, int(rows * factor))
         scaled = img.scaled(cols, rows, QtCore.Qt.IgnoreAspectRatio,
                             QtCore.Qt.SmoothTransformation)
         scaled = scaled.convertToFormat(QtGui.QImage.Format_Grayscale8)
@@ -2807,23 +2814,21 @@ class TaskPanelHalftone:
                 cols, rows, (cols - 1) * pitch, (rows - 1) * pitch, cols * rows))
         self._update_halftone_preview()
 
-    _PREVIEW_MAX_CELLS = 250000  # au-delà, le tramage d'aperçu deviendrait lent
+    _PREVIEW_MAX_CELLS = 250000  # plafond du tramage d'APERÇU (coût borné)
 
     def _update_halftone_preview(self):
         """Rendu du tramage dans le panneau : une image pixel-par-point
         (noir = point gravé), agrandie SANS lissage pour que la trame
-        reste visible -- exactement les points que le job gravera."""
-        darkness = self._build_rows(silent=True)
+        reste visible. Sur une trame très fine, l'aperçu est calculé sur
+        une grille RÉDUITE (représentatif, coût borné) -- il reste
+        toujours affiché ; la génération réelle, elle, utilise la grille
+        exacte."""
+        darkness = self._build_rows(silent=True, max_cells=self._PREVIEW_MAX_CELLS)
         if darkness is None:
             self.lbl_halftone_preview.setVisible(False)
             return
         h = len(darkness)
         w = len(darkness[0])
-        if h * w > self._PREVIEW_MAX_CELLS:
-            self.lbl_halftone_preview.setText(
-                "(aperçu tramé désactivé : trame très fine, {} points)".format(h * w))
-            self.lbl_halftone_preview.setVisible(True)
-            return
         mode = "duree" if self.combo_mode.currentIndex() == 1 else "diffusion"
         white = self.spn_white.value() / 100.0
         buf = bytearray(w * h)
