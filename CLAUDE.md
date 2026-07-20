@@ -139,10 +139,23 @@ via square inset or `Part.Face.makeOffset2D(-r)` with graceful fallback for thin
 
 Single JSON file `laser_atelier_config.json` in FreeCAD's user app-data dir
 (`load_config`/`save_config`). Holds: material `presets_*`, `nozzle` profile, per-mode pre/post
-G-code, and a `settings` block. User settings are a registry `_USER_SETTINGS` (JSON key → module
-global → cast → validator); `_apply_settings_config()` runs at the **bottom of the module** to
-override globals (`GCODE_DIR`, `RAPID_FEED_MM_MIN`, `TRAVEL_CLEARANCE_MM`, `SPINDLE_SELECT`, nozzle,
-etc.). Invalid values are warned and the default kept — mirror this policy for new settings.
+G-code, a `settings` block, and laser profiles (`lasers` + `active_laser`). User settings are a
+registry `_USER_SETTINGS` (JSON key → module global → cast → validator); `_apply_settings_config()`
+runs at the **bottom of the module** to override globals (`GCODE_DIR`, `RAPID_FEED_MM_MIN`,
+`TRAVEL_CLEARANCE_MM`, `SPINDLE_SELECT`, nozzle, etc.). Invalid values are warned and the default
+kept — mirror this policy for new settings.
+
+**Laser profiles (multi-module).** `lasers = {"<id>": {"name", "settings", "nozzle"}}` + `active_laser`
+let the workbench carry a separate calibration per physical laser (e.g. blue 450 nm on T100 + IR
+1064 nm on T101). `PER_LASER_KEYS` (laser_tool, s_max, frame_power, the spot-calibration trio,
+z_work_mm) + the nozzle are per-laser; everything else in `settings` is machine-global. The active
+laser's per-laser values are **mirrored into the top-level `settings`/`nozzle`** so all existing code
+reads them unchanged. `set_active_laser`/`add_laser`(clone)/`rename_laser`/`delete_laser` manage them;
+`_ensure_lasers` migrates a flat config by seeding a "Bleu 450 nm" profile from current values (lazy —
+persisted by `ensure_laser_profiles()`, called from the Settings panel). `save_settings`/`save_nozzle`
+also mirror the per-laser subset into the active profile. **Still global (next step):** the nuancier
+(`shades`) and material `presets_*` are not yet per-laser. The Settings panel has a "Laser actif"
+section (combo + clone/rename/delete) that re-applies + reloads fields on switch.
 
 ### Vector label font
 

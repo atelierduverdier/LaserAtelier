@@ -362,13 +362,23 @@ def current_settings():
 
 def save_settings(new_settings):
     """Écrit les réglages (clés JSON de _USER_SETTINGS) dans la config et
-    les applique immédiatement -- pas besoin de redémarrer FreeCAD."""
+    les applique immédiatement -- pas besoin de redémarrer FreeCAD. Les
+    réglages PAR laser (PER_LASER_KEYS) sont aussi recopiés dans le profil
+    laser actif, pour qu'il reste à jour."""
     cfg = load_config()
+    _ensure_lasers(cfg)
     stored = cfg.get("settings")
     if not isinstance(stored, dict):
         stored = {}
     stored.update(new_settings)
     cfg["settings"] = stored
+    prof = cfg.get("lasers", {}).get(cfg.get("active_laser"))
+    if isinstance(prof, dict):
+        prof_settings = prof.get("settings") or {}
+        for k in PER_LASER_KEYS:
+            if k in new_settings:
+                prof_settings[k] = new_settings[k]
+        prof["settings"] = prof_settings
     save_config(cfg)
     _apply_settings_config()
 
@@ -383,13 +393,183 @@ def current_nozzle():
 
 def save_nozzle(bottom_diameter_mm, top_diameter_mm, height_mm):
     """Écrit le profil de bec dans la config (clé "nozzle", même format
-    que la surcharge manuelle documentée plus bas) et le réapplique."""
+    que la surcharge manuelle documentée plus bas) et le réapplique. Le
+    profil est aussi recopié dans le profil laser actif."""
     cfg = load_config()
-    cfg["nozzle"] = {"bottom_diameter_mm": bottom_diameter_mm,
-                     "top_diameter_mm": top_diameter_mm,
-                     "height_mm": height_mm}
+    _ensure_lasers(cfg)
+    noz = {"bottom_diameter_mm": bottom_diameter_mm,
+           "top_diameter_mm": top_diameter_mm,
+           "height_mm": height_mm}
+    cfg["nozzle"] = noz
+    prof = cfg.get("lasers", {}).get(cfg.get("active_laser"))
+    if isinstance(prof, dict):
+        prof["nozzle"] = dict(noz)
     save_config(cfg)
     _apply_nozzle_config()
+
+
+# ==========================================================================
+# PROFILS LASER (multi-module)
+# ==========================================================================
+# Un « profil laser » regroupe les réglages PROPRES à un module laser donné
+# (numéro d'outil, calibration du point, Z de travail, échelle S, puissance
+# de cadrage, profil du bec). Les réglages de NIVEAU MACHINE (dossier G-code,
+# sélecteur broche, cinématique, sécurité) restent communs à tous les lasers.
+# Objectif : pouvoir ajouter un 2e module (ex. un IR 1064 nm en T101 à côté
+# du bleu en T100) et basculer d'un clic. Le laser actif est reflété dans les
+# clés « settings »/« nozzle » de la config (valeurs effectives), de sorte
+# que tout le reste du code continue de les lire sans rien changer.
+# NOTE : le nuancier et les préréglages matériau restent pour l'instant
+# communs -- les rattacher au laser actif est le développement suivant.
+PER_LASER_KEYS = ("laser_tool", "s_max", "spot_focus_mm", "spot_test_defocus_mm",
+                  "spot_test_diameter_mm", "z_work_mm", "frame_power")
+
+
+def _laser_slug(name):
+    """Identifiant court ASCII (clé JSON) à partir d'un nom libre."""
+    s = "".join(c.lower() if (c.isalnum() and ord(c) < 128) else "_" for c in name)
+    s = "_".join(p for p in s.split("_") if p)
+    return s or "laser"
+
+
+def _current_per_laser(cfg):
+    """(réglages PAR laser, profil de bec) effectifs -- pour amorcer un
+    profil à partir de l'état courant."""
+    settings = cfg.get("settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    key_to_global = {jk: gn for jk, gn, _, _ in _USER_SETTINGS}
+    per = {}
+    for k in PER_LASER_KEYS:
+        per[k] = settings[k] if k in settings else globals()[key_to_global[k]]
+    noz = cfg.get("nozzle")
+    if not isinstance(noz, dict):
+        noz = current_nozzle()
+    return per, dict(noz)
+
+
+def _ensure_lasers(cfg):
+    """Migre une config à plat vers la structure à profils : crée un profil
+    « Bleu 450 nm » à partir des réglages actuels si « lasers » est absent.
+    Mute cfg, renvoie True si une modification a été faite (à sauvegarder)."""
+    lasers = cfg.get("lasers")
+    if isinstance(lasers, dict) and lasers:
+        if cfg.get("active_laser") not in lasers:
+            cfg["active_laser"] = next(iter(lasers))
+            return True
+        return False
+    per, noz = _current_per_laser(cfg)
+    cfg["lasers"] = {"bleu": {"name": "Bleu 450 nm", "settings": per, "nozzle": noz}}
+    cfg["active_laser"] = "bleu"
+    return True
+
+
+def ensure_laser_profiles():
+    """Garantit la présence des profils laser dans la config (migration
+    idempotente) et persiste si besoin. À appeler à l'ouverture des
+    Préférences."""
+    cfg = load_config()
+    if _ensure_lasers(cfg):
+        save_config(cfg)
+
+
+def laser_profiles():
+    """Liste ordonnée [(id, nom), ...] des profils laser."""
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    return [(lid, prof.get("name", lid)) for lid, prof in cfg["lasers"].items()]
+
+
+def active_laser_id():
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    return cfg.get("active_laser")
+
+
+def active_laser_name():
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    lid = cfg.get("active_laser")
+    return cfg["lasers"].get(lid, {}).get("name", lid)
+
+
+def set_active_laser(laser_id):
+    """Rend un profil actif : recopie ses réglages PAR laser dans les
+    réglages effectifs (settings + nozzle) et les applique. True si OK."""
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    prof = cfg["lasers"].get(laser_id)
+    if prof is None:
+        return False
+    settings = cfg.get("settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    settings.update(prof.get("settings", {}))
+    cfg["settings"] = settings
+    if isinstance(prof.get("nozzle"), dict):
+        cfg["nozzle"] = dict(prof["nozzle"])
+    cfg["active_laser"] = laser_id
+    save_config(cfg)
+    _apply_settings_config()
+    _apply_nozzle_config()
+    return True
+
+
+def add_laser(name, clone_from=None):
+    """Crée un profil laser en copiant les réglages PAR laser de clone_from
+    (ou du laser actif si None). Ne bascule PAS dessus. Renvoie son id."""
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    lasers = cfg["lasers"]
+    src = clone_from if clone_from in lasers else cfg.get("active_laser")
+    src_prof = lasers.get(src, {})
+    if src_prof.get("settings"):
+        per = dict(src_prof["settings"])
+        noz = dict(src_prof.get("nozzle") or current_nozzle())
+    else:
+        per, noz = _current_per_laser(cfg)
+    lid = _laser_slug(name)
+    base, n = lid, 2
+    while lid in lasers:
+        lid = "{}_{}".format(base, n)
+        n += 1
+    lasers[lid] = {"name": name, "settings": per, "nozzle": noz}
+    save_config(cfg)
+    return lid
+
+
+def rename_laser(laser_id, name):
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    if laser_id in cfg["lasers"]:
+        cfg["lasers"][laser_id]["name"] = name
+        save_config(cfg)
+        return True
+    return False
+
+
+def delete_laser(laser_id):
+    """Supprime un profil (refusé sur le dernier restant). Si c'était le
+    laser actif, bascule sur un autre et applique son profil."""
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    lasers = cfg["lasers"]
+    if laser_id not in lasers or len(lasers) <= 1:
+        return False
+    del lasers[laser_id]
+    if cfg.get("active_laser") == laser_id:
+        new_active = next(iter(lasers))
+        cfg["active_laser"] = new_active
+        prof = lasers[new_active]
+        settings = cfg.get("settings") or {}
+        settings.update(prof.get("settings", {}))
+        cfg["settings"] = settings
+        if isinstance(prof.get("nozzle"), dict):
+            cfg["nozzle"] = dict(prof["nozzle"])
+    save_config(cfg)
+    _apply_settings_config()
+    _apply_nozzle_config()
+    return True
 
 CHAIN_TOLERANCE = 0.001        # mm : jonction exacte entre segments d'origine
 DISCRETIZE_DISTANCE = 0.3      # mm : résolution de tracé (Distance, pas

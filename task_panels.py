@@ -5808,10 +5808,48 @@ class TaskPanelSettings:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
+        core.ensure_laser_profiles()
         settings = core.current_settings()
         nozzle = core.current_nozzle()
 
         _panel_header(form, "settings.svg", "Préférences Atelier Laser")
+
+        _section(form, "Laser actif", "sect_options.svg")
+        _intro(form,
+               "Chaque laser a son propre profil : numéro d'outil, calibration "
+               "du point, Z de travail, échelle de puissance et profil du bec. "
+               "Change de laser pour retrouver ses réglages.",
+               "Les réglages MACHINE (dossier, broche, cinématique, sécurité) "
+               "restent communs à tous les lasers. Pour ajouter un module (ex. "
+               "un IR 1064 nm en T101 à côté du bleu en T100) : « Nouveau "
+               "(cloner) » copie le laser courant, tu ajustes puis tu valides. "
+               "Changer de laser dans la liste applique aussitôt son profil "
+               "(valide d'abord si tu avais des modifications en cours). Le "
+               "nuancier et les préréglages matériau restent pour l'instant "
+               "communs à tous les lasers.")
+        self.combo_laser = QtWidgets.QComboBox()
+        self.combo_laser.setToolTip(
+            "Laser dont les réglages sont affichés et édités ci-dessous.")
+        self._refresh_laser_combo()
+        self.combo_laser.currentIndexChanged.connect(self._on_laser_changed)
+        form.addRow("Laser :", self.combo_laser)
+
+        laser_btns = QtWidgets.QWidget()
+        laser_btns_l = QtWidgets.QHBoxLayout(laser_btns)
+        laser_btns_l.setContentsMargins(0, 0, 0, 0)
+        btn_new_laser = QtWidgets.QPushButton("Nouveau (cloner)")
+        btn_new_laser.setToolTip(
+            "Crée un laser en copiant les réglages du laser courant\n"
+            "(point de départ pour un 2e module à ajuster).")
+        btn_new_laser.clicked.connect(self._new_laser)
+        btn_rename_laser = QtWidgets.QPushButton("Renommer")
+        btn_rename_laser.clicked.connect(self._rename_laser)
+        btn_del_laser = QtWidgets.QPushButton("Supprimer")
+        btn_del_laser.clicked.connect(self._delete_laser)
+        laser_btns_l.addWidget(btn_new_laser)
+        laser_btns_l.addWidget(btn_rename_laser)
+        laser_btns_l.addWidget(btn_del_laser)
+        form.addRow("", laser_btns)
 
         _section(form, "Sauvegarde & estimation", "sect_gcode.svg")
         self.edt_gcode_dir = QtWidgets.QLineEdit(settings["gcode_dir"])
@@ -6095,6 +6133,73 @@ class TaskPanelSettings:
             self.edt_gcode_dir.text() or os.path.expanduser("~"))
         if path:
             self.edt_gcode_dir.setText(path)
+
+    def _refresh_laser_combo(self):
+        self.combo_laser.blockSignals(True)
+        self.combo_laser.clear()
+        for lid, name in core.laser_profiles():
+            self.combo_laser.addItem(name, lid)
+        idx = self.combo_laser.findData(core.active_laser_id())
+        if idx >= 0:
+            self.combo_laser.setCurrentIndex(idx)
+        self.combo_laser.blockSignals(False)
+
+    def _reload_active_laser_fields(self):
+        """Recharge les champs PAR laser après une bascule de profil."""
+        s = core.current_settings()
+        n = core.current_nozzle()
+        self.spn_laser_tool.setValue(int(s["laser_tool"]))
+        self.spn_s_max.setValue(s["s_max"])
+        self.spn_frame_power.setValue(s["frame_power"])
+        self.spn_spot_focus.setValue(s["spot_focus_mm"])
+        self.spn_spot_zdefocus.setValue(s["spot_test_defocus_mm"])
+        self.spn_spot_dtest.setValue(s["spot_test_diameter_mm"])
+        self.spn_zwork_default.setValue(s["z_work_mm"])
+        self.spn_nozzle_bottom.setValue(n["bottom_diameter_mm"])
+        self.spn_nozzle_top.setValue(n["top_diameter_mm"])
+        self.spn_nozzle_height.setValue(n["height_mm"])
+
+    def _on_laser_changed(self, idx):
+        lid = self.combo_laser.itemData(idx)
+        if lid and core.set_active_laser(lid):
+            self._reload_active_laser_fields()
+
+    def _new_laser(self):
+        name, ok = QtWidgets.QInputDialog.getText(
+            self.form, "Nouveau laser",
+            "Nom du nouveau laser (copie du laser courant) :", text="IR 1064 nm")
+        if not ok or not name.strip():
+            return
+        lid = core.add_laser(name.strip(), clone_from=core.active_laser_id())
+        core.set_active_laser(lid)
+        self._refresh_laser_combo()
+        self._reload_active_laser_fields()
+
+    def _rename_laser(self):
+        name, ok = QtWidgets.QInputDialog.getText(
+            self.form, "Renommer le laser", "Nouveau nom :",
+            text=core.active_laser_name())
+        if ok and name.strip():
+            core.rename_laser(core.active_laser_id(), name.strip())
+            self._refresh_laser_combo()
+
+    def _delete_laser(self):
+        if len(core.laser_profiles()) <= 1:
+            QtWidgets.QMessageBox.information(
+                self.form, "Suppression impossible",
+                "Il faut garder au moins un laser.")
+            return
+        name = core.active_laser_name()
+        if QtWidgets.QMessageBox.question(
+                self.form, "Supprimer le laser",
+                "Supprimer le profil du laser « {} » ?\n(les réglages machine "
+                "communs ne sont pas touchés)".format(name),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
+            return
+        core.delete_laser(core.active_laser_id())
+        self._refresh_laser_combo()
+        self._reload_active_laser_fields()
 
     def accept(self):
         if not self.edt_gcode_dir.text().strip():

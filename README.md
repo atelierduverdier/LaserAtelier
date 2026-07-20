@@ -186,6 +186,18 @@ Les réglages généraux de l'atelier s'éditent depuis la commande **Préféren
 
 Une valeur invalide dans le JSON (nombre négatif, chaîne vide...) est ignorée avec un avertissement dans la vue Rapport, et la valeur par défaut est conservée.
 
+### Profils laser (plusieurs modules)
+
+Si tu montes plus d'un module laser sur la machine (par ex. un module bleu 450 nm en `T100` pour le bois et un **module IR 1064 nm** en `T101` pour marquer le métal), chacun a besoin de sa propre calibration. La section **Laser actif** en tête des Préférences gère ça : un sélecteur de **profils laser** nommés, avec **Nouveau (cloner)**, **Renommer** et **Supprimer**. Changer de laser applique aussitôt son profil.
+
+Chaque profil porte les réglages **propres au module** (les autres restant communs à la machine) :
+
+| Par laser (profil) | Commun (machine) |
+|---|---|
+| `laser_tool`, `s_max`, `frame_power`, la **calibration du point** (`spot_focus_mm`, `spot_test_defocus_mm`, `spot_test_diameter_mm`), le **Z de travail** (`z_work_mm`) et le **profil du bec** (`nozzle`) | dossier G-code, sélecteur broche, cinématique (rapide/accél/Z max), marges et garde-fous de sécurité |
+
+Dans la config JSON : les profils sont dans `lasers` (`{"<id>": {"name", "settings", "nozzle"}}`) et le profil courant dans `active_laser` ; les clés `settings`/`nozzle` reflètent en permanence le laser actif (le reste du code les lit sans changement). Au premier lancement, un profil **« Bleu 450 nm »** est créé automatiquement à partir des réglages existants. *Le nuancier et les préréglages matériau restent pour l'instant communs à tous les lasers — leur rattachement au laser actif est le développement suivant.*
+
 ### Constantes avancées (code uniquement)
 
 Quelques constantes restent volontairement dans le code (`laser_core.py`) — les changer sans comprendre leur rôle peut produire du G-code faux ou lent :
