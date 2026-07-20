@@ -342,6 +342,10 @@ _COMBINED_OPS = []
 def _add_to_combined_job(operation):
     """Ajoute une opération {type,label,params} au job combiné et informe."""
     _COMBINED_OPS.append(operation)
+    # Ferme le panneau courant : l'ajout EST l'action voulue. Sans ça, il
+    # fallait cliquer Annuler -- OK aurait relancé la génération d'un fichier
+    # séparé, ce qui n'était pas intuitif.
+    Gui.Control.closeDialog()
     QtWidgets.QMessageBox.information(
         None, "Job combiné",
         "\u00ab {} \u00bb ajouté au job combiné ({} opération(s) en attente).\n\n"
