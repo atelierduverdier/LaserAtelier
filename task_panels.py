@@ -2029,6 +2029,11 @@ class TaskPanelDefocusCalibration:
             multi = self.spn_nbands.value() > 1
             _set_row_visible(form, self.spn_feed_end, multi)
             _set_row_visible(form, self.spn_band_gap, multi)
+            # Rend explicite que « Vitesse des traits » = vitesse de la 1re
+            # bande quand il y en a plusieurs (à régler avec la dernière).
+            lbl = form.labelForField(self.spn_feed)
+            if lbl is not None:
+                lbl.setText("Vitesse 1re bande :" if multi else "Vitesse des traits :")
         self.spn_nbands.valueChanged.connect(
             lambda _v: (_sync_bands(), self._update_duration_preview()))
         _sync_bands()
