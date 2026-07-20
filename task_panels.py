@@ -2554,6 +2554,14 @@ class TaskPanelHalftone:
             "du pas).")
         form.addRow("Pas de trame :", self.spn_pitch)
 
+        self.combo_rotation = QtWidgets.QComboBox()
+        self.combo_rotation.addItems(["0°", "90°", "180°", "270°"])
+        self.combo_rotation.setToolTip(
+            "Rotation de l'image avant gravure (sens horaire). L'orientation\n"
+            "EXIF des photos de téléphone est déjà appliquée automatiquement ;\n"
+            "ce réglage sert à orienter la gravure sur la pièce.")
+        form.addRow("Rotation :", self.combo_rotation)
+
         self.chk_invert = QtWidgets.QCheckBox("Inverser (négatif)")
         self.chk_invert.setToolTip(
             "Par défaut, les zones SOMBRES de l'image sont gravées (la\n"
@@ -2684,6 +2692,7 @@ class TaskPanelHalftone:
         self._last_fields = {
             "image": self.edt_image, "width": self.spn_width,
             "pitch": self.spn_pitch, "invert": self.chk_invert,
+            "rotation": self.combo_rotation,
             "mode": self.combo_mode, "power": self.spn_power,
             "dwell_min": self.spn_dwell_min, "dwell_max": self.spn_dwell_max,
             "white": self.spn_white, "spot_width": self.spn_spot_width,
@@ -2698,6 +2707,7 @@ class TaskPanelHalftone:
                      self.spn_pitch.valueChanged, self.spn_white.valueChanged):
             _sig.connect(lambda *_a: self._update_grid_info())
         self.combo_mode.currentIndexChanged.connect(lambda _i: self._update_grid_info())
+        self.combo_rotation.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.chk_invert.toggled.connect(lambda _v: self._update_grid_info())
         self._update_grid_info()
 
@@ -2709,16 +2719,26 @@ class TaskPanelHalftone:
             self.edt_image.setText(path)
 
     def _load_image(self):
-        """QImage de l'image choisie (avec cache), ou None."""
+        """QImage de l'image choisie (avec cache), ou None. L'orientation
+        EXIF est appliquée (une photo de téléphone « portrait » est
+        souvent stockée couchée + une étiquette de rotation que les
+        visionneuses appliquent mais pas QImage seul -- d'où une photo
+        verticale qui apparaissait horizontale ici), puis la rotation
+        manuelle du panneau."""
         path = self.edt_image.text().strip()
         if not path or not os.path.isfile(path):
             return None
-        if self._img_cache[0] == path and self._img_cache[1] is not None:
+        angle = self.combo_rotation.currentIndex() * 90
+        if self._img_cache[0] == (path, angle) and self._img_cache[1] is not None:
             return self._img_cache[1]
-        img = QtGui.QImage(path)
+        reader = QtGui.QImageReader(path)
+        reader.setAutoTransform(True)  # applique l'orientation EXIF
+        img = reader.read()
         if img.isNull() or img.width() < 2 or img.height() < 2:
             return None
-        self._img_cache = (path, img)
+        if angle:
+            img = img.transformed(QtGui.QTransform().rotate(angle))
+        self._img_cache = ((path, angle), img)
         return img
 
     def _grid_size(self, img):
