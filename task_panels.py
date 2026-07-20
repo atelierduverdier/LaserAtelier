@@ -1703,33 +1703,124 @@ class TaskPanelKerf:
     def __init__(self):
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+        self._formlayout = form
 
         _panel_header(form, "kerf.svg", "Calibration kerf")
+        _intro(form,
+               "Deux tests, à découper ensuite en mode Découpe multi-passes : "
+               "le CARRÉ pour MESURER le kerf, le TENON + MORTAISE pour VALIDER "
+               "l'ajustement réel une fois le kerf connu.",
+               "Ordre conseillé : 1) découpe le CARRÉ avec Compensation de kerf "
+               "= 0, mesure la pièce, kerf = taille dessinée - taille mesurée ; "
+               "2) reporte ce kerf en Compensation, puis découpe le TENON + "
+               "MORTAISE : insère le tenon dans chaque mortaise et retiens le "
+               "JEU (gravé sous chacune) qui donne l'ajustement voulu -- serré "
+               "pour un collage, glissant pour du démontable.")
+
+        self.combo_test = QtWidgets.QComboBox()
+        self.combo_test.addItems(["Carré (mesure du kerf)",
+                                  "Tenon + mortaise (ajustement)"])
+        self.combo_test.setToolTip(
+            "Carré : pour MESURER le kerf.\n"
+            "Tenon + mortaise : pour VALIDER l'ajustement une fois le kerf connu.")
+        form.addRow("Test :", self.combo_test)
+
+        # --- Carré (mesure du kerf) ---
         self.spn_size = QtWidgets.QDoubleSpinBox()
         self.spn_size.setRange(1.0, 200.0)
         self.spn_size.setValue(20.0)
         self.spn_size.setSuffix(" mm")
         self.spn_size.setToolTip(
             "Côté du carré généré (mm). Plus grand = mesure au pied à\n"
-            "coulisse plus précise (l'erreur de mesure pèse moins sur le\n"
-            "résultat), mais consomme davantage de matière pour le test.")
+            "coulisse plus précise, mais consomme davantage de matière.")
         form.addRow("Taille du carré test :", self.spn_size)
 
-        lbl = _WrapLabel(
-            "Crée un carré test. Découpe-le en mode Découpe multi-passes\n"
-            "avec Compensation de kerf = 0, puis mesure la pièce obtenue :\n"
-            "kerf = taille dessinée - taille mesurée.")
-        form.addRow(lbl)
+        self.lbl_square = _WrapLabel(
+            "Découpe-le en Découpe multi-passes avec Compensation de kerf = 0, "
+            "puis mesure la pièce : kerf = taille dessinée - taille mesurée.")
+        form.addRow(self.lbl_square)
 
-        self._last_fields = {"size": self.spn_size}
+        # --- Tenon + mortaise (ajustement) ---
+        self.spn_tenon_w = QtWidgets.QDoubleSpinBox()
+        self.spn_tenon_w.setRange(3.0, 200.0)
+        self.spn_tenon_w.setValue(20.0)
+        self.spn_tenon_w.setSuffix(" mm")
+        self.spn_tenon_w.setToolTip("Largeur du tenon (la pièce mâle isolée).")
+        form.addRow("Largeur du tenon :", self.spn_tenon_w)
+
+        self.spn_tenon_h = QtWidgets.QDoubleSpinBox()
+        self.spn_tenon_h.setRange(3.0, 200.0)
+        self.spn_tenon_h.setValue(10.0)
+        self.spn_tenon_h.setSuffix(" mm")
+        self.spn_tenon_h.setToolTip("Hauteur du tenon (la pièce mâle isolée).")
+        form.addRow("Hauteur du tenon :", self.spn_tenon_h)
+
+        self.spn_nslots = QtWidgets.QSpinBox()
+        self.spn_nslots.setRange(1, 12)
+        self.spn_nslots.setValue(5)
+        self.spn_nslots.setToolTip(
+            "Nombre de mortaises (trous), chacune avec un jeu croissant.")
+        form.addRow("Nombre de mortaises :", self.spn_nslots)
+
+        self.spn_clr_start = QtWidgets.QDoubleSpinBox()
+        self.spn_clr_start.setRange(0.0, 2.0)
+        self.spn_clr_start.setDecimals(2)
+        self.spn_clr_start.setSingleStep(0.05)
+        self.spn_clr_start.setValue(0.0)
+        self.spn_clr_start.setSuffix(" mm")
+        self.spn_clr_start.setToolTip(
+            "Jeu de la 1re mortaise = écart mortaise - tenon (réparti moitié\n"
+            "de chaque côté). 0 = mortaise au même nominal que le tenon.")
+        form.addRow("Jeu de départ :", self.spn_clr_start)
+
+        self.spn_clr_step = QtWidgets.QDoubleSpinBox()
+        self.spn_clr_step.setRange(0.01, 1.0)
+        self.spn_clr_step.setDecimals(2)
+        self.spn_clr_step.setSingleStep(0.05)
+        self.spn_clr_step.setValue(0.1)
+        self.spn_clr_step.setSuffix(" mm")
+        self.spn_clr_step.setToolTip("Incrément de jeu entre deux mortaises.")
+        form.addRow("Pas de jeu :", self.spn_clr_step)
+
+        self.lbl_fit = _WrapLabel(
+            "Découpe avec ta Compensation de kerf. Le tenon est la pièce isolée ; "
+            "insère-le dans chaque mortaise et retiens le jeu (gravé sous "
+            "chacune) qui donne l'ajustement voulu.")
+        form.addRow(self.lbl_fit)
+
+        self._square_rows = [self.spn_size, self.lbl_square]
+        self._fit_rows = [self.spn_tenon_w, self.spn_tenon_h, self.spn_nslots,
+                          self.spn_clr_start, self.spn_clr_step, self.lbl_fit]
+        self.combo_test.currentIndexChanged.connect(lambda _i: self._sync_mode())
+        self._sync_mode()
+
+        self._last_fields = {"test": self.combo_test, "size": self.spn_size,
+                             "tenon_w": self.spn_tenon_w, "tenon_h": self.spn_tenon_h,
+                             "nslots": self.spn_nslots, "clr_start": self.spn_clr_start,
+                             "clr_step": self.spn_clr_step}
         self._presets = _PresetController(form, inner, "kerf", lambda: self._last_fields)
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Calibration kerf")
         self.form.setWindowIcon(_icon("kerf.svg"))
 
+    def _sync_mode(self):
+        fit = self.combo_test.currentIndex() == 1
+        for w in self._square_rows:
+            _set_row_visible(self._formlayout, w, not fit)
+        for w in self._fit_rows:
+            _set_row_visible(self._formlayout, w, fit)
+
     def accept(self):
-        obj, err = core.create_kerf_test_pattern(self.spn_size.value())
+        if self.combo_test.currentIndex() == 1:
+            obj, err = core.create_fit_test_pattern(
+                self.spn_tenon_w.value(), self.spn_tenon_h.value(),
+                self.spn_nslots.value(), self.spn_clr_start.value(),
+                self.spn_clr_step.value())
+        else:
+            obj, err = core.create_kerf_test_pattern(self.spn_size.value())
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False

@@ -1271,6 +1271,73 @@ def create_kerf_test_pattern(size):
     return obj, None
 
 
+def _fit_test_layout(tenon_w, tenon_h, n_slots, clearance_start, clearance_step):
+    """Disposition du test d'ajustement tenon/mortaise (PUR, sans FreeCAD --
+    testable en headless). Renvoie (rects, labels) :
+      rects  = [(x0, y0, w, h, role), ...]  role = "tenon" | "mortaise"
+      labels = [(texte, x, y, hauteur), ...]  (le jeu de chaque mortaise)
+    Une rangée de mortaises au nominal du tenon MAIS agrandies d'un jeu
+    croissant (clearance_start, +step, ...), étiquetées ; le tenon (pièce
+    mâle) isolé au-dessus. Le « jeu » est l'écart mortaise - tenon (réparti
+    moitié de chaque côté)."""
+    gap = max(8.0, tenon_w * 0.5)   # matière entre deux mortaises
+    label_h = 4.0
+    rects, labels = [], []
+    x = 0.0
+    y_slots = label_h + 3.0
+    max_h = 0.0
+    for i in range(int(n_slots)):
+        clr = clearance_start + i * clearance_step
+        w, h = tenon_w + clr, tenon_h + clr
+        rects.append((x, y_slots, w, h, "mortaise"))
+        txt = "{:.2f}".format(clr).rstrip("0").rstrip(".") or "0"
+        labels.append((txt, x, 0.0, label_h))
+        max_h = max(max_h, h)
+        x += w + gap
+    y_tenon = y_slots + max_h + gap
+    rects.append((0.0, y_tenon, tenon_w, tenon_h, "tenon"))
+    return rects, labels
+
+
+def create_fit_test_pattern(tenon_w=20.0, tenon_h=10.0, n_slots=5,
+                            clearance_start=0.0, clearance_step=0.1):
+    """Crée un test d'AJUSTEMENT tenon/mortaise dans le document actif : un
+    tenon (pièce mâle) au nominal, et une rangée de mortaises (trous) au même
+    nominal mais avec un jeu croissant, chacune étiquetée de son jeu en mm.
+    À utiliser APRÈS avoir mesuré le kerf sur le carré : découper avec cette
+    Compensation de kerf, puis insérer le tenon dans chaque mortaise pour
+    retenir le jeu qui donne le bon ajustement. Renvoie (objet, erreur)."""
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        return None, "Aucun document actif -- cree ou ouvre un document d'abord."
+    if int(n_slots) < 1:
+        return None, "Il faut au moins une mortaise."
+    if tenon_w <= 0 or tenon_h <= 0:
+        return None, "Dimensions du tenon invalides."
+
+    rects, labels = _fit_test_layout(tenon_w, tenon_h, int(n_slots),
+                                     clearance_start, clearance_step)
+
+    def rect_wire(x0, y0, w, h):
+        p = [FreeCAD.Vector(x0, y0, 0), FreeCAD.Vector(x0 + w, y0, 0),
+             FreeCAD.Vector(x0 + w, y0 + h, 0), FreeCAD.Vector(x0, y0 + h, 0),
+             FreeCAD.Vector(x0, y0, 0)]
+        return Part.Wire([Part.LineSegment(p[i], p[i + 1]).toShape() for i in range(4)])
+
+    shapes = [rect_wire(x0, y0, w, h) for (x0, y0, w, h, _role) in rects]
+    for (txt, lx, ly, lh) in labels:
+        shapes.extend(text_to_edges(txt, lx, ly, lh))
+    compound = Part.Compound(shapes)
+
+    obj = doc.addObject("Part::Feature", "Test_Ajustement_tenon_mortaise")
+    obj.Shape = compound
+    if hasattr(obj, 'ViewObject'):
+        obj.ViewObject.LineColor = (1.0, 0.6, 0.0)
+        obj.ViewObject.LineWidth = 2.0
+    doc.recompute()
+    return obj, None
+
+
 # ==========================================================================
 # MODE 0d : GRILLE DE TEST PUISSANCE / VITESSE (gravure ou découpe)
 # ==========================================================================
