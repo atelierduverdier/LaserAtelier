@@ -1,5 +1,7 @@
 # Les panneaux de l'atelier
 
+> 📖 Pour la **documentation complète en images** (présentation, installation, flux de travail, calibration, FAQ…), voir [`index.html`](index.html) — la page web de l'atelier, prête pour GitHub Pages. Cette galerie-ci ne rassemble que les captures brutes de chaque panneau.
+
 Captures d'écran de chaque mode (panneau complet, largeur réelle du panneau des tâches). Générées automatiquement depuis FreeCAD — pour les régénérer après une évolution de l'interface : instancier chaque `TaskPanel*` et capturer `panel.form.widget()` (le contenu entier du `QScrollArea`, sans avoir à faire défiler).
 
 ## Découverte

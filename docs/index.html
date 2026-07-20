@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier Laser — Documentation</title>
+<meta name="description" content="Workbench FreeCAD pour générer du G-code de marquage et de découpe laser sur CNC LinuxCNC : gravure noir plein, photo tramée, suivi de surfaces 3D, découpe multi-passes, grilles de test et calibration.">
+<style>
+  :root{
+    --orange:#ff8a00; --orange-d:#e67a00; --orange-soft:#fff3e2;
+    --slate:#2f3540; --slate-2:#3c434f;
+    --bg:#ffffff; --bg-2:#f6f7f9; --bg-3:#eef0f3;
+    --fg:#23272e; --fg-2:#5a626e; --fg-3:#858d99;
+    --line:#e2e5ea; --line-2:#d3d8df;
+    --card:#ffffff; --shadow:0 1px 2px rgba(20,25,35,.06),0 8px 24px rgba(20,25,35,.06);
+    --tip:#eaf6ee; --tip-b:#3f9d5a; --warn:#fdf0e6; --warn-b:#e07a1f; --note:#eaf0fb; --note-b:#3f6fd1;
+    --radius:14px; --maxw:1180px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --orange:#ff9a1f; --orange-d:#ffab45; --orange-soft:#3a2b12;
+      --slate:#0f1215; --slate-2:#191d23;
+      --bg:#14171b; --bg-2:#1a1e23; --bg-3:#22272e;
+      --fg:#e6e9ee; --fg-2:#a8b0bc; --fg-3:#7c8592;
+      --line:#2a3038; --line-2:#353c46;
+      --card:#1b1f25; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+      --tip:#17281c; --tip-b:#48a765; --warn:#2e2113; --warn-b:#e08b3a; --note:#161f30; --note-b:#5183e0;
+    }
+  }
+  :root[data-theme="dark"]{
+    --orange:#ff9a1f; --orange-d:#ffab45; --orange-soft:#3a2b12;
+    --slate:#0f1215; --slate-2:#191d23;
+    --bg:#14171b; --bg-2:#1a1e23; --bg-3:#22272e;
+    --fg:#e6e9ee; --fg-2:#a8b0bc; --fg-3:#7c8592;
+    --line:#2a3038; --line-2:#353c46;
+    --card:#1b1f25; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    --tip:#17281c; --tip-b:#48a765; --warn:#2e2113; --warn-b:#e08b3a; --note:#161f30; --note-b:#5183e0;
+  }
+  :root[data-theme="light"]{
+    --orange:#ff8a00; --orange-d:#e67a00; --orange-soft:#fff3e2;
+    --slate:#2f3540; --slate-2:#3c434f;
+    --bg:#ffffff; --bg-2:#f6f7f9; --bg-3:#eef0f3;
+    --fg:#23272e; --fg-2:#5a626e; --fg-3:#858d99;
+    --line:#e2e5ea; --line-2:#d3d8df;
+    --card:#ffffff; --shadow:0 1px 2px rgba(20,25,35,.06),0 8px 24px rgba(20,25,35,.06);
+    --tip:#eaf6ee; --tip-b:#3f9d5a; --warn:#fdf0e6; --warn-b:#e07a1f; --note:#eaf0fb; --note-b:#3f6fd1;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:74px}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--orange-d); text-decoration:none}
+  a:hover{text-decoration:underline}
+  h1,h2,h3,h4{line-height:1.25; color:var(--fg); font-weight:700}
+  h2{font-size:1.75rem; margin:0 0 .2em; letter-spacing:-.01em}
+  h3{font-size:1.22rem; margin:1.6em 0 .4em}
+  h4{font-size:1.02rem; margin:1.2em 0 .3em}
+  p{margin:.7em 0}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:.88em;
+    background:var(--bg-3); padding:.12em .4em; border-radius:5px}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 22px}
+
+  /* ---------- top nav ---------- */
+  header.topbar{
+    position:sticky; top:0; z-index:50; background:color-mix(in srgb,var(--bg) 88%, transparent);
+    backdrop-filter:saturate(140%) blur(10px); border-bottom:1px solid var(--line);
+  }
+  .topbar .wrap{display:flex; align-items:center; gap:16px; height:60px}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; color:var(--fg)}
+  .brand:hover{text-decoration:none}
+  .brand .dot{width:26px;height:26px;border-radius:7px;background:var(--orange);
+    display:grid;place-items:center;flex:none}
+  .brand .dot svg{width:17px;height:17px;display:block}
+  .navlinks{display:flex; gap:4px; margin-left:auto; flex-wrap:wrap}
+  .navlinks a{color:var(--fg-2); padding:6px 11px; border-radius:8px; font-size:.92rem; font-weight:500}
+  .navlinks a:hover{background:var(--bg-3); color:var(--fg); text-decoration:none}
+  .theme-btn{margin-left:6px; border:1px solid var(--line-2); background:var(--card); color:var(--fg-2);
+    width:38px;height:38px;border-radius:9px;cursor:pointer;font-size:1.05rem; flex:none}
+  .theme-btn:hover{color:var(--fg); border-color:var(--orange)}
+  @media(max-width:860px){ .navlinks{display:none} }
+
+  /* ---------- hero ---------- */
+  .hero{background:
+      radial-gradient(1200px 400px at 80% -100px, color-mix(in srgb,var(--orange) 22%, transparent), transparent 60%),
+      linear-gradient(180deg,var(--bg-2),var(--bg));
+    border-bottom:1px solid var(--line); padding:56px 0 48px}
+  .hero-grid{display:grid; grid-template-columns:1.15fr .85fr; gap:40px; align-items:center}
+  @media(max-width:820px){ .hero-grid{grid-template-columns:1fr; gap:26px} }
+  .hero h1{font-size:2.7rem; letter-spacing:-.02em; margin:.1em 0 .1em}
+  @media(max-width:820px){ .hero h1{font-size:2.1rem} }
+  .hero .lede{font-size:1.16rem; color:var(--fg-2); max-width:46ch; margin:.5em 0 1.3em}
+  .badges{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px}
+  .badge{font-size:.8rem; font-weight:600; padding:5px 11px; border-radius:20px;
+    background:var(--bg-3); color:var(--fg-2); border:1px solid var(--line)}
+  .badge b{color:var(--orange-d)}
+  .cta{display:flex; flex-wrap:wrap; gap:12px}
+  .btn{display:inline-flex; align-items:center; gap:8px; font-weight:600; font-size:.96rem;
+    padding:11px 20px; border-radius:11px; cursor:pointer; border:1px solid transparent}
+  .btn-primary{background:var(--orange); color:#20160a}
+  .btn-primary:hover{background:var(--orange-d); text-decoration:none}
+  .btn-ghost{background:var(--card); color:var(--fg); border-color:var(--line-2)}
+  .btn-ghost:hover{border-color:var(--orange); text-decoration:none}
+  .hero-art{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:26px; display:grid; place-items:center}
+  .hero-art img{width:100%; max-width:360px; height:auto}
+
+  /* ---------- sections ---------- */
+  section{padding:52px 0; border-bottom:1px solid var(--line)}
+  .sec-tag{display:inline-flex; align-items:center; gap:8px; color:var(--orange-d);
+    font-weight:700; font-size:.82rem; letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px}
+  .sec-lede{color:var(--fg-2); font-size:1.06rem; max-width:70ch; margin:.4em 0 0}
+
+  /* ---------- callouts ---------- */
+  .callout{border-radius:12px; padding:14px 16px 14px 16px; margin:18px 0; border:1px solid var(--line);
+    background:var(--bg-2); position:relative}
+  .callout p{margin:.3em 0}
+  .callout .ci{font-weight:700; display:block; margin-bottom:2px}
+  .callout.tip{background:var(--tip); border-color:color-mix(in srgb,var(--tip-b) 40%,transparent)}
+  .callout.tip .ci{color:var(--tip-b)}
+  .callout.warn{background:var(--warn); border-color:color-mix(in srgb,var(--warn-b) 45%,transparent)}
+  .callout.warn .ci{color:var(--warn-b)}
+  .callout.note{background:var(--note); border-color:color-mix(in srgb,var(--note-b) 40%,transparent)}
+  .callout.note .ci{color:var(--note-b)}
+
+  /* ---------- pipeline ---------- */
+  .pipe{display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-top:26px}
+  @media(max-width:900px){ .pipe{grid-template-columns:repeat(3,1fr)} }
+  @media(max-width:520px){ .pipe{grid-template-columns:repeat(2,1fr)} }
+  .step{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 14px;
+    box-shadow:var(--shadow); position:relative}
+  .step .n{width:28px;height:28px;border-radius:8px;background:var(--orange-soft);color:var(--orange-d);
+    display:grid;place-items:center;font-weight:800;font-size:.9rem;margin-bottom:9px}
+  .step h4{margin:0 0 3px; font-size:.98rem}
+  .step p{margin:0; font-size:.86rem; color:var(--fg-2); line-height:1.5}
+
+  /* ---------- mode cards ---------- */
+  .group-title{display:flex; align-items:center; gap:11px; margin:34px 0 4px}
+  .group-title .gi{width:34px;height:34px;border-radius:9px;background:var(--slate);
+    display:grid;place-items:center;flex:none}
+  .group-title .gi svg,.group-title .gi img{width:21px;height:21px;filter:brightness(0) invert(1)}
+  .group-title h3{margin:0; font-size:1.3rem}
+  .group-sub{color:var(--fg-3); font-size:.9rem; margin:0 0 14px 45px}
+  .modes{display:grid; grid-template-columns:repeat(2,1fr); gap:20px}
+  @media(max-width:760px){ .modes{grid-template-columns:1fr} }
+  .mode{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column}
+  .mode .shot{background:var(--bg-3); border-bottom:1px solid var(--line); padding:14px;
+    display:grid; place-items:center; min-height:150px}
+  .mode .shot img{max-width:100%; max-height:340px; height:auto; border-radius:8px;
+    box-shadow:0 4px 14px rgba(0,0,0,.14)}
+  .mode .body{padding:16px 18px 18px}
+  .mode .head{display:flex; align-items:center; gap:10px; margin-bottom:6px}
+  .mode .mi{width:30px;height:30px;border-radius:8px;background:var(--orange-soft);
+    display:grid;place-items:center;flex:none}
+  .mode .mi img{width:19px;height:19px}
+  .mode h4{margin:0; font-size:1.08rem}
+  .mode p{margin:.35em 0 0; font-size:.92rem; color:var(--fg-2); line-height:1.55}
+  .mode .when{margin-top:10px; font-size:.84rem; color:var(--fg); background:var(--bg-2);
+    border-left:3px solid var(--orange); padding:7px 11px; border-radius:0 8px 8px 0}
+  .mode .when b{color:var(--orange-d)}
+
+  /* ---------- tables ---------- */
+  .twrap{overflow-x:auto; margin:18px 0; border:1px solid var(--line); border-radius:12px}
+  table{border-collapse:collapse; width:100%; font-size:.9rem; min-width:520px}
+  th,td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); vertical-align:top}
+  thead th{background:var(--bg-2); font-weight:700; color:var(--fg); white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+  .num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+  .gain{color:var(--tip-b); font-weight:700}
+
+  /* ---------- two-col feature ---------- */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:8px}
+  @media(max-width:760px){ .cols{grid-template-columns:1fr} }
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:20px 22px}
+  .panel h3{margin-top:.2em}
+
+  /* ---------- faq ---------- */
+  details.faq{background:var(--card); border:1px solid var(--line); border-radius:12px;
+    margin:12px 0; box-shadow:var(--shadow); overflow:hidden}
+  details.faq summary{cursor:pointer; padding:15px 18px; font-weight:600; list-style:none;
+    display:flex; align-items:center; gap:12px}
+  details.faq summary::-webkit-details-marker{display:none}
+  details.faq summary .q{flex:1}
+  details.faq summary .chev{color:var(--orange-d); transition:transform .2s; flex:none; font-size:1.1rem}
+  details.faq[open] summary .chev{transform:rotate(90deg)}
+  details.faq summary:hover{color:var(--orange-d)}
+  details.faq .a{padding:0 18px 16px; color:var(--fg-2); font-size:.94rem}
+  details.faq .a p:first-child{margin-top:0}
+
+  ul.clean{margin:.6em 0; padding-left:1.25em}
+  ul.clean li{margin:.35em 0}
+  kbd{font:inherit; font-size:.85em; background:var(--bg-3); border:1px solid var(--line-2);
+    border-bottom-width:2px; border-radius:6px; padding:1px 7px}
+
+  /* ---------- footer ---------- */
+  footer{padding:44px 0 60px; color:var(--fg-2)}
+  .foot-grid{display:flex; flex-wrap:wrap; gap:24px; align-items:center; justify-content:space-between}
+  .foot-links{display:flex; gap:18px; flex-wrap:wrap}
+  .muted{color:var(--fg-3); font-size:.85rem}
+  .pill{display:inline-block; background:var(--bg-3); border:1px solid var(--line);
+    border-radius:8px; padding:2px 9px; font-size:.82rem; color:var(--fg-2)}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <span class="dot"><img src="assets/workbench.svg" alt=""></span>
+      Atelier Laser
+    </a>
+    <nav class="navlinks">
+      <a href="#presentation">Présentation</a>
+      <a href="#installation">Installation</a>
+      <a href="#flux">Prise en main</a>
+      <a href="#modes">Les modes</a>
+      <a href="#calibration">Calibration</a>
+      <a href="#preferences">Préférences</a>
+      <a href="#gcode">G-code</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <button class="theme-btn" id="themeBtn" title="Thème clair / sombre" aria-label="Basculer le thème">◐</button>
+  </div>
+</header>
+
+<a id="top"></a>
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="badges">
+        <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
+        <span class="badge">Cible <b>LinuxCNC</b></span>
+        <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W</b></span>
+      </div>
+      <h1>Du dessin FreeCAD<br>au G-code laser.</h1>
+      <p class="lede">Un atelier FreeCAD qui transforme votre géométrie 2D/3D en G-code de marquage et de découpe laser pour CNC : gravure noir plein, photo tramée, suivi de surfaces courbes, découpe multi-passes, et une série d'outils de test et de calibration guidés.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#installation">▸ Installer l'atelier</a>
+        <a class="btn btn-ghost" href="https://youtu.be/KP4F4Cd287A" target="_blank" rel="noopener">► Voir la démo vidéo</a>
+        <a class="btn btn-ghost" href="https://github.com/atelierduverdier/LaserAtelier" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+    <div class="hero-art">
+      <img src="assets/logo.svg" alt="Atelier Laser — PrintNC">
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+
+<!-- ============ PRESENTATION ============ -->
+<section id="presentation">
+  <div class="sec-tag">● Présentation</div>
+  <h2>Un atelier pensé pour le laser sur CNC</h2>
+  <p class="sec-lede">L'Atelier Laser ajoute à FreeCAD 16 modes regroupés par thème : gravure à plat, gravure sur surface 3D courbe, découpe multi-passes, tests &amp; calibration, et assemblage de jobs. Chaque mode génère un fichier G-code prêt pour LinuxCNC, avec estimation de durée, aperçu du trajet dans la vue 3D et fichier de cadrage à vérifier avant de lancer.</p>
+
+  <div class="cols" style="margin-top:24px">
+    <div class="panel">
+      <h3>Pour qui&nbsp;?</h3>
+      <p>Pour qui pilote un module laser monté sur une fraiseuse CNC sous LinuxCNC et veut générer proprement ses parcours depuis FreeCAD, sans écrire de G-code à la main. L'atelier a été développé sur une <b>PrintNC</b> équipée d'un module diode <b>LT-80W</b>, mais le profil machine se règle entièrement depuis les Préférences.</p>
+    </div>
+    <div class="panel">
+      <h3>La philosophie&nbsp;: on mesure, on ne devine pas</h3>
+      <p>Rien n'est supposé sur l'optique du laser. Le comportement du point (foyer, divergence en défocus, noircissement selon la puissance) se règle à partir de <b>mesures réelles sur chute</b> : bandes de calibration, grilles de test, nuancier. Le logiciel s'appuie sur ces mesures plutôt que sur un modèle théorique.</p>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <span class="ci">Le point d'entrée&nbsp;: le Guide rapide</span>
+    <p>La première icône de la barre d'outils (livre ouvert) ouvre un <b>Guide rapide</b> qui résume le flux de travail et répond à «&nbsp;quel mode pour quoi&nbsp;?&nbsp;». Chaque panneau s'ouvre aussi sur un résumé court avec un bouton «&nbsp;En savoir plus&nbsp;» et, pour les concepts clés, un petit schéma explicatif.</p>
+  </div>
+</section>
+
+<!-- ============ MATERIEL ============ -->
+<section id="materiel">
+  <div class="sec-tag">● Matériel &amp; principe</div>
+  <h2>Comment l'atelier parle à la machine</h2>
+  <p class="sec-lede">Le laser est piloté comme une <b>broche</b> LinuxCNC : la puissance passe par la commande <code>S</code> (PWM), il n'y a pas de sortie analogique dédiée. Le zéro Z est toujours fait sur la surface de la pièce, et la mise au point se fait en descendant le bec à la focale.</p>
+
+  <div class="cols" style="margin-top:22px">
+    <div class="panel">
+      <h3>Chaîne de commande</h3>
+      <ul class="clean">
+        <li>Laser = broche <code>$1</code> (sélecteur multi-broche LinuxCNC).</li>
+        <li>Puissance par segment via <code>S</code> (0 → échelle max de la machine, <code>S1000</code> par défaut).</li>
+        <li>Armement unique par <code>M3</code> à puissance nulle + temporisation, désarmement <code>M5</code>.</li>
+        <li>Compensation d'outil <code>G43 H&lt;n&gt;</code> en tête de job (offsets X/Y + Z palpé du laser).</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Module laser testé — LT-80W-AA-PRO</h3>
+      <p>Module diode (10&nbsp;W optiques). La pièce carrée qui entoure le nez a été <b>retirée</b> pour pouvoir suivre les surfaces courbes sans collision : le contrôle anti-collision de l'atelier ne modélise donc que le nez conique restant (réglable en Préférences).</p>
+      <p class="muted">Nez : pointe Ø5&nbsp;mm, sommet du cône Ø16&nbsp;mm, hauteur 18&nbsp;mm. Focale ~8&nbsp;mm.</p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="ci">Prérequis machine avant de lancer un fichier</span>
+    <p>Sur LinuxCNC, il faut avoir fait <code>T&lt;outil laser&gt; M6</code> dans la session (T100 par défaut, réglable en Préférences). Le <code>G43</code> de l'en-tête applique alors les offsets X/Y et le Z palpé de l'outil laser. Ce prérequis est rappelé en commentaire dans chaque fichier généré.</p>
+  </div>
+</section>
+
+<!-- ============ INSTALLATION ============ -->
+<section id="installation">
+  <div class="sec-tag">● Installation</div>
+  <h2>Cloner dans le dossier <code>Mod</code> de FreeCAD</h2>
+  <p class="sec-lede">Le dépôt <em>est</em> le workbench : on le clone directement dans le dossier <code>Mod</code> de FreeCAD. Pas de build, pas de dépendance à installer — FreeCAD charge les fichiers Python au démarrage.</p>
+
+  <div class="twrap" style="border:none">
+<pre style="margin:0;background:var(--slate);color:#e9edf2;padding:18px 20px;border-radius:12px;overflow-x:auto;font-size:.9rem;line-height:1.7"><code style="background:none;color:inherit;padding:0">git clone https://github.com/atelierduverdier/LaserAtelier.git \
+  ~/.local/share/FreeCAD/&lt;version&gt;/Mod/LaserAtelier</code></pre>
+  </div>
+
+  <p>Adaptez <code>&lt;version&gt;</code> à votre version de FreeCAD (par ex. <code>v1-1</code>), puis redémarrez FreeCAD : l'atelier «&nbsp;<b>Atelier Laser</b>&nbsp;» apparaît dans le sélecteur d'ateliers. Toute évolution du dépôt est reprise après un simple redémarrage.</p>
+
+  <div class="callout tip">
+    <span class="ci">Rien d'autre à installer</span>
+    <p>Aucun système de build, aucun linter, aucune CI. Les réglages (G-code perso, préréglages matériau, profil du bec, préférences) sont mémorisés entre deux lancements dans un fichier <code>laser_atelier_config.json</code>, dans le dossier de configuration utilisateur de FreeCAD.</p>
+  </div>
+</section>
+
+<!-- ============ FLUX DE TRAVAIL ============ -->
+<section id="flux">
+  <div class="sec-tag">● Prise en main</div>
+  <h2>Le flux de travail en six étapes</h2>
+  <p class="sec-lede">C'est le fil conducteur de tout l'atelier, résumé dans le Guide rapide : on calibre une fois, on teste sur une chute, on prépare le motif, on génère, on vérifie le cadrage, puis on grave.</p>
+
+  <div class="pipe">
+    <div class="step"><div class="n">1</div><h4>Calibrer</h4><p>Une fois : focale, calibration du point (bande de défocus), offsets X/Y du laser — dans les Préférences.</p></div>
+    <div class="step"><div class="n">2</div><h4>Tester</h4><p>Sur une chute : grille de test ou rampe puissance/vitesse pour trouver les bons réglages du matériau.</p></div>
+    <div class="step"><div class="n">3</div><h4>Motif</h4><p>Hachures, texte/forme, image ou projection sur surface courbe selon ce que vous gravez.</p></div>
+    <div class="step"><div class="n">4</div><h4>G-code</h4><p>Marquage, gravure remplie ou découpe génèrent le fichier <code>.ngc</code>.</p></div>
+    <div class="step"><div class="n">5</div><h4>Cadrage</h4><p>Chaque mode propose un fichier d'aperçu séparé (rectangle englobant, laser éteint) à lancer d'abord.</p></div>
+    <div class="step"><div class="n">6</div><h4>Graver</h4><p>Sur LinuxCNC, faire <code>T&lt;laser&gt; M6</code> puis lancer le fichier.</p></div>
+  </div>
+
+  <div class="callout note" style="margin-top:26px">
+    <span class="ci">Communs à tous les modes</span>
+    <p>Estimation de durée tenant compte des accélérations, aperçu du trajet dans la vue 3D, aperçu de cadrage en fichier séparé, préréglages matériau, et <b>mémorisation des derniers réglages</b> de chaque panneau (rouvrir un mode retrouve les valeurs de la dernière fois).</p>
+  </div>
+</section>
+
+<!-- ============ MODES ============ -->
+<section id="modes">
+  <div class="sec-tag">● Les modes</div>
+  <h2>16 modes, regroupés par thème</h2>
+  <p class="sec-lede">Ils apparaissent dans cet ordre dans la barre d'outils et le menu «&nbsp;Atelier Laser&nbsp;». Voici chaque panneau, avec sa capture et le cas d'usage.</p>
+
+  <!-- GROUPE : Gravure à plat -->
+  <div class="group-title"><span class="gi"><img src="assets/hatch.svg" alt=""></span><h3>Gravure à plat</h3></div>
+  <p class="group-sub">Sur une pièce plane : remplissage, texte/forme en noir, ou photo.</p>
+  <div class="modes">
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/02_hachures_2d.png" alt="Panneau Hachures 2D"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/hatch.svg" alt=""></span><h4>Hachures 2D (géométrie)</h4></div>
+        <p>Remplit une face 2D de hachures parallèles, croisées ou en défocus — crée la <b>géométrie</b> des hachures, à graver ensuite avec le Marquage.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Préparer un remplissage, seul ou avant une projection sur surface courbe.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/03_gravure_remplie.png" alt="Panneau Gravure remplie"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/filled.svg" alt=""></span><h4>Gravure remplie (noir)</h4></div>
+        <p>Grave un texte ou une forme 2D en <b>noir plein</b> : remplissage en défocus rentré du bord + contour repassé net au foyer. Styles de trait, préréglages matériau, compensation puissance/défocus.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Un logo, un texte, une forme pleine sur une pièce plate.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/04_gravure_photo.png" alt="Panneau Gravure photo"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/halftone.svg" alt=""></span><h4>Gravure photo (trame de points)</h4></div>
+        <p>Convertit une image en <b>trame de points laser</b> : tramage par diffusion Floyd-Steinberg ou par durée de pulse variable, aperçu du tramage en direct, option négatif, largeur de point réglable.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Graver une photo, un portrait, un dégradé photographique.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GROUPE : Surface 3D -->
+  <div class="group-title"><span class="gi"><img src="assets/project.svg" alt=""></span><h3>Sur surface 3D</h3></div>
+  <p class="group-sub">Suivre le relief d'une pièce bombée, sans écraser le foyer.</p>
+  <div class="modes">
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/05_projection.png" alt="Panneau Projection sur surface 3D"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/project.svg" alt=""></span><h4>Projection sur surface 3D</h4></div>
+        <p>Projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée). Le panneau s'ouvre d'abord, puis on sélectionne motif et surface dans la vue — l'état reconnu s'affiche en direct.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Poser des hachures ou un motif à plat sur une pièce bombée avant marquage.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/06_marquage.png" alt="Panneau Marquage de motif"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/curved.svg" alt=""></span><h4>Marquage de motif (plat ou courbe)</h4></div>
+        <p>Grave un motif filaire, à plat ou en suivant le relief d'un modèle 3D, avec 5 styles de trait (plein, tirets, pointillé, vague défocus, défocus point élargi) et le nuancier matériau.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Générer le G-code d'un tracé filaire, sur pièce plane ou courbe.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/07_decoupe_courbe.png" alt="Panneau Découpe multi-passes courbe"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/curved_cut.svg" alt=""></span><h4>Découpe multi-passes (courbe)</h4></div>
+        <p>Combine le suivi de relief du marquage courbe avec la logique multi-passes / kerf / imbrication de la découpe à plat.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Découper le long d'une surface qui n'est pas parfaitement plane.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GROUPE : Découpe -->
+  <div class="group-title"><span class="gi"><img src="assets/flat.svg" alt=""></span><h3>Découpe</h3></div>
+  <p class="group-sub">Traverser le matériau en plusieurs passes.</p>
+  <div class="modes">
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/08_decoupe_plate.png" alt="Panneau Découpe plate"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/flat.svg" alt=""></span><h4>Découpe multi-passes (matériau plat)</h4></div>
+        <p>Passes progressives, compensation de kerf, ordre trous-avant-contour, <b>attaches</b> (ponts de matière), <b>amorce</b> (lead-in hors du bord fini) et <b>copies en matrice</b> pour découper une série en un seul job.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Découper une ou plusieurs pièces dans une plaque à plat.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GROUPE : Tests & calibration -->
+  <div class="group-title"><span class="gi"><img src="assets/testgrid.svg" alt=""></span><h3>Tests &amp; calibration</h3></div>
+  <p class="group-sub">Trouver les bons réglages et caler l'optique — tous avec préréglages d'usine (★).</p>
+  <div class="modes">
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/09_calibration_kerf.png" alt="Panneau Calibration kerf"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/kerf.svg" alt=""></span><h4>Calibration kerf</h4></div>
+        <p>Génère un carré test pour mesurer le kerf réel du laser (largeur du trait de coupe), à réinjecter dans la découpe.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Avant une découpe où les cotes doivent être justes.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/10_grille_test.png" alt="Panneau Grille de test"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/testgrid.svg" alt=""></span><h4>Grille de test puissance/vitesse</h4></div>
+        <p>Matrice de cellules à puissance/vitesse variables, étiquetées, avec cadre net autour de chaque cellule. Champ <b>Hauteur (Z) de test</b> pour rejouer la même matrice à une autre hauteur de bec.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Trouver le couple puissance/vitesse d'un nouveau matériau, par paliers discrets.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/11_rampe_puissance.png" alt="Panneau Rampe puissance/vitesse"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/powerramp.svg" alt=""></span><h4>Rampe puissance/vitesse (lignes)</h4></div>
+        <p>Longues lignes, <b>une par vitesse</b>, chacune à puissance croissante de gauche à droite (rampe Z optionnelle). Règle graduée en chiffres verticaux pour lire la puissance sous n'importe quel point.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Le complément <b>continu</b> de la grille : voir où le trait commence à marquer et où il sature.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/12_calibration_defocus.png" alt="Panneau Bande de calibration défocus"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/defocus.svg" alt=""></span><h4>Bande de calibration défocus</h4></div>
+        <p>Rangée de courts traits à hauteurs de bec croissantes, étiquetés en hauteur et en puissance — pour mesurer le foyer (trait le plus fin) et la divergence du point, puis renseigner la calibration.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Une fois, pour caler le modèle de défocus dans les Préférences.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/13_test_offsets.png" alt="Panneau Test des offsets X/Y"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/offset_test.svg" alt=""></span><h4>Test des offsets X/Y du laser</h4></div>
+        <p>Job <b>mixte fraise + laser</b> : fraise une croix sur X0 Y0, puis grave une croix laser au même point programmé. L'écart mesuré entre les deux croix corrige les offsets X/Y dans <code>tool.tbl</code>.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Après le montage du laser, pour aligner son axe sur celui de la broche.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/14_nuancier.png" alt="Panneau Nuancier matériau"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/nuancier.svg" alt=""></span><h4>Nuancier matériau</h4></div>
+        <p>La palette de gris <b>mesurée</b> d'un matériau : chaque ton = un réglage (puissance, vitesse, défocus) + son résultat constaté (noirceur 0-100&nbsp;%, largeur). Les modes Marquage et Gravure remplie proposent «&nbsp;Appliquer ce ton&nbsp;».</p>
+        <div class="when"><b>Quand&nbsp;?</b> Après les grilles/rampes, pour capitaliser les réglages qui marchent.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GROUPE : Assemblage & réglages -->
+  <div class="group-title"><span class="gi"><img src="assets/combined.svg" alt=""></span><h3>Assemblage &amp; réglages</h3></div>
+  <p class="group-sub">Empiler des opérations et centraliser la configuration.</p>
+  <div class="modes">
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/15_job_combine.png" alt="Panneau Job combiné"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/combined.svg" alt=""></span><h4>Job combiné</h4></div>
+        <p>Empile plusieurs opérations (marquage, découpe, grille) dans un seul fichier G-code, avec un seul armement du laser et une transition anti-collision entre opérations.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Enchaîner marquage puis découpe d'une même pièce sans relancer.</div>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/16_preferences.png" alt="Panneau Préférences"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/settings.svg" alt=""></span><h4>Préférences</h4></div>
+        <p>Tous les réglages machine centralisés : calibration du point, Z de travail, marge de survol, profil du bec, numéro d'outil laser, échelle de puissance, sécurité… appliqués immédiatement, sans redémarrer.</p>
+        <div class="when"><b>Quand&nbsp;?</b> À l'installation, puis dès qu'un réglage machine change.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CALIBRATION ============ -->
+<section id="calibration">
+  <div class="sec-tag">● Calibration en profondeur</div>
+  <h2>Caler l'optique et le matériau, une fois</h2>
+  <p class="sec-lede">Le cœur de l'atelier : deux mesures du point calibrent le modèle de défocus, la fluence relie puissance et largeur de trait, le test d'offsets aligne le laser, et le nuancier capitalise les gris qui marchent.</p>
+
+  <h3>Le point &amp; le modèle de défocus</h3>
+  <p>Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un <b>cône de divergence linéaire</b> calibré à partir de deux mesures réelles — le point au foyer, puis le point à un défocus connu — jamais deviné. La <b>Bande de calibration défocus</b> fournit ces mesures ; on les saisit une seule fois dans les Préférences («&nbsp;point au foyer&nbsp;», «&nbsp;défocus de test&nbsp;», «&nbsp;point au défocus de test&nbsp;») et tous les modes concernés les réutilisent. Le remplissage est automatiquement <b>rentré du rayon de point</b> pour rester à l'intérieur du contour.</p>
+
+  <h3>Puissance vs défocus (la fluence)</h3>
+  <p>Défocaliser étale la <b>même</b> puissance sur un point plus large : l'énergie déposée par unité de surface — la <b>fluence</b> — baisse, et sous un seuil le trait ne marque plus. Pour un trait balayé à la vitesse <code>v</code>, avec un point de diamètre <code>d</code> et une puissance <code>P</code>, la fluence vaut&nbsp;:</p>
+  <div class="callout note" style="text-align:center;font-size:1.15rem">
+    <b>F&nbsp;∝&nbsp;P&nbsp;/&nbsp;(d&nbsp;·&nbsp;v)</b>
+  </div>
+  <p>Les modes Gravure remplie et Marquage (style Défocus) exposent une section «&nbsp;Puissance vs défocus&nbsp;» : on renseigne un réglage de référence connu bon sur le matériau (puissance, vitesse, largeur de point d'une gravure réussie), et l'atelier soit <b>indique</b> la fluence obtenue par rapport à cette référence, soit <b>compense la puissance automatiquement</b> pour retrouver la même fluence à la largeur et la vitesse courantes. Dans le Marquage, on saisit directement la <b>largeur de point</b> voulue (l'atelier en déduit la hauteur de défocus), plus intuitif qu'une remontée de bec.</p>
+
+  <h3>Offsets X/Y — aligner le laser sur la broche</h3>
+  <p>Le laser n'est pas monté exactement sur l'axe de la broche : il faut mesurer son décalage. Le Test des offsets fraise une croix, puis grave une croix laser au même point programmé. L'écart signé entre les deux (au pied à coulisse) <b>est</b> l'erreur d'offset&nbsp;:</p>
+  <div class="twrap">
+    <table>
+      <thead><tr><th>Mesure</th><th>Correction dans <code>tool.tbl</code> (outil laser)</th></tr></thead>
+      <tbody>
+        <tr><td>dX = X croix laser − X croix fraisée</td><td>X_nouveau = X_actuel − dX</td></tr>
+        <tr><td>dY = Y croix laser − Y croix fraisée</td><td>Y_nouveau = Y_actuel − dY</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn">
+    <span class="ci">Prévoir large</span>
+    <p>Si un signe d'offset est faux, la croix laser peut partir loin. Faites le test sur une chute large, lunettes laser obligatoires. C'est le seul mode qui fait ses propres changements d'outil (<code>T&lt;fraise&gt; M6</code> puis <code>T&lt;laser&gt; M6</code>).</p>
+  </div>
+
+  <h3>Le nuancier — capitaliser les gris</h3>
+  <p>La noirceur n'étant pas linéaire avec la puissance, l'atelier ne se fie pas à un modèle mais à des mesures. Après une grille ou une rampe de test, on note dans le <b>Nuancier</b> chaque ton utile : le réglage (puissance, vitesse, défocus) et son résultat constaté (noirceur à l'œil en %, largeur de trait). Les modes Marquage et Gravure remplie proposent alors «&nbsp;Appliquer ce ton&nbsp;» — puissance, vitesse et style Défocus réglés d'un clic sur un rendu déjà validé (le logiciel choisit le ton mesuré le plus proche). C'est la fondation des futurs dégradés et photos calibrés.</p>
+</section>
+
+<!-- ============ PREFERENCES ============ -->
+<section id="preferences">
+  <div class="sec-tag">● Préférences</div>
+  <h2>Tous les réglages machine, au même endroit</h2>
+  <p class="sec-lede">La commande Préférences (icône engrenage) centralise la configuration. Tout est enregistré dans <code>laser_atelier_config.json</code> et appliqué immédiatement. Une valeur invalide est ignorée avec un avertissement, et la valeur par défaut conservée.</p>
+
+  <div class="twrap">
+    <table>
+      <thead><tr><th>Réglage</th><th>Défaut</th><th>Rôle</th></tr></thead>
+      <tbody>
+        <tr><td>Dossier G-code</td><td class="num">—</td><td>Dossier proposé par défaut à la sauvegarde (repli sur <code>/tmp</code> s'il n'est pas accessible).</td></tr>
+        <tr><td>Vitesse rapide (estimation)</td><td class="num">6000</td><td>Vitesse G0 supposée pour l'estimation de durée. N'affecte que l'estimation.</td></tr>
+        <tr><td>Marge de survol (transits)</td><td class="num">10,0</td><td>Marge ajoutée au Z de travail pour les déplacements à vide. <code>0</code> = transits au Z de travail.</td></tr>
+        <tr><td>Puissance de cadrage (S)</td><td class="num">0</td><td>Puissance du faisceau pendant l'aperçu cadrage. <code>0</code> = laser éteint ; sinon très faible.</td></tr>
+        <tr><td>Point au foyer</td><td class="num">0,15</td><td>Calibration du point : diamètre au foyer (mesuré à la bande de défocus).</td></tr>
+        <tr><td>Défocus de test</td><td class="num">3,0</td><td>Calibration du point : hauteur de la 2ᵉ mesure au-dessus du foyer.</td></tr>
+        <tr><td>Point au défocus de test</td><td class="num">1,0</td><td>Calibration du point : diamètre mesuré à ce défocus.</td></tr>
+        <tr><td>Z de travail (foyer)</td><td class="num">8,5</td><td>Z de travail proposé par défaut dans tous les panneaux. Chaque panneau reste modifiable.</td></tr>
+        <tr><td>Marge de survol (marquage)</td><td class="num">0,5</td><td>Marge de transit proposée dans les modes de marquage (<code>0</code> recommandé sur pièce plate).</td></tr>
+        <tr><td>Sélecteur broche</td><td class="num"><code>$1</code></td><td>Sélecteur multi-broche ajouté aux commandes S/M3/M5 (LinuxCNC : laser = spindle 1).</td></tr>
+        <tr><td><b>Numéro d'outil laser</b></td><td class="num">100</td><td>Numéro (tool.tbl) de l'outil laser : compensation <code>G43 H&lt;n&gt;</code> et Test des offsets.</td></tr>
+        <tr><td><b>Échelle de puissance max (S)</b></td><td class="num">1000</td><td>Valeur <code>S</code> = pleine puissance. Fixe le maximum des champs de puissance et le plafond de la fluence.</td></tr>
+        <tr><td>Temporisation d'armement</td><td class="num">2,0</td><td>Pause <code>G4</code> après l'armement, le temps que l'électronique du module soit prête.</td></tr>
+        <tr><td>Hauteur bec minimale</td><td class="num">1,5</td><td>Butée de sécurité anti-collision : le bec ne descend jamais plus près de la surface.</td></tr>
+        <tr><td>Bec : diamètres et hauteur</td><td class="num">5 / 16 / 18</td><td>Profil du bec pour le contrôle anti-collision sur surface courbe.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">Extrait des réglages les plus utiles — la liste complète (vitesses de cadrage, accélération d'estimation, seuils d'avertissement d'épaisseur/pas Z…) figure dans le <a href="https://github.com/atelierduverdier/LaserAtelier#readme">README du dépôt</a>.</p>
+</section>
+
+<!-- ============ G-CODE ============ -->
+<section id="gcode">
+  <div class="sec-tag">● G-code &amp; LinuxCNC</div>
+  <h2>Ce que génère l'atelier</h2>
+  <p class="sec-lede">Chaque générateur renvoie un G-code assaini pour LinuxCNC (dialecte RS274). Le format est pensé pour un laser piloté en broche PWM.</p>
+
+  <div class="cols" style="margin-top:22px">
+    <div class="panel">
+      <h3>Structure d'un job</h3>
+      <ul class="clean">
+        <li>En-tête : <code>G21</code> / <code>G90</code> / <code>G94</code> / <code>G43 H&lt;laser&gt;</code>, puis <code>M5 $1</code>.</li>
+        <li>Armement unique : <code>M3 $1</code> à puissance nulle + temporisation.</li>
+        <li>Puissance par segment via <code>S…</code>, <code>S0</code> sur les rapides.</li>
+        <li>Désarmement <code>M5 $1</code>, arrêt propre au <code>M2</code>.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Assainissement obligatoire</h3>
+      <p>LinuxCNC rejette les <b>parenthèses imbriquées</b> dans les commentaires et les <b>octets non-ASCII</b> (accents français). Le générateur remplace les parenthèses internes et translittère les accents à chaque sortie — l'opération est idempotente (sûre pour les jobs combinés).</p>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <span class="ci">Portabilité — deux réglages clés</span>
+    <p>Le <b>numéro d'outil laser</b> (défaut 100) et l'<b>échelle de puissance S</b> (défaut 1000) sont dans les Préférences : une machine dont le laser est un autre outil de la table, ou dont la broche est configurée S0-255, s'adapte entièrement depuis l'interface, sans toucher au code. Le sélecteur de broche <code>$1</code> est lui aussi réglable.</p>
+  </div>
+  <div class="callout warn">
+    <span class="ci">Contrôleurs sans compensation d'outil (GRBL…)</span>
+    <p>Le sélecteur multi-broche <code>$1</code> et la compensation <code>G43</code> sont propres à LinuxCNC. Pour un contrôleur qui ne les supporte pas, il faut adapter la fonction <code>cmd_tool_comp()</code> dans <code>laser_core.py</code> — non couvert par les Préférences.</p>
+  </div>
+</section>
+
+<!-- ============ PERFORMANCES ============ -->
+<section id="perf">
+  <div class="sec-tag">● Performances</div>
+  <h2>Suivi de surface&nbsp;: de la minute à la milliseconde</h2>
+  <p class="sec-lede">La sonde de hauteur Z (pour le marquage/découpe courbe et la projection) reposait au départ sur une intersection géométrique OpenCascade par point (~5&nbsp;ms chacune) — des minutes sur un remplissage dense. Elle utilise maintenant une <b>tessellation unique</b> de la surface suivie d'une interpolation barycentrique par point (quelques microsecondes).</p>
+
+  <div class="twrap">
+    <table>
+      <thead><tr><th>Calcul (plaque ondulée 100×60&nbsp;mm, ~48&nbsp;000 points)</th><th class="num">Avant</th><th class="num">Après</th><th class="num">Gain</th></tr></thead>
+      <tbody>
+        <tr><td>Projection du motif sur la surface 3D</td><td class="num">66,2&nbsp;s</td><td class="num">0,06&nbsp;s</td><td class="num gain">×1200</td></tr>
+        <tr><td>G-code marquage courbe (1ᵉʳ calcul)</td><td class="num">107,0&nbsp;s</td><td class="num">0,18&nbsp;s</td><td class="num gain">×600</td></tr>
+        <tr><td>Hachures 0,2&nbsp;mm sur 24 faces à trou</td><td class="num">2,6&nbsp;s</td><td class="num">0,08&nbsp;s</td><td class="num gain">×33</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">Précision préservée : l'écart Z entre le maillage et la vraie surface est borné à 0,05&nbsp;mm (erreur max mesurée 0,046&nbsp;mm sur 300 points) — négligeable face à la tolérance de focus du laser (~0,1&nbsp;mm).</p>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section id="faq">
+  <div class="sec-tag">● FAQ &amp; dépannage</div>
+  <h2>Questions fréquentes</h2>
+  <p class="sec-lede">Les points qui reviennent le plus souvent à l'usage.</p>
+
+  <details class="faq">
+    <summary><span class="q">En photo, si je mets un pas de trame de 1&nbsp;mm avec un point de 2&nbsp;mm, ça se chevauche&nbsp;?</span><span class="chev">›</span></summary>
+    <div class="a">
+      <p>Oui, beaucoup. Le pas de trame est la distance entre les centres des points ; avec un point de 2&nbsp;mm (rayon 1&nbsp;mm) et un pas de 1&nbsp;mm, le bord de chaque point atteint le centre du voisin — les points fusionnent en X, en Y et en diagonale. Le rendu s'écrase en noir plein et le dégradé disparaît.</p>
+      <p><b>La règle</b> (rappelée dans l'infobulle du champ «&nbsp;largeur du point&nbsp;») : la largeur de point doit être <b>proche du pas de trame</b>. Pour un pas de 1&nbsp;mm, visez un point d'environ 0,8 à 1&nbsp;mm ; pour un point de 2&nbsp;mm, un pas d'environ 2&nbsp;mm. Attention : l'aperçu à l'écran affiche un pixel par point et ne montre pas le chevauchement — faites toujours un essai sur chute.</p>
+    </div>
+  </details>
+
+  <details class="faq">
+    <summary><span class="q">Mes traits sont en pointillé à haute vitesse, c'est un bug&nbsp;?</span><span class="chev">›</span></summary>
+    <div class="a">
+      <p>Non. Le laser est piloté en <b>S/PWM</b> : à chaque changement de puissance, la machine marque une micro-pause aux frontières de paliers, ce qui hache le trait à grande vitesse. Les rampes utilisent le lissage de trajectoire <code>G64</code> et une commande <code>S</code> insérée sur les lignes <code>G1</code> pour rester fluides. Réduire le nombre de paliers aide aussi.</p>
+    </div>
+  </details>
+
+  <details class="faq">
+    <summary><span class="q">Ma photo est verticale mais elle apparaît à l'horizontale dans le tramage&nbsp;?</span><span class="chev">›</span></summary>
+    <div class="a">
+      <p>L'orientation EXIF des photos de téléphone est appliquée automatiquement au chargement. Si l'orientation ne convient toujours pas, le champ <b>Rotation</b> du panneau (0°/90°/180°/270°, sens horaire) permet d'orienter la gravure sur la pièce.</p>
+    </div>
+  </details>
+
+  <details class="faq">
+    <summary><span class="q">Pourquoi mon G-code exige <code>T&lt;laser&gt; M6</code> avant de tourner&nbsp;?</span><span class="chev">›</span></summary>
+    <div class="a">
+      <p>Le laser n'est pas sur l'axe de la broche. Le <code>G43</code> de l'en-tête applique les offsets X/Y et le Z palpé de l'outil laser — mais seulement si celui-ci est l'outil courant. Sans <code>T&lt;laser&gt; M6</code> préalable, les coordonnées seraient interprétées en position broche (foyer faux, X/Y décalés). Le numéro d'outil laser se règle dans les Préférences.</p>
+    </div>
+  </details>
+
+  <details class="faq">
+    <summary><span class="q">Je n'ai pas la même machine ni le même laser. Ça marche&nbsp;?</span><span class="chev">›</span></summary>
+    <div class="a">
+      <p>Oui, pour l'essentiel via les Préférences : profil du bec (anti-collision), Z de travail, calibration du point, numéro d'outil laser, échelle de puissance S, sélecteur de broche. Deux points restent dans le code : la fonction <code>cmd_tool_comp()</code> (pour un contrôleur sans <code>G43</code>) et le tableau <code>FOCUS_TABLE</code> (hauteur de bec par épaisseur pour la découpe à plat, propre au LT-80W). Le mode Test des offsets suppose une machine mixte fraise + laser sous LinuxCNC.</p>
+    </div>
+  </details>
+
+  <details class="faq">
+    <summary><span class="q">GRBL est-il supporté&nbsp;?</span><span class="chev">›</span></summary>
+    <div class="a">
+      <p>Pas directement. Le format cible LinuxCNC (broche <code>$1</code>, compensation <code>G43</code>). Adapter à GRBL demande de retoucher l'en-tête et l'armement dans <code>laser_core.py</code> — c'est un choix de conception, pas une limite de principe.</p>
+    </div>
+  </details>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-grid">
+    <div>
+      <div class="brand" style="margin-bottom:8px"><span class="dot"><img src="assets/workbench.svg" alt=""></span> Atelier Laser</div>
+      <p class="muted" style="margin:.2em 0 0">Workbench FreeCAD pour la génération de G-code laser sur CNC LinuxCNC.<br>Développé pour l'Atelier du Verdier · PrintNC + LT-80W.</p>
+    </div>
+    <div class="foot-links">
+      <a href="https://github.com/atelierduverdier/LaserAtelier" target="_blank" rel="noopener">Dépôt GitHub</a>
+      <a href="https://github.com/atelierduverdier/LaserAtelier#readme" target="_blank" rel="noopener">README complet</a>
+      <a href="https://youtu.be/KP4F4Cd287A" target="_blank" rel="noopener">Démo vidéo</a>
+      <a href="#top">Haut de page ↑</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  var saved=null; try{saved=localStorage.getItem('la-theme');}catch(e){}
+  if(saved){root.setAttribute('data-theme',saved);}
+  function cur(){
+    var a=root.getAttribute('data-theme');
+    if(a) return a;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  }
+  btn.addEventListener('click',function(){
+    var next=cur()==='dark'?'light':'dark';
+    root.setAttribute('data-theme',next);
+    try{localStorage.setItem('la-theme',next);}catch(e){}
+  });
+})();
+</script>
+</body>
+</html>

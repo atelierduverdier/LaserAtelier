@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- nuancier : éventail de cartes de tons, du clair au foncé -->
+  <g stroke="#2f3540" stroke-width="2" stroke-linejoin="round">
+    <rect x="8"  y="14" width="14" height="36" rx="3" fill="#ffe3c2" transform="rotate(-16 15 32)"/>
+    <rect x="20" y="12" width="14" height="38" rx="3" fill="#ffc27d" transform="rotate(-6 27 31)"/>
+    <rect x="32" y="12" width="14" height="38" rx="3" fill="#ff8a00" transform="rotate(5 39 31)"/>
+    <rect x="43" y="14" width="14" height="36" rx="3" fill="#a85a00" transform="rotate(15 50 32)"/>
+  </g>
+  <!-- rivet du nuancier -->
+  <circle cx="32" cy="54" r="4" fill="#2f3540"/>
+</svg>

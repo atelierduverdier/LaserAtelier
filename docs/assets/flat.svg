@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- bec laser (cône) + faisceau -->
+  <polygon points="26,4 38,4 32,14" fill="#2f3540"/>
+  <line x1="32" y1="14" x2="32" y2="34" stroke="#ff8a00" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- planche (vue de profil), fendue par le trait de coupe -->
+  <path d="M6 34 L29 34 L29 52 L6 52 Z" fill="none" stroke="#2f3540" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M35 34 L58 34 L58 52 L35 52 Z" fill="none" stroke="#2f3540" stroke-width="3" stroke-linejoin="round"/>
+  <!-- le faisceau traverse la fente -->
+  <line x1="32" y1="34" x2="32" y2="55" stroke="#ff8a00" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- passes successives : paliers Z de plus en plus profonds -->
+  <g stroke="#ff8a00" stroke-width="2" stroke-linecap="round">
+    <line x1="12" y1="39" x2="24" y2="39"/>
+    <line x1="12" y1="43" x2="21" y2="43"/>
+    <line x1="12" y1="47" x2="18" y2="47"/>
+  </g>
+</svg>
