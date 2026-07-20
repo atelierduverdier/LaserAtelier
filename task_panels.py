@@ -1908,7 +1908,10 @@ class TaskPanelDefocusCalibration:
                "engrenage, section Calibration du point) : elles servent à "
                "tous les modes (remplissage noir, styles vague/défocus...). "
                "La rampe de puissance optionnelle garde les traits très "
-               "défocalisés visibles.")
+               "défocalisés visibles. Astuce : mets « Nombre de bandes » > 1 "
+               "pour graver plusieurs bandes côte à côte, une par vitesse "
+               "(de la 1re à la dernière) -- tous tes niveaux de gris/noir en "
+               "un seul job, chaque bande étiquetée de sa vitesse.")
         _diagram(form, "diag_defocus.svg")
 
         self._presets = _PresetController(form, inner, "defocus_calib", lambda: self._last_fields)
@@ -1985,8 +1988,46 @@ class TaskPanelDefocusCalibration:
         self.spn_feed.setRange(1, 20000)
         self.spn_feed.setValue(1000)
         self.spn_feed.setSuffix(" mm/min")
-        self.spn_feed.setToolTip("Vitesse d'avance FIXE des traits.")
+        self.spn_feed.setToolTip(
+            "Vitesse d'avance des traits. Si plusieurs bandes (ci-dessous),\n"
+            "c'est la vitesse de la PREMIÈRE bande.")
         form.addRow("Vitesse des traits :", self.spn_feed)
+
+        _section(form, "Plusieurs vitesses (bandes)", "sect_options.svg")
+        self.spn_nbands = QtWidgets.QSpinBox()
+        self.spn_nbands.setRange(1, 20)
+        self.spn_nbands.setValue(1)
+        self.spn_nbands.setToolTip(
+            "Nombre de bandes gravées CÔTE À CÔTE, une par vitesse. 1 = une\n"
+            "seule bande (la vitesse ci-dessus). Plus = balaie de la 1re\n"
+            "vitesse (ci-dessus) à la dernière (ci-dessous) : on obtient tous\n"
+            "les niveaux de gris/noir en un seul job, sans tout refaire.")
+        form.addRow("Nombre de bandes :", self.spn_nbands)
+
+        self.spn_feed_end = QtWidgets.QDoubleSpinBox()
+        self.spn_feed_end.setRange(1, 20000)
+        self.spn_feed_end.setValue(400)
+        self.spn_feed_end.setSuffix(" mm/min")
+        self.spn_feed_end.setToolTip(
+            "Vitesse de la DERNIÈRE bande. Les bandes intermédiaires ont une\n"
+            "vitesse interpolée entre la 1re (ci-dessus) et celle-ci.")
+        form.addRow("Vitesse dernière bande :", self.spn_feed_end)
+
+        self.spn_band_gap = QtWidgets.QDoubleSpinBox()
+        self.spn_band_gap.setRange(0.0, 50.0)
+        self.spn_band_gap.setValue(5.0)
+        self.spn_band_gap.setSuffix(" mm")
+        self.spn_band_gap.setToolTip(
+            "Espace horizontal libre entre deux bandes (étiquettes comprises).")
+        form.addRow("Espace entre bandes :", self.spn_band_gap)
+
+        def _sync_bands():
+            multi = self.spn_nbands.value() > 1
+            _set_row_visible(form, self.spn_feed_end, multi)
+            _set_row_visible(form, self.spn_band_gap, multi)
+        self.spn_nbands.valueChanged.connect(
+            lambda _v: (_sync_bands(), self._update_duration_preview()))
+        _sync_bands()
 
         _section(form, "Étiquettes", "sect_labels.svg")
         self.chk_labels = QtWidgets.QCheckBox("Graver la hauteur (mm) à gauche")
@@ -2072,6 +2113,8 @@ class TaskPanelDefocusCalibration:
             "nmarks": self.spn_nmarks, "length": self.spn_length,
             "rowgap": self.spn_rowgap, "power": self.spn_power,
             "power_end": self.spn_power_end, "feed": self.spn_feed,
+            "nbands": self.spn_nbands, "feed_end": self.spn_feed_end,
+            "band_gap": self.spn_band_gap,
             "labels": self.chk_labels, "power_labels": self.chk_power_labels,
             "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
         }
@@ -2096,6 +2139,9 @@ class TaskPanelDefocusCalibration:
             "power": self.spn_power.value(),
             "power_end": self.spn_power_end.value(),
             "feed": self.spn_feed.value(),
+            "n_bands": self.spn_nbands.value(),
+            "feed_end": self.spn_feed_end.value(),
+            "band_gap": self.spn_band_gap.value(),
             "draw_labels": self.chk_labels.isChecked(),
             "draw_power_labels": self.chk_power_labels.isChecked(),
             "label_power": self.spn_label_power.value(),

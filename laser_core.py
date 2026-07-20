@@ -3621,6 +3621,7 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
                                        power, feed, power_end=None, draw_labels=True,
                                        draw_power_labels=True,
                                        label_power=300.0, label_feed=1500.0, label_z=None,
+                                       n_bands=1, feed_end=None, band_gap=5.0,
                                        pre_gcode="", post_gcode="", frame_only=False, quiet=False):
     """Grave une rangée de courts traits, chacun à une hauteur de bec
     croissante (z_start, z_start+z_step, ...), à vitesse FIXE. Chaque trait
@@ -3642,46 +3643,87 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     pour que même les traits très défocalisés marquent, et restent
     mesurables. power_end=None -> puissance constante.
 
+    n_bands / feed_end / band_gap : grave PLUSIEURS bandes côte à côte, une
+    par VITESSE (feed pour la 1re, feed_end pour la dernière, interpolé),
+    espacées horizontalement de band_gap mm. Chaque bande porte un libellé
+    « F<vitesse> » au-dessus. On obtient d'un coup toutes les vitesses (donc
+    tous les niveaux de gris/noir) sans relancer un job par vitesse.
+    n_bands=1 (ou feed_end=None) -> une seule bande, comportement d'origine.
+
     Le transit entre traits se fait DIRECTEMENT à la hauteur du trait
     suivant (laser éteint, pièce plate) -- pas de remontée au Z de sécurité
     entre chaque trait (inutile à plat, et lente).
 
     frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
     n_marks = max(1, int(n_marks))
+    n_bands = max(1, int(n_bands))
     def _mark_power(k):
         if power_end is None or n_marks < 2:
             return power
         return power + (power_end - power) * (k / float(n_marks - 1))
+    def _band_feed(b):
+        # Vitesse de la bande b : de `feed` (1re bande) à `feed_end`
+        # (dernière), interpolé. n_bands<2 ou feed_end absent -> `feed`.
+        if n_bands < 2 or feed_end is None:
+            return feed
+        return feed + (feed_end - feed) * (b / float(n_bands - 1))
     if label_z is None:
         label_z = z_start
     label_height = max(2.0, min(row_gap * 0.45, 5.0))
 
-    marks = []  # (chain, z)
+    # --- Géométrie d'UNE bande, en coordonnées locales (x_offset = 0) ---
+    # Une bande = une colonne de traits (Y croissant = Z croissant), hauteur
+    # gravée à gauche, puissance à droite -- identiques d'une bande à l'autre.
+    local_marks = []                       # (chain, z, power)
     for k in range(n_marks):
         z = z_start + k * z_step
         y = k * row_gap
-        marks.append(([FreeCAD.Vector(0.0, y, 0.0), FreeCAD.Vector(mark_length, y, 0.0)], z))
-
-    label_chains = []
-    for k, (_, z) in enumerate(marks):
+        local_marks.append(([FreeCAD.Vector(0.0, y, 0.0), FreeCAD.Vector(mark_length, y, 0.0)],
+                            z, _mark_power(k)))
+    local_labels = []                      # chaînes des étiquettes hauteur/puissance
+    for k, (_, z, mp) in enumerate(local_marks):
         y = k * row_gap
         if draw_labels:
             # Hauteur à GAUCHE. Décimales seulement si nécessaire : pas
-            # entiers -> "2","4" ; pas fins -> "0.5","8.25" (jusqu'à 2
-            # décimales, point géré par la police).
+            # entiers -> "2","4" ; pas fins -> "0.5","8.25".
             text = "{:g}".format(round(z, 2))
             w = text_width(text, label_height)
-            edges = text_to_edges(text, -(w + row_gap * 0.4), y - label_height / 2.0, label_height)
-            label_chains.extend(chain_edges(edges))
+            local_labels.extend(chain_edges(text_to_edges(
+                text, -(w + row_gap * 0.4), y - label_height / 2.0, label_height)))
         if draw_power_labels:
-            # Puissance à DROITE du trait (utile avec la rampe : sinon on ne
-            # sait pas quelle puissance a donné quel trait).
-            ptext = "S{:.0f}".format(_mark_power(k))
-            edges = text_to_edges(ptext, mark_length + row_gap * 0.4, y - label_height / 2.0, label_height)
-            label_chains.extend(chain_edges(edges))
+            # Puissance à DROITE du trait.
+            local_labels.extend(chain_edges(text_to_edges(
+                "S{:.0f}".format(mp), mark_length + row_gap * 0.4,
+                y - label_height / 2.0, label_height)))
 
-    all_pts = [p for chain, _ in marks for p in chain] + [p for chain in label_chains for p in chain]
-    z_safe = max([z for _, z in marks] + [label_z]) + TRAVEL_CLEARANCE_MM
+    # Pas horizontal entre bandes = largeur locale (traits + étiquettes + un
+    # libellé vitesse type) + band_gap, pour un espace CONSTANT = band_gap.
+    feed_label_y = n_marks * row_gap       # libellé de vitesse, au-dessus de la bande
+    _sample = [p for chain, _, _ in local_marks for p in chain] + list(local_labels)
+    _sample += [p for chain in chain_edges(text_to_edges(
+        "F{:.0f}".format(max(feed, feed_end or feed)), 0.0, feed_label_y, label_height))
+        for p in chain]
+    band_pitch = (max(p.x for p in _sample) - min(p.x for p in _sample)) + band_gap
+
+    # --- Réplication : une bande par vitesse, décalée en X ---
+    def _shift(chain, dx):
+        return [FreeCAD.Vector(p.x + dx, p.y, p.z) for p in chain]
+    marks = []          # (chain, z, feed, power)
+    label_chains = []   # chaînes gravées à label_feed / label_z
+    for b in range(n_bands):
+        dx = b * band_pitch
+        fb = _band_feed(b)
+        for chain, z, mp in local_marks:
+            marks.append((_shift(chain, dx), z, fb, mp))
+        for chain in local_labels:
+            label_chains.append(_shift(chain, dx))
+        # Libellé de vitesse, centré au-dessus de la bande.
+        ftext = "F{:.0f}".format(fb)
+        fx = dx + (mark_length - text_width(ftext, label_height)) / 2.0
+        label_chains.extend(chain_edges(text_to_edges(ftext, fx, feed_label_y, label_height)))
+
+    all_pts = [p for chain, _, _, _ in marks for p in chain] + [p for chain in label_chains for p in chain]
+    z_safe = max([z for _, z, _, _ in marks] + [label_z]) + TRAVEL_CLEARANCE_MM
 
     lines = []
     lines.append("(G-Code Laser - Bande de calibration defocus)")
@@ -3689,8 +3731,12 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         p_desc = "S{:.0f}".format(power)
     else:
         p_desc = "S{:.0f}->{:.0f} (rampe)".format(power, power_end)
-    lines.append("(Traits : {} de Z={:.2f} a Z={:.2f} par pas de {:.2f}, {} F{:.0f})".format(
-        n_marks, z_start, z_start + (n_marks - 1) * z_step, z_step, p_desc, feed))
+    if n_bands > 1 and feed_end is not None:
+        f_desc = "{} bandes F{:.0f}->{:.0f}".format(n_bands, feed, feed_end)
+    else:
+        f_desc = "F{:.0f}".format(feed)
+    lines.append("(Traits : {} de Z={:.2f} a Z={:.2f} par pas de {:.2f}, {} -- {})".format(
+        n_marks, z_start, z_start + (n_marks - 1) * z_step, z_step, p_desc, f_desc))
     lines.append("(Mesurer l'epaisseur de chaque trait : le plus fin = foyer)")
     lines.append("G21")
     lines.append("G90")
@@ -3736,8 +3782,8 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
 
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     lines.append("(===== Traits de calibration =====)")
-    for k, (chain, z) in enumerate(marks):
-        _emit(chain, _mark_power(k), feed, z)
+    for chain, z, fb, mp in marks:
+        _emit(chain, mp, fb, z)
     if label_chains:
         lines.append("(===== Etiquettes (hauteur en mm) =====)")
         for chain in label_chains:
