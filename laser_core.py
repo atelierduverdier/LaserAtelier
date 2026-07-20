@@ -3672,53 +3672,54 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     label_height = max(2.0, min(row_gap * 0.45, 5.0))
 
     # --- Géométrie d'UNE bande, en coordonnées locales (x_offset = 0) ---
-    # Une bande = une colonne de traits (Y croissant = Z croissant), hauteur
-    # gravée à gauche, puissance à droite -- identiques d'une bande à l'autre.
-    local_marks = []                       # (chain, z, power)
+    # Une bande = une colonne de traits (Y croissant = Z croissant). La
+    # hauteur (Z) et la puissance (S) d'une rangée sont IDENTIQUES sur toutes
+    # les bandes -> gravées UNE SEULE FOIS (inutile de les répéter). Seule la
+    # vitesse (F) change d'une bande à l'autre : gravée au-dessus de chacune.
+    multi = n_bands > 1
+    local_marks = []                       # (chain, z, power) -- répliqué par bande
     for k in range(n_marks):
         z = z_start + k * z_step
         y = k * row_gap
         local_marks.append(([FreeCAD.Vector(0.0, y, 0.0), FreeCAD.Vector(mark_length, y, 0.0)],
                             z, _mark_power(k)))
-    local_labels = []                      # chaînes des étiquettes hauteur/puissance
-    for k, (_, z, mp) in enumerate(local_marks):
+
+    # Étiquettes de rangée (hauteur + puissance), gravées UNE FOIS. 1 bande :
+    # hauteur à gauche, puissance à droite (comme avant). >1 bande : les deux
+    # à GAUCHE (puissance en colonne extérieure, puis hauteur), sans répétition.
+    z_texts = ["{:g}".format(round(z, 2)) for _, z, _ in local_marks]
+    s_texts = ["S{:.0f}".format(mp) for _, _, mp in local_marks]
+    zw_max = max([text_width(t, label_height) for t in z_texts]) if draw_labels else 0.0
+    sw_max = max([text_width(t, label_height) for t in s_texts]) if draw_power_labels else 0.0
+    z_col_x = -(zw_max + row_gap * 0.4)
+    s_col_x = (z_col_x - (sw_max + row_gap * 0.4)) if multi else (mark_length + row_gap * 0.4)
+    row_labels = []
+    for k in range(n_marks):
         y = k * row_gap
         if draw_labels:
-            # Hauteur à GAUCHE. Décimales seulement si nécessaire : pas
-            # entiers -> "2","4" ; pas fins -> "0.5","8.25".
-            text = "{:g}".format(round(z, 2))
-            w = text_width(text, label_height)
-            local_labels.extend(chain_edges(text_to_edges(
-                text, -(w + row_gap * 0.4), y - label_height / 2.0, label_height)))
+            row_labels.extend(chain_edges(text_to_edges(
+                z_texts[k], z_col_x, y - label_height / 2.0, label_height)))
         if draw_power_labels:
-            # Puissance à DROITE du trait.
-            local_labels.extend(chain_edges(text_to_edges(
-                "S{:.0f}".format(mp), mark_length + row_gap * 0.4,
-                y - label_height / 2.0, label_height)))
+            row_labels.extend(chain_edges(text_to_edges(
+                s_texts[k], s_col_x, y - label_height / 2.0, label_height)))
 
-    # Pas horizontal entre bandes = largeur locale (traits + étiquettes + un
-    # libellé vitesse type) + band_gap, pour un espace CONSTANT = band_gap.
+    # Pas horizontal entre bandes : largeur d'une bande (traits ou libellé de
+    # vitesse, au plus large) + band_gap, pour un espace CONSTANT = band_gap.
     feed_label_y = n_marks * row_gap       # libellé de vitesse, au-dessus de la bande
-    _sample = ([p for chain, _, _ in local_marks for p in chain]
-               + [p for chain in local_labels for p in chain])
-    _sample += [p for chain in chain_edges(text_to_edges(
-        "F{:.0f}".format(max(feed, feed_end or feed)), 0.0, feed_label_y, label_height))
-        for p in chain]
-    band_pitch = (max(p.x for p in _sample) - min(p.x for p in _sample)) + band_gap
+    fw_max = text_width("F{:.0f}".format(max(feed, feed_end or feed)), label_height)
+    band_pitch = max(mark_length, fw_max) + band_gap
 
-    # --- Réplication : une bande par vitesse, décalée en X ---
+    # --- Réplication : une bande de traits par vitesse, décalée en X ---
     def _shift(chain, dx):
         return [FreeCAD.Vector(p.x + dx, p.y, p.z) for p in chain]
-    marks = []          # (chain, z, feed, power)
-    label_chains = []   # chaînes gravées à label_feed / label_z
+    marks = []                    # (chain, z, feed, power)
+    label_chains = list(row_labels)   # étiquettes de rangée (gravées une fois)
     for b in range(n_bands):
         dx = b * band_pitch
         fb = _band_feed(b)
         for chain, z, mp in local_marks:
             marks.append((_shift(chain, dx), z, fb, mp))
-        for chain in local_labels:
-            label_chains.append(_shift(chain, dx))
-        # Libellé de vitesse, centré au-dessus de la bande.
+        # Vitesse de la bande, centrée au-dessus.
         ftext = "F{:.0f}".format(fb)
         fx = dx + (mark_length - text_width(ftext, label_height)) / 2.0
         label_chains.extend(chain_edges(text_to_edges(ftext, fx, feed_label_y, label_height)))
