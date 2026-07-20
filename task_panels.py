@@ -1795,13 +1795,13 @@ class TaskPanelKerf:
         form.addRow("Pas de jeu :", self.spn_clr_step)
 
         self.lbl_fit = _WrapLabel(
-            "Le tenon (pièce mâle isolée) et les mortaises (trous, jeu indiqué "
-            "sous chacun) se découpent EN UNE FOIS -- pas de carré à couper "
-            "d'abord. Un objet « gravure » séparé porte la cote sur le tenon "
-            "(repère de la pièce de référence), à marquer à faible puissance -- "
-            "facultatif. Découpe avec ta Compensation de kerf, insère le tenon "
-            "dans chaque mortaise et retiens le jeu qui donne l'ajustement "
-            "voulu (serré pour un collage, glissant pour du démontable).")
+            "Deux objets : « decoupe » = les contours (tenon isolé + mortaises "
+            "rangées par jeu croissant), à découper avec ta Compensation de "
+            "kerf ; « gravure » = le jeu sous chaque mortaise et la cote sur le "
+            "tenon, à MARQUER à faible puissance. Grave puis découpe (ou "
+            "enchaîne les deux via Job combiné), insère le tenon dans chaque "
+            "mortaise et retiens le jeu qui donne l'ajustement voulu -- serré "
+            "pour un collage, glissant pour du démontable.")
         form.addRow(self.lbl_fit)
 
         self._square_rows = [self.spn_size, self.lbl_square]
@@ -1839,8 +1839,8 @@ class TaskPanelKerf:
                 return False
             noms = ", ".join(o.Name for o in objs)
             FreeCAD.Console.PrintMessage(
-                "Succès : {} créé(s). Graver « ...gravure » (cote du tenon, "
-                "faible puissance) et découper « ...decoupe » avec ta "
+                "Succès : {} créé(s). Graver « ...gravure » (jeux + cote du "
+                "tenon, faible puissance) et découper « ...decoupe » avec ta "
                 "Compensation de kerf.\n".format(noms))
             return True
         obj, err = core.create_kerf_test_pattern(self.spn_size.value())
