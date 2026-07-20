@@ -123,6 +123,17 @@ def _intro(form, resume, details=None):
     return det
 
 
+def _bullet_list(form, items, indent=10):
+    """Liste à puces/étapes : UN label par élément (chacun sur sa propre
+    ligne, replié individuellement par Qt) -- à utiliser pour toute
+    énumération, car _WrapLabel aplatit les \\n : une liste entière dans
+    un seul label redevient un pavé d'une seule coulée."""
+    for item in items:
+        lbl = _WrapLabel(item)
+        lbl.setContentsMargins(indent, 0, 0, 2)
+        form.addRow(lbl)
+
+
 def _diagram(form, name, width=260, height=100):
     """Petit schéma explicatif (SVG de resources/icons) inséré comme une
     rangée du formulaire, centré -- un dessin vaut un paragraphe. Ne fait
@@ -546,49 +557,49 @@ class TaskPanelGuide:
         _diagram(form, "diag_pipeline.svg", width=280, height=110)
 
         _section(form, "Le flux de travail", "sect_options.svg")
-        steps = _WrapLabel(
+        _bullet_list(form, [
             "1. CALIBRER (une fois) : Préférences (engrenage) -- focale, "
             "calibration du point via la Bande de calibration défocus, "
-            "offsets T100 via le Test des offsets.  "
+            "offsets T100 via le Test des offsets.",
             "2. TESTER sur une chute : Grille de test ou Rampe "
-            "puissance/vitesse pour trouver les bons réglages du matériau.  "
+            "puissance/vitesse pour trouver les bons réglages du matériau.",
             "3. MOTIF : Hachures 2D (remplissage), texte/forme (Gravure "
             "remplie), image (Gravure photo) -- et Projection si la pièce "
-            "est courbe.  "
+            "est courbe.",
             "4. G-CODE : Marquage, Gravure remplie ou Découpe génèrent le "
-            "fichier .ngc.  "
+            "fichier .ngc.",
             "5. CADRAGE : chaque mode propose un fichier d'aperçu séparé "
             "(rectangle englobant, laser éteint) à lancer d'abord pour "
-            "vérifier le positionnement.  "
+            "vérifier le positionnement.",
             "6. GRAVER : sur LinuxCNC, faire T100 M6 AVANT de lancer le "
-            "fichier (rappelé dans chaque G-code généré).")
-        form.addRow(steps)
+            "fichier (rappelé dans chaque G-code généré).",
+        ])
 
         _section(form, "Quel mode pour quoi ?", "sect_gcode.svg")
-        table = _WrapLabel(
-            "• Graver un TEXTE ou une FORME en noir : Gravure remplie.  "
-            "• Graver une PHOTO : Gravure photo (trame de points).  "
+        _bullet_list(form, [
+            "• Graver un TEXTE ou une FORME en noir : Gravure remplie.",
+            "• Graver une PHOTO : Gravure photo (trame de points).",
             "• Remplir une face de hachures (géométrie) : Hachures 2D, puis "
-            "Marquage pour le G-code.  "
+            "Marquage pour le G-code.",
             "• Graver sur une pièce BOMBÉE : Hachures 2D → Projection → "
-            "Marquage (motif + modèle 3D sélectionnés ensemble).  "
+            "Marquage (motif + modèle 3D sélectionnés ensemble).",
             "• DÉCOUPER du plat : Découpe multi-passes (attaches, amorce, "
-            "copies en matrice).  "
-            "• Découper une pièce courbe : Découpe multi-passes (courbe).  "
-            "• Enchaîner plusieurs opérations en un fichier : Job combiné.  "
+            "copies en matrice).",
+            "• Découper une pièce courbe : Découpe multi-passes (courbe).",
+            "• Enchaîner plusieurs opérations en un fichier : Job combiné.",
             "• Trouver les réglages d'un matériau : Grille de test (cellules) "
-            "ou Rampe (lignes continues).")
-        form.addRow(table)
+            "ou Rampe (lignes continues).",
+        ])
 
         _section(form, "Les 3 règles de la maison", "sect_safety.svg")
-        rules = _WrapLabel(
+        _bullet_list(form, [
             "• Zéro Z toujours sur la SURFACE de la pièce (le Z de travail "
-            "des Préférences est alors la focale du nez, une constante).  "
+            "des Préférences est alors la focale du nez, une constante).",
             "• On MESURE, on ne devine pas : calibration du point, kerf, "
-            "offsets -- tout vient d'un test réel sur chute.  "
+            "offsets -- tout vient d'un test réel sur chute.",
             "• Toujours lancer l'aperçu CADRAGE avant le vrai job, lunettes "
-            "laser sur le nez.")
-        form.addRow(rules)
+            "laser sur le nez.",
+        ])
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Guide rapide de l'atelier")
