@@ -4748,18 +4748,26 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
         lines.append(pre_gcode.strip())
 
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    # Chaque point est un MICRO-TRAIT (pas un pulse G4 a l'arret) : meme
+    # duree d'exposition, mais le faisceau BOUGE pendant le tir -- requis
+    # par les machines dont la puissance est asservie a la vitesse reelle
+    # (a l'arret, l'asservissement force la puissance a zero et un pulse
+    # G4 ne grave rien) ; sans asservissement le rendu est identique.
+    seg = max(0.05, min(0.3 * pitch, 0.2))
+    half = seg / 2.0
     x0, y0, _ = dots[0]
-    lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x0, y0, z_safe))
+    lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x0 - half, y0, z_safe))
     lines.append("G0 Z{:.4f}".format(z_work))
     beam_off = CMD_BEAM_OFF.format(sel=SPINDLE_SELECT)
-    beam_on = CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power)
+    sel = SPINDLE_SELECT
     first = True
     for x, y, dwell in dots:
         if not first:
-            lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x - half, y))
         first = False
-        lines.append(beam_on)
-        lines.append("G4 P{:.3f}".format(dwell))
+        f_dot = max(1.0, seg / max(dwell, 1e-3) * 60.0)
+        lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
+            x + half, y, f_dot, power, sel))
         lines.append(beam_off)
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -5016,13 +5024,17 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
     sel = SPINDLE_SELECT
 
     def _emit_dots(dots, y_off):
+        # Micro-traits, pas de pulse G4 : cf. generate_gcode_halftone.
+        seg = max(0.05, min(0.3 * pitch, 0.2))
+        half = seg / 2.0
         first = True
         for x, y, dw in dots:
             lines.append("G0 X{:.4f} Y{:.4f}{}".format(
-                x, y + y_off, " Z{:.4f}".format(z_work) if first else ""))
+                x - half, y + y_off, " Z{:.4f}".format(z_work) if first else ""))
             first = False
-            lines.append(CMD_BEAM_ON.format(sel=sel, power=power))
-            lines.append("G4 P{:.3f}".format(dw))
+            f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
+            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
+                x + half, y + y_off, f_dot, power, sel))
             lines.append(CMD_BEAM_OFF.format(sel=sel))
 
     for b, kind in bands:
