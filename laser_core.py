@@ -4973,6 +4973,80 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
+def generate_gcode_photo_zdots(darkness_rows, pitch, z_focus, power,
+                               dot_min_mm, dot_max_mm, dwell_min_s, dwell_max_s,
+                               white_threshold=0.05, pre_gcode="", post_gcode="",
+                               frame_only=False, quiet=False):
+    """Photo en GROS POINTS À TAILLE VARIABLE (trame artistique) : un point
+    par cellule non blanche, dont le DIAMÈTRE rend la noirceur -- petit
+    point net (foyer) pour les clairs, gros point défocalisé pour les
+    foncés. La taille est obtenue par la HAUTEUR Z du point (cône calibré),
+    le Z bougeant ENTRE les points (transits) -- jamais pendant le tir,
+    donc aucune limite de vitesse Z ne s'applique. La durée d'exposition
+    suit la surface du point (t ∝ d², bornée dwell_min..dwell_max) pour un
+    noircissement homogène. De près : un semis de points ; de loin :
+    l'image. Tir en micro-trait (compatible puissance asservie)."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or dot_max_mm <= dot_min_mm or power <= 0:
+        return None
+    half_angle = calibrated_half_angle()
+    dots = []
+    for row in range(h):
+        y = (h - 1 - row) * pitch
+        cols = range(w) if row % 2 == 0 else range(w - 1, -1, -1)
+        for col in cols:
+            d = min(1.0, max(0.0, darkness_rows[row][col]))
+            if d < white_threshold:
+                continue
+            dia = dot_min_mm + (dot_max_mm - dot_min_mm) * d
+            z = z_focus + (defocus_for_spot_diameter(dia, SPOT_FOCUS_MM, half_angle) or 0.0)
+            r = (dia / dot_max_mm) ** 2
+            dw = dwell_min_s + (dwell_max_s - dwell_min_s) * r
+            dots.append((col * pitch, y, z, dw))
+    if not dots:
+        return None
+    z_safe = max(z for _, _, z, _ in dots) + TRAVEL_CLEARANCE_MM
+    lines = []
+    lines.append("(G-Code Laser - Photo en gros points Z [taille variable])")
+    lines.append("(Image : {} x {} px au pas {:.2f}mm, points {:.2f}..{:.2f}mm, S{:.0f})".format(
+        w, h, pitch, dot_min_mm, dot_max_mm, power))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+    if frame_only:
+        lines.extend(build_frame_trace(0.0, w * pitch, 0.0, (h - 1) * pitch, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    sel = SPINDLE_SELECT
+    seg = max(0.05, min(0.3 * pitch, 0.2))
+    halfs = seg / 2.0
+    first = True
+    for x, y, z, dw in dots:
+        lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x - halfs, y, z_safe if first else z))
+        if first:
+            lines.append("G0 Z{:.4f}".format(z))
+            first = False
+        f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
+        lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(x + halfs, y, f_dot, power, sel))
+        lines.append(CMD_BEAM_OFF.format(sel=sel))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
 def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
                                  feed, line_width, material,
                                  white_threshold=0.05, n_levels=10,

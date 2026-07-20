@@ -2831,7 +2831,8 @@ class TaskPanelHalftone:
         self.combo_mode = QtWidgets.QComboBox()
         self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable",
                                   "Lignes calibrées (nuancier)",
-                                  "Diffusion en lignes (points fins, rapide)"])
+                                  "Diffusion en lignes (points fins, rapide)",
+                                  "Gros points Z (taille variable, artistique)"])
         self.combo_mode.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_mode.setMinimumContentsLength(17)
         self.combo_mode.setToolTip(
@@ -2915,10 +2916,11 @@ class TaskPanelHalftone:
             is_duree = idx == 1
             is_lignes = idx == 2
             is_dither_l = idx == 3
-            self.spn_dwell_min.setEnabled(is_duree)
-            self.spn_dwell_max.setEnabled(idx in (0, 1))
+            is_zdots = idx == 4
+            self.spn_dwell_min.setEnabled(is_duree or is_zdots)
+            self.spn_dwell_max.setEnabled(idx in (0, 1, 4))
             self.spn_power.setEnabled(not is_lignes)   # calculée par pixel (mode 2)
-            self.spn_white.setEnabled(is_duree or is_lignes)
+            self.spn_white.setEnabled(is_duree or is_lignes or is_zdots)
             _set_row_visible(form, self.combo_photo_mat, is_lignes)
             _set_row_visible(form, self.spn_line_feed, is_lignes or is_dither_l)
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
@@ -3196,6 +3198,17 @@ class TaskPanelHalftone:
                     width, core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0),
                 feed=self.spn_line_feed.value(), line_width=width,
                 material=self.combo_photo_mat.currentData(),
+                white_threshold=k["white_threshold"], **extra)
+        if idx == 4:
+            k = self._gen_kwargs()
+            dot_max = self.spn_spot_width.value()
+            if dot_max <= core.SPOT_FOCUS_MM:
+                dot_max = max(k["pitch"] * 0.9, core.SPOT_FOCUS_MM * 3)
+            return core.generate_gcode_photo_zdots(
+                rows, pitch=k["pitch"], z_focus=core.Z_WORK_MM,
+                power=self.spn_power.value() or core.S_MAX,
+                dot_min_mm=core.SPOT_FOCUS_MM, dot_max_mm=dot_max,
+                dwell_min_s=k["dwell_min_s"], dwell_max_s=k["dwell_max_s"],
                 white_threshold=k["white_threshold"], **extra)
         if idx == 3:
             k = self._gen_kwargs()
