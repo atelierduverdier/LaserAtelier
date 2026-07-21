@@ -1516,10 +1516,18 @@ class TaskPanelFilledEngraving:
         faces = core.get_faces_from_selection_for_hatch(self.selection)
         if not faces:
             if not silent:
+                hint = ""
+                if any("Hachures" in getattr(so.Object, "Label", "")
+                       for so in (self.selection or [])):
+                    hint = ("\n\nTa sélection contient des objets de TRAITS "
+                            "(Hachures...). Ce mode fabrique lui-même le "
+                            "remplissage à partir d'une forme FERMÉE -- pour "
+                            "graver des traits existants, utilise plutôt le "
+                            "mode « Marquage de motif ».")
                 QtWidgets.QMessageBox.critical(
                     self.form, "Erreur",
                     "Aucune face 2D fermée trouvée dans la sélection\n"
-                    "(face, Draft, ou sketch à fils fermés).")
+                    "(face, Draft, ou sketch à fils fermés)." + hint)
             return None, None, None, None
         half_angle = core.calibrated_half_angle()
         defocus = core.defocus_for_fill_spacing(
