@@ -4367,13 +4367,22 @@ def dot_positions(chain, spacing):
 def wave_resample(chain, period, amplitude, step=None):
     """Rééchantillonne la chaîne et renvoie [(point, dz)] : dz oscille de
     0 (foyer, trait fin) à `amplitude` (défocus max, trait large et pâle)
-    avec la période donnée le long de l'abscisse curviligne."""
-    if step is None:
-        step = max(min(period / 12.0, 1.0), 0.05)
+    le long de l'abscisse curviligne. La période demandée est AJUSTÉE
+    pour qu'un nombre ENTIER de vagues tienne exactement sur la chaîne
+    (period_eff = L / round(L/period)) : le trait commence ET finit au
+    foyer, et sur une chaîne fermée (cercle) la vague boucle sans
+    couture. Constaté sans cet ajustement : 219,9 mm de circonférence /
+    période 29 mm = 7,6 vagues -> la boucle se refermait en pleine
+    montée (S fort + point large sur le départ fin) = grosseur au point
+    de bouture."""
     cum = _chain_cumlen(chain)
     total = cum[-1]
     if total < 1e-9:
         return []
+    if period > 0 and total > period / 2.0:
+        period = total / max(1, int(round(total / period)))
+    if step is None:
+        step = max(min(period / 12.0, 1.0), 0.05)
     n = max(2, int(math.ceil(total / step)) + 1)
     out = []
     for i in range(n):
