@@ -1326,6 +1326,7 @@ class TaskPanelFilledEngraving:
             w.valueChanged.connect(lambda _v: _update_style_preview())
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
+        _combined_add_button(form, self._on_add_to_combined)
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
         self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
@@ -1615,6 +1616,26 @@ class TaskPanelFilledEngraving:
             return
         rapid, mark = core.parse_gcode_toolpath(gcode)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+
+    def _build_combined_operation(self):
+        fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
+        if fill_edges is None:
+            return None
+        if not fill_edges and not self.chk_contour.isChecked():
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur",
+                "Rien à graver : le remplissage est vide (motif plus fin que\n"
+                "le point défocalisé) et le contour est décoché.")
+            return None
+        return {"type": "filled",
+                "label": "Gravure remplie (S{:.0f})".format(self.spn_fill_power.value()),
+                "params": dict(fill_edges=fill_edges, contour_edges=contour_edges,
+                               **self._gen_kwargs(defocus, contour_z_offset))}
+
+    def _on_add_to_combined(self):
+        op = self._build_combined_operation()
+        if op:
+            _add_to_combined_job(op)
 
     def accept(self):
         _save_last_values("filled", self._last_fields)

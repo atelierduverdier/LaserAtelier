@@ -4470,7 +4470,8 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
                                      contour_z_offset=0.0, marge_survol=5.0,
                                      fill_style="plein", contour_style="plein",
                                      fill_style_params=None, contour_style_params=None,
-                                     pre_gcode="", post_gcode="", frame_only=False, quiet=False):
+                                     pre_gcode="", post_gcode="", frame_only=False, quiet=False,
+                                     body_only=False, min_safe_z=None):
     """Grave une forme/texte à plat en NOIR PLEIN : d'abord le remplissage
     par hachures gravé en DÉFOCUS (point élargi, cf. remplissage défocus du
     mode Hachures 2D -- fill_edges doivent déjà être rentrées d'un rayon de
@@ -4511,6 +4512,8 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
     # En vague, le "niveau de travail" est le sommet de l'oscillation.
     safe_levels = [z_fill_top] + ([z_contour_top] if has_contour else [])
     global_min_safe_z = max(safe_levels) + marge_survol + 5.0
+    if min_safe_z is not None:
+        global_min_safe_z = max(global_min_safe_z, min_safe_z)
 
     if not quiet:
         for what, style, params, feed in (
@@ -4535,17 +4538,19 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
             return None
         pts = [p for c in chains for p in c]
         lines = ["(G-Code Laser - Gravure remplie : cadrage)"]
-        lines.append("G21")
-        lines.append("G90")
-        lines.append("G94")
-        lines.append(cmd_tool_comp())
-        lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+        if not body_only:
+            lines.append("G21")
+            lines.append("G90")
+            lines.append("G94")
+            lines.append(cmd_tool_comp())
+            lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
         lines.append("G0 Z{:.4f}".format(global_min_safe_z))
         lines.extend(build_frame_trace(
             min(p.x for p in pts), max(p.x for p in pts),
             min(p.y for p in pts), max(p.y for p in pts), global_min_safe_z))
-        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
-        lines.append("M2")
+        if not body_only:
+            lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+            lines.append("M2")
         return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
     # Corps : remplissage d'abord, contour ensuite (repassé propre). Le
@@ -4585,23 +4590,25 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
     if any(label == "Contour" for label, _ in bodies):
         lines.append("(Contour Z={:.4f} S{:.0f} F{:.0f} style={})".format(
             z_contour, contour_power, contour_feed, style_names.get(contour_style, contour_style)))
-    lines.append("G21")
-    lines.append("G90")
-    lines.append("G94")
-    lines.append(cmd_tool_comp())
-    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
-    if pre_gcode.strip():
-        lines.append("(-- G-code personnalisé (avant) --)")
-        lines.append(pre_gcode.strip())
-    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    if not body_only:
+        lines.append("G21")
+        lines.append("G90")
+        lines.append("G94")
+        lines.append(cmd_tool_comp())
+        lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+        if pre_gcode.strip():
+            lines.append("(-- G-code personnalisé (avant) --)")
+            lines.append(pre_gcode.strip())
+        lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     for label, body in bodies:
         lines.append("(===== {} =====)".format(label))
         lines.append(body)
-    if post_gcode.strip():
-        lines.append("(-- G-code personnalisé (après) --)")
-        lines.append(post_gcode.strip())
-    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
-    lines.append("M2")
+    if not body_only:
+        if post_gcode.strip():
+            lines.append("(-- G-code personnalisé (après) --)")
+            lines.append(post_gcode.strip())
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
@@ -4638,6 +4645,27 @@ def _operation_intrinsic_safe_z(op_type, params):
         z_max = max(p.z for p in all_pts)
         z_offset = params.get("z_focus", 0.0) - z_min
         return z_max + z_offset + params.get("marge_survol", 0.0) + 5.0
+    if op_type == "filled":
+        # Même formule que generate_gcode_filled_engraving (version légère).
+        fill_edges = params.get("fill_edges") or []
+        contour_edges = params.get("contour_edges") or []
+        has_contour = bool(params.get("draw_contour", True) and contour_edges)
+        if not fill_edges and not has_contour:
+            return None
+        z_focus = params.get("z_focus", 0.0)
+        fsp = dict(params.get("fill_style_params") or {})
+        csp = dict(params.get("contour_style_params") or {})
+        fill_style = params.get("fill_style", "plein")
+        contour_style = params.get("contour_style", "plein")
+        z_fill = z_focus if fill_style == "vague" else z_focus + params.get("defocus", 0.0)
+        z_contour = (z_focus if contour_style == "vague"
+                     else z_focus + params.get("contour_z_offset", 0.0))
+        z_fill_top = z_fill + (fsp.get("wave_amplitude", 0.0)
+                               if fill_style == "vague" else 0.0)
+        z_contour_top = z_contour + (csp.get("wave_amplitude", 0.0)
+                                     if contour_style == "vague" else 0.0)
+        levels = [z_fill_top] + ([z_contour_top] if has_contour else [])
+        return max(levels) + params.get("marge_survol", 5.0) + 5.0
     if op_type == "flat":
         z_start = params.get("z_start")
         if z_start is None:
@@ -4682,6 +4710,7 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
         "curved_cut": generate_gcode_curved_cut,
         "flat": generate_gcode_flat_multipass,
         "testgrid": generate_gcode_test_grid,
+        "filled": generate_gcode_filled_engraving,
     }
 
     # Hauteur de sécurité GLOBALE (max sur toutes les opérations),
@@ -4735,6 +4764,7 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
+    lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
 
     if pre_gcode.strip():
