@@ -762,10 +762,20 @@ def chain_edges(edges, distance=DISCRETIZE_DISTANCE, tolerance=CHAIN_TOLERANCE):
 # MODE 0a : GÉNÉRATION DE HACHURES 2D (adapté de hachure.fcmacro)
 # ==========================================================================
 def _plane_basis(face):
-    """Repère local (U, V) d'une face plane."""
+    """Repère local (U, V) d'une face plane. Gère aussi les faces
+    GÉOMÉTRIQUEMENT planes portées par une surface non-Plane (import
+    SVG/DXF : souvent des B-splines planes, sans attribut Axis) : la
+    normale est prise au milieu du domaine paramétrique, l'origine au
+    centre de masse."""
     surf = face.Surface
-    normal = FreeCAD.Vector(surf.Axis).normalize()
-    origin = FreeCAD.Vector(surf.Position)
+    if hasattr(surf, "Axis") and hasattr(surf, "Position"):
+        normal = FreeCAD.Vector(surf.Axis).normalize()
+        origin = FreeCAD.Vector(surf.Position)
+    else:
+        u0, u1, v0, v1 = face.ParameterRange
+        normal = FreeCAD.Vector(
+            face.normalAt((u0 + u1) / 2.0, (v0 + v1) / 2.0)).normalize()
+        origin = FreeCAD.Vector(face.CenterOfMass)
     ref = FreeCAD.Vector(1, 0, 0)
     if abs(normal.dot(ref)) > 0.9:
         ref = FreeCAD.Vector(0, 1, 0)
