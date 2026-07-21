@@ -944,7 +944,43 @@ class TaskPanelHatch:
             "le rayon du point élargi garde la brûlure à l'intérieur (la\n"
             "valeur recommandée s'affiche plus bas en mode Défocus).\n"
             "La Gravure remplie fait ce retrait automatiquement.")
-        form.addRow("Retrait du bord :", self.spn_inset)
+        self.btn_inset_auto = QtWidgets.QPushButton("Auto (½ point)")
+        self.btn_inset_auto.setToolTip(
+            "Remplit le retrait avec le RAYON du trait qui sera brûlé :\n"
+            "- remplissage Parallèles/Croisées (gravé au foyer) : ½ point\n"
+            "  au foyer, soit {:.2f} mm avec la calibration actuelle ;\n"
+            "- remplissage Défocus : ½ point élargi déduit de l'espacement\n"
+            "  (même calcul que la Gravure remplie).\n"
+            "NB : à forte puissance la brûlure s'élargit un peu au-delà du\n"
+            "point optique -- ajoute une petite marge, ou prends la ½\n"
+            "largeur d'un trait MESURÉ du nuancier si tu vises ce réglage.".format(
+                core.SPOT_FOCUS_MM / 2.0))
+
+        def _inset_auto():
+            if self.combo_filltype.currentIndex() == 2:  # Défocus
+                half_angle = core.calibrated_half_angle()
+                defocus = core.defocus_for_fill_spacing(
+                    self.spn_spacing.value(), core.SPOT_FOCUS_MM, half_angle)
+                if defocus is None:
+                    QtWidgets.QMessageBox.critical(
+                        self.spn_inset, "Retrait du bord",
+                        "Calibration du point invalide dans les Préférences\n"
+                        "(icône engrenage) : impossible de calculer le point\n"
+                        "élargi.")
+                    return
+                spot = core.spot_diameter_at_defocus(
+                    defocus, core.SPOT_FOCUS_MM, half_angle)
+            else:  # Parallèles / Croisées : trait net au foyer
+                spot = core.SPOT_FOCUS_MM
+            self.spn_inset.setValue(spot / 2.0)
+
+        self.btn_inset_auto.clicked.connect(_inset_auto)
+        row_inset = QtWidgets.QWidget()
+        lay_inset = QtWidgets.QHBoxLayout(row_inset)
+        lay_inset.setContentsMargins(0, 0, 0, 0)
+        lay_inset.addWidget(self.spn_inset, 1)
+        lay_inset.addWidget(self.btn_inset_auto)
+        form.addRow("Retrait du bord :", row_inset)
 
         self.lbl_defocus_result = _WrapLabel("Défocus calculé : --")
         form.addRow(self.lbl_defocus_result)
