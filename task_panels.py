@@ -970,8 +970,12 @@ class TaskPanelHatch:
                     return
                 spot = core.spot_diameter_at_defocus(
                     defocus, core.SPOT_FOCUS_MM, half_angle)
-            else:  # Parallèles / Croisées : trait net au foyer
-                spot = core.SPOT_FOCUS_MM
+            else:  # Parallèles / Croisées : trait net au foyer.
+                # Si la planche de calibration a été mesurée, on prend la
+                # plus GRANDE largeur brûlée mesurée (enveloppe : le S/F
+                # du marquage n'est pas encore connu ici) ; sinon le
+                # point calibré.
+                spot = core.burn_width_focus_max() or core.SPOT_FOCUS_MM
             self.spn_inset.setValue(spot / 2.0)
 
         self.btn_inset_auto.clicked.connect(_inset_auto)

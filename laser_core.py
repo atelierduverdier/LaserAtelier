@@ -3149,6 +3149,123 @@ def shade_materials():
     return sorted(load_config().get("nuancier", {}))
 
 
+# ==========================================================================
+# LARGEURS BRÛLÉES MESURÉES (planche de calibration matériau, sections 1-2)
+# ==========================================================================
+# Table par matériau, alimentée par les mesures de la planche :
+#   {"focus":   [{"power": S, "feed": F, "width": mm}, ...],
+#    "defocus": [{"power": S, "feed": F, "width": mm, "z_offset": mm}, ...]}
+# Constat (MDF, 21 juil. 2026) : au FOYER la largeur dépend surtout de la
+# VITESSE (temps de chauffe), très peu de S -- 0,22 mm à F1500-F3000 pour
+# TOUTES les puissances, 0,34 mm à F400/S1000, 0,16 mm à F6000. Le point
+# optique réel est donc plus fin que la calibration (mesurée à basse
+# vitesse, élargie thermiquement). Au DÉFOCUS, la brûlure ne remplit le
+# point optique qu'à forte puissance (1,09 mm mesuré à S1000 pour 1,18
+# optique ; 0,50 mm à S200 : seuls les bords chauds marquent).
+
+def load_burn_widths(material):
+    """Table des largeurs brûlées du matériau ({"focus": [...],
+    "defocus": [...]}), ou {} si aucune mesure."""
+    return load_config().get("burn_widths", {}).get(material, {})
+
+
+def save_burn_widths(material, data):
+    """Remplace la table du matériau (données vides = suppression)."""
+    cfg = load_config()
+    table = cfg.get("burn_widths", {})
+    if data and (data.get("focus") or data.get("defocus")):
+        table[material] = data
+    else:
+        table.pop(material, None)
+    cfg["burn_widths"] = table
+    save_config(cfg)
+
+
+def burn_width_materials():
+    """Matériaux ayant une table de largeurs brûlées, triés."""
+    return sorted(load_config().get("burn_widths", {}))
+
+
+def _burn_width_material(material):
+    """Résout le matériau : explicite, ou l'unique matériau mesuré."""
+    if material:
+        return material
+    mats = burn_width_materials()
+    return mats[0] if len(mats) == 1 else None
+
+
+def burn_width_at(power, feed, material=None):
+    """Largeur brûlée (mm) d'un trait au FOYER pour (S, F), interpolée
+    BILINÉAIREMENT sur la grille mesurée (S linéaire, F logarithmique --
+    c'est le temps de chauffe qui pilote), bornée aux mesures. None si
+    aucune table."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return None
+    pts = load_burn_widths(mat).get("focus") or []
+    if not pts:
+        return None
+    svals = sorted({float(p["power"]) for p in pts})
+    fvals = sorted({float(p["feed"]) for p in pts})
+    grid = {(float(p["power"]), float(p["feed"])): float(p["width"])
+            for p in pts}
+
+    def _bracket(vals, x):
+        x = min(max(x, vals[0]), vals[-1])
+        for a, b in zip(vals, vals[1:]):
+            if a <= x <= b:
+                return a, b, x
+        return vals[-1], vals[-1], x
+
+    def _g(sv, fv):
+        w = grid.get((sv, fv))
+        if w is None:      # grille incomplète : plus proche voisin
+            best = min(pts, key=lambda p: (abs(float(p["power"]) - sv),
+                                           abs(float(p["feed"]) - fv)))
+            w = float(best["width"])
+        return w
+
+    s1, s2, sx = _bracket(svals, float(power))
+    f1, f2, fx = _bracket(fvals, float(feed))
+    ts = 0.0 if s2 == s1 else (sx - s1) / (s2 - s1)
+    tf = 0.0 if f2 == f1 else ((math.log(fx) - math.log(f1))
+                               / (math.log(f2) - math.log(f1)))
+    w1 = _g(s1, f1) * (1 - ts) + _g(s2, f1) * ts
+    w2 = _g(s1, f2) * (1 - ts) + _g(s2, f2) * ts
+    return w1 * (1 - tf) + w2 * tf
+
+
+def burn_width_defocus_at(power, material=None):
+    """Largeur brûlée (mm) au DÉFOCUS standard du remplissage, interpolée
+    LINÉAIREMENT en S sur les mesures (bornée). None si aucune table."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return None
+    pts = sorted((load_burn_widths(mat).get("defocus") or []),
+                 key=lambda p: float(p["power"]))
+    if not pts:
+        return None
+    p = min(max(float(power), float(pts[0]["power"])),
+            float(pts[-1]["power"]))
+    for a, b in zip(pts, pts[1:]):
+        pa, pb = float(a["power"]), float(b["power"])
+        if pa <= p <= pb:
+            t = 0.0 if pb == pa else (p - pa) / (pb - pa)
+            return float(a["width"]) * (1 - t) + float(b["width"]) * t
+    return float(pts[-1]["width"])
+
+
+def burn_width_focus_max(material=None):
+    """La plus GRANDE largeur brûlée mesurée au foyer (mm) -- l'enveloppe
+    pour un retrait garanti quand S/F ne sont pas encore connus. None si
+    aucune table."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return None
+    pts = load_burn_widths(mat).get("focus") or []
+    return max(float(p["width"]) for p in pts) if pts else None
+
+
 def shade_for_darkness(material, target_pct):
     """Le ton mesuré dont la noirceur est LA PLUS PROCHE de target_pct
     (0-100), ou None si le matériau n'a aucun ton. Choix du plus proche
