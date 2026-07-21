@@ -2280,7 +2280,8 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     lines.append("(G-Code Laser - Marquage : chaînes + transit continu)")
     lines.append("(Chaînes : {} (à partir de {} segments d'origine))".format(len(chains), len(edges)))
     if style != "plein":
-        style_names = {"tirets": "tirets", "pointille": "pointille", "vague": "vague defocus"}
+        style_names = {"tirets": "tirets", "pointille": "pointille",
+                   "vague": "vague defocus, S compense en fluence"}
         lines.append("(Style de trait : {})".format(style_names.get(style, style)))
     lines.append("(Transit : hauteur de travail + {:.2f}mm, {})".format(marge_survol, probe_kind))
     lines.append("(Contrôle bec (cône {:.0f}mm) : {})".format(
@@ -2408,11 +2409,13 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                     lines.append(beam_off)
         elif style == "vague":
             samples = wave_resample(chain, wave_period, wave_amp)
-            lines.append(beam_on)
-            for p, dz in samples[1:]:
+            s_wave = wave_fluence_powers(power, samples, wave_amp)
+            lines.append("S{:.0f} {}".format(s_wave[0], SPINDLE_SELECT))
+            for (p, dz), s_pt in zip(samples[1:], s_wave[1:]):
                 _mark_check(p)
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
-                    p.x, p.y, to_machine_z(p.z) + dz, feed))
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} S{:.0f} {}".format(
+                    p.x, p.y, to_machine_z(p.z) + dz, feed, s_pt,
+                    SPINDLE_SELECT))
             lines.append(beam_off)
         elif style == "degrade" and deg_dz is not None:
             samples = chain      # déjà discrétisé dense (DISCRETIZE_DISTANCE)
@@ -4375,6 +4378,29 @@ def wave_peak_z_feed(amplitude, feed, period):
     return math.pi * amplitude * feed / period
 
 
+def wave_fluence_powers(power, samples, amplitude):
+    """Puissances S (une par échantillon de wave_resample) compensées en
+    FLUENCE le long d'une vague : le point s'élargit avec le défocus,
+    donc S suit le diamètre du point (S = power au SOMMET, le plus
+    large ; réduit au foyer où le point est fin). Sans compensation, la
+    puissance fixe s'étale au sommet et la fluence s'effondre : le trait
+    pâlit et s'amincit là où il devrait être le plus épais (ruban
+    inversé, constaté sur MDF). Fluence constante = ton uniforme, seule
+    la LARGEUR ondule. Calibration invalide ou amplitude nulle ->
+    puissance constante (comportement historique)."""
+    ha = calibrated_half_angle()
+    if not amplitude or amplitude <= 0 or not ha:
+        return [float(power)] * len(samples)
+    d_max = spot_diameter_at_defocus(amplitude, SPOT_FOCUS_MM, ha)
+    if d_max <= 0:
+        return [float(power)] * len(samples)
+    out = []
+    for _p, dz in samples:
+        d = spot_diameter_at_defocus(dz, SPOT_FOCUS_MM, ha)
+        out.append(max(5.0, round(power * d / d_max / 5.0) * 5.0))
+    return out
+
+
 def generate_flat_styled_body(chains, power, feed, z_base, style="plein",
                               dash_len=3.0, gap_len=2.0,
                               dot_spacing=1.5, dot_dwell_s=0.05,
@@ -4446,12 +4472,13 @@ def generate_flat_styled_body(chains, power, feed, z_base, style="plein",
             samples = wave_resample(chain, wave_period, wave_amplitude)
             if len(samples) < 2:
                 continue
+            s_wave = wave_fluence_powers(power, samples, wave_amplitude)
             p0, dz0 = samples[0]
             _goto(p0.x, p0.y, z_base + dz0)
-            lines.append(beam_on)
-            for p, dz in samples[1:]:
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
-                    p.x, p.y, z_base + dz, feed))
+            lines.append("S{:.0f} {}".format(s_wave[0], SPINDLE_SELECT))
+            for (p, dz), s_pt in zip(samples[1:], s_wave[1:]):
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} S{:.0f} {}".format(
+                    p.x, p.y, z_base + dz, feed, s_pt, SPINDLE_SELECT))
             lines.append(beam_off)
     else:  # "plein"
         for chain in chains:
