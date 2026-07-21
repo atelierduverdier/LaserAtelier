@@ -1279,8 +1279,25 @@ def run_projection(selection):
     FreeCAD.Console.PrintMessage("Calcul de la projection sur le 3D (raycast Z)...\n")
     edges_3d = drop_edges_to_surface(edges_2d, obj_3d.Shape)
     if not edges_3d:
-        return None, ("La projection a échoué. Vérifie que le(s) motif(s) 2D sont bien positionnés "
-                       "au-dessus de l'objet 3D (dans l'axe Z).")
+        # Diagnostic : la sonde échoue quand (x, y) est HORS de la
+        # silhouette de la surface vue de dessus -- le Z du motif n'a
+        # aucune importance. Donner les emprises réelles pour corriger.
+        xs, ys = [], []
+        for e in edges_2d:
+            b = e.BoundBox
+            xs.extend((b.XMin, b.XMax))
+            ys.extend((b.YMin, b.YMax))
+        sb = obj_3d.Shape.BoundBox
+        return None, (
+            "La projection a échoué : vu de DESSUS, aucun point du motif ne "
+            "tombe sur la surface 3D.\n\n"
+            "Emprise X/Y du motif :   X {:.1f} à {:.1f}   Y {:.1f} à {:.1f}\n"
+            "Emprise X/Y de « {} » :   X {:.1f} à {:.1f}   Y {:.1f} à {:.1f}\n\n"
+            "Déplace le motif (Placement) pour qu'il recouvre la surface en "
+            "vue de dessus. Sa hauteur Z n'a pas d'importance : seule la "
+            "position X/Y compte.".format(
+                min(xs), max(xs), min(ys), max(ys),
+                obj_3d.Label, sb.XMin, sb.XMax, sb.YMin, sb.YMax))
 
     doc = FreeCAD.ActiveDocument
     compound_3d = Part.Compound(edges_3d)
