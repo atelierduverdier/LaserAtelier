@@ -2177,7 +2177,7 @@ def split_selection(selection):
 def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_shape=None,
                            style="plein", style_params=None,
                            pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
-                           min_safe_z=None, probe=None):
+                           min_safe_z=None, probe=None, dose_spot_d=None):
     """style / style_params : style de trait ("plein" = trait continu
     historique, "tirets", "pointille", "vague" -- cf. la section STYLES DE
     TRAIT). Les styles suivent le RELIEF comme le trait plein : les tirets
@@ -2232,6 +2232,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         return None
 
     chains = chain_edges(edges)
+    dose_slowed = [0]
     if not chains:
         return None
 
@@ -2426,16 +2427,32 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                     p.x, p.y, to_machine_z(p.z) + deg_dz(p), feed))
             lines.append(beam_off)
         else:
+            # DOSE : une chaine plus courte que le point (dose_spot_d,
+            # diametre du point au Z de travail) recoit moins d'exposition
+            # -- un point du materiau ne voit passer le faisceau que
+            # L/point du temps normal (constate : hachures fines grises
+            # dans les zones etroites d'un remplissage defocus). On
+            # ralentit F proportionnellement (le HAL garde S plein a
+            # vitesse atteinte) pour retablir la dose.
+            chain_feed = feed
+            if dose_spot_d and dose_spot_d > 0:
+                clen = _chain_cumlen(chain)[-1]
+                if 0 < clen < dose_spot_d:
+                    chain_feed = max(feed * clen / dose_spot_d, 30.0)
+                    dose_slowed[0] += 1
             lines.append(beam_on)
             for p in chain[1:]:
                 _mark_check(p)
                 lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
-                    p.x, p.y, to_machine_z(p.z), feed))
+                    p.x, p.y, to_machine_z(p.z), chain_feed))
             lines.append(beam_off)
 
         current_pos = chain[-1]
 
     lines.append("G0 Z{:.4f}".format(z_safe_start_end))
+    if dose_slowed[0]:
+        lines.append("(Dose : {} chaine(s) plus courtes que le point "
+                     "[{:.2f}mm] ralenties)".format(dose_slowed[0], dose_spot_d))
 
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")
@@ -4631,10 +4648,14 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
         if not edges:
             return None
         if style == "plein":
+            ha = calibrated_half_angle()
+            spot_d = (spot_diameter_at_defocus(z_base - z_focus,
+                                               SPOT_FOCUS_MM, ha)
+                      if ha else None)
             return generate_gcode_curved(
                 edges, s_power, s_feed, z_base, marge_survol,
                 reference_shape=None, body_only=True, quiet=quiet,
-                min_safe_z=global_min_safe_z)
+                min_safe_z=global_min_safe_z, dose_spot_d=spot_d)
         return generate_flat_styled_body(
             chain_edges(edges), s_power, s_feed, z_base, style,
             marge_survol=marge_survol, min_safe_z=global_min_safe_z, **params)
