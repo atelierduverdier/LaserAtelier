@@ -783,30 +783,72 @@ def _to_xyz(u, v, origin, u_axis, v_axis):
     return origin + u_axis * u + v_axis * v
 
 
+def _faces_from_any_shape(shape, label="?"):
+    """Faces planes fermées d'une forme QUELCONQUE : faces existantes,
+    fils fermés (Sketch/Draft), ou ARÊTES LIBRES chaînées en fils
+    (Compound d'un import DXF/SVG : ni faces ni fils, juste des edges --
+    Part.sortEdges les regroupe, les chaînes fermées deviennent des
+    faces via Bullseye, trous compris)."""
+    if shape is None:
+        return []
+    if getattr(shape, "Faces", None):
+        return list(shape.Faces)
+    wires = [w for w in getattr(shape, "Wires", []) if w.isClosed()]
+    if not wires and getattr(shape, "Edges", None):
+        for grp in Part.sortEdges(list(shape.Edges)):
+            try:
+                w = Part.Wire(grp)
+                if w.isClosed():
+                    wires.append(w)
+            except Exception:
+                pass
+    if not wires:
+        return []
+    try:
+        return list(Part.makeFace(wires, "Part::FaceMakerBullseye").Faces)
+    except Exception:
+        # Fils incompatibles en un seul appel (plans/imbrications mêlés) :
+        # une face par fil, les trous sont alors perdus mais on grave.
+        faces = []
+        for w in wires:
+            try:
+                faces.extend(Part.makeFace([w], "Part::FaceMakerBullseye").Faces)
+            except Exception:
+                pass
+        if not faces:
+            FreeCAD.Console.PrintWarning(
+                "Impossible de créer une face à partir de : {} (contours "
+                "ouverts ?)\n".format(label))
+        return faces
+
+
 def get_faces_from_selection_for_hatch(selection):
-    """Extrait les faces planes fermées depuis la sélection (Face directe,
-    Draft Shape, ou Sketch avec fils fermés -> Bullseye)."""
+    """Extrait les faces planes fermées depuis la sélection : Face directe,
+    Draft/Part avec faces, Sketch à fils fermés, ou Compound d'arêtes
+    (import DXF/SVG) -- sélection entière ou sous-éléments (une face, des
+    arêtes formant un contour fermé)."""
     faces = []
     for sel_obj in selection:
         obj = sel_obj.Object
         subnames = sel_obj.SubElementNames if sel_obj.HasSubObjects else []
         if subnames:
-            for sub in subnames:
-                shape = obj.getSubObject(sub)
-                if isinstance(shape, Part.Face):
-                    faces.append(shape)
+            sub_shapes = [obj.getSubObject(sub) for sub in subnames]
+            sub_shapes = [sh for sh in sub_shapes if sh is not None]
+            direct = [sh for sh in sub_shapes if getattr(sh, "ShapeType", "") == "Face"]
+            for sh in direct:
+                faces.append(sh)
+            rest = [sh for sh in sub_shapes if getattr(sh, "ShapeType", "") != "Face"]
+            if rest:
+                # Arêtes/fils sélectionnés : les chaîner ENSEMBLE (un contour
+                # cliqué arête par arête doit former une seule face).
+                edges = []
+                for sh in rest:
+                    edges.extend(getattr(sh, "Edges", []) or [])
+                if edges:
+                    comp = Part.Compound(edges)
+                    faces.extend(_faces_from_any_shape(comp, obj.Label))
         elif hasattr(obj, 'Shape'):
-            if obj.Shape.Faces:
-                faces.extend(obj.Shape.Faces)
-            else:
-                wires = [w for w in obj.Shape.Wires if w.isClosed()]
-                if wires:
-                    try:
-                        made_face = Part.makeFace(wires, "Part::FaceMakerBullseye")
-                        faces.extend(made_face.Faces)
-                    except Exception:
-                        FreeCAD.Console.PrintWarning(
-                            "Impossible de créer une face à partir de : {}\n".format(obj.Label))
+            faces.extend(_faces_from_any_shape(obj.Shape, obj.Label))
     return faces
 
 
@@ -1084,7 +1126,10 @@ def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inse
     Renvoie l'objet créé, ou None en cas d'échec."""
     faces = get_faces_from_selection_for_hatch(selection)
     if not faces:
-        return None, "Aucune face 2D fermée trouvée dans la sélection."
+        return None, ("Aucune face 2D fermée trouvée dans la sélection. "
+                      "Il faut des CONTOURS FERMÉS : une face, un sketch fermé, "
+                      "ou un compound d'arêtes qui se referment (import DXF/SVG "
+                      "aux contours ouverts = à réparer d'abord).")
 
     if inset > 0:
         inset_faces = []
