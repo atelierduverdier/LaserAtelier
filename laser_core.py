@@ -2984,6 +2984,27 @@ _FACTORY_PRESETS = {
             "half": 20.0, "surface_z": 0.0, "mill_tool": 2, "rpm": 18000.0,
             "mill_feed": 600.0, "depth": 0.4, "zfocus": 8.0, "power": 300.0, "laser_feed": 1000.0},
     },
+    "photo": {
+        # Bases : nuancier MDF mesuré (juillet 2026), foyer 0,30 mm.
+        # 1er essai lignes calibrées : trait 0,4 trop fin/foncé -> 0,8/0,8/F600.
+        # Gamma 1,5 : photos saturées (gris moyens trop foncés sinon).
+        "Portrait MDF -- lignes calibrées (qualité)": {
+            "mode": 2, "width": 80.0, "pitch": 0.8, "spot_width": 0.8,
+            "line_feed": 600.0, "gamma": 1.5, "white": 8.0, "invert": False,
+            "power": 500.0, "dwell_min": 10.0, "dwell_max": 60.0},
+        "Essai rapide MDF -- points fins (brouillon)": {
+            "mode": 3, "width": 40.0, "pitch": 0.5, "spot_width": 0.3,
+            "line_feed": 1500.0, "gamma": 1.5, "white": 8.0, "invert": False,
+            "power": 350.0, "dwell_min": 10.0, "dwell_max": 60.0},
+        "Photo MDF -- points fins (équilibré)": {
+            "mode": 3, "width": 60.0, "pitch": 0.4, "spot_width": 0.3,
+            "line_feed": 1000.0, "gamma": 1.5, "white": 8.0, "invert": False,
+            "power": 350.0, "dwell_min": 10.0, "dwell_max": 60.0},
+        "Artistique MDF -- gros points Z (vu de loin)": {
+            "mode": 4, "width": 100.0, "pitch": 3.0, "power": 600.0,
+            "dwell_min": 10.0, "dwell_max": 60.0, "gamma": 1.3, "white": 8.0,
+            "invert": False, "spot_width": 0.3, "line_feed": 1000.0},
+    },
     "kerf": {
         "Petit (10 mm)": {"size": 10.0},
         "Standard (20 mm)": {"size": 20.0},

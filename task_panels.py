@@ -2743,6 +2743,10 @@ class TaskPanelHalftone:
                "s'arrête à chaque point : compter ~2-4 points/seconde -- le "
                "pas de trame pilote directement la durée du job.")
 
+        self._presets = _PresetController(
+            form, inner, "photo", lambda: self._last_fields,
+            on_loaded=lambda: self._update_grid_info())
+
         _section(form, "Image", "sect_preview.svg")
         self.edt_image = QtWidgets.QLineEdit()
         self.edt_image.setToolTip("Chemin de l'image (PNG/JPG/BMP...). Convertie en niveaux de gris.")
