@@ -22,6 +22,14 @@ Everything user-facing and in-source is **French**: code comments, docstrings, U
 tooltips, generated G-code comments, and **git commit messages**. Keep new code in French to
 match. (This CLAUDE.md is the exception.)
 
+## Versioning
+
+Single source of truth: `VERSION` in `laser_core.py` — shown in every panel banner (next to the
+chapeau signature) and stamped as the first line of every written G-code (`_write_gcode_with_dialog`).
+Bump it **together** with `<version>`/`<date>` in `package.xml` (FreeCAD Addon Manager metadata),
+the hero badge in `docs/index.html`, and the version line under the README logo. Tag releases
+`v<version>` on main.
+
 ## Working / verifying changes
 
 - **Syntax check** (do this after every edit — it's the only automated gate):

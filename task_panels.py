@@ -75,11 +75,16 @@ def _panel_header(form, icon_name, title):
     lbl = QtWidgets.QLabel(title)
     lbl.setStyleSheet("font-weight: bold; font-size: 14px;")
     lay.addWidget(lbl, 1)
+    ver = QtWidgets.QLabel("v" + core.VERSION)
+    ver.setStyleSheet("color: #8a9199; font-size: 10px;")
+    ver.setToolTip("Atelier Laser v" + core.VERSION)
+    lay.addWidget(ver, 0)
     pm_hat = _icon_pixmap("chapeau.svg", 22)
     if pm_hat is not None:
         hat = QtWidgets.QLabel()
         hat.setPixmap(pm_hat)
-        hat.setToolTip("Atelier du Verdier -- atelierduverdier.fr")
+        hat.setToolTip("Atelier Laser v{} -- Atelier du Verdier -- "
+                       "atelierduverdier.fr".format(core.VERSION))
         lay.addWidget(hat, 0)
     form.addRow(row)
     _hline(form)
@@ -263,6 +268,12 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path):
         if retry != QtWidgets.QMessageBox.Yes:
             FreeCAD.Console.PrintMessage("Sauvegarde G-code abandonnée.\n")
             return False
+    # Traçabilité : la version de l'atelier en toute première ligne de
+    # chaque fichier écrit (une seule fois -- les jobs combinés passent
+    # aussi par ici, jamais leurs corps individuels).
+    stamp = "(LaserAtelier v{})".format(core.VERSION)
+    if not gcode.startswith(stamp):
+        gcode = stamp + "\n" + gcode
     with open(path, "w") as f:
         f.write(gcode)
     FreeCAD.Console.PrintMessage(
