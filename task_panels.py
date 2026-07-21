@@ -3507,6 +3507,18 @@ class TaskPanelTestGrid:
             "sur le dessus.")
         self.btn_material_board.clicked.connect(self._on_material_board)
         form.addRow(self.btn_material_board)
+
+        self.btn_burn_widths = QtWidgets.QPushButton(
+            "Saisir les mesures de la planche…")
+        self.btn_burn_widths.setToolTip(
+            "Une fois la planche gravée : mesurer la LARGEUR brûlée de\n"
+            "chaque trait (sections 1 et 2, pied à coulisse, 1/10 mm) et la\n"
+            "saisir ici. La table alimente l'interpolation largeur(S, F)\n"
+            "utilisée par le bouton « Auto (½ point) » des Hachures.\n"
+            "(Les bandes de la section 3 se saisissent dans\n"
+            "Préférences > Nuancier : noirceur en %.)")
+        self.btn_burn_widths.clicked.connect(self._on_burn_widths)
+        form.addRow(self.btn_burn_widths)
         _intro(form,
                "Grave (ou découpe) une grille de cellules sur une chute : "
                "chaque cellule teste UN couple puissance/vitesse. Tu choisis "
@@ -4196,6 +4208,105 @@ class TaskPanelTestGrid:
         op = self._build_combined_operation()
         if op:
             _add_to_combined_job(op)
+
+    def _on_burn_widths(self):
+        """Dialogue de saisie des largeurs brûlées mesurées sur la planche
+        de calibration (sections 1 foyer et 2 défocus). 0 / « — » = case
+        non mesurée (ignorée). Pré-rempli depuis la table existante."""
+        powers = [1000, 800, 600, 400, 200]
+        feeds = [400, 800, 1500, 3000, 6000]
+
+        dlg = QtWidgets.QDialog(self.form)
+        dlg.setWindowTitle("Mesures de la planche de calibration")
+        vbox = QtWidgets.QVBoxLayout(dlg)
+        vbox.addWidget(_WrapLabel(
+            "Largeur brûlée de chaque trait, en mm (pied à coulisse, "
+            "1/10 mm). Laisser « — » pour les traits non mesurés ou "
+            "vierges. Les valeurs alimentent l'interpolation "
+            "largeur(S, F) de l'atelier."))
+
+        row_mat = QtWidgets.QHBoxLayout()
+        row_mat.addWidget(QtWidgets.QLabel("Matériau :"))
+        mats = core.burn_width_materials() or core.shade_materials()
+        edt_mat = QtWidgets.QLineEdit(mats[0] if len(mats) == 1
+                                      else (mats[0] if mats else "MDF"))
+        row_mat.addWidget(edt_mat, 1)
+        vbox.addLayout(row_mat)
+
+        def _spin():
+            sp = QtWidgets.QDoubleSpinBox()
+            sp.setRange(0.0, 10.0)
+            sp.setDecimals(2)
+            sp.setSingleStep(0.01)
+            sp.setSpecialValueText("—")
+            return sp
+
+        grp1 = QtWidgets.QGroupBox("Section 1 — traits au FOYER")
+        grid = QtWidgets.QGridLayout(grp1)
+        for j, f in enumerate(feeds):
+            grid.addWidget(QtWidgets.QLabel("F{}".format(f)), 0, j + 1)
+        cells = {}
+        for i, p in enumerate(powers):
+            grid.addWidget(QtWidgets.QLabel("S{}".format(p)), i + 1, 0)
+            for j, f in enumerate(feeds):
+                sp = _spin()
+                grid.addWidget(sp, i + 1, j + 1)
+                cells[(p, f)] = sp
+        vbox.addWidget(grp1)
+
+        grp2 = QtWidgets.QGroupBox(
+            "Section 2 — traits au DÉFOCUS (F800, point du remplissage)")
+        grid2 = QtWidgets.QGridLayout(grp2)
+        dcells = {}
+        for i, p in enumerate(powers):
+            grid2.addWidget(QtWidgets.QLabel("S{}".format(p)), 0, i * 2)
+            sp = _spin()
+            grid2.addWidget(sp, 0, i * 2 + 1)
+            dcells[p] = sp
+        vbox.addWidget(grp2)
+
+        # pré-remplissage depuis la table existante
+        existing = core.load_burn_widths(edt_mat.text().strip())
+        for pt in existing.get("focus", []):
+            key = (int(pt.get("power", 0)), int(pt.get("feed", 0)))
+            if key in cells:
+                cells[key].setValue(float(pt.get("width", 0.0)))
+        for pt in existing.get("defocus", []):
+            p = int(pt.get("power", 0))
+            if p in dcells:
+                dcells[p].setValue(float(pt.get("width", 0.0)))
+
+        btns = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Save
+            | QtWidgets.QDialogButtonBox.Cancel)
+        vbox.addWidget(btns)
+        btns.rejected.connect(dlg.reject)
+
+        def _save():
+            mat = edt_mat.text().strip()
+            if not mat:
+                QtWidgets.QMessageBox.warning(
+                    dlg, "Mesures", "Indiquer un nom de matériau.")
+                return
+            focus = [{"power": p, "feed": f,
+                      "width": round(sp.value(), 2)}
+                     for (p, f), sp in cells.items() if sp.value() > 0]
+            ha = core.calibrated_half_angle()
+            dz = (core.defocus_for_fill_spacing(
+                1.0, core.SPOT_FOCUS_MM, ha) or 0.0) if ha else 0.0
+            defocus = [{"power": p, "feed": 800,
+                        "width": round(sp.value(), 2),
+                        "z_offset": round(dz, 2)}
+                       for p, sp in dcells.items() if sp.value() > 0]
+            core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
+            QtWidgets.QMessageBox.information(
+                dlg, "Mesures", "{} mesure(s) foyer + {} défocus "
+                "enregistrées pour « {} ».".format(
+                    len(focus), len(defocus), mat))
+            dlg.accept()
+
+        btns.accepted.connect(_save)
+        dlg.exec_()
 
     def _on_material_board(self):
         gcode = core.generate_gcode_material_board()
