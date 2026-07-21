@@ -364,6 +364,12 @@
   </div>
 
   <div class="callout note" style="margin-top:26px">
+    <span class="ci">Workflow type&nbsp;: tracé → placement → projection → gravure</span>
+    <p>Un enchaînement qui marche pour tout (pièce plate ou 3D)&nbsp;: <b>1.</b> créer ou charger le tracé (SVG, ShapeString, sketch)&nbsp;; <b>2.</b> le placer en <b>X/Y</b> par rapport au futur zéro pièce (les coordonnées du document = les coordonnées machine)&nbsp;; <b>3.</b> le <b>projeter</b> sur la pièce (mode Projection) — contrôle visuel&nbsp;: le tracé est posé sur la surface, on voit exactement où il tombe (dessus, fond de poche, dôme…)&nbsp;; <b>4.</b> graver&nbsp;: <b>Marquage</b> pour des traits (sélectionner les objets projetés), <b>Gravure remplie</b> pour du noir plein (sélectionner la <i>forme fermée source</i>, pas le projeté).</p>
+    <p>Deux règles à retenir&nbsp;: la hauteur Z du tracé dans le document est <b>visuelle</b> — le G-code suppose toujours <b>zéro Z machine sur la surface gravée</b> (zéro papier)&nbsp;; et <b>un job = une seule surface de référence</b> (dessus <i>ou</i> fond de poche — pour graver aux deux hauteurs, deux jobs avec re-zéro entre les deux). Sur une vraie surface 3D, sélectionner tracé + objet de référence dans Marquage active le suivi de relief.</p>
+  </div>
+
+  <div class="callout note" style="margin-top:26px">
     <span class="ci">Communs à tous les modes</span>
     <p>Estimation de durée tenant compte des accélérations, aperçu du trajet dans la vue 3D, aperçu de cadrage en fichier séparé, préréglages matériau, et <b>mémorisation des derniers réglages</b> de chaque panneau (rouvrir un mode retrouve les valeurs de la dernière fois).</p>
   </div>

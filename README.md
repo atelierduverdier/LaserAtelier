@@ -8,7 +8,7 @@ Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de 
 
 ## Fonctionnalités
 
-Les modes sont regroupés par thème dans la barre d'outils et le menu. Le **Guide rapide** (première icône, livre ouvert) résume le flux de travail (calibrer → tester → motif → G-code → cadrage → graver) et « quel mode pour quoi ? » — le point d'entrée pour découvrir l'atelier. Chaque panneau ouvre sur un résumé court avec un bouton « En savoir plus » (détails repliés) et, pour les concepts clés, un petit schéma explicatif (cône de défocus, axes de la grille, rampe, projection…).
+Les modes sont regroupés par thème dans la barre d'outils et le menu. Le **Guide rapide** (première icône, livre ouvert) résume le flux de travail (calibrer → tester → motif → G-code → cadrage → graver) et « quel mode pour quoi ? » — le point d'entrée pour découvrir l'atelier. **Workflow type** : créer/charger le tracé (SVG, ShapeString, sketch) → le placer en X/Y par rapport au futur zéro pièce → le **projeter** sur la pièce (contrôle visuel : le tracé est posé sur la surface, plate ou 3D) → graver avec **Marquage** (traits, sélectionner le projeté) ou **Gravure remplie** (noir plein, sélectionner la forme fermée *source*). La hauteur Z du document est visuelle : le G-code suppose toujours zéro Z machine sur la surface gravée, et un job = une seule surface de référence. Chaque panneau ouvre sur un résumé court avec un bouton « En savoir plus » (détails repliés) et, pour les concepts clés, un petit schéma explicatif (cône de défocus, axes de la grille, rampe, projection…).
 
 **Gravure à plat**
 - **Hachures 2D (géométrie)** : remplissage (parallèles / croisées / défocus) sur une face 2D — crée la géométrie des hachures.
