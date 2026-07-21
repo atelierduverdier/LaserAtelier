@@ -1,6 +1,7 @@
 # Atelier Laser
 
 <p align="center"><img src="resources/logo.svg" alt="Atelier Laser — PrintNC" width="360"></p>
+<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub>Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.</sub></p>
 
 Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de marquage/découpe laser : gravure noir plein de textes/formes, suivi de surfaces 3D courbes, découpe multi-passes, grilles de test et de calibration, et jobs combinant plusieurs opérations en une seule passe.
 

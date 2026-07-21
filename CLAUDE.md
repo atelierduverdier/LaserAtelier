@@ -110,7 +110,12 @@ Four modules, cleanly layered — keep the layering:
 **Adding a mode** touches all four: a generator in `laser_core`, a panel in `task_panels`, a command
 in `commands.py` (+ `register_commands`), an entry in `InitGui.py`'s `command_list` (grouped by theme
 with `"Separator"` tokens), and an SVG in `resources/icons/` (64×64, orange `#ff8a00` + slate
-`#2f3540` house style; `sect_*.svg` are the small section pictos reused across panels).
+`#2f3540` house style; `sect_*.svg` are the small section pictos reused across panels). Every mode
+icon carries the **chapeau signature** (a small bowler hat, bottom-right corner, `class="chapeau-verdier"`
+group — copy it from any marked icon or from `chapeau.svg`, the full-size standalone source); add it
+to new mode icons, keep it out of `sect_*.svg` and `diag_*.svg`. Mode icons are mirrored in
+`docs/assets/` for the doc site — sync the copy when an icon changes. SVG gotcha: QtSvg silently
+renders NOTHING if the XML is invalid (e.g. `--` inside a comment) — validate with `xmllint --noout`.
 
 ### G-code generation contract
 
