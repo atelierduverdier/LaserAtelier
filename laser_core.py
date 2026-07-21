@@ -705,7 +705,13 @@ def chain_edges(edges, distance=DISCRETIZE_DISTANCE, tolerance=CHAIN_TOLERANCE):
     Testé (50 essais aléatoires, ordre/sens mélangés) avant intégration."""
     segments = []
     for e in edges:
-        pts = e.discretize(Distance=distance)
+        try:
+            pts = e.discretize(Distance=distance)
+        except Exception:
+            # Arête dégénérée (longueur quasi nulle, BSpline malade d'un
+            # import SVG) : on retombe sur ses sommets plutôt que de faire
+            # échouer toute la génération.
+            pts = [v.Point for v in getattr(e, "Vertexes", [])]
         if len(pts) >= 2:
             segments.append(pts)
 
@@ -1116,6 +1122,33 @@ def power_for_line_fluence(feed, spot_diam, ref_power, ref_feed, ref_spot, ratio
     return ratio * ref_power * (spot_diam / ref_spot) * (feed / ref_feed)
 
 
+def inset_face_robuste(face, inset, deflection=0.05):
+    """Rentre une face de `inset` mm vers l'intérieur et renvoie la liste
+    des faces résultantes ([] si la face est plus fine que 2*inset ou si
+    l'offset échoue).
+
+    Ne JAMAIS appeler makeOffset2D directement sur des faces importées :
+    BRepOffsetAPI_MakeOffset (OCC) SEGFAULTE durement sur certains contours
+    BSpline/Bézier issus d'imports SVG -- ce n'est pas une exception Python,
+    ça tue FreeCAD. On discrétise donc d'abord chaque fil en polygone
+    (flèche `deflection` mm, invisible au laser : bien plus fin que le
+    point) ; l'offset de polylignes, lui, est stable."""
+    try:
+        poly_wires = []
+        for w in face.Wires:
+            pts = w.discretize(Deflection=deflection)
+            if len(pts) < 3:
+                return []
+            if pts[0].distanceToPoint(pts[-1]) > 1e-6:
+                pts.append(pts[0])
+            poly_wires.append(Part.makePolygon(pts))
+        poly_face = Part.makeFace(poly_wires, "Part::FaceMakerBullseye")
+        off = poly_face.makeOffset2D(-inset)
+        return list(off.Faces)
+    except Exception:
+        return []  # trop fin, ou géométrie récalcitrante : pas de remplissage
+
+
 def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inset=0.0):
     """Crée l'objet 'Hachures_...' dans le document (vert), comme
     hachure.fcmacro, avec 3 types de remplissage possibles :
@@ -1144,11 +1177,7 @@ def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inse
     if inset > 0:
         inset_faces = []
         for f in faces:
-            try:
-                off = f.makeOffset2D(-inset)
-                inset_faces.extend(off.Faces)
-            except Exception:
-                pass  # face plus fine que 2*inset : pas de remplissage ici
+            inset_faces.extend(inset_face_robuste(f, inset))
         if not inset_faces:
             return None, ("Retrait du bord trop grand : plus aucune surface à "
                           "hachurer (réduire le retrait ou agrandir la forme).")
@@ -4466,12 +4495,8 @@ def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0, add_
     for f in faces:
         contour_edges.extend(f.Edges)
         if fill_inset > 0:
-            try:
-                inset = f.makeOffset2D(-fill_inset)
-                sub = list(inset.Faces)
-            except Exception:
-                sub = []
-            fill_faces.extend(sub)  # vide si trop fin -> pas de remplissage ici
+            # vide si trop fin -> pas de remplissage ici
+            fill_faces.extend(inset_face_robuste(f, fill_inset))
         else:
             fill_faces.append(f)
     fill_edges = generate_hatch_edges(fill_faces, spacing, angle_deg) if fill_faces else []
