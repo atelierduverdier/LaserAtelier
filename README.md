@@ -49,7 +49,7 @@ Chaque test alimente le suivant — dans l'ordre :
    - **2 — traits au défocus** (5 puissances à F800, point élargi du remplissage) : mesurer les largeurs ;
    - **3 — bandes nuancier** (rectangles remplis au défocus, 2 puissances × 5 vitesses) : estimer la **noirceur** (0–100 %) et mesurer la largeur → saisir chaque bande dans **Préférences > Nuancier**.
 
-   Les largeurs des sections 1–2 se saisissent via **« Saisir les mesures de la planche »** (panneau Grille de test) : elles alimentent l'interpolation largeur(S, F) utilisée par le bouton « Auto (½ point) » des Hachures. Toutes ces données restent dans la config locale (`laser_atelier_config.json`, dossier utilisateur FreeCAD) — rien de spécifique à votre machine ne part avec l'atelier.
+   Les largeurs des sections 1–2 se saisissent via **« Saisir les mesures de la planche »** (panneau Grille de test) : elles alimentent l'interpolation largeur(S, F) utilisée par le bouton « Auto (½ point) » des Hachures, et la **Gravure remplie** (style plein) resserre automatiquement l'espacement de ses hachures à la largeur réellement brûlée quand elle est plus étroite que le point optique — c'est ce qui supprime les lignes visibles sur les tons clairs (faibles puissances). Toutes ces données restent dans la config locale (`laser_atelier_config.json`, dossier utilisateur FreeCAD) — rien de spécifique à votre machine ne part avec l'atelier.
 3. **Après le nuancier** (facultatif, pour choisir à l'œil) : **Mire des styles** (Marquage) et **Mire des tramages** (Gravure photo).
 
 ![Planche de calibration matériau](docs/assets/diag_planche_calibration.svg)

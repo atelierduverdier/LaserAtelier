@@ -1378,11 +1378,28 @@ class TaskPanelFilledEngraving:
                     "plus large qu'au foyer).")
             else:
                 spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
+                # Retour de la correction par la planche (largeur brûlée
+                # mesurée), même logique que _build_edges.
+                spacing = self.spn_spacing.value()
+                inset = spot / 2.0
+                extra = ""
+                if self.combo_fill_style.currentIndex() == 0:
+                    power = self._effective_fill_power(defocus, half_angle)
+                    burn = core.burn_width_defocus_scaled(power, defocus)
+                    if burn:
+                        inset = min(spot, burn) / 2.0
+                        if burn < spacing - 1e-6:
+                            extra = ("\nPlanche : brûlure mesurée {:.2f} mm à S{:.0f} "
+                                     "-> hachures resserrées à {:.2f} mm.".format(
+                                         burn, power, min(spacing, burn)))
+                        else:
+                            extra = ("\nPlanche : brûlure mesurée {:.2f} mm à S{:.0f} "
+                                     "-> l'espacement est couvert.".format(burn, power))
                 self.lbl_defocus_result.setText(
                     "Défocus calculé : {:.2f} mm (bec remonté d'autant) -- point\n"
-                    "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.\n"
+                    "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.{}\n"
                     "(Calibration du point : Préférences, icône engrenage.)".format(
-                        defocus, spot, spot / 2.0))
+                        defocus, spot, inset, extra))
             # Retour visuel du contour : épaisseur voulue -> défocus.
             off = self._contour_offset(half_angle)
             if off <= 0:
@@ -1450,6 +1467,8 @@ class TaskPanelFilledEngraving:
 
         self._update_style_preview = _update_style_preview
         self.combo_fill_style.currentIndexChanged.connect(lambda _i: _update_style_preview())
+        # Le style de remplissage conditionne aussi la correction planche.
+        self.combo_fill_style.currentIndexChanged.connect(lambda _i: _update_defocus_preview())
         self.combo_contour_style.currentIndexChanged.connect(lambda _i: _update_style_preview())
         for w in (self.spn_wave_period, self.spn_fill_wave_width, self.spn_fill_feed,
                   self.spn_contour_feed, self.spn_contour_width):
@@ -1633,10 +1652,20 @@ class TaskPanelFilledEngraving:
             self.spn_contour_width.value(), core.SPOT_FOCUS_MM, half_angle, overlap=1.0)
         return off if off is not None else 0.0
 
+    def _effective_fill_power(self, defocus, half_angle):
+        """Puissance de remplissage réellement émise : celle du champ, ou
+        celle recalculée par la compensation de fluence si elle est cochée
+        (c'est elle qui décide de la largeur brûlée réelle)."""
+        power = self.spn_fill_power.value()
+        spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
+        _, _, p_eff = _fluence_advice(spot, power, self.spn_fill_feed.value(), self._fluence)
+        return p_eff if p_eff is not None else power
+
     def _build_edges(self, silent=False):
         """Renvoie (fill_edges, contour_edges, defocus, contour_z_offset) ou
         (None, None, None, None) si la sélection est vide ou la calibration
         défocus invalide."""
+        self._burn_note = None
         faces = core.get_faces_from_selection_for_hatch(self.selection)
         if not faces:
             if not silent:
@@ -1667,8 +1696,29 @@ class TaskPanelFilledEngraving:
                     "Préférences, icône engrenage).")
             return None, None, None, None
         spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
+        spacing = self.spn_spacing.value()
+        hatch_spacing, fill_width = spacing, spot
+        # Correction par la planche de calibration : au défocus la brûlure
+        # RÉELLE est plus étroite que le point optique aux faibles
+        # puissances (0,50 mm à S200 contre 1,18 optique sur MDF) -- c'est
+        # elle qui décide si deux hachures se rejoignent. Si le matériau a
+        # des mesures, l'espacement et le rentré s'alignent dessus (jamais
+        # élargis au-delà de la demande). Style "plein" uniquement : les
+        # autres styles de remplissage sont décoratifs, leurs vides sont
+        # voulus.
+        if self.combo_fill_style.currentIndex() == 0:
+            power = self._effective_fill_power(defocus, half_angle)
+            burn = core.burn_width_defocus_scaled(power, defocus)
+            if burn:
+                hatch_spacing = min(spacing, burn)
+                fill_width = min(spot, burn)
+                if hatch_spacing < spacing - 1e-6:
+                    self._burn_note = (
+                        "Espacement resserre a {:.2f} mm : brulure mesuree "
+                        "{:.2f} mm a S{:.0f}, planche de calibration".format(
+                            hatch_spacing, burn, power))
         fill_edges, contour_edges = core.build_filled_engraving_edges(
-            faces, self.spn_spacing.value(), self.spn_angle.value(), fill_inset=spot / 2.0,
+            faces, hatch_spacing, self.spn_angle.value(), fill_inset=fill_width / 2.0,
             add_perimeter=self.chk_perimeter.isChecked())
         return fill_edges, contour_edges, defocus, self._contour_offset(half_angle)
 
@@ -1697,13 +1747,9 @@ class TaskPanelFilledEngraving:
         # Compensation puissance/défocus (option 2) : si cochée, la
         # puissance de remplissage est calculée pour égaler la fluence de
         # référence au point élargi réel du remplissage.
-        fill_power = self.spn_fill_power.value()
-        fill_spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
-        _, _, p_eff = _fluence_advice(
-            fill_spot, fill_power, self.spn_fill_feed.value(), self._fluence)
-        if p_eff is not None:
-            fill_power = p_eff
+        fill_power = self._effective_fill_power(defocus, half_angle)
         return {
+            "header_note": getattr(self, "_burn_note", None),
             "z_focus": core.Z_WORK_MM + self.spn_surface_offset.value(),
             "defocus": defocus,
             "fill_power": fill_power,

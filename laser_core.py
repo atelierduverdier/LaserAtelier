@@ -3255,6 +3255,37 @@ def burn_width_defocus_at(power, material=None):
     return float(pts[-1]["width"])
 
 
+def burn_width_defocus_scaled(power, defocus, material=None):
+    """Largeur brûlée (mm) ATTENDUE au défocus `defocus` pour la puissance
+    `power` : la mesure de la planche (section 2, faite au z_offset
+    enregistré avec les mesures) est extrapolée PROPORTIONNELLEMENT au
+    diamètre optique du point (modèle conique calibré) quand le défocus
+    demandé diffère de celui de la mesure. Constat planche : aux faibles
+    puissances la brûlure réelle est nettement plus étroite que le point
+    optique (0,50 mm à S200 contre 1,18 mm optique) -- c'est elle qui
+    décide si deux hachures voisines se rejoignent. None si aucune table
+    de mesures (l'appelant retombe sur le modèle optique pur)."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return None
+    pts = load_burn_widths(mat).get("defocus") or []
+    if not pts:
+        return None
+    w = burn_width_defocus_at(power, mat)
+    if not w or w <= 0:
+        return None
+    zs = [float(p.get("z_offset", 0.0) or 0.0) for p in pts]
+    zs = [z for z in zs if z > 0]
+    ha = calibrated_half_angle()
+    if not zs or not ha or ha <= 1e-9:
+        return w
+    z_meas = sum(zs) / len(zs)
+    spot_meas = spot_diameter_at_defocus(z_meas, SPOT_FOCUS_MM, ha)
+    if spot_meas <= 0:
+        return w
+    return w * spot_diameter_at_defocus(defocus, SPOT_FOCUS_MM, ha) / spot_meas
+
+
 def burn_width_focus_max(material=None):
     """La plus GRANDE largeur brûlée mesurée au foyer (mm) -- l'enveloppe
     pour un retrait garanti quand S/F ne sont pas encore connus. None si
@@ -4685,7 +4716,7 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
                                      fill_style="plein", contour_style="plein",
                                      fill_style_params=None, contour_style_params=None,
                                      pre_gcode="", post_gcode="", frame_only=False, quiet=False,
-                                     body_only=False, min_safe_z=None):
+                                     body_only=False, min_safe_z=None, header_note=None):
     """Grave une forme/texte à plat en NOIR PLEIN : d'abord le remplissage
     par hachures gravé en DÉFOCUS (point élargi, cf. remplissage défocus du
     mode Hachures 2D -- fill_edges doivent déjà être rentrées d'un rayon de
@@ -4709,7 +4740,9 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
     z_focus + wave_amplitude -- defocus/contour_z_offset ne s'appliquent
     pas à ce style (la vague EST la modulation de défocus).
 
-    frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
+    frame_only : ne trace que le rectangle englobant (cadrage séparé).
+    header_note : ligne de commentaire libre ajoutée à l'en-tête du G-code
+    (ex. trace de la correction d'espacement par la largeur brûlée mesurée)."""
     fill_style_params = dict(fill_style_params or {})
     contour_style_params = dict(contour_style_params or {})
 
@@ -4808,6 +4841,8 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
     if any(label == "Contour" for label, _ in bodies):
         lines.append("(Contour Z={:.4f} S{:.0f} F{:.0f} style={})".format(
             z_contour, contour_power, contour_feed, style_names.get(contour_style, contour_style)))
+    if header_note:
+        lines.append("({})".format(header_note))
     if not body_only:
         lines.append("G21")
         lines.append("G90")
