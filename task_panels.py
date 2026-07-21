@@ -4137,6 +4137,14 @@ class TaskPanelCurved:
                 self.combo_style.setCurrentIndex(0)
             self._update_style_ui()
             self._update_duration_preview()
+        self.btn_resel = QtWidgets.QPushButton("Reprendre la sélection de la vue")
+        self.btn_resel.setToolTip(
+            "Le panneau capture la sélection au moment de son OUVERTURE.\n"
+            "Si tu as sélectionné le motif (ex. l'objet Hachures) APRÈS,\n"
+            "clique ici pour reprendre la sélection courante de la vue/arbre.")
+        self.btn_resel.clicked.connect(self._on_recapture_selection)
+        form.addRow(self.btn_resel)
+
         self._shade_picker = _make_shade_picker(form, _apply_shade)
 
         # --- Ton sur mesure : largeur + noirceur choisies, vitesse calculée
@@ -4440,6 +4448,24 @@ class TaskPanelCurved:
         edge_sel, reference_shape = core.split_selection(self.selection)
         edges = core.get_all_edges_from_selection(edge_sel)
         return edges, reference_shape
+
+    def _on_recapture_selection(self):
+        """Reprend la sélection courante (vue 3D / arbre) : le panneau ne la
+        capture qu'à l'ouverture, or on sélectionne souvent après coup."""
+        self.selection = Gui.Selection.getSelectionEx()
+        self._edges, self._reference_shape = self._get_edges()
+        self._probe = (core.make_ray_probe(self._reference_shape)
+                       if self._reference_shape is not None else None)
+        if not self._edges:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Sélection",
+                "Aucun segment dans la sélection courante. Sélectionne le "
+                "motif (ex. l'objet Hachures) dans la vue ou l'arbre, puis "
+                "reclique ce bouton.")
+        else:
+            FreeCAD.Console.PrintMessage(
+                "Sélection reprise : {} segment(s).\n".format(len(self._edges)))
+        self._update_duration_preview()
 
     def _on_custom_shade(self):
         material = self._shade_picker["mat"].currentData()
