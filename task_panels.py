@@ -60,7 +60,10 @@ class _WrapLabel(QtWidgets.QLabel):
 
 def _panel_header(form, icon_name, title):
     """Bandeau en tête de panneau : icône du mode + nom en gras/agrandi,
-    suivi d'un trait. Repère visuel immédiat du mode ouvert."""
+    suivi d'un trait. Repère visuel immédiat du mode ouvert. À droite,
+    la signature de l'atelier : le chapeau du Verdier (discret, avec
+    info-bulle) -- même dégradation silencieuse que l'icône du mode si
+    le rendu SVG échoue."""
     row = QtWidgets.QWidget()
     lay = QtWidgets.QHBoxLayout(row)
     lay.setContentsMargins(0, 2, 0, 2)
@@ -72,6 +75,12 @@ def _panel_header(form, icon_name, title):
     lbl = QtWidgets.QLabel(title)
     lbl.setStyleSheet("font-weight: bold; font-size: 14px;")
     lay.addWidget(lbl, 1)
+    pm_hat = _icon_pixmap("chapeau.svg", 22)
+    if pm_hat is not None:
+        hat = QtWidgets.QLabel()
+        hat.setPixmap(pm_hat)
+        hat.setToolTip("Atelier du Verdier -- atelierduverdier.fr")
+        lay.addWidget(hat, 0)
     form.addRow(row)
     _hline(form)
 
