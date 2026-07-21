@@ -2757,10 +2757,11 @@ class TaskPanelHalftone:
 
         btn_demo = QtWidgets.QPushButton("Photo de démonstration (libre de droits)")
         btn_demo.setToolTip(
-            "Charge la photo de test fournie avec l'atelier : « Migrant\n"
-            "Mother » (Dorothea Lange, 1936, domaine public) -- un portrait\n"
-            "noir et blanc riche en dégradés, idéal pour comparer les\n"
-            "tramages et régler la tonalité avant d'utiliser tes photos.")
+            "Charge la photo de test fournie avec l'atelier : Guy de\n"
+            "Maupassant photographié par Nadar (1888, domaine public) --\n"
+            "un portrait ancien riche en dégradés (visage, moustache,\n"
+            "costume), idéal pour comparer les tramages et régler la\n"
+            "tonalité avant d'utiliser tes photos.")
         btn_demo.clicked.connect(self._on_demo_photo)
         form.addRow(btn_demo)
 
