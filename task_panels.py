@@ -3492,8 +3492,8 @@ class TaskPanelTestGrid:
         self.btn_material_board.setToolTip(
             "Génère UN SEUL G-code qui grave, sur une chute (~130 x 125 mm),\n"
             "tout ce qu'il faut mesurer pour caler un NOUVEAU matériau :\n"
-            "  1. traits au FOYER (grille S x F) -> mesurer les largeurs\n"
-            "     brûlées + noter les traits qui ne marquent pas ;\n"
+            "  1. traits au FOYER (grille S x F, F400 -> F6000) -> mesurer\n"
+            "     les largeurs brûlées + noter les traits vierges (seuil) ;\n"
             "  2. traits au DÉFOCUS (5 puissances, F800) -> largeurs ;\n"
             "  3. bandes NUANCIER (rectangles remplis au défocus) ->\n"
             "     noirceur (0-100 %) + largeur, à saisir dans\n"

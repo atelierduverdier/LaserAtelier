@@ -45,7 +45,7 @@ Chaque test alimente le suivant — dans l'ordre :
 
 1. **Une fois par laser** (pas par matériau) : **Bande de calibration défocus** (deux mesures du point → Préférences), puis **Test offsets fraise + laser** (X/Y du laser dans `tool.tbl`).
 2. **Nouveau matériau** : bouton **« Planche de calibration matériau »** (panneau Grille de test) → un seul G-code à graver sur une chute ~130 × 125 mm (zéro au coin bas-gauche, sur le dessus). Trois sections numérotées, de bas en haut :
-   - **1 — traits au foyer** (5 puissances × 3 vitesses) : mesurer la **largeur brûlée** de chaque trait, noter ceux qui ne marquent pas (seuil du matériau) ;
+   - **1 — traits au foyer** (5 puissances × 5 vitesses, F400 → F6000 : jusqu'au maxi machine) : mesurer la **largeur brûlée** de chaque trait, noter ceux qui restent vierges (un trait vierge est une donnée : c'est le seuil du matériau) ;
    - **2 — traits au défocus** (5 puissances à F800, point élargi du remplissage) : mesurer les largeurs ;
    - **3 — bandes nuancier** (rectangles remplis au défocus, 2 puissances × 5 vitesses) : estimer la **noirceur** (0–100 %) et mesurer la largeur → saisir chaque bande dans **Préférences > Nuancier**.
 3. **Après le nuancier** (facultatif, pour choisir à l'œil) : **Mire des styles** (Marquage) et **Mire des tramages** (Gravure photo).

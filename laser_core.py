@@ -5442,7 +5442,7 @@ def generate_gcode_style_sampler(power, feed, z_focus, style_params=None,
 
 def generate_gcode_material_board(z_focus=None,
                                    powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
-                                   feeds_focus=(400.0, 800.0, 1500.0),
+                                   feeds_focus=(400.0, 800.0, 1500.0, 3000.0, 6000.0),
                                    feeds_bands=(200.0, 400.0, 600.0, 800.0, 1000.0),
                                    band_powers=(600.0, 1000.0),
                                    trait_len=20.0, row_gap=6.0,
@@ -5453,9 +5453,10 @@ def generate_gcode_material_board(z_focus=None,
     chute (~130 x 125 mm), tout ce qu'il faut mesurer pour caler un
     NOUVEAU matériau. Trois sections numérotées, de bas en haut :
 
-      1  TRAITS AU FOYER -- grille S x F (5 puissances x 3 vitesses).
-         À mesurer : la LARGEUR brûlée de chaque trait (et noter ceux
-         qui ne marquent pas = seuil du matériau).
+      1  TRAITS AU FOYER -- grille S x F (5 puissances x 5 vitesses,
+         F400 -> F6000 : jusqu'au maxi machine, un trait vierge est une
+         donnée -- c'est le seuil du matériau). À mesurer : la LARGEUR
+         brûlée de chaque trait (et noter ceux qui ne marquent pas).
       2  TRAITS AU DÉFOCUS -- 5 puissances à F800, au défocus standard
          du remplissage (point élargi ~ band_spacing / 0,85).
          À mesurer : la largeur brûlée (valide le modèle « brûlure =
