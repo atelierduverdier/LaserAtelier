@@ -1010,6 +1010,86 @@ class TaskPanelHatch:
 # ==========================================================================
 # MODE : GRAVURE REMPLIE (NOIR) -- remplissage défocus + contour au foyer
 # ==========================================================================
+
+def _decalage_surface_depuis_selection():
+    """Mesure le décalage de surface depuis la sélection 3D.
+
+    - 1 face plane horizontale : décalage = Z(face) - Z du DESSUS du
+      solide qui la porte (le zéro machine est supposé sur le dessus de
+      la pièce). Ex. fond d'une poche de 1 mm -> -1.00.
+    - 2 faces : décalage = Z(2e face cliquée, la surface à GRAVER)
+      - Z(1re face cliquée, la surface où est le ZÉRO).
+    Renvoie (décalage, None) ou (None, message d'erreur)."""
+    faces = []
+    for so in Gui.Selection.getSelectionEx():
+        obj = so.Object
+        for name in (so.SubElementNames if so.HasSubObjects else []):
+            sub = obj.getSubObject(name) if hasattr(obj, "getSubObject") else None
+            if sub is None or getattr(sub, "ShapeType", "") != "Face":
+                continue
+            bb = sub.BoundBox
+            if (bb.ZMax - bb.ZMin) > 1e-4:
+                return None, ("La face « {} » n'est pas plane horizontale :\n"
+                              "sélectionne des faces à plat (dessus de la pièce,\n"
+                              "fond de poche...).".format(name))
+            faces.append((bb.ZMin, obj))
+    if not faces:
+        return None, ("Sélectionne d'abord une ou deux faces dans la vue 3D :\n"
+                      "- 1 face : la surface à graver -- mesurée par rapport au\n"
+                      "  DESSUS de sa pièce (zéro machine sur le dessus) ;\n"
+                      "- 2 faces : la face du ZÉRO d'abord, puis la surface à\n"
+                      "  graver.")
+    if len(faces) == 1:
+        z, obj = faces[0]
+        return z - obj.Shape.BoundBox.ZMax, None
+    if len(faces) == 2:
+        return faces[1][0] - faces[0][0], None
+    return None, "Sélectionne 1 ou 2 faces (pas plus)."
+
+
+def _make_surface_offset_row(form):
+    """Ligne « Décalage de surface » : spinbox + bouton « Depuis la face
+    sélectionnée ». Renvoie le QDoubleSpinBox. 0 = le zéro machine est SUR
+    la surface gravée (comportement historique) ; -1 = la surface gravée
+    est 1 mm SOUS le zéro (fond de poche, zéro gardé sur le dessus)."""
+    spn = QtWidgets.QDoubleSpinBox()
+    spn.setRange(-200.0, 200.0)
+    spn.setDecimals(2)
+    spn.setValue(0.0)
+    spn.setSuffix(" mm")
+    spn.setToolTip(
+        "0 = le zéro machine est SUR la surface gravée (comportement\n"
+        "historique : un job = une surface, re-zéro entre les surfaces).\n"
+        "-1 = la surface gravée est 1 mm SOUS le zéro machine : permet de\n"
+        "garder UN SEUL zéro (le dessus de la pièce) et de graver par ex.\n"
+        "le fond d'une poche fraisée de 1 mm sans re-palper. Tout le job\n"
+        "(Z de travail, survols) est décalé d'autant.\n"
+        "En Marquage, surtout pour le mode À PLAT : laisser 0 en suivi\n"
+        "de relief.")
+    btn = QtWidgets.QPushButton("Depuis la face sélectionnée")
+    btn.setToolTip(
+        "Mesure le décalage depuis la vue 3D :\n"
+        "- 1 face sélectionnée : Z de la face par rapport au DESSUS de\n"
+        "  son solide (zéro supposé sur le dessus de la pièce) ;\n"
+        "- 2 faces : la face du ZÉRO d'abord, puis la face à GRAVER.")
+
+    def _apply():
+        off, err = _decalage_surface_depuis_selection()
+        if err:
+            QtWidgets.QMessageBox.information(spn, "Décalage de surface", err)
+            return
+        spn.setValue(off)
+
+    btn.clicked.connect(_apply)
+    row = QtWidgets.QWidget()
+    lay = QtWidgets.QHBoxLayout(row)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addWidget(spn, 1)
+    lay.addWidget(btn)
+    form.addRow("Décalage de surface :", row)
+    return spn
+
+
 class TaskPanelFilledEngraving:
     def __init__(self, selection):
         self.selection = selection
@@ -1074,6 +1154,7 @@ class TaskPanelFilledEngraving:
             "plus bas élargit le point à peu près à cette taille pour\n"
             "noircir sans laisser de bandes claires.")
         form.addRow("Espacement remplissage :", self.spn_spacing)
+        self.spn_surface_offset = _make_surface_offset_row(form)
 
         self.spn_angle = QtWidgets.QDoubleSpinBox()
         self.spn_angle.setRange(-360, 360)
@@ -1372,7 +1453,7 @@ class TaskPanelFilledEngraving:
         form.addRow(self.btn_toolpath_preview)
 
         self._last_fields = {
-            "spacing": self.spn_spacing, "angle": self.spn_angle,
+            "spacing": self.spn_spacing, "surface_offset": self.spn_surface_offset, "angle": self.spn_angle,
             "fill_power": self.spn_fill_power, "fill_feed": self.spn_fill_feed,
             "perimeter": self.chk_perimeter,
             "contour": self.chk_contour, "contour_power": self.spn_contour_power,
@@ -1583,7 +1664,7 @@ class TaskPanelFilledEngraving:
         if p_eff is not None:
             fill_power = p_eff
         return {
-            "z_focus": core.Z_WORK_MM,
+            "z_focus": core.Z_WORK_MM + self.spn_surface_offset.value(),
             "defocus": defocus,
             "fill_power": fill_power,
             "fill_feed": self.spn_fill_feed.value(),
@@ -4264,6 +4345,7 @@ class TaskPanelCurved:
             "marquage plus prononcé mais job plus long ; plus rapide =\n"
             "marquage plus léger.")
         form.addRow("Avance (Feed) :", self.spn_feed)
+        self.spn_surface_offset = _make_surface_offset_row(form)
 
 
         _section(form, "Style de trait", "sect_options.svg")
@@ -4497,7 +4579,7 @@ class TaskPanelCurved:
         self.txt_post.setPlainText(cfg.get("post_c", ""))
 
         self._last_fields = {
-            "power": self.spn_power, "feed": self.spn_feed,
+            "power": self.spn_power, "feed": self.spn_feed, "surface_offset": self.spn_surface_offset,
             "style": self.combo_style, "dash_len": self.spn_dash_len,
             "gap_len": self.spn_gap_len, "dot_spacing": self.spn_dot_spacing,
             "dot_dwell_ms": self.spn_dot_dwell, "wave_period": self.spn_wave_period,
@@ -4598,7 +4680,7 @@ class TaskPanelCurved:
         défocus si le style « Défocus (point élargi) » est choisi. Le
         défocus est calculé depuis la LARGEUR DE POINT voulue via la
         calibration (le point élargi noircit en un passage)."""
-        base = core.Z_WORK_MM
+        base = core.Z_WORK_MM + self.spn_surface_offset.value()
         if self.combo_style.currentIndex() == 4:  # Défocus (point élargi)
             defocus = core.defocus_for_spot_diameter(
                 self.spn_spot_width.value(), core.SPOT_FOCUS_MM, core.calibrated_half_angle())
