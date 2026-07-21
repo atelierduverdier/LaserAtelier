@@ -2755,6 +2755,15 @@ class TaskPanelHalftone:
         row_layout.addWidget(btn_browse, 0)
         form.addRow("Image :", row)
 
+        btn_demo = QtWidgets.QPushButton("Photo de démonstration (libre de droits)")
+        btn_demo.setToolTip(
+            "Charge la photo de test fournie avec l'atelier : « Migrant\n"
+            "Mother » (Dorothea Lange, 1936, domaine public) -- un portrait\n"
+            "noir et blanc riche en dégradés, idéal pour comparer les\n"
+            "tramages et régler la tonalité avant d'utiliser tes photos.")
+        btn_demo.clicked.connect(self._on_demo_photo)
+        form.addRow(btn_demo)
+
         self.spn_width = QtWidgets.QDoubleSpinBox()
         self.spn_width.setRange(5.0, 500.0)
         self.spn_width.setValue(60.0)
@@ -2998,6 +3007,16 @@ class TaskPanelHalftone:
         self.combo_rotation.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.chk_invert.toggled.connect(lambda _v: self._update_grid_info())
         self._update_grid_info()
+
+    def _on_demo_photo(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "resources", "demo", "photo_demo.jpg")
+        if not os.path.isfile(path):
+            QtWidgets.QMessageBox.warning(
+                self.form, "Photo de démonstration",
+                "Photo de démo introuvable ({}).".format(path))
+            return
+        self.edt_image.setText(path)
 
     def _on_browse(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -4400,6 +4419,16 @@ class TaskPanelCurved:
         form.addRow(self.btn_toolpath_preview)
         _combined_add_button(form, self._on_add_to_combined)
 
+        self.btn_style_sampler = QtWidgets.QPushButton("Mire des styles (fichier séparé)")
+        self.btn_style_sampler.setToolTip(
+            "Grave le MÊME trait droit avec chacun des 6 styles (bandes\n"
+            "étiquetées 1-6 : plein, tirets, pointillé, vague, défocus,\n"
+            "dégradé), aux puissance/vitesse et réglages de style courants\n"
+            "du panneau -- pour comparer les rendus sur une chute du\n"
+            "matériau et choisir un style en connaissance de cause.")
+        self.btn_style_sampler.clicked.connect(self._on_style_sampler)
+        form.addRow(self.btn_style_sampler)
+
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
         self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
@@ -4448,6 +4477,18 @@ class TaskPanelCurved:
         edge_sel, reference_shape = core.split_selection(self.selection)
         edges = core.get_all_edges_from_selection(edge_sel)
         return edges, reference_shape
+
+    def _on_style_sampler(self):
+        sk = self._style_kwargs()["style_params"]
+        gcode = core.generate_gcode_style_sampler(
+            power=self.spn_power.value(), feed=self.spn_feed.value(),
+            z_focus=core.Z_WORK_MM, style_params=sk,
+            spot_width=self.spn_spot_width.value())
+        if not gcode:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Aucun G-code généré pour la mire des styles.")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/mire_styles.ngc")
 
     def _on_recapture_selection(self):
         """Reprend la sélection courante (vue 3D / arbre) : le panneau ne la

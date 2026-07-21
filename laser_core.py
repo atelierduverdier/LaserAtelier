@@ -2332,18 +2332,21 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         check_state["last"] = p0
 
         if style == "pointille":
-            # Points sur la surface : pulse à chaque point, petits G0
+            # Points sur la surface : MICRO-TRAIT à chaque point (jamais
+            # de G4 faisceau allumé, cf. dot_micro_stroke), petits G0
             # directs entre points voisins (dot_spacing) -- le suivi de
             # relief est porté par le Z de chaque point.
-            first = True
-            for d in dot_positions(chain, dot_spacing):
-                if not first:
-                    lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(
-                        d.x, d.y, to_machine_z(d.z)))
-                first = False
+            dots = dot_positions(chain, dot_spacing)
+            seg, f_dot = dot_micro_stroke(dot_spacing, dot_dwell_s)
+            half = seg / 2.0
+            for i, d in enumerate(dots):
+                ux, uy = dot_stroke_dir(dots, i)
+                lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(
+                    d.x - ux * half, d.y - uy * half, to_machine_z(d.z)))
                 _mark_check(d)
                 lines.append(beam_on)
-                lines.append("G4 P{:.3f}".format(dot_dwell_s))
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                    d.x + ux * half, d.y + uy * half, to_machine_z(d.z), f_dot))
                 lines.append(beam_off)
         elif style == "tirets":
             for piece, on in dash_chain(chain, dash_len, gap_len):
@@ -4231,6 +4234,30 @@ def dash_chain(chain, dash_len, gap_len):
     return pieces
 
 
+def dot_micro_stroke(dot_spacing, dot_dwell_s):
+    """Micro-trait remplaçant le G4 d'un point de pointillé : G4 faisceau
+    allumé est INTERDIT sur cette machine (la puissance, asservie par la
+    vitesse dans le HAL, tombe à 0 à l'arrêt -- cf. gros points photo).
+    On grave donc un trait minuscule dont la durée de parcours reproduit
+    le temps de pose demandé. Renvoie (longueur du trait, F)."""
+    seg = max(0.05, min(0.3 * dot_spacing, 0.2))
+    f_dot = max(1.0, seg / max(dot_dwell_s, 1e-3) * 60.0)
+    return seg, f_dot
+
+
+def dot_stroke_dir(dots, i):
+    """Direction XY unitaire du micro-trait au point i, le long de la
+    chaîne (vers un voisin) ; (1, 0) si dégénéré (point isolé)."""
+    nb = dots[i + 1] if i + 1 < len(dots) else (dots[i - 1] if i > 0 else None)
+    if nb is None:
+        return 1.0, 0.0
+    dx, dy = nb.x - dots[i].x, nb.y - dots[i].y
+    n = math.hypot(dx, dy)
+    if n < 1e-9:
+        return 1.0, 0.0
+    return dx / n, dy / n
+
+
 def dot_positions(chain, spacing):
     """Points régulièrement espacés (abscisse curviligne) le long de la
     chaîne, extrémités comprises. Sur une chaîne fermée, le point de
@@ -4320,11 +4347,16 @@ def generate_flat_styled_body(chains, power, feed, z_base, style="plein",
     beam_off = CMD_BEAM_OFF.format(sel=SPINDLE_SELECT)
 
     if style == "pointille":
+        seg, f_dot = dot_micro_stroke(dot_spacing, dot_dwell_s)
+        half = seg / 2.0
         for chain in chains:
-            for p in dot_positions(chain, dot_spacing):
-                _goto(p.x, p.y, z_base)
+            dots = dot_positions(chain, dot_spacing)
+            for i, p in enumerate(dots):
+                ux, uy = dot_stroke_dir(dots, i)
+                _goto(p.x - ux * half, p.y - uy * half, z_base)
                 lines.append(beam_on)
-                lines.append("G4 P{:.3f}".format(dot_dwell_s))
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(
+                    p.x + ux * half, p.y + uy * half, f_dot))
                 lines.append(beam_off)
     elif style == "tirets":
         for chain in chains:
@@ -5246,6 +5278,73 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
 # ==========================================================================
 # MODE : TEST DES OFFSETS X/Y DU LASER (VALIDATION tool.tbl)
 # ==========================================================================
+def generate_gcode_style_sampler(power, feed, z_focus, style_params=None,
+                                  line_length=40.0, band_gap=6.0,
+                                  label_height=4.0, spot_width=1.5,
+                                  pre_gcode="", post_gcode="", quiet=False):
+    """MIRE DES STYLES du Marquage : grave le MÊME trait droit avec
+    chacun des 6 styles de trait, une bande par style étiquetée de son
+    chiffre (gravé net au foyer), pour comparer les rendus sur une chute
+    du matériau et choisir en connaissance de cause :
+
+        1 plein   2 tirets   3 pointillé (micro-traits)   4 vague
+        5 défocus (point élargi, largeur spot_width)   6 dégradé
+          (Z croissant le long du trait, largeurs deg_z_min/max de
+          style_params)
+
+    Toutes les bandes partagent power/feed ; la bande défocus N'EST PAS
+    compensée en puissance (c'est le rendu brut au réglage courant que la
+    mire doit montrer). style_params : mêmes clés que le Marquage
+    (dash_len, gap_len, dot_spacing, dot_dwell_s, wave_period,
+    wave_amplitude, deg_z_min, deg_z_max) ; deg_angle est forcé à 0 pour
+    que le dégradé coure le long de sa bande. Assemblé via
+    generate_gcode_combined : un seul armement pour toute la mire."""
+    if line_length <= 0:
+        return None
+    sp = dict(style_params or {})
+    sp["deg_angle"] = 0.0
+
+    defocus = defocus_for_spot_diameter(
+        spot_width, SPOT_FOCUS_MM, calibrated_half_angle()) or 0.0
+
+    bands = [
+        ("1", "plein", z_focus, sp),
+        ("2", "tirets", z_focus, sp),
+        ("3", "pointille", z_focus, sp),
+        ("4", "vague", z_focus, sp),
+        ("5", "plein", z_focus + defocus, sp),   # défocus : trait plein gravé plus haut
+        ("6", "degrade", z_focus, sp),
+    ]
+
+    ops = []
+    label_edges = []
+    label_x = -(text_char_width(label_height) + 3.0)
+    for i, (digit, style, z_eff, params) in enumerate(bands):
+        y = i * band_gap
+        p1 = FreeCAD.Vector(0.0, y, 0.0)
+        p2 = FreeCAD.Vector(line_length, y, 0.0)
+        ops.append({
+            "type": "curved",
+            "label": "Mire style {} ({})".format(digit, style),
+            "params": dict(edges=[Part.LineSegment(p1, p2).toShape()],
+                           power=power, feed=feed, z_focus=z_eff,
+                           marge_survol=TRANSIT_MARGIN_MM,
+                           style=style, style_params=dict(params)),
+        })
+        label_edges.extend(text_to_edges(digit, label_x, y - label_height / 2.0,
+                                         label_height))
+    if label_edges:
+        ops.append({
+            "type": "curved",
+            "label": "Mire styles : etiquettes",
+            "params": dict(edges=label_edges, power=power, feed=feed,
+                           z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM),
+        })
+
+    return generate_gcode_combined(ops, pre_gcode=pre_gcode,
+                                   post_gcode=post_gcode, quiet=quiet)
+
+
 def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
                                mill_depth=0.4, half_length=10.0, surface_z=0.0,
                                z_focus=7.0, laser_power=300.0, laser_feed=1000.0,
