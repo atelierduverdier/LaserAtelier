@@ -569,7 +569,9 @@ def _fluence_advice(spot, power, feed, w):
         txt += " -- TROP FAIBLE, risque de trait pâle/absent."
         color = "#c0392b"
     elif ratio > 1.2:
-        txt += " -- élevée, risque de sur-brûlage."
+        txt += (" -- plus foncé que la référence. Normal si c'est voulu "
+                "(ton foncé visé, nuancier/ton sur mesure) ; sinon, risque "
+                "de sur-brûlage.")
         color = "#b0740a"
     else:
         txt += " -- proche de la référence."
