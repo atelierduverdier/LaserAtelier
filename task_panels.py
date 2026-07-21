@@ -486,7 +486,13 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
         "Défocaliser étale la puissance sur un point plus large : le trait\n"
         "pâlit, voire ne marque plus. Renseigne un réglage de RÉFÉRENCE\n"
         "connu bon sur ce matériau (une gravure réussie) ; l'atelier compare\n"
-        "la fluence (énergie déposée) du réglage actuel à cette référence.")
+        "la fluence (énergie déposée) du réglage actuel à cette référence.\n"
+        "\n"
+        "NB : si ton réglage vient du NUANCIER ou du ton sur mesure\n"
+        "interpolé, laisse la case DÉCOCHÉE : l'interpolation tient déjà\n"
+        "compte de la largeur du point, et le % ci-dessous compare à TA\n"
+        "référence (pas au nuancier) -- il peut être élevé sans danger si\n"
+        "tu vises un ton foncé.")
     inner.addRow(lbl)
 
     chk = QtWidgets.QCheckBox("Compenser la puissance automatiquement")
