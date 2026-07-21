@@ -538,6 +538,21 @@
   <h2>Caler l'optique et le matériau, une fois</h2>
   <p class="sec-lede">Le cœur de l'atelier : deux mesures du point calibrent le modèle de défocus, la fluence relie puissance et largeur de trait, le test d'offsets aligne le laser, et le nuancier capitalise les gris qui marchent.</p>
 
+  <h3>La hiérarchie des tests — dans l'ordre</h3>
+  <p>Chaque test alimente le suivant. Les étapes machine se font <b>une seule fois par laser</b> ; pour un nouveau matériau, une seule planche suffit&nbsp;:</p>
+  <ol>
+    <li><b>Une fois par laser</b> — la <b>Bande de calibration défocus</b> (deux mesures du point → Préférences) puis le <b>Test offsets fraise + laser</b> (X/Y du laser dans <code>tool.tbl</code>). Sans le point calibré, les sections défocus de la planche seraient fausses.</li>
+    <li><b>Nouveau matériau</b> — bouton «&nbsp;<b>Planche de calibration matériau</b>&nbsp;» (panneau Grille de test)&nbsp;: UN SEUL G-code à graver sur une chute ~130&nbsp;×&nbsp;125&nbsp;mm, zéro machine au coin bas-gauche sur le dessus. Trois sections numérotées, de bas en haut&nbsp;:
+      <b>1</b>&nbsp;traits au foyer (grille 5&nbsp;puissances&nbsp;×&nbsp;3&nbsp;vitesses)&nbsp;→ mesurer la largeur brûlée de chaque trait et noter ceux qui ne marquent pas (seuil du matériau)&nbsp;;
+      <b>2</b>&nbsp;traits au défocus (5&nbsp;puissances à F800, point élargi du remplissage)&nbsp;→ mesurer les largeurs&nbsp;;
+      <b>3</b>&nbsp;bandes nuancier (rectangles remplis au défocus, 2&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses)&nbsp;→ estimer la noirceur (0–100&nbsp;%) et mesurer la largeur, puis saisir chaque bande dans Préférences&nbsp;&gt;&nbsp;Nuancier.</li>
+    <li><b>Après le nuancier</b> (facultatif, pour choisir à l'œil) — la <b>Mire des styles</b> (Marquage) et la <b>Mire des tramages</b> (Gravure photo).</li>
+  </ol>
+  <figure class="diagram" style="margin:0">
+    <img src="assets/diag_planche_calibration.svg" alt="Plan de la planche de calibration matériau : trois sections numérotées">
+    <figcaption>La planche de calibration matériau&nbsp;: sections 1 (traits au foyer), 2 (traits au défocus), 3 (bandes nuancier), avec ce qu'il faut mesurer sur chacune.</figcaption>
+  </figure>
+
   <h3>Le point &amp; le modèle de défocus</h3>
   <p>Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un <b>cône de divergence linéaire</b> calibré à partir de deux mesures réelles — le point au foyer, puis le point à un défocus connu — jamais deviné. La <b>Bande de calibration défocus</b> fournit ces mesures ; on les saisit une seule fois dans les Préférences («&nbsp;point au foyer&nbsp;», «&nbsp;défocus de test&nbsp;», «&nbsp;point au défocus de test&nbsp;») et tous les modes concernés les réutilisent. Le remplissage est automatiquement <b>rentré du rayon de point</b> pour rester à l'intérieur du contour.</p>
 

@@ -3486,6 +3486,23 @@ class TaskPanelTestGrid:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "testgrid.svg", "Grille de test puissance / vitesse")
+
+        self.btn_material_board = QtWidgets.QPushButton(
+            "Planche de calibration matériau (fichier séparé)")
+        self.btn_material_board.setToolTip(
+            "Génère UN SEUL G-code qui grave, sur une chute (~130 x 125 mm),\n"
+            "tout ce qu'il faut mesurer pour caler un NOUVEAU matériau :\n"
+            "  1. traits au FOYER (grille S x F) -> mesurer les largeurs\n"
+            "     brûlées + noter les traits qui ne marquent pas ;\n"
+            "  2. traits au DÉFOCUS (5 puissances, F800) -> largeurs ;\n"
+            "  3. bandes NUANCIER (rectangles remplis au défocus) ->\n"
+            "     noirceur (0-100 %) + largeur, à saisir dans\n"
+            "     Préférences > Nuancier.\n"
+            "Prérequis (une fois par laser) : calibration du point dans\n"
+            "les Préférences. Zéro machine : coin bas-gauche de la chute,\n"
+            "sur le dessus.")
+        self.btn_material_board.clicked.connect(self._on_material_board)
+        form.addRow(self.btn_material_board)
         _intro(form,
                "Grave (ou découpe) une grille de cellules sur une chute : "
                "chaque cellule teste UN couple puissance/vitesse. Tu choisis "
@@ -4175,6 +4192,15 @@ class TaskPanelTestGrid:
         op = self._build_combined_operation()
         if op:
             _add_to_combined_job(op)
+
+    def _on_material_board(self):
+        gcode = core.generate_gcode_material_board()
+        if not gcode:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Génération vide (calibration invalide ?).")
+            return
+        _write_gcode_with_dialog(self.form, gcode,
+                                 "/tmp/planche_calibration_materiau.ngc")
 
     def accept(self):
         if self.spn_power_max.value() < self.spn_power_min.value():
