@@ -483,19 +483,20 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
     inner.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
     lbl = _WrapLabel(
-        "Défocaliser étale la puissance sur un point plus large : le trait\n"
-        "pâlit, voire ne marque plus. Renseigne un réglage de RÉFÉRENCE\n"
-        "connu bon sur ce matériau (une gravure réussie) ; l'atelier compare\n"
-        "la fluence (énergie déposée) du réglage actuel à cette référence.\n"
+        "À utiliser quand le matériau n'a PAS de nuancier. Défocaliser\n"
+        "étale la puissance sur un point plus large : le trait pâlit.\n"
+        "Renseigne UN réglage de RÉFÉRENCE connu bon (une gravure\n"
+        "réussie) ; l'atelier garde le même ton en recalculant la\n"
+        "puissance (fluence égale) pour la largeur et la vitesse\n"
+        "actuelles.\n"
         "\n"
-        "NB : si ton réglage vient du NUANCIER ou du ton sur mesure\n"
-        "interpolé, laisse la case DÉCOCHÉE : l'interpolation tient déjà\n"
-        "compte de la largeur du point, et le % ci-dessous compare à TA\n"
-        "référence (pas au nuancier) -- il peut être élevé sans danger si\n"
-        "tu vises un ton foncé.")
+        "Avec un NUANCIER (ou le ton sur mesure interpolé) : laisse la\n"
+        "case DÉCOCHÉE -- l'interpolation fait déjà ce travail, en mieux\n"
+        "(courbe mesurée). Le % ci-dessous compare à TA référence : il\n"
+        "peut être élevé sans danger si tu vises un ton foncé.")
     inner.addRow(lbl)
 
-    chk = QtWidgets.QCheckBox("Compenser la puissance automatiquement")
+    chk = QtWidgets.QCheckBox("Compenser la puissance automatiquement (matériau sans nuancier)")
     chk.setToolTip(
         "Coché : la puissance est CALCULÉE pour déposer la même énergie\n"
         "qu'à la référence, au défocus et à la vitesse actuels (la\n"
