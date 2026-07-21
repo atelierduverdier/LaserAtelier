@@ -254,14 +254,16 @@ S_MAX = 1000.0       # échelle de puissance max de la broche laser (valeur S pl
 
 
 def cmd_tool_comp():
-    """Ligne de compensation d'outil laser en tête de chaque job :
-    applique les offsets X/Y (tool.tbl) et le Z palpé au dernier
-    T<laser> M6. Sans elle, le Z de foyer et les XY seraient interprétés
-    en coordonnées broche, pas nez laser. PRÉREQUIS MACHINE : avoir fait
-    T<laser> M6 dans la session LinuxCNC. Fonction (pas une constante)
-    pour suivre le numéro d'outil des Préférences (LASER_TOOL)."""
-    return ("G43 H{n} (compensation T{n} - prerequis: T{n} M6 fait dans la "
-            "session)".format(n=int(LASER_TOOL)))
+    """Sélection et compensation de l'outil laser en tête de chaque job :
+    T<laser> M6 charge l'outil (si le changement d'outil est manuel,
+    LinuxCNC demande confirmation -- rappel utile de monter le laser ;
+    si T<laser> est déjà chargé, c'est transparent), puis G43 H<laser>
+    applique ses offsets X/Y (tool.tbl) et son Z palpé. Sans cela, le Z
+    de foyer et les XY seraient interprétés en coordonnées broche, pas
+    nez laser. Fonction (pas une constante) pour suivre le numéro
+    d'outil des Préférences (LASER_TOOL), réglé PAR PROFIL laser."""
+    return ("T{n} M6 (outil laser)\n"
+            "G43 H{n} (compensation T{n})".format(n=int(LASER_TOOL)))
 
 
 CMD_ARM = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"

@@ -118,12 +118,13 @@ Generators are `generate_gcode_*(...)` in `laser_core.py`, each returning a **sa
 string or `None`** (None = empty geometry). Shared conventions:
 
 - **LinuxCNC RS274 dialect**: laser is spindle `$1` (`SPINDLE_SELECT`); header is
-  `G21/G90/G94/G43 H<n>` (`cmd_tool_comp()` — a function, not a constant, so it follows the
-  `LASER_TOOL` preference, default 100) then `M5 $1`; arm once with `CMD_ARM` (`M3` at zero power +
-  dwell), power per segment via `S…` (`CMD_BEAM_ON/OFF`), disarm `M5`, end `M2`. Power fields are
-  scaled 0..`S_MAX` (preference `s_max`, default 1000 — panels use `setRange(0, core.S_MAX)`, never
-  a hard-coded 1000). **Machine prerequisite:** the operator must have run `T<n> M6` in the LinuxCNC
-  session (the `G43 H<n>` applies the laser tool's X/Y offsets + probed Z).
+  `G21/G90/G94/T<n> M6/G43 H<n>` (`cmd_tool_comp()` — a function, not a constant, so it follows the
+  `LASER_TOOL` preference, default 100, set per laser profile) then `M5 $1`; arm once with `CMD_ARM`
+  (`M3` at zero power + dwell), power per segment via `S…` (`CMD_BEAM_ON/OFF`), disarm `M5`, end
+  `M2`. Power fields are scaled 0..`S_MAX` (preference `s_max`, default 1000 — panels use
+  `setRange(0, core.S_MAX)`, never a hard-coded 1000). The emitted `T<n> M6` loads the laser tool
+  itself (no-op if already loaded; prompts once under manual tool change) and `G43 H<n>` applies its
+  X/Y offsets (tool.tbl) + probed Z.
 - **`sanitize_gcode_for_linuxcnc(text)`** is applied at every generator's return, and is required:
   LinuxCNC rejects **nested parentheses** in comments (`passe(s)`, `(par bande de Z)`) and **non-ASCII
   bytes** (French accents). The sanitizer brackets inner parens and transliterates accents. It is
