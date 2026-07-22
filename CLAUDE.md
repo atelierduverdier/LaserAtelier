@@ -100,7 +100,11 @@ Five modules, cleanly layered — keep the layering:
     JSON into a dynamic `LaserAtelierReglages` property on the first selected object (saved with
     the .FCStd) and restored with priority over global last values when that object is selected.
     Priority: per-object settings > last values > Preferences defaults. Pass the selection kwarg
-    for any new shape-based panel.
+    for any new shape-based panel. In the 4 G-code shape panels (filled/curved/flat/curved_cut),
+    **OK only saves settings and closes**; generation goes through the dedicated
+    "Générer et sauvegarder le G-code…" button (`_on_save_gcode`, which re-saves then generates).
+    `_build_combined_operation` also saves on success, so the combined-job path feeds the
+    per-shape settings and the tree Job too.
   - `_PresetController(form, parent, category, fields_getter)` — preset selector block backed by
     `core.factory_presets` (★, non-deletable) + user presets.
   - `_make_fluence_widgets` / `_fluence_advice` — "Puissance vs défocus" section (power compensation

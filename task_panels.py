@@ -1582,6 +1582,15 @@ class TaskPanelFilledEngraving:
             "Approximative : G1 selon distance/avance programmée, G0\n"
             "(transit) à la vitesse rapide des Préférences.")
 
+        self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        self.btn_save_gcode.setToolTip(
+            "Génère le G-code avec les réglages actuels et propose le\n"
+            "fichier de sauvegarde. Le bouton OK, lui, se contente de\n"
+            "SAUVEGARDER LES RÉGLAGES (sur la forme + objet Job) et ferme\n"
+            "le panneau sans générer.")
+        self.btn_save_gcode.clicked.connect(self._on_save_gcode)
+        form.addRow(self.btn_save_gcode)
+
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
             "Crée un FICHIER À PART traçant le rectangle englobant, laser\n"
@@ -1898,6 +1907,7 @@ class TaskPanelFilledEngraving:
                 "Rien à graver : le remplissage est vide (motif plus fin que\n"
                 "le point défocalisé) et le contour est décoché.")
             return None
+        _save_last_values("filled", self._last_fields, selection=self.selection)
         return {"type": "filled",
                 "label": "Gravure remplie (S{:.0f})".format(self.spn_fill_power.value()),
                 "params": dict(fill_edges=fill_edges, contour_edges=contour_edges,
@@ -1909,6 +1919,13 @@ class TaskPanelFilledEngraving:
             _add_to_combined_job(op)
 
     def accept(self):
+        """OK : sauvegarde les réglages (forme + objet Job + derniers
+        réglages du panneau) et ferme -- la génération du G-code passe
+        par le bouton « Générer et sauvegarder le G-code… »."""
+        _save_last_values("filled", self._last_fields, selection=self.selection)
+        return True
+
+    def _on_save_gcode(self):
         _save_last_values("filled", self._last_fields, selection=self.selection)
         fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
         if fill_edges is None:
@@ -4832,6 +4849,15 @@ class TaskPanelCurved:
             "(réglable dans Préférences) -- la vraie vitesse rapide de\n"
             "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
 
+        self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        self.btn_save_gcode.setToolTip(
+            "Génère le G-code avec les réglages actuels et propose le\n"
+            "fichier de sauvegarde. Le bouton OK, lui, se contente de\n"
+            "SAUVEGARDER LES RÉGLAGES (sur la forme + objet Job) et ferme\n"
+            "le panneau sans générer.")
+        self.btn_save_gcode.clicked.connect(self._on_save_gcode)
+        form.addRow(self.btn_save_gcode)
+
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
             "Crée un FICHIER À PART qui trace uniquement le rectangle\n"
@@ -5160,6 +5186,7 @@ class TaskPanelCurved:
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return None
+        _save_last_values("curved", self._last_fields, selection=self.selection)
         return {"type": "curved",
                 "label": "Marquage (S{:.0f})".format(self._effective_power()),
                 "params": dict(edges=self._edges, power=self._effective_power(),
@@ -5173,6 +5200,13 @@ class TaskPanelCurved:
             _add_to_combined_job(op)
 
     def accept(self):
+        """OK : sauvegarde les réglages (forme + objet Job + derniers
+        réglages du panneau) et ferme -- la génération du G-code passe
+        par le bouton « Générer et sauvegarder le G-code… »."""
+        _save_last_values("curved", self._last_fields, selection=self.selection)
+        return True
+
+    def _on_save_gcode(self):
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
@@ -5206,8 +5240,8 @@ class TaskPanelCurved:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
 
-        # Renoncement à la sauvegarde : accept() échoue pour que le panneau
-        # reste ouvert avec tous ses réglages -- re-cliquer OK regénère.
+        # Bouton : le panneau reste ouvert quoi qu'il arrive -- re-cliquer
+        # regénère avec les réglages courants.
         return _write_gcode_with_dialog(self.form, gcode, "/tmp/marquage_courbe.ngc")
 
     def reject(self):
@@ -5487,6 +5521,15 @@ class TaskPanelFlat:
             "(réglable dans Préférences) -- la vraie vitesse rapide de\n"
             "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
 
+        self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        self.btn_save_gcode.setToolTip(
+            "Génère le G-code avec les réglages actuels et propose le\n"
+            "fichier de sauvegarde. Le bouton OK, lui, se contente de\n"
+            "SAUVEGARDER LES RÉGLAGES (sur la forme + objet Job) et ferme\n"
+            "le panneau sans générer.")
+        self.btn_save_gcode.clicked.connect(self._on_save_gcode)
+        form.addRow(self.btn_save_gcode)
+
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
             "Crée un FICHIER À PART qui trace uniquement le rectangle\n"
@@ -5691,6 +5734,7 @@ class TaskPanelFlat:
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return None
+        _save_last_values("flat", self._last_fields, selection=self.selection)
         return {"type": "flat",
                 "label": "Découpe multi-passes ({:.0f} passes, S{:.0f})".format(
                     self.spn_passes.value(), self.spn_power.value()),
@@ -5704,6 +5748,13 @@ class TaskPanelFlat:
             _add_to_combined_job(op)
 
     def accept(self):
+        """OK : sauvegarde les réglages (forme + objet Job + derniers
+        réglages du panneau) et ferme -- la génération du G-code passe
+        par le bouton « Générer et sauvegarder le G-code… »."""
+        _save_last_values("flat", self._last_fields, selection=self.selection)
+        return True
+
+    def _on_save_gcode(self):
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
@@ -5733,7 +5784,7 @@ class TaskPanelFlat:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
 
-        # Cf. marquage courbe : panneau conservé si la sauvegarde est abandonnée.
+        # Bouton : le panneau reste ouvert, re-cliquer regénère.
         return _write_gcode_with_dialog(self.form, gcode, "/tmp/decoupe_multipasse.ngc")
 
     def reject(self):
@@ -5901,6 +5952,15 @@ class TaskPanelCurvedCut:
             "Approximative : G1 selon distance/avance programmée, G0\n"
             "(transit) à une vitesse rapide SUPPOSÉE de {:.0f}mm/min\n"
             "(réglable dans Préférences).".format(core.RAPID_FEED_MM_MIN))
+
+        self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        self.btn_save_gcode.setToolTip(
+            "Génère le G-code avec les réglages actuels et propose le\n"
+            "fichier de sauvegarde. Le bouton OK, lui, se contente de\n"
+            "SAUVEGARDER LES RÉGLAGES (sur la forme + objet Job) et ferme\n"
+            "le panneau sans générer.")
+        self.btn_save_gcode.clicked.connect(self._on_save_gcode)
+        form.addRow(self.btn_save_gcode)
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -6092,6 +6152,7 @@ class TaskPanelCurvedCut:
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return None
+        _save_last_values("curved_cut", self._last_fields, selection=self.selection)
         return {"type": "curved_cut",
                 "label": "Découpe courbe ({:.0f} passes, S{:.0f})".format(
                     self.spn_passes.value(), self.spn_power.value()),
@@ -6107,6 +6168,13 @@ class TaskPanelCurvedCut:
             _add_to_combined_job(op)
 
     def accept(self):
+        """OK : sauvegarde les réglages (forme + objet Job + derniers
+        réglages du panneau) et ferme -- la génération du G-code passe
+        par le bouton « Générer et sauvegarder le G-code… »."""
+        _save_last_values("curved_cut", self._last_fields, selection=self.selection)
+        return True
+
+    def _on_save_gcode(self):
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
@@ -6137,7 +6205,7 @@ class TaskPanelCurvedCut:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
 
-        # Cf. marquage courbe : panneau conservé si la sauvegarde est abandonnée.
+        # Bouton : le panneau reste ouvert, re-cliquer regénère.
         return _write_gcode_with_dialog(self.form, gcode, "/tmp/decoupe_courbe.ngc")
 
     def reject(self):
@@ -6371,7 +6439,7 @@ class TaskPanelCombined:
                 self.form, "Erreur", "Aucun G-code généré (vérifie que les opérations contiennent de la géométrie).")
             return False
 
-        # Cf. marquage courbe : panneau conservé si la sauvegarde est abandonnée.
+        # Bouton : le panneau reste ouvert, re-cliquer regénère.
         return _write_gcode_with_dialog(self.form, gcode, "/tmp/job_combine.ngc")
 
     def reject(self):
