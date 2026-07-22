@@ -130,6 +130,13 @@ renders NOTHING if the XML is invalid (e.g. `--` inside a comment) — validate 
 Generators are `generate_gcode_*(...)` in `laser_core.py`, each returning a **sanitized G-code
 string or `None`** (None = empty geometry). Shared conventions:
 
+- **Two dialects** via the per-laser-profile setting `gcode_dialect` (`GCODE_DIALECT`, default
+  `"linuxcnc"`): `_apply_settings_config` derives everything — for `"grbl"` it empties
+  `SPINDLE_SELECT`, swaps `CMD_ARM` to the M4 (laser-mode) variant, `cmd_tool_comp()` becomes a
+  comment, and `cmd_path_blend()` returns None instead of `"G64"` (GRBL blends natively via `$11`).
+  Never emit `$n` / `T`/`M6` / `G43` / `G64` literals directly — always go through
+  `SPINDLE_SELECT` / `cmd_tool_comp()` / `cmd_path_blend()`. The sanitizer also strips trailing
+  spaces (empty `{sel}`). The mixed mill+laser offset-test generator is knowingly LinuxCNC-only.
 - **LinuxCNC RS274 dialect**: laser is spindle `$1` (`SPINDLE_SELECT`); header is
   `G21/G90/G94/T<n> M6/G43 H<n>` (`cmd_tool_comp()` — a function, not a constant, so it follows the
   `LASER_TOOL` preference, default 100, set per laser profile) then `M5 $1`; arm once with `CMD_ARM`

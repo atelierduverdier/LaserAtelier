@@ -151,9 +151,17 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
 - Le sélecteur multi-broche `$1` et la compensation d'outil sont pensés
   pour LinuxCNC (laser = spindle 1, outil T100 par défaut). Le sélecteur
   broche, le numéro d'outil laser et l'échelle de puissance S se changent
-  dans les Préférences de l'atelier ; pour un contrôleur sans
-  compensation d'outil (GRBL...), adapter `cmd_tool_comp()` dans
-  `laser_core.py`
+  dans les Préférences de l'atelier
+- **Contrôleur GRBL** : choisir le dialecte **GRBL** dans les Préférences
+  (réglé par profil laser — créer un profil par machine). Le G-code généré
+  est alors du GRBL 1.1 pur : pas de sélecteur de broche ni de `T`/`M6`/`G43`,
+  pas de `G64` (le lissage de trajectoire est natif chez GRBL, réglé par la
+  junction deviation `$11`), armement en `M4` (mode laser). Côté machine :
+  activer le mode laser `$32=1` et régler `$30` à la même valeur que
+  l'Échelle de puissance max des Préférences (1000 par défaut). Le zéro Z se
+  pose sur la surface à graver par le moyen de son choix (cale, réglet à la
+  hauteur de focale…) — **aucun palpeur n'est requis**. Le Test des offsets
+  X/Y (job mixte fraise+laser) reste propre à LinuxCNC.
 
 ## Installation
 
@@ -220,7 +228,7 @@ Quelques constantes restent volontairement dans le code (`laser_core.py`) — le
 
 | Constante | Défaut | Rôle |
 |---|---|---|
-| `cmd_tool_comp()` | `G43 H<outil laser> (...)` | Ligne de compensation d'outil en tête de chaque job (offsets X/Y + Z palpé de l'outil laser des Préférences). À adapter pour un contrôleur sans compensation d'outil (GRBL...) |
+| `cmd_tool_comp()` | `G43 H<outil laser> (...)` | Ligne de compensation d'outil en tête de chaque job (offsets X/Y + Z palpé de l'outil laser des Préférences). Omise automatiquement en dialecte GRBL (Préférences) |
 | `FOCUS_TABLE` | `{2: 7, 3: 7, ...}` | Tableau constructeur épaisseur (mm) → hauteur de bec (mm) pour la découpe à plat (LT-80W). À refaire pour un autre module laser |
 | `CHAIN_TOLERANCE` | `0.001` mm | Tolérance de jonction entre segments pour le chaînage des contours |
 | `DISCRETIZE_DISTANCE` | `0.3` mm | Résolution de discrétisation des tracés (plus petit = plus fidèle mais G-code plus gros) |

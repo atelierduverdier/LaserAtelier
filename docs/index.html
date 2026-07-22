@@ -663,9 +663,9 @@
     <span class="ci">Portabilité — deux réglages clés</span>
     <p>Le <b>numéro d'outil laser</b> (défaut 100) et l'<b>échelle de puissance S</b> (défaut 1000) sont dans les Préférences : une machine dont le laser est un autre outil de la table, ou dont la broche est configurée S0-255, s'adapte entièrement depuis l'interface, sans toucher au code. Le sélecteur de broche <code>$1</code> est lui aussi réglable.</p>
   </div>
-  <div class="callout warn">
-    <span class="ci">Contrôleurs sans compensation d'outil (GRBL…)</span>
-    <p>Le sélecteur multi-broche <code>$1</code> et la compensation <code>G43</code> sont propres à LinuxCNC. Pour un contrôleur qui ne les supporte pas, il faut adapter la fonction <code>cmd_tool_comp()</code> dans <code>laser_core.py</code> — non couvert par les Préférences.</p>
+  <div class="callout tip">
+    <span class="ci">Contrôleur GRBL — dialecte intégré</span>
+    <p>Choisir le dialecte <b>GRBL</b> dans les Préférences (réglé <b>par profil laser</b> — créez un profil par machine) : le G-code émis est du GRBL 1.1 pur — pas de sélecteur de broche ni de <code>T</code>/<code>M6</code>/<code>G43</code>, pas de <code>G64</code> (le lissage de trajectoire est natif chez GRBL, réglé par la junction deviation <code>$11</code>), armement en <code>M4</code> (mode laser). Côté machine&nbsp;: <code>$32=1</code> et <code>$30</code> égal à l'échelle de puissance S des Préférences. Le zéro Z se pose sur la surface par le moyen de son choix (cale, réglet à la hauteur de focale…) — <b>aucun palpeur requis</b>. Seul le Test des offsets X/Y (job mixte fraise+laser) reste propre à LinuxCNC.</p>
   </div>
 </section>
 

@@ -6439,9 +6439,8 @@ class TaskPanelSettings:
         self.edt_spindle = QtWidgets.QLineEdit(settings["spindle_select"])
         self.edt_spindle.setToolTip(
             "Sélecteur multi-broche ajouté aux commandes S/M3/M5 (LinuxCNC :\n"
-            "\"$1\" = spindle 1 = laser). Vider n'est pas accepté ; pour un\n"
-            "contrôleur mono-broche (GRBL...), utiliser \"$0\" ou adapter\n"
-            "CMD_* dans laser_core.py.")
+            "\"$1\" = spindle 1 = laser). Ignoré en dialecte GRBL (aucun\n"
+            "sélecteur n'est émis).")
         form.addRow("Sélecteur broche :", self.edt_spindle)
 
         self.spn_dwell = QtWidgets.QDoubleSpinBox()
@@ -6454,6 +6453,24 @@ class TaskPanelSettings:
             "le temps que l'électronique du module soit prête avant le\n"
             "premier trait.")
         form.addRow("Temporisation d'armement :", self.spn_dwell)
+
+        self.combo_dialect = QtWidgets.QComboBox()
+        self.combo_dialect.addItem("LinuxCNC", "linuxcnc")
+        self.combo_dialect.addItem("GRBL", "grbl")
+        idx_d = self.combo_dialect.findData(settings.get("gcode_dialect", "linuxcnc"))
+        self.combo_dialect.setCurrentIndex(max(0, idx_d))
+        self.combo_dialect.setToolTip(
+            "Contrôleur cible du G-code généré, PAR PROFIL laser :\n"
+            "- LinuxCNC (défaut) : multi-broche $n, T/M6 + G43 H, G64.\n"
+            "- GRBL (1.1 classique) : pas de sélecteur de broche ni de\n"
+            "  changement d'outil (T/M6/G43 omis), pas de G64 (lissage\n"
+            "  natif, réglage $11), armement en M4 = mode laser.\n"
+            "  Prérequis côté GRBL : $32=1 (mode laser) et $30 égal à\n"
+            "  l'Échelle de puissance max ci-dessous. Le sélecteur de\n"
+            "  broche et le numéro d'outil sont alors ignorés.\n"
+            "  Zéro Z : à poser sur la surface (cale, réglet... -- aucun\n"
+            "  palpeur requis).")
+        form.addRow("Dialecte G-code :", self.combo_dialect)
 
         self.spn_laser_tool = QtWidgets.QSpinBox()
         self.spn_laser_tool.setRange(1, 999)
@@ -6666,6 +6683,8 @@ class TaskPanelSettings:
         """Recharge les champs PAR laser après une bascule de profil."""
         s = core.current_settings()
         n = core.current_nozzle()
+        idx_d = self.combo_dialect.findData(s.get("gcode_dialect", "linuxcnc"))
+        self.combo_dialect.setCurrentIndex(max(0, idx_d))
         self.spn_laser_tool.setValue(int(s["laser_tool"]))
         self.spn_s_max.setValue(s["s_max"])
         self.spn_frame_power.setValue(s["frame_power"])
@@ -6735,6 +6754,7 @@ class TaskPanelSettings:
                 "inférieur ou égal au diamètre au sommet.")
             return False
         core.save_settings({
+            "gcode_dialect": self.combo_dialect.currentData(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
             "spindle_select": self.edt_spindle.text().strip(),
             "arm_dwell_s": self.spn_dwell.value(),

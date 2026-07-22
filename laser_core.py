@@ -215,7 +215,9 @@ def sanitize_gcode_for_linuxcnc(text):
             continue
         content = line[start + 1:end].replace("(", "[").replace(")", "]")
         out.append(line[:start] + "(" + content + ")" + line[end + 1:])
-    return "\n".join(out)
+    # Espaces de fin de ligne : sans effet pour LinuxCNC, mais le dialecte
+    # GRBL (sélecteur de broche vide) en laisserait après S/M3/M5.
+    return "\n".join(l.rstrip() for l in out)
 
 # Persistance des champs G-code avant/après entre deux exécutions de la
 # macro (un run de macro FreeCAD repart de zéro à chaque fois, rien ne
@@ -253,6 +255,16 @@ def save_config(data):
 # ==========================================================================
 # CONFIGURATION COMMUNE (les deux modes)
 # ==========================================================================
+# Dialecte G-code cible -- réglable en Préférences, PAR PROFIL laser :
+#   "linuxcnc" (défaut) : multi-broche $n, T/M6 + G43 H, G64, M3.
+#   "grbl"              : GRBL 1.1 classique -- pas de sélecteur de broche,
+#     pas de changement d'outil ni de compensation (T/M6/G43 omis), pas de
+#     G64 (le lissage de trajectoire est natif, réglé par la junction
+#     deviation $11 du contrôleur), armement en M4 (mode laser $32=1 :
+#     puissance asservie à la vitesse réelle, comme le HAL PrintNC --
+#     l'interdit « jamais de G4 faisceau allumé » s'applique pareil).
+#     Prérequis côté machine : $32=1, $30 = échelle S max des Préférences.
+GCODE_DIALECT = "linuxcnc"
 SPINDLE_SELECT = "$1"
 ARM_DWELL_S = 2.0
 LASER_TOOL = 100     # numéro (tool.tbl) de l'outil laser -- réglable en Préférences
@@ -268,12 +280,26 @@ def cmd_tool_comp():
     applique ses offsets X/Y (tool.tbl) et son Z palpé. Sans cela, le Z
     de foyer et les XY seraient interprétés en coordonnées broche, pas
     nez laser. Fonction (pas une constante) pour suivre le numéro
-    d'outil des Préférences (LASER_TOOL), réglé PAR PROFIL laser."""
+    d'outil des Préférences (LASER_TOOL), réglé PAR PROFIL laser.
+    En dialecte GRBL : simple commentaire (pas de table d'outils)."""
+    if GCODE_DIALECT == "grbl":
+        return "(dialecte GRBL : pas de changement d'outil ni de compensation)"
     return ("T{n} M6 (outil laser)\n"
             "G43 H{n} (compensation T{n})".format(n=int(LASER_TOOL)))
 
 
-CMD_ARM = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"
+def cmd_path_blend():
+    """« G64 » (trajectoire continue LinuxCNC), ou None en dialecte GRBL :
+    GRBL ne connaît pas G64 (erreur), son planificateur lisse nativement
+    (réglage $11, junction deviation)."""
+    return None if GCODE_DIALECT == "grbl" else "G64"
+
+
+_CMD_ARM_LINUXCNC = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"
+# GRBL en mode laser ($32=1) : M4 = puissance asservie à la vitesse réelle
+# (S0 pendant l'armement -> faisceau éteint). {sel} vide en GRBL.
+_CMD_ARM_GRBL = "S0\nM4 (armement mode laser GRBL)\nG4 P{dwell:.1f}"
+CMD_ARM = _CMD_ARM_LINUXCNC
 CMD_DISARM = "S0 {sel}\nM5 {sel}"
 CMD_BEAM_ON = "S{power:.0f} {sel}"
 CMD_BEAM_OFF = "S0 {sel}"
@@ -319,6 +345,8 @@ SPOT_TEST_DIAMETER_MM = 1.0           # diamètre du point mesuré à ce défocu
 
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
 _USER_SETTINGS = (
+    ("gcode_dialect", "GCODE_DIALECT", lambda v: str(v).strip().lower(),
+     lambda v: v in ("linuxcnc", "grbl")),
     ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
     ("spindle_select", "SPINDLE_SELECT", str, lambda v: bool(v.strip())),
     ("laser_tool", "LASER_TOOL", int, lambda v: 1 <= v <= 999),
@@ -345,6 +373,12 @@ def _apply_settings_config():
     """Surcharge les réglages utilisateur depuis la config JSON (clé
     "settings"). Valeur invalide : avertissement et valeur par défaut
     conservée -- même politique que le profil de bec."""
+    # Repartir des valeurs LinuxCNC par défaut pour ce que le dialecte
+    # surcharge : une bascule grbl -> linuxcnc doit tout restaurer.
+    global SPINDLE_SELECT, CMD_ARM, GCODE_DIALECT
+    GCODE_DIALECT = "linuxcnc"
+    SPINDLE_SELECT = "$1"
+    CMD_ARM = _CMD_ARM_LINUXCNC
     settings = load_config().get("settings")
     if not isinstance(settings, dict):
         return
@@ -361,6 +395,11 @@ def _apply_settings_config():
                 "défaut conservée.\n".format(key, settings[key]))
             continue
         globals()[global_name] = value
+    # Surcharges du dialecte GRBL (après la boucle : GCODE_DIALECT est lu
+    # depuis la config, le reste en découle).
+    if GCODE_DIALECT == "grbl":
+        SPINDLE_SELECT = ""
+        CMD_ARM = _CMD_ARM_GRBL
 
 
 def current_settings():
@@ -431,7 +470,8 @@ def save_nozzle(bottom_diameter_mm, top_diameter_mm, height_mm):
 # NOTE : le nuancier et les préréglages matériau restent pour l'instant
 # communs -- les rattacher au laser actif est le développement suivant.
 PER_LASER_KEYS = ("laser_tool", "s_max", "spot_focus_mm", "spot_test_defocus_mm",
-                  "spot_test_diameter_mm", "z_work_mm", "frame_power")
+                  "spot_test_diameter_mm", "z_work_mm", "frame_power",
+                  "gcode_dialect")
 
 
 def _laser_slug(name):
@@ -4316,7 +4356,8 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
     # rampe -- d'où le trait qui avance par à-coups. En G64, les segments
     # colinéaires de la rampe s'enchaînent en un mouvement FLUIDE à vitesse
     # constante, seule la puissance change palier par palier.
-    lines.append("G64")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
     lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -5276,7 +5317,8 @@ def generate_gcode_photo_dither_lines(darkness_rows, pitch, z_work, power, feed,
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
-    lines.append("G64")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
     lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -5372,7 +5414,8 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
-    lines.append("G64")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
     lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -5505,7 +5548,8 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
-    lines.append("G64")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
     lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
