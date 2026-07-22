@@ -105,7 +105,16 @@ def ouvrir_job(job):
         return
     import FreeCADGui as Gui
     Gui.Selection.clearSelection()
-    for s in sources:
+    # Source principale : re-sélectionnée avec ses SOUS-ÉLÉMENTS si le job
+    # en porte (plusieurs recettes sur un même sketch/SVG), entière sinon.
+    principal = sources[0]
+    sous = list(getattr(job, "SousElements", None) or [])
+    if sous:
+        for sub in sous:
+            Gui.Selection.addSelection(principal, sub)
+    else:
+        Gui.Selection.addSelection(principal)
+    for s in sources[1:]:
         Gui.Selection.addSelection(s)
     selection = Gui.Selection.getSelectionEx()
     import commands
@@ -122,11 +131,13 @@ def _est_job(obj):
         if getattr(obj, "Proxy", None) is not None else False
 
 
-def creer_ou_maj_job(mode, sources):
-    """Crée -- ou met à jour -- l'objet Job du couple [mode, source
-    principale] dans le document actif. Appelé à chaque génération
-    (task_panels._save_last_values). Renvoie le Job, ou None (pas de
-    document, mode sans forme, sources invalides...)."""
+def creer_ou_maj_job(mode, sources, sous_elements=None):
+    """Crée -- ou met à jour -- l'objet Job du triplet [mode, source
+    principale, sous-éléments] dans le document actif. Appelé à chaque
+    génération (task_panels._save_last_values). Deux sous-sélections
+    différentes d'un même sketch/SVG donnent donc DEUX Jobs distincts,
+    chacun avec sa recette. Renvoie le Job, ou None (pas de document,
+    mode sans forme, sources invalides...)."""
     if mode not in MODES:
         return None
     doc = FreeCAD.ActiveDocument
@@ -137,11 +148,15 @@ def creer_ou_maj_job(mode, sources):
     if not sources:
         return None
     principal = sources[0]
+    sous = sorted(sous_elements or [])
 
-    # Job existant pour ce mode + cette source principale : mise à jour.
+    # Job existant pour ce mode + cette source + ces sous-éléments :
+    # mise à jour (les jobs d'avant la v1.5 n'ont pas SousElements --
+    # getattr les traite comme « objet entier »).
     for obj in doc.Objects:
         if (_est_job(obj) and getattr(obj, "Mode", None) == mode
-                and (getattr(obj, "Sources", None) or [None])[0] is principal):
+                and (getattr(obj, "Sources", None) or [None])[0] is principal
+                and sorted(getattr(obj, "SousElements", None) or []) == sous):
             obj.Sources = sources
             return obj
 
@@ -155,7 +170,13 @@ def creer_ou_maj_job(mode, sources):
     obj.addProperty("App::PropertyLinkList", "Sources", "Job",
                     "Formes sources du job (la première porte les réglages)")
     obj.Sources = sources
-    obj.Label = "Job {} - {}".format(MODES[mode][0], principal.Label)
+    obj.addProperty("App::PropertyStringList", "SousElements", "Job",
+                    "Sous-éléments de la source principale (vide = objet entier)")
+    obj.SousElements = sous
+    obj.setEditorMode("SousElements", 1)
+    obj.Label = "Job {} - {}{}".format(
+        MODES[mode][0], principal.Label,
+        " [" + ", ".join(sous) + "]" if sous else "")
     if getattr(FreeCAD, "GuiUp", False) and getattr(obj, "ViewObject", None):
         VueJobLaser(obj.ViewObject)
     FreeCAD.Console.PrintMessage(

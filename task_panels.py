@@ -356,6 +356,24 @@ def _reglages_object(selection):
     return None
 
 
+def _sous_elements(selection):
+    """Sous-éléments sélectionnés (Face1, Edge3...) du premier objet de la
+    sélection, triés. Vide = objet entier. C'est ce qui permet à un MÊME
+    sketch/SVG de porter plusieurs recettes : une par sous-sélection."""
+    for so in (selection or []):
+        if getattr(so, "Object", None) is not None:
+            return sorted(getattr(so, "SubElementNames", None) or [])
+    return []
+
+
+def _cle_reglages(panel_key, selection):
+    """Clé de stockage des réglages sur la forme : le mode seul pour une
+    sélection d'objet entier, « mode@Face1+Face3 » pour une sous-sélection
+    -- chaque zone d'un même objet garde ainsi SA recette."""
+    subs = _sous_elements(selection)
+    return panel_key + "@" + "+".join(subs) if subs else panel_key
+
+
 def _restore_last_values(panel_key, fields, selection=None):
     """Pré-remplit les champs du panneau. Priorité : réglages portés par la
     FORME sélectionnée (propriété LaserAtelierReglages du document), sinon
@@ -365,12 +383,19 @@ def _restore_last_values(panel_key, fields, selection=None):
     if obj is not None and hasattr(obj, _OBJ_PROP):
         try:
             data = json.loads(getattr(obj, _OBJ_PROP) or "{}")
-            obj_values = data.get(panel_key)
+            cle = _cle_reglages(panel_key, selection)
+            obj_values = data.get(cle)
+            if obj_values is None and cle != panel_key:
+                # sous-sélection jamais réglée : repli sur la recette de
+                # l'objet entier si elle existe
+                obj_values = data.get(panel_key)
             if isinstance(obj_values, dict):
                 values = obj_values
                 FreeCAD.Console.PrintMessage(
-                    "Réglages restaurés depuis « {} ».\n".format(
-                        getattr(obj, "Label", "objet")))
+                    "Réglages restaurés depuis « {} »{}.\n".format(
+                        getattr(obj, "Label", "objet"),
+                        " [" + ", ".join(_sous_elements(selection)) + "]"
+                        if _sous_elements(selection) else ""))
         except Exception:
             pass  # propriété corrompue : repli sur les derniers réglages
     if not isinstance(values, dict):
@@ -399,7 +424,7 @@ def _save_last_values(panel_key, fields, selection=None):
             data = {}
         if not isinstance(data, dict):
             data = {}
-        data[panel_key] = values
+        data[_cle_reglages(panel_key, selection)] = values
         setattr(obj, _OBJ_PROP, json.dumps(data, ensure_ascii=False))
         FreeCAD.Console.PrintMessage(
             "Réglages attachés à « {} » -- sauvegarder le document pour les "
@@ -413,7 +438,8 @@ def _save_last_values(panel_key, fields, selection=None):
         import laser_jobs
         laser_jobs.creer_ou_maj_job(
             panel_key,
-            [getattr(so, "Object", None) for so in (selection or [])])
+            [getattr(so, "Object", None) for so in (selection or [])],
+            sous_elements=_sous_elements(selection))
     except Exception as exc:
         FreeCAD.Console.PrintWarning(
             "Job non créé dans l'arborescence : {}\n".format(exc))
