@@ -1405,6 +1405,41 @@ class TaskPanelFilledEngraving:
         self.combo_fill_style.setToolTip("Style des traits du REMPLISSAGE.\n" + style_tooltip)
         form.addRow("Style remplissage :", self.combo_fill_style)
 
+        self.chk_fill_grad = QtWidgets.QCheckBox("Remplissage en dégradé")
+        self.chk_fill_grad.setToolTip(
+            "La puissance du remplissage varie LINÉAIREMENT le long d'une\n"
+            "direction : de « Puissance remplissage » (début) à « S en fin\n"
+            "de dégradé », d'un bord à l'autre de la forme. Style « plein »\n"
+            "uniquement. L'espacement des hachures est resserré sur la\n"
+            "largeur brûlée de la puissance la plus FAIBLE du dégradé\n"
+            "(planche de calibration) pour rester uniforme partout.")
+        form.addRow(self.chk_fill_grad)
+        self.spn_grad_power_fin = QtWidgets.QDoubleSpinBox()
+        self.spn_grad_power_fin.setRange(0, core.S_MAX)
+        self.spn_grad_power_fin.setValue(200)
+        self.spn_grad_power_fin.setToolTip(
+            "Puissance (S) atteinte en FIN de dégradé (le début est la\n"
+            "« Puissance remplissage » ci-dessus). Plus faible = plus clair.")
+        form.addRow("S en fin de dégradé :", self.spn_grad_power_fin)
+        self.spn_grad_angle = QtWidgets.QDoubleSpinBox()
+        self.spn_grad_angle.setRange(0.0, 360.0)
+        self.spn_grad_angle.setValue(0.0)
+        self.spn_grad_angle.setSuffix(" °")
+        self.spn_grad_angle.setToolTip(
+            "Direction du dégradé dans le plan : 0° = de gauche à droite\n"
+            "(début à gauche), 90° = de bas en haut, etc.")
+        form.addRow("Direction du dégradé :", self.spn_grad_angle)
+
+        def _update_grad_enabled(*_):
+            actif = self.chk_fill_grad.isChecked()
+            plein = self.combo_fill_style.currentIndex() == 0
+            self.chk_fill_grad.setEnabled(plein)
+            self.spn_grad_power_fin.setEnabled(actif and plein)
+            self.spn_grad_angle.setEnabled(actif and plein)
+        self.chk_fill_grad.toggled.connect(_update_grad_enabled)
+        self.combo_fill_style.currentIndexChanged.connect(_update_grad_enabled)
+        _update_grad_enabled()
+
         self.combo_contour_style = QtWidgets.QComboBox()
         self.combo_contour_style.addItems(style_items)
         self.combo_contour_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -1640,6 +1675,8 @@ class TaskPanelFilledEngraving:
             "contour": self.chk_contour, "contour_power": self.spn_contour_power,
             "contour_feed": self.spn_contour_feed, "contour_width": self.spn_contour_width,
             "fill_style": self.combo_fill_style, "contour_style": self.combo_contour_style,
+            "fill_grad": self.chk_fill_grad, "grad_power_fin": self.spn_grad_power_fin,
+            "grad_angle": self.spn_grad_angle,
             "dash_len": self.spn_dash_len, "gap_len": self.spn_gap_len,
             "dot_spacing": self.spn_dot_spacing, "dot_dwell_ms": self.spn_dot_dwell,
             "wave_period": self.spn_wave_period, "fill_wave_width": self.spn_fill_wave_width,
@@ -1830,6 +1867,11 @@ class TaskPanelFilledEngraving:
         # voulus.
         if self.combo_fill_style.currentIndex() == 0:
             power = self._effective_fill_power(defocus, half_angle)
+            # En dégradé, la zone la plus CLAIRE (S le plus faible) a la
+            # brûlure la plus étroite : c'est elle qui dicte l'espacement.
+            if self.chk_fill_grad.isChecked():
+                s0 = max(self.spn_fill_power.value(), 1e-9)
+                power = power * min(1.0, self.spn_grad_power_fin.value() / s0)
             burn = core.burn_width_defocus_scaled(power, defocus)
             if burn:
                 hatch_spacing = min(spacing, burn)
@@ -1870,7 +1912,15 @@ class TaskPanelFilledEngraving:
         # puissance de remplissage est calculée pour égaler la fluence de
         # référence au point élargi réel du remplissage.
         fill_power = self._effective_fill_power(defocus, half_angle)
+        grad_fin = None
+        if self.chk_fill_grad.isChecked() and fill_style == "plein":
+            # Le S de fin subit le même rapport que le S de début si la
+            # compensation de fluence a modifié la puissance effective.
+            s0 = max(self.spn_fill_power.value(), 1e-9)
+            grad_fin = self.spn_grad_power_fin.value() * fill_power / s0
         return {
+            "grad_power_fin": grad_fin,
+            "grad_angle_deg": self.spn_grad_angle.value(),
             "header_note": getattr(self, "_burn_note", None),
             "z_focus": core.Z_WORK_MM + self.spn_surface_offset.value(),
             "defocus": defocus,

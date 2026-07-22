@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4763,6 +4763,81 @@ def build_filled_engraving_edges(faces, spacing, angle_deg, fill_inset=0.0, add_
     return fill_edges, contour_edges
 
 
+def apply_fill_power_gradient(body, s_debut, s_fin, angle_deg):
+    """Module la puissance d'un corps de G-code le long d'une direction :
+    S varie linéairement de s_debut à s_fin entre les deux extrémités de
+    la forme projetées sur la direction (angle en degrés dans le plan XY,
+    0 = de gauche à droite, 90 = de bas en haut). Les S d'armement non
+    nuls du corps sont MULTIPLIÉS par le rapport local -- une éventuelle
+    compensation de fluence déjà appliquée est donc conservée -- et les
+    S0 (faisceau coupé, transits) restent intacts. Le mot S est réémis à
+    chaque segment G1 dont la valeur arrondie change."""
+    import re as _re
+    dx = math.cos(math.radians(angle_deg))
+    dy = math.sin(math.radians(angle_deg))
+    move_re = _re.compile(r"^G[01]\b")
+    x_re = _re.compile(r"X(-?\d+\.?\d*)")
+    y_re = _re.compile(r"Y(-?\d+\.?\d*)")
+    s_re = _re.compile(r"^S(\d+\.?\d*)(?:\s|$)")
+    lignes = body.split("\n")
+
+    # Passe 1 : bornes de la projection sur la direction du dégradé.
+    projs = []
+    x = y = None
+    for ligne in lignes:
+        if move_re.match(ligne):
+            mx, my = x_re.search(ligne), y_re.search(ligne)
+            if mx:
+                x = float(mx.group(1))
+            if my:
+                y = float(my.group(1))
+            if x is not None and y is not None:
+                projs.append(x * dx + y * dy)
+    if not projs:
+        return body
+    tmin = min(projs)
+    span = max(max(projs) - tmin, 1e-9)
+    s0 = max(float(s_debut), 1e-9)
+
+    # Passe 2 : réécriture. Les lignes d'armement S sont retenues et le S
+    # local est émis avec le premier G1 qui suit (puis à chaque changement).
+    out = []
+    x = y = None
+    base_s = None
+    dernier_s = None
+    for ligne in lignes:
+        m = s_re.match(ligne.strip())
+        if m:
+            val = float(m.group(1))
+            if val <= 0:
+                base_s = None
+                dernier_s = None
+                out.append(ligne)
+            else:
+                base_s = val
+            continue
+        if move_re.match(ligne):
+            mx, my = x_re.search(ligne), y_re.search(ligne)
+            px, py = x, y
+            if mx:
+                x = float(mx.group(1))
+            if my:
+                y = float(my.group(1))
+            if (base_s is not None and ligne.startswith("G1")
+                    and x is not None and y is not None):
+                xm = x if px is None else (x + px) / 2.0
+                ym = y if py is None else (y + py) / 2.0
+                t = ((xm * dx + ym * dy) - tmin) / span
+                cible = s_debut + t * (float(s_fin) - float(s_debut))
+                s_loc = max(0.0, min(base_s * cible / s0, S_MAX))
+                s_int = int(round(s_loc))
+                if dernier_s is None or s_int != dernier_s:
+                    out.append("S{} {sel}".format(s_int, sel=SPINDLE_SELECT))
+                    dernier_s = s_int
+        out.append(ligne)
+    return "\n".join(out)
+
+
 def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
                                      fill_power, fill_feed,
                                      draw_contour=True, contour_power=300.0, contour_feed=1000.0,
@@ -4770,7 +4845,8 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
                                      fill_style="plein", contour_style="plein",
                                      fill_style_params=None, contour_style_params=None,
                                      pre_gcode="", post_gcode="", frame_only=False, quiet=False,
-                                     body_only=False, min_safe_z=None, header_note=None):
+                                     body_only=False, min_safe_z=None, header_note=None,
+                                     grad_power_fin=None, grad_angle_deg=0.0):
     """Grave une forme/texte à plat en NOIR PLEIN : d'abord le remplissage
     par hachures gravé en DÉFOCUS (point élargi, cf. remplissage défocus du
     mode Hachures 2D -- fill_edges doivent déjà être rentrées d'un rayon de
@@ -4796,7 +4872,11 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
 
     frame_only : ne trace que le rectangle englobant (cadrage séparé).
     header_note : ligne de commentaire libre ajoutée à l'en-tête du G-code
-    (ex. trace de la correction d'espacement par la largeur brûlée mesurée)."""
+    (ex. trace de la correction d'espacement par la largeur brûlée mesurée).
+    grad_power_fin / grad_angle_deg : REMPLISSAGE EN DÉGRADÉ (style
+    "plein" uniquement) -- la puissance du remplissage varie linéairement
+    de fill_power à grad_power_fin le long de la direction grad_angle_deg
+    (0 = de gauche à droite), via apply_fill_power_gradient."""
     fill_style_params = dict(fill_style_params or {})
     contour_style_params = dict(contour_style_params or {})
 
@@ -4876,6 +4956,9 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
     bodies = []
     fill_body = _make_body(fill_edges, fill_style, fill_style_params,
                            fill_power, fill_feed, z_fill)
+    if fill_body and grad_power_fin is not None and fill_style == "plein":
+        fill_body = apply_fill_power_gradient(
+            fill_body, fill_power, grad_power_fin, grad_angle_deg)
     if fill_body:
         bodies.append(("Remplissage defocus", fill_body))
     if has_contour:
@@ -4892,6 +4975,9 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
     lines.append("(G-Code Laser - Gravure remplie noir)")
     lines.append("(Remplissage Z={:.4f} defocus={:.4f} S{:.0f} F{:.0f} style={})".format(
         z_fill, defocus, fill_power, fill_feed, style_names.get(fill_style, fill_style)))
+    if grad_power_fin is not None and fill_style == "plein":
+        lines.append("(Degrade de puissance : S{:.0f} -> S{:.0f}, direction {:.0f} deg)".format(
+            fill_power, grad_power_fin, grad_angle_deg))
     if any(label == "Contour" for label, _ in bodies):
         lines.append("(Contour Z={:.4f} S{:.0f} F{:.0f} style={})".format(
             z_contour, contour_power, contour_feed, style_names.get(contour_style, contour_style)))
