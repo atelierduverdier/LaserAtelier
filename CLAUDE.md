@@ -231,6 +231,20 @@ plus `.` and `-`) so labels ("S400", "8.25") need no external font file. Extend 
   time) — see the dot emission in `generate_gcode_halftone`/`_emit_dots`/zdots. The Marquage
   "pointillé" style still uses G4 dwells (known gap; convert the same way if the user needs it).
 
+### Aperçu photo (rendu du résultat gravé) (July 2026)
+
+The **reverse** of photo mode: paint what the engraving will look like (a "Aperçu photo" button on
+Filled/Marquage/Combined). Lives entirely in `task_panels.py` (QPainter is Qt): each burn is drawn as
+a thick stroke at its **burn width** (`burn_width_defocus_scaled`, else the optical spot) and a
+**tone** (`_tone_peak` = relative peak irradiance `P/(spot²·v)`, saturating — defocused fills come out
+pale, near-focus contours dark), composited with `CompositionMode_Multiply` on a wood background so
+overlaps deepen. `_render_engraving_photo(strokes)` → QImage, `_show_image_dialog` shows it + PNG save.
+`_strokes_from_operation(op)` maps a combined-job operation dict (filled/curved/flat/curved_cut) to
+strokes, so `TaskPanelCombined` renders the whole job at once; testgrid/unknown types are skipped.
+Per-panel previews build strokes directly (no `_build_combined_operation`, to avoid its save/Job side
+effects). Theoretical render — accuracy scales with the burn-width plank; nuancier-driven tone is a
+possible refinement (not wired yet). Hachures is a geometry mode (no power/feed) → no preview.
+
 ## Hardware context
 
 Default profile is the **LT-80W-AA-PRO** diode module with the square shroud removed (so it can

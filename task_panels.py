@@ -418,6 +418,168 @@ def _scrollable(inner):
     return scroll
 
 
+# --- Aperçu photo réaliste (rendu du résultat gravé) -----------------------
+# Prototype : peint chaque trait à sa LARGEUR brûlée et à sa TEINTE, les
+# recouvrements s'assombrissant (mode Multiply). La teinte vient d'une
+# IRRADIANCE DE CRÊTE relative P/(spot²·v) : à énergie égale, un point
+# défocalisé (large) tape moins fort qu'un point net -> plus pâle, ce qui
+# reproduit « remplissage défocus pâle / contour net foncé ». (Le nuancier
+# mesuré pourra affiner cette teinte plus tard.)
+
+def _tone_peak(power, feed, spot):
+    """Teinte 0..1 (0 = rien, 1 = noir) estimée depuis l'irradiance de crête
+    relative P/(spot²·v), saturante. Référence : un trait net au foyer, à
+    mi-puissance et vitesse moyenne, ressort déjà bien foncé."""
+    import math
+    if feed <= 0 or spot <= 0:
+        return 0.0
+    inten = power / (spot * spot * feed)
+    ref = (core.S_MAX * 0.5) / (max(core.SPOT_FOCUS_MM, 0.1) ** 2 * 800.0)
+    if ref <= 0:
+        return 0.0
+    return 1.0 - math.exp(-2.0 * inten / ref)
+
+
+def _discretize_edge(edge, dist=0.3):
+    """Arête Part -> liste de (x, y) échantillonnés."""
+    pts = None
+    for kw in ({"Distance": dist}, {"Deflection": dist}):
+        try:
+            pts = edge.discretize(**kw)
+            break
+        except Exception:
+            pts = None
+    return [(p.x, p.y) for p in pts] if pts else []
+
+
+def _render_engraving_photo(strokes, scale=24.0, margin_mm=3.0,
+                            wood=(208, 178, 138), max_px=2200):
+    """`strokes` : liste de (points[(x,y)...], largeur_mm, teinte0..1).
+    Renvoie une QImage : fond bois, traits épais assombris par Multiply
+    (superpositions plus foncées). None si rien à peindre."""
+    xs = [p[0] for s in strokes for p in s[0]]
+    ys = [p[1] for s in strokes for p in s[0]]
+    if not xs:
+        return None
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    w_mm = (maxx - minx) + 2 * margin_mm
+    h_mm = (maxy - miny) + 2 * margin_mm
+    sc = scale
+    if max(w_mm, h_mm) * sc > max_px:
+        sc = max_px / max(w_mm, h_mm)
+    W = max(1, int(w_mm * sc))
+    H = max(1, int(h_mm * sc))
+    img = QtGui.QImage(W, H, QtGui.QImage.Format_RGB32)
+    img.fill(QtGui.QColor(*wood))
+    p = QtGui.QPainter(img)
+    p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    p.setCompositionMode(QtGui.QPainter.CompositionMode_Multiply)
+
+    def to_px(pt):
+        return QtCore.QPointF((pt[0] - minx + margin_mm) * sc,
+                              H - (pt[1] - miny + margin_mm) * sc)
+
+    for pts, width_mm, tone in strokes:
+        if not pts:
+            continue
+        v = max(0.0, min(1.0, 1.0 - tone))  # facteur de multiplication du fond
+        pen = QtGui.QPen(QtGui.QColor.fromRgbF(v, v, v))
+        pen.setWidthF(max(1.0, width_mm * sc))
+        pen.setCapStyle(QtCore.Qt.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.RoundJoin)
+        p.setPen(pen)
+        if len(pts) == 1:
+            p.drawPoint(to_px(pts[0]))
+        else:
+            path = QtGui.QPainterPath(to_px(pts[0]))
+            for q in pts[1:]:
+                path.lineTo(to_px(q))
+            p.drawPath(path)
+    p.end()
+    return img
+
+
+def _show_image_dialog(img, title):
+    """Affiche une QImage dans une boîte, avec un bouton pour l'enregistrer."""
+    dlg = QtWidgets.QDialog()
+    dlg.setWindowTitle(title)
+    lay = QtWidgets.QVBoxLayout(dlg)
+    lbl = QtWidgets.QLabel()
+    pix = QtGui.QPixmap.fromImage(img)
+    if max(pix.width(), pix.height()) > 900:
+        pix = pix.scaled(900, 900, QtCore.Qt.KeepAspectRatio,
+                         QtCore.Qt.SmoothTransformation)
+    lbl.setPixmap(pix)
+    lay.addWidget(lbl)
+    row = QtWidgets.QHBoxLayout()
+    row.addStretch(1)
+    btn_save = QtWidgets.QPushButton("Enregistrer en PNG…")
+    btn_close = QtWidgets.QPushButton("Fermer")
+    row.addWidget(btn_save)
+    row.addWidget(btn_close)
+    lay.addLayout(row)
+
+    def _save():
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            dlg, "Enregistrer l'aperçu",
+            os.path.join(getattr(core, "GCODE_DIR", ""), "apercu_photo.png"),
+            "Images PNG (*.png)")
+        if path:
+            img.save(path, "PNG")
+
+    btn_save.clicked.connect(_save)
+    btn_close.clicked.connect(dlg.accept)
+    dlg.exec()
+
+
+def _strokes_from_operation(op):
+    """Traits (points, largeur_mm, teinte0..1) d'une opération de job
+    combiné, pour l'aperçu photo. Gravure (filled/curved) peinte réaliste ;
+    découpe (flat/curved_cut) en fin trait très sombre ; grille de test et
+    types inconnus ignorés (rien d'utile à peindre ici)."""
+    typ = op.get("type")
+    p = op.get("params", {})
+    half = core.calibrated_half_angle()
+    strokes = []
+    if typ == "filled":
+        defocus = p.get("defocus", 0.0)
+        spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half)
+        fp, ff = p.get("fill_power", 0.0), p.get("fill_feed", 1.0)
+        fw = core.burn_width_defocus_scaled(fp, defocus) or spot_fill
+        ft = _tone_peak(fp, ff, spot_fill)
+        for e in (p.get("fill_edges") or []):
+            pts = _discretize_edge(e)
+            if pts:
+                strokes.append((pts, fw, ft))
+        if p.get("draw_contour", True) and p.get("contour_edges"):
+            coff = p.get("contour_z_offset", 0.0)
+            spot_c = core.spot_diameter_at_defocus(coff, core.SPOT_FOCUS_MM, half)
+            cp, cf = p.get("contour_power", 0.0), p.get("contour_feed", 1.0)
+            cw = core.burn_width_defocus_scaled(cp, coff) or spot_c
+            ct = _tone_peak(cp, cf, spot_c)
+            for e in p["contour_edges"]:
+                pts = _discretize_edge(e)
+                if pts:
+                    strokes.append((pts, cw, ct))
+    elif typ == "curved":
+        # Marquage : suivi de surface au foyer -> trait fin, teinte selon
+        # puissance/vitesse.
+        pw, fd = p.get("power", 0.0), p.get("feed", 1.0)
+        w = core.burn_width_defocus_scaled(pw, 0.0) or core.SPOT_FOCUS_MM
+        t = _tone_peak(pw, fd, core.SPOT_FOCUS_MM)
+        for e in (p.get("edges") or []):
+            pts = _discretize_edge(e)
+            if pts:
+                strokes.append((pts, w, t))
+    elif typ in ("flat", "curved_cut"):
+        # Découpe traversante : fin trait très sombre (le trait de coupe).
+        for e in (p.get("edges") or []):
+            pts = _discretize_edge(e)
+            if pts:
+                strokes.append((pts, max(core.SPOT_FOCUS_MM, 0.2), 0.9))
+    return strokes
+
+
 def _duration_row(form, callback, tooltip_extra=""):
     """Ajoute à `form` (QFormLayout) une ligne label de durée estimée +
     bouton "Actualiser", connecté à `callback`. Volontairement PAS
@@ -1900,6 +2062,15 @@ class TaskPanelFilledEngraving:
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
 
+        self.btn_photo_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
+        self.btn_photo_preview.setToolTip(
+            "Génère une IMAGE de ce que devrait donner la gravure : chaque\n"
+            "trait à sa largeur brûlée et à sa teinte (défocus large = pâle,\n"
+            "net au foyer = foncé), superpositions plus foncées. Rendu\n"
+            "théorique pour juger le résultat final avant de graver.")
+        self.btn_photo_preview.clicked.connect(self._on_photo_preview)
+        form.addRow(self.btn_photo_preview)
+
         self._last_fields = {
             "spacing": self.spn_spacing, "surface_offset": self.spn_surface_offset, "angle": self.spn_angle,
             "fill_power": self.spn_fill_power, "fill_feed": self.spn_fill_feed,
@@ -2204,6 +2375,44 @@ class TaskPanelFilledEngraving:
             return
         rapid, mark = core.parse_gcode_toolpath(gcode)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+
+    def _on_photo_preview(self):
+        """Rendu réaliste (image) du résultat gravé : remplissage à sa
+        largeur/teinte et contour repassé par-dessus."""
+        fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
+        if fill_edges is None:
+            return
+        half_angle = core.calibrated_half_angle()
+        strokes = []
+        # Remplissage : largeur = brûlure mesurée (sinon point optique) ;
+        # teinte selon l'irradiance de crête au défocus retenu.
+        fill_power = self._effective_fill_power(defocus, half_angle)
+        spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
+        fill_width = core.burn_width_defocus_scaled(fill_power, defocus) or spot_fill
+        fill_tone = _tone_peak(fill_power, self.spn_fill_feed.value(), spot_fill)
+        for e in (fill_edges or []):
+            pts = _discretize_edge(e)
+            if pts:
+                strokes.append((pts, fill_width, fill_tone))
+        # Contour repassé (si coché), net au foyer -> plus foncé.
+        if self.chk_contour.isChecked() and contour_edges:
+            c_power = self.spn_contour_power.value()
+            spot_c = core.spot_diameter_at_defocus(contour_z_offset, core.SPOT_FOCUS_MM, half_angle)
+            c_width = core.burn_width_defocus_scaled(c_power, contour_z_offset) or spot_c
+            c_tone = _tone_peak(c_power, self.spn_contour_feed.value(), spot_c)
+            for e in contour_edges:
+                pts = _discretize_edge(e)
+                if pts:
+                    strokes.append((pts, c_width, c_tone))
+        if not strokes:
+            QtWidgets.QMessageBox.information(
+                self.form, "Aperçu photo", "Rien à afficher (aucun trait).")
+            return
+        img = _render_engraving_photo(strokes)
+        if img is None:
+            QtWidgets.QMessageBox.critical(self.form, "Aperçu photo", "Rendu impossible.")
+            return
+        _show_image_dialog(img, "Aperçu photo — Gravure remplie")
 
     def _build_combined_operation(self):
         fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
@@ -5186,6 +5395,14 @@ class TaskPanelCurved:
             "(G1). Purement visuel, ne génère aucun fichier.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
+
+        self.btn_photo_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
+        self.btn_photo_preview.setToolTip(
+            "Génère une IMAGE du marquage : chaque trait à sa largeur brûlée\n"
+            "et à sa teinte (selon puissance/vitesse). Rendu théorique pour\n"
+            "juger le résultat final avant de graver.")
+        self.btn_photo_preview.clicked.connect(self._on_photo_preview)
+        form.addRow(self.btn_photo_preview)
         _combined_add_button(form, self._on_add_to_combined)
 
         self.btn_style_sampler = QtWidgets.QPushButton("Mire des styles (fichier séparé)")
@@ -5458,6 +5675,31 @@ class TaskPanelCurved:
         rapid = core.shift_segments_z(rapid, -z_offset)
         mark = core.shift_segments_z(mark, -z_offset)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+
+    def _on_photo_preview(self):
+        """Rendu réaliste (image) du marquage : chaque trait à sa largeur
+        brûlée et sa teinte (projection XY du relief)."""
+        if not self._edges:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
+            return
+        pw, fd = self._effective_power(), self.spn_feed.value()
+        width = core.burn_width_defocus_scaled(pw, 0.0) or core.SPOT_FOCUS_MM
+        tone = _tone_peak(pw, fd, core.SPOT_FOCUS_MM)
+        strokes = []
+        for e in self._edges:
+            pts = _discretize_edge(e)
+            if pts:
+                strokes.append((pts, width, tone))
+        if not strokes:
+            QtWidgets.QMessageBox.information(
+                self.form, "Aperçu photo", "Rien à afficher (aucun trait).")
+            return
+        img = _render_engraving_photo(strokes)
+        if img is None:
+            QtWidgets.QMessageBox.critical(self.form, "Aperçu photo", "Rendu impossible.")
+            return
+        _show_image_dialog(img, "Aperçu photo — Marquage")
 
     def _update_duration_preview(self):
         if not self._edges:
@@ -6610,6 +6852,15 @@ class TaskPanelCombined:
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
         form.addRow(self.btn_toolpath_preview)
 
+        self.btn_photo_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
+        self.btn_photo_preview.setToolTip(
+            "Génère une IMAGE de TOUT le job combiné : gravures peintes à\n"
+            "leur largeur/teinte réelles (superpositions plus foncées),\n"
+            "découpes en fins traits sombres. Rendu théorique du résultat\n"
+            "final avant de graver.")
+        self.btn_photo_preview.clicked.connect(self._on_photo_preview)
+        form.addRow(self.btn_photo_preview)
+
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
         self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
@@ -6727,6 +6978,29 @@ class TaskPanelCombined:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, all_rapid, all_mark)
+
+    def _on_photo_preview(self):
+        """Rendu réaliste (image) de TOUT le job combiné : chaque opération
+        peinte à sa largeur/teinte, dans l'ordre de la liste (les dernières
+        se superposent aux premières)."""
+        if not self.operations:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Ajoute au moins une opération avant l'aperçu.")
+            return
+        strokes = []
+        for op in self.operations:
+            strokes.extend(_strokes_from_operation(op))
+        if not strokes:
+            QtWidgets.QMessageBox.information(
+                self.form, "Aperçu photo",
+                "Rien à peindre (opérations vides ou uniquement des grilles "
+                "de test).")
+            return
+        img = _render_engraving_photo(strokes)
+        if img is None:
+            QtWidgets.QMessageBox.critical(self.form, "Aperçu photo", "Rendu impossible.")
+            return
+        _show_image_dialog(img, "Aperçu photo — Job combiné")
 
     def accept(self):
         if not self.operations:
