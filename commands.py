@@ -318,7 +318,7 @@ class CombinedCommand:
 class JobsToCombinedCommand:
     def GetResources(self):
         return {
-            "Pixmap": _icon_path("combined.svg"),
+            "Pixmap": _icon_path("combined_from_jobs.svg"),
             "MenuText": "Jobs sélectionnés → job combiné",
             "ToolTip": "Empile les Jobs sélectionnés dans l'arborescence comme opérations "
                        "du job combiné (chacun avec les réglages portés par sa forme), "

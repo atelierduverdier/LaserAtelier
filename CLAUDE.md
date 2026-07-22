@@ -85,7 +85,11 @@ Five modules, cleanly layered — keep the layering:
   reads widgets, calls `core.*` generators, writes the file via `_write_gcode_with_dialog`. Pure UI;
   no geometry math beyond calling core. Shared UI helpers (use them, don't reinvent):
   - `_panel_header(form, icon, title)` / `_section(form, title, icon)` — mode banner & section rules
-    (fall back to text if the SVG picto fails, `_icon_pixmap` returns None).
+    (fall back to text if the SVG picto fails, `_icon_pixmap` returns None). `_section` builds a
+    `_SectionHeader` (full-width "card": orange left stripe, section picto, bold title, ▸/▾ chevron,
+    hover) whose open/closed state is **persisted** in the config (`sections` block, keyed by title;
+    `_section_state_get/_set`). Buttons are styled panel-wide by a `QPushButton` stylesheet applied to
+    `inner` in `_scrollable` (rounded, orange border on hover) — doesn't touch FreeCAD's OK/Annuler.
   - `_WrapLabel` — paragraph label: word-wrap on, **collapses manual `\n` into spaces** (mixing both
     caused stair-stepped text). Never put an enumeration in ONE `_WrapLabel` — use
     `_bullet_list(form, items)` (one label per item) instead.

@@ -58,16 +58,38 @@ class _WrapLabel(QtWidgets.QLabel):
 
     def setText(self, text):
         super().setText(" ".join(str(text).split()))
+        self._ajuster_hauteur()
 
-    def resizeEvent(self, event):
+    def _ajuster_hauteur(self):
         # QFormLayout n'honore pas le heightForWidth des labels repliés :
         # la rangée reste à la hauteur d'UNE ligne et les paragraphes se
         # chevauchent/se rognent. On force donc la hauteur minimale à la
-        # hauteur réelle du texte replié à la largeur courante.
-        super().resizeEvent(event)
-        h = self.heightForWidth(self.width())
-        if h > 0:
+        # hauteur réelle du texte replié à la largeur COURANTE. Avant
+        # affichage (largeur nulle), heightForWidth renverrait une hauteur
+        # aberrante -> on ne fait rien tant que la largeur n'est pas connue.
+        w = self.width()
+        if w <= 0:
+            return
+        try:
+            h = self.heightForWidth(w)
+        except RuntimeError:
+            return  # widget C++ déjà détruit (timer différé)
+        if h > 0 and h != self.minimumHeight():
             self.setMinimumHeight(h)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._ajuster_hauteur()
+
+    def showEvent(self, event):
+        # À la 1re apparition (section dépliée, barre de défilement qui
+        # rétrécit la largeur utile), la largeur définitive n'est connue
+        # qu'au tour de boucle suivant : on recalcule alors la hauteur,
+        # sinon la rangée reste dimensionnée pour une largeur trop grande
+        # et le widget suivant se superpose au bas du paragraphe.
+        super().showEvent(event)
+        self._ajuster_hauteur()
+        QtCore.QTimer.singleShot(0, self._ajuster_hauteur)
 
 
 def _panel_header(form, icon_name, title):
@@ -102,28 +124,130 @@ def _panel_header(form, icon_name, title):
     _hline(form)
 
 
+# --- Sections repliables ---------------------------------------------------
+# Barre de titre pleine largeur (libellé NOIR à gauche, chevron d'état à
+# droite), cliquable, dont l'état ouvert/fermé est MÉMORISÉ dans la config
+# (clé = titre de la section). _activer_sections (appelé par _scrollable)
+# regroupe a posteriori les rangées sous chaque barre.
+
+_SECTION_STATES = None
+
+
+def _section_states():
+    global _SECTION_STATES
+    if _SECTION_STATES is None:
+        try:
+            _SECTION_STATES = dict(core.load_config().get("sections") or {})
+        except Exception:
+            _SECTION_STATES = {}
+    return _SECTION_STATES
+
+
+def _section_state_get(cle, defaut):
+    return bool(_section_states().get(cle, defaut))
+
+
+def _section_state_set(cle, valeur):
+    etats = _section_states()
+    if etats.get(cle) == bool(valeur):
+        return
+    etats[cle] = bool(valeur)
+    try:
+        cfg = core.load_config()
+        cfg["sections"] = etats
+        core.save_config(cfg)
+    except Exception:
+        pass  # config non inscriptible : l'état reste au moins en mémoire
+
+
+class _SectionHeader(QtWidgets.QFrame):
+    """Barre de titre de section, pleine largeur : libellé en NOIR à gauche,
+    petit chevron d'état (▸ repliée / ▾ dépliée) à droite. Toute la barre
+    est cliquable. Remplace l'ancien bouton au texte orange."""
+
+    toggled = QtCore.Signal(bool)
+
+    def __init__(self, titre, icon_name=None, ouvert=False):
+        super().__init__()
+        self._titre = titre
+        self._open = bool(ouvert)
+        self.setProperty("laser_section", True)
+        self.setObjectName("laserSection")
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        # Barre « carte » : coins arrondis, liseré orange de la maison à
+        # gauche, fond neutre du thème qui s'éclaircit au survol. Tout est
+        # peint par la feuille de style, ciblée par objectName pour
+        # fonctionner malgré le sous-classement Python.
+        self.setStyleSheet(
+            "QFrame#laserSection {"
+            "  background-color: palette(button);"
+            "  border: 1px solid palette(mid);"
+            "  border-left: 3px solid #ff8a00;"
+            "  border-radius: 6px;"
+            "}"
+            "QFrame#laserSection:hover { background-color: palette(midlight); }")
+
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(9, 6, 11, 6)
+        lay.setSpacing(8)
+        # Petit picto thématique de la section, à gauche (si le SVG se charge).
+        if icon_name:
+            pm = _icon_pixmap(icon_name, 18)
+            if pm is not None:
+                ico = QtWidgets.QLabel()
+                ico.setPixmap(pm)
+                ico.setStyleSheet("background: transparent; border: none;")
+                ico.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+                lay.addWidget(ico)
+        self._lbl = QtWidgets.QLabel(titre)
+        self._lbl.setStyleSheet("font-weight: bold; background: transparent; border: none;")
+        self._lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        self._picto = QtWidgets.QLabel()  # chevron d'état, orange, à droite
+        self._picto.setStyleSheet(
+            "color: #ff8a00; font-weight: bold; background: transparent; border: none;")
+        self._picto.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        lay.addWidget(self._lbl)
+        lay.addStretch(1)
+        lay.addWidget(self._picto)
+        self._maj_picto()
+
+    def _maj_picto(self):
+        self._picto.setText("▾" if self._open else "▸")  # ▾ / ▸
+
+    def text(self):
+        return self._titre
+
+    def isChecked(self):
+        return self._open
+
+    def setChecked(self, on):
+        # Met à jour l'état + le chevron SANS émettre toggled (usage interne).
+        on = bool(on)
+        if on != self._open:
+            self._open = on
+            self._maj_picto()
+
+    def _basculer(self):
+        """Inverse l'état, met à jour le chevron et émet toggled."""
+        self._open = not self._open
+        self._maj_picto()
+        self.toggled.emit(self._open)
+
+    def mousePressEvent(self, event):
+        self._basculer()
+        super().mousePressEvent(event)
+
+
 def _section(form, title, icon_name=None, ouvert=False):
-    """Titre de section REPLIABLE : flèche + picto (optionnel) + libellé
-    gras. Les rangées ajoutées APRÈS ce titre (jusqu'au titre suivant)
-    sont regroupées dans un conteneur montré/caché par le clic -- le
-    regroupement est fait a posteriori par _activer_sections (appelé par
-    _scrollable), donc les panneaux gardent leurs `form.addRow(...)` tels
-    quels. Replié par défaut : les longs panneaux s'ouvrent compacts."""
-    btn = QtWidgets.QToolButton()
-    btn.setText(title)
-    btn.setCheckable(True)
-    btn.setChecked(ouvert)
-    btn.setArrowType(QtCore.Qt.DownArrow if ouvert else QtCore.Qt.RightArrow)
-    btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
-    btn.setAutoRaise(True)
-    if icon_name:
-        btn.setIcon(_icon(icon_name))
-    btn.setStyleSheet(
-        "QToolButton { font-weight: bold; color: #ff8a00; border: none;"
-        " padding: 6px 0 2px 0; }")
-    btn.setProperty("laser_section", True)
-    form.addRow(btn)
-    _hline(form)
+    """Ajoute une barre de section repliable au formulaire. `icon_name` est
+    conservé pour compatibilité d'appel mais n'est plus affiché (barre
+    sobre : titre noir + chevron d'état à droite). Les rangées ajoutées
+    APRÈS ce titre (jusqu'au titre suivant) sont regroupées dans un
+    conteneur montré/caché par le clic -- regroupement fait a posteriori
+    par _activer_sections (appelé par _scrollable), donc les panneaux
+    gardent leurs `form.addRow(...)` tels quels. L'état ouvert/fermé est
+    mémorisé dans la config d'une session à l'autre."""
+    form.addRow(_SectionHeader(title, icon_name=icon_name, ouvert=ouvert))
 
 
 def _activer_sections(inner):
@@ -166,12 +290,15 @@ def _activer_sections(inner):
             cible.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
             cible.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
             form.addRow(conteneur)
-            conteneur.setVisible(w.isChecked())
+            # État ouvert/fermé mémorisé (clé = titre), sinon défaut du panneau.
+            cle = w.text()
+            etat = _section_state_get(cle, w.isChecked())
+            w.setChecked(etat)
+            conteneur.setVisible(etat)
 
-            def _toggle(on, c=conteneur, b=w):
+            def _toggle(on, c=conteneur, k=cle):
                 c.setVisible(on)
-                b.setArrowType(QtCore.Qt.DownArrow if on
-                               else QtCore.Qt.RightArrow)
+                _section_state_set(k, on)
             w.toggled.connect(_toggle)
             continue
         _remettre(cible, label_item, field_item)
@@ -251,6 +378,21 @@ def _scrollable(inner):
     # toute dernière ligne absorbe cet espace à lui seul, ce qui laisse
     # le reste du contenu compact et ancré en haut.
     _activer_sections(inner)
+    # Boutons assortis aux barres de section : coins arrondis, bord qui
+    # passe au orange de la maison au survol, léger retour au clic. Ciblé
+    # sur les QPushButton DE `inner` -> n'affecte pas OK/Annuler du panneau
+    # de tâches FreeCAD (qui sont en dehors de ce widget).
+    inner.setStyleSheet(inner.styleSheet() + """
+        QPushButton {
+            background-color: palette(button);
+            border: 1px solid palette(mid);
+            border-radius: 5px;
+            padding: 5px 12px;
+        }
+        QPushButton:hover { border-color: #ff8a00; background-color: palette(midlight); }
+        QPushButton:pressed { background-color: palette(dark); }
+        QPushButton:disabled { color: palette(mid); border-color: palette(mid); }
+    """)
     layout = inner.layout()
     if layout is not None:
         spacer = QtWidgets.QWidget()

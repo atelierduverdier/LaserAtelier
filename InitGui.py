@@ -48,6 +48,7 @@ class LaserAtelierWorkbench(Workbench):
             # -- Découverte --
             "LaserAtelier_Guide",
             "Separator",
+            # ===== BOUTONS DE TRAVAIL (à gauche) =====
             # -- Gravure à plat --
             "LaserAtelier_Hatch",
             "LaserAtelier_FilledEngraving",
@@ -61,7 +62,11 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_CurvedCut",
             "LaserAtelier_Flat",
             "Separator",
-            # -- Tests & calibration --
+            # -- Assemblage --
+            "LaserAtelier_Combined",
+            "LaserAtelier_JobsToCombined",
+            "Separator",
+            # ===== CALIBRATION (après le travail) =====
             "LaserAtelier_Kerf",
             "LaserAtelier_TestGrid",
             "LaserAtelier_PowerRamp",
@@ -69,11 +74,7 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_OffsetTest",
             "LaserAtelier_Nuancier",
             "Separator",
-            # -- Assemblage --
-            "LaserAtelier_Combined",
-            "LaserAtelier_JobsToCombined",
-            "Separator",
-            # -- Réglages --
+            # ===== RÉGLAGES (tout à droite, bord écran) =====
             "LaserAtelier_Settings",
         ]
         # Barre d'outils ET menu : la même liste groupée par séparateurs.
