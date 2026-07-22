@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2207,21 +2207,42 @@ def make_ray_probe(shape_3d):
     return _MeshZProbe(shape_3d)
 
 
+def _est_reference_3d(shape):
+    """Vrai objet 3D à sonder pour le Z : un solide, une surface non
+    plane (dôme, relief...), ou une géométrie étendue en Z. Les FACES
+    PLANES à Z constant (tracés d'un SVG importé, sketch rempli...) sont
+    des MOTIFS à graver, pas des références -- renvoie False pour elles,
+    sinon un SVG multi-formes voyait sa première face promue « surface
+    3D » et toutes les autres ignorées."""
+    if getattr(shape, "Solids", None):
+        return True
+    faces = getattr(shape, "Faces", None) or []
+    if not faces:
+        return False
+    for f in faces:
+        surf = getattr(f, "Surface", None)
+        if surf is not None and type(surf).__name__ != "Plane":
+            return True
+    bb = getattr(shape, "BoundBox", None)
+    return bool(bb is not None and bb.ZLength > 1e-6)
+
+
 def split_selection(selection):
     """Sépare la sélection entre objets-sources d'edges (à graver) et
-    objet de référence 3D (à sonder pour le Z). Un objet est reconnu
-    comme référence s'il a de vraies Faces (ex: la sphère elle-même)."""
+    objet de référence 3D (à sonder pour le Z). Un objet n'est reconnu
+    comme référence que s'il est RÉELLEMENT 3D (cf. _est_reference_3d) :
+    les faces planes restent des sources de motif."""
     edge_sel = []
     reference_shape = None
     for sel_obj in selection:
         obj = sel_obj.Object
         shape = getattr(obj, 'Shape', None)
-        if shape is not None and shape.Faces:
+        if shape is not None and shape.Faces and _est_reference_3d(shape):
             if reference_shape is None:
                 reference_shape = shape
             else:
                 FreeCAD.Console.PrintWarning(
-                    "Plusieurs objets avec des faces sélectionnés -- '{}' ignoré.\n".format(obj.Label))
+                    "Plusieurs objets 3D de référence sélectionnés -- '{}' ignoré.\n".format(obj.Label))
             continue
         edge_sel.append(sel_obj)
     return edge_sel, reference_shape
