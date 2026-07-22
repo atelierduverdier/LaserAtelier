@@ -407,6 +407,16 @@ def _save_last_values(panel_key, fields, selection=None):
     except Exception as exc:
         FreeCAD.Console.PrintWarning(
             "Réglages non attachés à l'objet : {}\n".format(exc))
+    # Niveau 2 : un objet « Job » dans l'arborescence référence les sources
+    # et ce mode -- double-clic dessus = rouvrir le panneau pré-rempli.
+    try:
+        import laser_jobs
+        laser_jobs.creer_ou_maj_job(
+            panel_key,
+            [getattr(so, "Object", None) for so in (selection or [])])
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning(
+            "Job non créé dans l'arborescence : {}\n".format(exc))
 
 
 # --- Job combiné : opérations empilées depuis les vrais modes ---------------

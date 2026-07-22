@@ -68,7 +68,7 @@ the hero badge in `docs/index.html`, and the version line under the README logo.
 
 ## Architecture
 
-Four modules, cleanly layered — keep the layering:
+Five modules, cleanly layered — keep the layering:
 
 - **`laser_core.py`** (~4.5k lines): ALL geometry + G-code logic. **No Qt** (the photo mode's
   QImage→darkness-grid conversion lives in the panel; core takes plain float grids). This is where
@@ -113,6 +113,14 @@ Four modules, cleanly layered — keep the layering:
     `_COMBINED_OPS` (in-memory: params carry Part edges/probe, not JSON-serializable). `TaskPanelCombined`
     reads `_COMBINED_OPS` (its `self.operations` IS that list), reorders/removes/clears, and generates.
     Reuse this pattern for any new combinable mode instead of a simplified duplicate dialog.
+- **`laser_jobs.py`**: the tree "Job" objects (level 2 of per-shape settings). One
+  `App::FeaturePython` per (mode, main source) couple, created/updated by
+  `_save_last_values` via `creer_ou_maj_job(mode, sources)`. The Job holds `Mode` (hidden key)
+  and `Sources` (LinkList — curved modes reference motif + 3D model); the SETTINGS stay on the
+  source shape (`LaserAtelierReglages`, level 1) — the Job is a bookmark, not a second source of
+  truth. `VueJobLaser.doubleClicked` re-selects the sources and reopens the mode's panel
+  pre-filled (`ouvrir_job`). Proxies carry no state (dumps/loads return None); regenerating
+  updates the existing Job (user-renamed Labels are preserved).
 - **`commands.py`**: one `*Command` class per mode (`GetResources`/`IsActive`/`Activated`) that opens
   the matching task panel via `_show(panel)` (closes any active task dialog first — FreeCAD refuses a
   second one otherwise); `register_commands()` registers them all.
