@@ -167,6 +167,10 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
   compensation `T`/`M6` + `G43 H` comme LinuxCNC. Nécessite un firmware
   compilé avec la table d'outils (option `N_TOOLS`) ; le numéro d'outil laser
   des Préférences est alors utilisé.
+- ⚠️ **Les dialectes GRBL et grblHAL ne sont pas encore testés sur machine
+  réelle** (la machine de développement tourne sous LinuxCNC) — le G-code
+  généré est validé par tests automatiques uniquement. Retours bienvenus via
+  les issues GitHub.
 
 ## Installation
 
