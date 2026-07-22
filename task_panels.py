@@ -6457,6 +6457,7 @@ class TaskPanelSettings:
         self.combo_dialect = QtWidgets.QComboBox()
         self.combo_dialect.addItem("LinuxCNC", "linuxcnc")
         self.combo_dialect.addItem("GRBL", "grbl")
+        self.combo_dialect.addItem("grblHAL", "grblhal")
         idx_d = self.combo_dialect.findData(settings.get("gcode_dialect", "linuxcnc"))
         self.combo_dialect.setCurrentIndex(max(0, idx_d))
         self.combo_dialect.setToolTip(
@@ -6469,7 +6470,11 @@ class TaskPanelSettings:
             "  l'Échelle de puissance max ci-dessous. Le sélecteur de\n"
             "  broche et le numéro d'outil sont alors ignorés.\n"
             "  Zéro Z : à poser sur la surface (cale, réglet... -- aucun\n"
-            "  palpeur requis).")
+            "  palpeur requis).\n"
+            "- grblHAL : comme GRBL (M4, pas de $n ni G64), mais AVEC le\n"
+            "  changement d'outil et la compensation T/M6 + G43 H --\n"
+            "  nécessite un firmware compilé avec la table d'outils\n"
+            "  (option N_TOOLS). Le numéro d'outil laser est utilisé.")
         form.addRow("Dialecte G-code :", self.combo_dialect)
 
         self.spn_laser_tool = QtWidgets.QSpinBox()

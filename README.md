@@ -162,6 +162,11 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
   pose sur la surface à graver par le moyen de son choix (cale, réglet à la
   hauteur de focale…) — **aucun palpeur n'est requis**. Le Test des offsets
   X/Y (job mixte fraise+laser) reste propre à LinuxCNC.
+- **Contrôleur grblHAL** : dialecte **grblHAL** — comme GRBL (`M4`, pas de
+  sélecteur de broche ni de `G64`), mais **avec** le changement d'outil et la
+  compensation `T`/`M6` + `G43 H` comme LinuxCNC. Nécessite un firmware
+  compilé avec la table d'outils (option `N_TOOLS`) ; le numéro d'outil laser
+  des Préférences est alors utilisé.
 
 ## Installation
 

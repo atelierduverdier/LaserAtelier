@@ -264,6 +264,11 @@ def save_config(data):
 #     puissance asservie à la vitesse réelle, comme le HAL PrintNC --
 #     l'interdit « jamais de G4 faisceau allumé » s'applique pareil).
 #     Prérequis côté machine : $32=1, $30 = échelle S max des Préférences.
+#   "grblhal"           : comme "grbl" (M4, pas de $n, pas de G64), MAIS
+#     avec le changement d'outil et la compensation T/M6 + G43 H comme
+#     LinuxCNC -- grblHAL les supporte quand la table d'outils est
+#     compilée (option N_TOOLS). Offsets X/Y + Z par outil comme sur la
+#     PrintNC.
 GCODE_DIALECT = "linuxcnc"
 SPINDLE_SELECT = "$1"
 ARM_DWELL_S = 2.0
@@ -281,7 +286,8 @@ def cmd_tool_comp():
     de foyer et les XY seraient interprétés en coordonnées broche, pas
     nez laser. Fonction (pas une constante) pour suivre le numéro
     d'outil des Préférences (LASER_TOOL), réglé PAR PROFIL laser.
-    En dialecte GRBL : simple commentaire (pas de table d'outils)."""
+    En dialecte GRBL : simple commentaire (pas de table d'outils).
+    En grblHAL : T/M6 + G43 H comme LinuxCNC (table d'outils compilée)."""
     if GCODE_DIALECT == "grbl":
         return "(dialecte GRBL : pas de changement d'outil ni de compensation)"
     return ("T{n} M6 (outil laser)\n"
@@ -289,10 +295,10 @@ def cmd_tool_comp():
 
 
 def cmd_path_blend():
-    """« G64 » (trajectoire continue LinuxCNC), ou None en dialecte GRBL :
-    GRBL ne connaît pas G64 (erreur), son planificateur lisse nativement
-    (réglage $11, junction deviation)."""
-    return None if GCODE_DIALECT == "grbl" else "G64"
+    """« G64 » (trajectoire continue LinuxCNC), ou None en dialecte
+    GRBL/grblHAL : ils ne connaissent pas G64 (erreur), leur planificateur
+    lisse nativement (réglage $11, junction deviation)."""
+    return None if GCODE_DIALECT in ("grbl", "grblhal") else "G64"
 
 
 _CMD_ARM_LINUXCNC = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"
@@ -346,7 +352,7 @@ SPOT_TEST_DIAMETER_MM = 1.0           # diamètre du point mesuré à ce défocu
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
 _USER_SETTINGS = (
     ("gcode_dialect", "GCODE_DIALECT", lambda v: str(v).strip().lower(),
-     lambda v: v in ("linuxcnc", "grbl")),
+     lambda v: v in ("linuxcnc", "grbl", "grblhal")),
     ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
     ("spindle_select", "SPINDLE_SELECT", str, lambda v: bool(v.strip())),
     ("laser_tool", "LASER_TOOL", int, lambda v: 1 <= v <= 999),
@@ -395,9 +401,9 @@ def _apply_settings_config():
                 "défaut conservée.\n".format(key, settings[key]))
             continue
         globals()[global_name] = value
-    # Surcharges du dialecte GRBL (après la boucle : GCODE_DIALECT est lu
-    # depuis la config, le reste en découle).
-    if GCODE_DIALECT == "grbl":
+    # Surcharges des dialectes GRBL/grblHAL (après la boucle :
+    # GCODE_DIALECT est lu depuis la config, le reste en découle).
+    if GCODE_DIALECT in ("grbl", "grblhal"):
         SPINDLE_SELECT = ""
         CMD_ARM = _CMD_ARM_GRBL
 
