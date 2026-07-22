@@ -1921,13 +1921,13 @@ class TaskPanelFilledEngraving:
                 # Retour de la correction par la planche (largeur brûlée
                 # mesurée), même logique que _build_edges.
                 spacing = self.spn_spacing.value()
-                inset = spot / 2.0
+                fill_width = spot
                 extra = ""
                 if self.combo_fill_style.currentIndex() == 0:
                     power = self._effective_fill_power(defocus, half_angle)
                     burn = core.burn_width_defocus_scaled(power, defocus)
                     if burn:
-                        inset = min(spot, burn) / 2.0
+                        fill_width = min(spot, burn)
                         if burn < spacing - 1e-6:
                             extra = ("\nPlanche : brûlure mesurée {:.2f} mm à S{:.0f} "
                                      "-> hachures resserrées à {:.2f} mm.".format(
@@ -1935,6 +1935,7 @@ class TaskPanelFilledEngraving:
                         else:
                             extra = ("\nPlanche : brûlure mesurée {:.2f} mm à S{:.0f} "
                                      "-> l'espacement est couvert.".format(burn, power))
+                inset = self._fill_inset(fill_width, half_angle)
                 self.lbl_defocus_result.setText(
                     "Défocus calculé : {:.2f} mm (bec remonté d'autant) -- point\n"
                     "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.{}\n"
@@ -2221,6 +2222,26 @@ class TaskPanelFilledEngraving:
         _, _, p_eff = _fluence_advice(spot, power, self.spn_fill_feed.value(), self._fluence)
         return p_eff if p_eff is not None else power
 
+    def _fill_inset(self, fill_width, half_angle):
+        """Retrait du remplissage par rapport au contour (mm) : un rayon de
+        brûlure, MOINS le rayon du trait de contour quand celui-ci est
+        gravé. Le remplissage passe alors volontairement SOUS le contour
+        (repassé au foyer par-dessus, il le masque) -- ce qui comble le
+        petit liseré clair laissé au bord, surtout à FORT DÉFOCUS où le
+        modèle optique surestime la brûlure réelle et rentre donc trop. Le
+        débord vers l'extérieur est borné au rayon du contour : invisible.
+        Sans contour, retrait plein (rayon de brûlure) pour ne pas déborder
+        d'un bord qui, lui, resterait nu."""
+        inset = fill_width / 2.0
+        chk = getattr(self, "chk_contour", None)
+        if chk is not None and chk.isChecked():
+            c_off = self._contour_offset(half_angle)
+            c_spot = core.spot_diameter_at_defocus(c_off, core.SPOT_FOCUS_MM, half_angle)
+            c_burn = core.burn_width_defocus_scaled(
+                self.spn_contour_power.value(), c_off) or c_spot
+            inset = max(0.0, inset - c_burn / 2.0)
+        return inset
+
     def _build_edges(self, silent=False):
         """Renvoie (fill_edges, contour_edges, defocus, contour_z_offset) ou
         (None, None, None, None) si la sélection est vide ou la calibration
@@ -2283,7 +2304,8 @@ class TaskPanelFilledEngraving:
                         "{:.2f} mm a S{:.0f}, planche de calibration".format(
                             hatch_spacing, burn, power))
         fill_edges, contour_edges = core.build_filled_engraving_edges(
-            faces, hatch_spacing, self.spn_angle.value(), fill_inset=fill_width / 2.0,
+            faces, hatch_spacing, self.spn_angle.value(),
+            fill_inset=self._fill_inset(fill_width, half_angle),
             add_perimeter=self.chk_perimeter.isChecked())
         return fill_edges, contour_edges, defocus, self._contour_offset(half_angle)
 
