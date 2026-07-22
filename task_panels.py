@@ -102,23 +102,79 @@ def _panel_header(form, icon_name, title):
     _hline(form)
 
 
-def _section(form, title, icon_name=None):
-    """Titre de section : petit picto (optionnel) + libellé gras, suivi
-    d'un trait fin -- pour regrouper visuellement les champs d'un panneau
-    dense."""
-    row = QtWidgets.QWidget()
-    lay = QtWidgets.QHBoxLayout(row)
-    lay.setContentsMargins(0, 6, 0, 0)
-    pm = _icon_pixmap(icon_name, 16) if icon_name else None
-    if pm is not None:
-        ico = QtWidgets.QLabel()
-        ico.setPixmap(pm)
-        lay.addWidget(ico, 0)
-    lbl = QtWidgets.QLabel(title)
-    lbl.setStyleSheet("font-weight: bold; color: #ff8a00;")
-    lay.addWidget(lbl, 1)
-    form.addRow(row)
+def _section(form, title, icon_name=None, ouvert=False):
+    """Titre de section REPLIABLE : flèche + picto (optionnel) + libellé
+    gras. Les rangées ajoutées APRÈS ce titre (jusqu'au titre suivant)
+    sont regroupées dans un conteneur montré/caché par le clic -- le
+    regroupement est fait a posteriori par _activer_sections (appelé par
+    _scrollable), donc les panneaux gardent leurs `form.addRow(...)` tels
+    quels. Replié par défaut : les longs panneaux s'ouvrent compacts."""
+    btn = QtWidgets.QToolButton()
+    btn.setText(title)
+    btn.setCheckable(True)
+    btn.setChecked(ouvert)
+    btn.setArrowType(QtCore.Qt.DownArrow if ouvert else QtCore.Qt.RightArrow)
+    btn.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+    btn.setAutoRaise(True)
+    if icon_name:
+        btn.setIcon(_icon(icon_name))
+    btn.setStyleSheet(
+        "QToolButton { font-weight: bold; color: #ff8a00; border: none;"
+        " padding: 6px 0 2px 0; }")
+    btn.setProperty("laser_section", True)
+    form.addRow(btn)
     _hline(form)
+
+
+def _activer_sections(inner):
+    """Regroupe les rangées d'un formulaire de panneau sous leurs titres
+    de section (_section) et branche le pliage/dépliage. Les rangées de
+    chaque section sont DÉPLACÉES (takeRow) dans un sous-formulaire dont
+    la visibilité suit le bouton-titre : cacher le conteneur ne touche
+    pas au setVisible() individuel des rangées (logique dynamique des
+    styles de trait préservée)."""
+    form = inner.layout()
+    if not isinstance(form, QtWidgets.QFormLayout):
+        return
+    # Extraire toutes les rangées dans l'ordre.
+    rangees = []
+    while form.rowCount():
+        res = form.takeRow(0)
+        rangees.append((res.labelItem, res.fieldItem))
+
+    def _remettre(cible, label_item, field_item):
+        label = label_item.widget() if label_item is not None else None
+        if field_item is None:
+            if label is not None:
+                cible.addRow(label)
+            return
+        champ = field_item.widget() if field_item.widget() is not None \
+            else field_item.layout()
+        if label is not None:
+            cible.addRow(label, champ)
+        elif champ is not None:
+            cible.addRow(champ)
+
+    cible = form   # racine tant qu'aucun titre de section n'est passé
+    for label_item, field_item in rangees:
+        w = field_item.widget() if field_item is not None else None
+        if w is not None and w.property("laser_section"):
+            form.addRow(w)
+            conteneur = QtWidgets.QWidget()
+            cible = QtWidgets.QFormLayout(conteneur)
+            cible.setContentsMargins(14, 0, 0, 6)
+            cible.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+            cible.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+            form.addRow(conteneur)
+            conteneur.setVisible(w.isChecked())
+
+            def _toggle(on, c=conteneur, b=w):
+                c.setVisible(on)
+                b.setArrowType(QtCore.Qt.DownArrow if on
+                               else QtCore.Qt.RightArrow)
+            w.toggled.connect(_toggle)
+            continue
+        _remettre(cible, label_item, field_item)
 
 
 def _intro(form, resume, details=None):
@@ -194,6 +250,7 @@ def _scrollable(inner):
     # en-dessous de ce label. Un widget factice Expanding ajouté en
     # toute dernière ligne absorbe cet espace à lui seul, ce qui laisse
     # le reste du contenu compact et ancré en haut.
+    _activer_sections(inner)
     layout = inner.layout()
     if layout is not None:
         spacer = QtWidgets.QWidget()
@@ -334,12 +391,23 @@ def _widget_set(w, v):
         pass  # valeur stockée invalide : le défaut du widget reste
 
 
+def _form_du_widget(widget, form):
+    """Le QFormLayout qui contient RÉELLEMENT la rangée du widget : les
+    sections repliables (_activer_sections) déplacent les rangées dans
+    des sous-formulaires, donc le `form` racine capturé par les closures
+    des panneaux n'est plus forcément le bon."""
+    parent = widget.parentWidget()
+    lay = parent.layout() if parent is not None else None
+    return lay if isinstance(lay, QtWidgets.QFormLayout) else form
+
+
 def _set_row_visible(form, widget, visible):
     """Masque une LIGNE ENTIÈRE (libellé + champ) d'un QFormLayout.
     setVisible sur le seul champ laisse le libellé orphelin (lignes vides
     « Longueur tiret : » etc. quand un autre style est choisi).
     setRowVisible (Qt 6.4+) replie proprement la ligne ; repli manuel
     sur le libellé sinon."""
+    form = _form_du_widget(widget, form)
     try:
         form.setRowVisible(widget, visible)
     except (AttributeError, TypeError, RuntimeError):
@@ -2426,7 +2494,7 @@ class TaskPanelDefocusCalibration:
             _set_row_visible(form, self.spn_band_gap, multi)
             # Rend explicite que « Vitesse des traits » = vitesse de la 1re
             # bande quand il y en a plusieurs (à régler avec la dernière).
-            lbl = form.labelForField(self.spn_feed)
+            lbl = _form_du_widget(self.spn_feed, form).labelForField(self.spn_feed)
             if lbl is not None:
                 lbl.setText("Vitesse 1re bande :" if multi else "Vitesse des traits :")
         self.spn_nbands.valueChanged.connect(
