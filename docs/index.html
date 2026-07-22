@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Atelier Laser — Documentation</title>
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-<meta name="description" content="Workbench FreeCAD pour générer du G-code de marquage et de découpe laser sur CNC LinuxCNC : gravure noir plein, photo tramée, suivi de surfaces 3D, découpe multi-passes, grilles de test et calibration.">
+<meta name="description" content="Workbench FreeCAD pour générer du G-code de marquage et de découpe laser sur CNC (LinuxCNC, GRBL, grblHAL) : gravure noir plein, photo tramée, suivi de surfaces 3D, découpe multi-passes, grilles de test et calibration.">
 <style>
   :root{
     --orange:#ff8a00; --orange-d:#e67a00; --orange-soft:#fff3e2;
@@ -267,7 +267,7 @@
       <div class="badges">
         <span class="badge">Version <b>1.11.2</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
-        <span class="badge">Cible <b>LinuxCNC</b></span>
+        <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
       </div>
       <h1>Du dessin FreeCAD<br>au G-code laser.</h1>
@@ -291,7 +291,7 @@
 <section id="presentation">
   <div class="sec-tag">● Présentation</div>
   <h2>Un atelier pensé pour le laser sur CNC</h2>
-  <p class="sec-lede">L'Atelier Laser ajoute à FreeCAD 16 modes regroupés par thème : gravure à plat, gravure sur surface 3D courbe, découpe multi-passes, tests &amp; calibration, et assemblage de jobs. Chaque mode génère un fichier G-code prêt pour LinuxCNC, avec estimation de durée, aperçu du trajet dans la vue 3D et fichier de cadrage à vérifier avant de lancer.</p>
+  <p class="sec-lede">L'Atelier Laser ajoute à FreeCAD 16 modes regroupés par thème : gravure à plat, gravure sur surface 3D courbe, découpe multi-passes, tests &amp; calibration, et assemblage de jobs. Chaque mode génère un fichier G-code prêt pour LinuxCNC, GRBL ou grblHAL (au choix, par profil laser), avec estimation de durée, aperçu du trajet dans la vue 3D et fichier de cadrage à vérifier avant de lancer.</p>
 
   <div class="cols" style="margin-top:24px">
     <div class="panel">
@@ -729,14 +729,14 @@
   <details class="faq">
     <summary><span class="q">Je n'ai pas la même machine ni le même laser. Ça marche&nbsp;?</span><span class="chev">›</span></summary>
     <div class="a">
-      <p>Oui, pour l'essentiel via les Préférences : profil du bec (anti-collision), Z de travail, calibration du point, numéro d'outil laser, échelle de puissance S, sélecteur de broche. Deux points restent dans le code : la fonction <code>cmd_tool_comp()</code> (pour un contrôleur sans <code>G43</code>) et le tableau <code>FOCUS_TABLE</code> (hauteur de bec par épaisseur pour la découpe à plat, propre au LT-80W-AA-PRO). Le mode Test des offsets suppose une machine mixte fraise + laser sous LinuxCNC.</p>
+      <p>Oui, pour l'essentiel via les Préférences : <b>dialecte de G-code</b> (LinuxCNC / GRBL / grblHAL, par profil laser), profil du bec (anti-collision), Z de travail, calibration du point, numéro d'outil laser, échelle de puissance S, sélecteur de broche. Deux points restent dans le code : le tableau <code>FOCUS_TABLE</code> (hauteur de bec par épaisseur pour la découpe à plat, propre au LT-80W-AA-PRO) et le mode Test des offsets (job mixte fraise + laser, propre à LinuxCNC).</p>
     </div>
   </details>
 
   <details class="faq">
     <summary><span class="q">GRBL est-il supporté&nbsp;?</span><span class="chev">›</span></summary>
     <div class="a">
-      <p>Pas directement. Le format cible LinuxCNC (broche <code>$1</code>, compensation <code>G43</code>). Adapter à GRBL demande de retoucher l'en-tête et l'armement dans <code>laser_core.py</code> — c'est un choix de conception, pas une limite de principe.</p>
+      <p>Oui. Un réglage <b>dialecte de G-code</b> (dans les Préférences, <b>par profil laser</b>) permet de choisir <b>LinuxCNC</b> (défaut), <b>GRBL</b> ou <b>grblHAL</b>. En GRBL, le G-code émis est du GRBL&nbsp;1.1 pur : pas de sélecteur de broche ni de <code>T</code>/<code>M6</code>/<code>G43</code>, pas de <code>G64</code> (lissage natif par la junction deviation <code>$11</code>), armement en <code>M4</code> (mode laser). grblHAL ajoute le changement d'outil et la compensation <code>T</code>/<code>M6</code>&nbsp;+&nbsp;<code>G43&nbsp;H</code>. <b>Ces deux dialectes ne sont pas encore testés sur machine réelle</b> (la machine de développement tourne sous LinuxCNC) — retours bienvenus via les issues GitHub. Voir la carte « Contrôleur GRBL » plus haut pour le détail.</p>
     </div>
   </details>
 </section>
@@ -747,7 +747,7 @@
   <div class="wrap foot-grid">
     <div>
       <div class="brand" style="margin-bottom:8px"><span class="dot"><img src="assets/icone_atelier.svg" alt=""></span> Atelier Laser</div>
-      <p class="muted" style="margin:.2em 0 0">Workbench FreeCAD pour la génération de G-code laser sur CNC LinuxCNC.<br>Développé pour l'Atelier du Verdier · PrintNC + LT-80W-AA-PRO.<br>© Atelier du Verdier — licence <a href="https://github.com/atelierduverdier/LaserAtelier/blob/main/LICENSE" target="_blank" rel="noopener">LGPL-2.1-or-later</a>.</p>
+      <p class="muted" style="margin:.2em 0 0">Workbench FreeCAD pour la génération de G-code laser sur CNC (LinuxCNC, GRBL, grblHAL).<br>Développé pour l'Atelier du Verdier · PrintNC + LT-80W-AA-PRO.<br>© Atelier du Verdier — licence <a href="https://github.com/atelierduverdier/LaserAtelier/blob/main/LICENSE" target="_blank" rel="noopener">LGPL-2.1-or-later</a>.</p>
     </div>
     <div class="foot-links">
       <a href="https://ko-fi.com/atelierduverdier" target="_blank" rel="noopener" style="color:#ff5e5b;font-weight:600">☕ Soutenir sur Ko-fi</a>
