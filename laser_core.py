@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.8.1"
+VERSION = "1.9.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1204,7 +1204,8 @@ def inset_face_robuste(face, inset, deflection=0.05):
         return []  # trop fin, ou géométrie récalcitrante : pas de remplissage
 
 
-def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inset=0.0):
+def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inset=0.0,
+                         contour=False):
     """Crée l'objet 'Hachures_...' dans le document (vert), comme
     hachure.fcmacro, avec 3 types de remplissage possibles :
     parallèles (défaut), croisées (2 passes à angle+90), défocus
@@ -1221,6 +1222,12 @@ def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inse
     face plus fine que 2*inset disparaît du remplissage (comme en
     Gravure remplie).
 
+    contour : ajoute aussi le CONTOUR de la forme (bord de chaque face,
+    trous compris) au compound créé -- hachures + contour gravés ensuite
+    en une seule opération Marquage. Le contour suit le bord ORIGINAL de
+    la forme, PAS le bord rentré par `inset` (le retrait ne concerne que
+    la brûlure du remplissage ; le contour, lui, dessine la forme).
+
     Renvoie l'objet créé, ou None en cas d'échec."""
     faces = get_faces_from_selection_for_hatch(selection)
     if not faces:
@@ -1228,6 +1235,9 @@ def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inse
                       "Il faut des CONTOURS FERMÉS : une face, un sketch fermé, "
                       "ou un compound d'arêtes qui se referment (import DXF/SVG "
                       "aux contours ouverts = à réparer d'abord).")
+
+    # Contour capturé AVANT le retrait : il suit le bord de la forme.
+    contour_edges = ([e for f in faces for e in f.Edges] if contour else [])
 
     if inset > 0:
         inset_faces = []
@@ -1245,11 +1255,11 @@ def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inse
         # parallèles) -- cf. commentaire ci-dessus.
         edges = generate_hatch_edges(faces, spacing, angle)
 
-    if not edges:
+    if not edges and not contour_edges:
         return None, "Aucune hachure générée (vérifie l'espacement ou la taille de la forme)."
 
     doc = FreeCAD.ActiveDocument
-    hatch_compound = Part.Compound(edges)
+    hatch_compound = Part.Compound(edges + contour_edges)
     obj_name = "Hachures_{}_{}_{}deg".format(fill_type, spacing, angle).replace(".", "_").replace("-", "m")
     hatch_obj = doc.addObject("Part::Feature", obj_name)
     hatch_obj.Shape = hatch_compound

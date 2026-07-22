@@ -1177,6 +1177,16 @@ class TaskPanelHatch:
         lay_inset.addWidget(self.btn_inset_auto)
         form.addRow("Retrait du bord :", row_inset)
 
+        self.chk_hatch_contour = QtWidgets.QCheckBox("Ajouter le contour de la forme")
+        self.chk_hatch_contour.setToolTip(
+            "Ajoute le CONTOUR de la forme (bord de chaque face, trous\n"
+            "compris) à l'objet Hachures créé : le mode Marquage grave\n"
+            "ensuite hachures + contour en une seule opération.\n"
+            "Le contour suit le bord ORIGINAL de la forme, pas le bord\n"
+            "rentré par le retrait ci-dessus (le retrait ne concerne que\n"
+            "la brûlure du remplissage).")
+        form.addRow(self.chk_hatch_contour)
+
         self.lbl_defocus_result = _WrapLabel("Défocus calculé : --")
         form.addRow(self.lbl_defocus_result)
 
@@ -1214,6 +1224,7 @@ class TaskPanelHatch:
         self._last_fields = {
             "filltype": self.combo_filltype, "spacing": self.spn_spacing,
             "angle": self.spn_angle, "inset": self.spn_inset,
+            "contour": self.chk_hatch_contour,
         }
         _restore_last_values("hatch", self._last_fields, selection=self.selection)
 
@@ -1227,7 +1238,8 @@ class TaskPanelHatch:
         fill_type = fill_type_map.get(self.combo_filltype.currentIndex(), "paralleles")
         obj, err = core.run_hatch_generation(
             self.selection, self.spn_spacing.value(), self.spn_angle.value(),
-            fill_type=fill_type, inset=self.spn_inset.value())
+            fill_type=fill_type, inset=self.spn_inset.value(),
+            contour=self.chk_hatch_contour.isChecked())
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False
