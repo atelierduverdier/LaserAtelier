@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.9.0"
+VERSION = "1.9.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2218,23 +2218,22 @@ def make_ray_probe(shape_3d):
 
 
 def _est_reference_3d(shape):
-    """Vrai objet 3D à sonder pour le Z : un solide, une surface non
-    plane (dôme, relief...), ou une géométrie étendue en Z. Les FACES
-    PLANES à Z constant (tracés d'un SVG importé, sketch rempli...) sont
-    des MOTIFS à graver, pas des références -- renvoie False pour elles,
-    sinon un SVG multi-formes voyait sa première face promue « surface
-    3D » et toutes les autres ignorées."""
+    """Vrai objet 3D à sonder pour le Z : un solide, ou une géométrie
+    ÉTENDUE EN Z (dôme, relief, plan incliné). Les faces PLATES à Z
+    constant (tracés d'un SVG importé, sketch rempli...) sont des MOTIFS
+    à graver, pas des références -- renvoie False pour elles.
+    NB : le TYPE de surface ne compte pas -- l'importateur SVG pose ses
+    faces sur des BSplineSurface géométriquement plates (ZLength = 0),
+    un test « surface non plane » les prendrait toutes pour des reliefs.
+    Seule l'étendue réelle en Z fait foi (tolérance 0,01 mm : bruit
+    numérique d'une face plate, négligeable devant un vrai relief)."""
     if getattr(shape, "Solids", None):
         return True
     faces = getattr(shape, "Faces", None) or []
     if not faces:
         return False
-    for f in faces:
-        surf = getattr(f, "Surface", None)
-        if surf is not None and type(surf).__name__ != "Plane":
-            return True
     bb = getattr(shape, "BoundBox", None)
-    return bool(bb is not None and bb.ZLength > 1e-6)
+    return bool(bb is not None and bb.ZLength > 0.01)
 
 
 def split_selection(selection):
