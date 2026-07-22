@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.9.1"
+VERSION = "1.9.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -735,7 +735,11 @@ def get_all_edges_from_selection(selection):
     """Récupère tous les segments des objets/sous-éléments sélectionnés.
     `.Edges` récupère déjà tout, quelle que soit la profondeur
     d'imbrication -- pas de récursion manuelle sur SubShapes (double
-    comptage garanti sinon)."""
+    comptage garanti sinon). Un sous-élément qui n'est PAS une arête
+    (Face, Wire...) fournit ses arêtes de BORD : sélectionner la face
+    d'un tracé SVG importé (« Face1 », l'objet EST une face) revient à
+    marquer son contour -- sinon aucune arête n'était collectée et le
+    marquage se plaignait « aucun segment trouvé »."""
     all_edges = []
     for sel_obj in selection:
         obj = sel_obj.Object
@@ -745,6 +749,8 @@ def get_all_edges_from_selection(selection):
                 shape = obj.getSubObject(sub)
                 if isinstance(shape, Part.Edge):
                     all_edges.append(shape)
+                elif shape is not None and getattr(shape, "Edges", None):
+                    all_edges.extend(shape.Edges)
         elif hasattr(obj, 'Shape'):
             all_edges.extend(obj.Shape.Edges)
     return all_edges
