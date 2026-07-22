@@ -13,6 +13,7 @@ Contrat des panneaux FreeCAD (Gui::TaskView) : accept()/reject() qui
 renvoient False laissent le panneau ouvert (utilisé ici pour les erreurs
 de validation, afin de ne pas perdre la saisie de l'utilisateur)."""
 
+import json
 import os
 import FreeCAD
 import FreeCADGui as Gui
@@ -338,8 +339,40 @@ def _set_row_visible(form, widget, visible):
             lbl.setVisible(visible)
 
 
-def _restore_last_values(panel_key, fields):
+# Réglages PAR FORME : propriété dynamique posée sur l'objet sélectionné au
+# moment de la génération, sauvegardée AVEC le document (.FCStd). Rouvrir un
+# panneau avec cette forme sélectionnée re-propose SES réglages (prioritaires
+# sur les derniers réglages globaux du panneau).
+_OBJ_PROP = "LaserAtelierReglages"
+
+
+def _reglages_object(selection):
+    """Premier objet de document de la sélection : le porteur des réglages
+    par forme. None si la sélection est vide (panneaux sans forme)."""
+    for so in (selection or []):
+        obj = getattr(so, "Object", None)
+        if obj is not None:
+            return obj
+    return None
+
+
+def _restore_last_values(panel_key, fields, selection=None):
+    """Pré-remplit les champs du panneau. Priorité : réglages portés par la
+    FORME sélectionnée (propriété LaserAtelierReglages du document), sinon
+    derniers réglages globaux du panneau (config utilisateur)."""
     values = core.load_config().get("last_" + panel_key)
+    obj = _reglages_object(selection)
+    if obj is not None and hasattr(obj, _OBJ_PROP):
+        try:
+            data = json.loads(getattr(obj, _OBJ_PROP) or "{}")
+            obj_values = data.get(panel_key)
+            if isinstance(obj_values, dict):
+                values = obj_values
+                FreeCAD.Console.PrintMessage(
+                    "Réglages restaurés depuis « {} ».\n".format(
+                        getattr(obj, "Label", "objet")))
+        except Exception:
+            pass  # propriété corrompue : repli sur les derniers réglages
     if not isinstance(values, dict):
         return
     for name, widget in fields.items():
@@ -347,10 +380,33 @@ def _restore_last_values(panel_key, fields):
             _widget_set(widget, values[name])
 
 
-def _save_last_values(panel_key, fields):
+def _save_last_values(panel_key, fields, selection=None):
+    values = {name: _widget_get(w) for name, w in fields.items()}
     cfg = core.load_config()
-    cfg["last_" + panel_key] = {name: _widget_get(w) for name, w in fields.items()}
+    cfg["last_" + panel_key] = values
     core.save_config(cfg)
+    obj = _reglages_object(selection)
+    if obj is None:
+        return
+    try:
+        if not hasattr(obj, _OBJ_PROP):
+            obj.addProperty("App::PropertyString", _OBJ_PROP, "LaserAtelier",
+                            "Réglages de l'atelier laser, par mode (JSON)")
+            obj.setEditorMode(_OBJ_PROP, 1)  # visible mais pas éditable à la main
+        try:
+            data = json.loads(getattr(obj, _OBJ_PROP, "") or "{}")
+        except Exception:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        data[panel_key] = values
+        setattr(obj, _OBJ_PROP, json.dumps(data, ensure_ascii=False))
+        FreeCAD.Console.PrintMessage(
+            "Réglages attachés à « {} » -- sauvegarder le document pour les "
+            "conserver.\n".format(getattr(obj, "Label", "objet")))
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning(
+            "Réglages non attachés à l'objet : {}\n".format(exc))
 
 
 # --- Job combiné : opérations empilées depuis les vrais modes ---------------
@@ -1045,14 +1101,14 @@ class TaskPanelHatch:
             "filltype": self.combo_filltype, "spacing": self.spn_spacing,
             "angle": self.spn_angle, "inset": self.spn_inset,
         }
-        _restore_last_values("hatch", self._last_fields)
+        _restore_last_values("hatch", self._last_fields, selection=self.selection)
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Hachures 2D")
         self.form.setWindowIcon(_icon("hatch.svg"))
 
     def accept(self):
-        _save_last_values("hatch", self._last_fields)
+        _save_last_values("hatch", self._last_fields, selection=self.selection)
         fill_type_map = {0: "paralleles", 1: "croisees", 2: "defocus"}
         fill_type = fill_type_map.get(self.combo_filltype.currentIndex(), "paralleles")
         obj, err = core.run_hatch_generation(
@@ -1545,7 +1601,7 @@ class TaskPanelFilledEngraving:
             "fluence_on": self._fluence["chk"], "ref_power": self._fluence["ref_power"],
             "ref_feed": self._fluence["ref_feed"], "ref_spot": self._fluence["ref_spot"],
         }
-        _restore_last_values("filled", self._last_fields)
+        _restore_last_values("filled", self._last_fields, selection=self.selection)
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Gravure remplie (noir)")
@@ -1843,7 +1899,7 @@ class TaskPanelFilledEngraving:
             _add_to_combined_job(op)
 
     def accept(self):
-        _save_last_values("filled", self._last_fields)
+        _save_last_values("filled", self._last_fields, selection=self.selection)
         fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
         if fill_edges is None:
             return False
@@ -4831,7 +4887,7 @@ class TaskPanelCurved:
             "fluence_on": self._fluence["chk"], "ref_power": self._fluence["ref_power"],
             "ref_feed": self._fluence["ref_feed"], "ref_spot": self._fluence["ref_spot"],
         }
-        _restore_last_values("curved", self._last_fields)
+        _restore_last_values("curved", self._last_fields, selection=self.selection)
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Marquage de motif (plat ou courbe)")
@@ -5111,7 +5167,7 @@ class TaskPanelCurved:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
 
-        _save_last_values("curved", self._last_fields)
+        _save_last_values("curved", self._last_fields, selection=self.selection)
         FreeCAD.Console.PrintMessage(
             "Chaînage des segments connectés... ({})\n".format(
                 "objet 3D de référence détecté" if self._reference_shape is not None else "pas d'objet 3D, interpolation"))
@@ -5478,7 +5534,7 @@ class TaskPanelFlat:
             "copies_x": self.spn_copies_x, "copies_y": self.spn_copies_y,
             "copy_dx": self.spn_copy_dx, "copy_dy": self.spn_copy_dy,
         }
-        _restore_last_values("flat", self._last_fields)
+        _restore_last_values("flat", self._last_fields, selection=self.selection)
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Découpe multi-passes (matériau plat)")
@@ -5642,7 +5698,7 @@ class TaskPanelFlat:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
 
-        _save_last_values("flat", self._last_fields)
+        _save_last_values("flat", self._last_fields, selection=self.selection)
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
 
@@ -5880,7 +5936,7 @@ class TaskPanelCurvedCut:
             "kerf": self.spn_kerf, "hole_first": self.chk_hole_first,
             "proximity": self.chk_proximity,
         }
-        _restore_last_values("curved_cut", self._last_fields)
+        _restore_last_values("curved_cut", self._last_fields, selection=self.selection)
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Découpe multi-passes sur surface courbée")
@@ -6045,7 +6101,7 @@ class TaskPanelCurvedCut:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return False
 
-        _save_last_values("curved_cut", self._last_fields)
+        _save_last_values("curved_cut", self._last_fields, selection=self.selection)
         pre_text = self.txt_pre.toPlainText()
         post_text = self.txt_post.toPlainText()
 

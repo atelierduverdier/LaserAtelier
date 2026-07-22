@@ -95,8 +95,12 @@ Four modules, cleanly layered — keep the layering:
     orphan labels in a QFormLayout).
   - Last-session persistence: each panel builds `self._last_fields = {key: widget}`, calls
     `_restore_last_values(key, fields)` at end of `__init__` and `_save_last_values` in `accept()`
-    (`_widget_get/_widget_set` handle combo/checkbox/spin/lineedit). Priority: last values >
-    Preferences defaults.
+    (`_widget_get/_widget_set` handle combo/checkbox/spin/lineedit). Shape panels (hatch, filled,
+    curved, flat, curved_cut) also pass `selection=self.selection`: settings are then written as
+    JSON into a dynamic `LaserAtelierReglages` property on the first selected object (saved with
+    the .FCStd) and restored with priority over global last values when that object is selected.
+    Priority: per-object settings > last values > Preferences defaults. Pass the selection kwarg
+    for any new shape-based panel.
   - `_PresetController(form, parent, category, fields_getter)` — preset selector block backed by
     `core.factory_presets` (★, non-deletable) + user presets.
   - `_make_fluence_widgets` / `_fluence_advice` — "Puissance vs défocus" section (power compensation
