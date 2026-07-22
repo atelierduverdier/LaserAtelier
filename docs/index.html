@@ -254,6 +254,7 @@
       <a href="#calibration">Calibration</a>
       <a href="#preferences">Préférences</a>
       <a href="#gcode">G-code</a>
+      <a href="#linuxcnc">LinuxCNC</a>
       <a href="#faq">FAQ</a>
     </nav>
     <button class="theme-btn" id="themeBtn" title="Thème clair / sombre" aria-label="Basculer le thème">◐</button>
@@ -669,6 +670,63 @@
   <div class="callout tip">
     <span class="ci">Contrôleur GRBL — dialecte intégré</span>
     <p>Choisir le dialecte <b>GRBL</b> dans les Préférences (réglé <b>par profil laser</b> — créez un profil par machine) : le G-code émis est du GRBL 1.1 pur — pas de sélecteur de broche ni de <code>T</code>/<code>M6</code>/<code>G43</code>, pas de <code>G64</code> (le lissage de trajectoire est natif chez GRBL, réglé par la junction deviation <code>$11</code>), armement en <code>M4</code> (mode laser). Côté machine&nbsp;: <code>$32=1</code> et <code>$30</code> égal à l'échelle de puissance S des Préférences. Le zéro Z se pose sur la surface par le moyen de son choix (cale, réglet à la hauteur de focale…) — <b>aucun palpeur requis</b>. Seul le Test des offsets X/Y (job mixte fraise+laser) reste propre à LinuxCNC. Variante <b>grblHAL</b>&nbsp;: comme GRBL, mais avec le changement d'outil et la compensation <code>T</code>/<code>M6</code>&nbsp;+&nbsp;<code>G43&nbsp;H</code> (firmware compilé avec la table d'outils, option <code>N_TOOLS</code>). <b>Ces deux dialectes ne sont pas encore testés sur machine réelle</b> (la machine de développement tourne sous LinuxCNC) — retours bienvenus via les issues GitHub.</p>
+  </div>
+</section>
+
+<!-- ============ CONFIG LINUXCNC ============ -->
+<section id="linuxcnc">
+  <div class="sec-tag">● Machine — LinuxCNC</div>
+  <h2>La config LinuxCNC du laser</h2>
+  <p class="sec-lede">L'atelier <b>génère</b> le G-code&nbsp;; voici comment la PrintNC l'<b>exécute</b>. La config machine (HAL / INI / table d'outils) est publiée à part, dans le dépôt <a href="https://github.com/atelierduverdier/printnc-config" target="_blank" rel="noopener">printnc-config</a> — carte Flexi-HAL + Remora, laser LaserTree LT-80W-AA-PRO piloté en PWM direct.</p>
+
+  <div class="cols" style="margin-top:22px">
+    <div class="panel">
+      <h3>Le laser = broche <code>$1</code></h3>
+      <ul class="clean">
+        <li>Armer / éteindre&nbsp;: <code>M3 $1 S0</code> / <code>M5 $1</code>. Puissance&nbsp;: <code>S0…1000</code>.</li>
+        <li>Sortie <b>PWM directe</b> (<code>flexi.SP.SPINDLE_PWM</code>)&nbsp;: <code>duty% = S / 10</code>, rien à calibrer.</li>
+        <li><b>Interlock AUX3</b>&nbsp;: <code>spindle.1.on</code> pilote un relais 24&nbsp;V. Seul <code>M5 $1</code> ouvre le relais — <b>la vraie coupure</b> (une pause programme ne coupe pas le faisceau).</li>
+        <li>Outil <code>T100</code>&nbsp;: offsets X&nbsp;+2 / Y&nbsp;−90 (<code>tool.tbl</code>, appliqués par <code>G43 H100</code>), foyer 8,5&nbsp;mm sous le nez.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Aide-mémoire</h3>
+      <ul class="clean">
+        <li>Palper le laser&nbsp;: <code>T100 M6</code> puis <code>G43 H100</code>.</li>
+        <li>Tir de visée faible&nbsp;: <code>M3 $1 S20</code>.</li>
+        <li>Puissance 50&nbsp;%&nbsp;: <code>S500 $1</code>.</li>
+        <li>Extinction réelle&nbsp;: <code>M5 $1</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout tip" style="margin-top:22px">
+    <span class="ci">Puissance asservie à la vitesse réelle</span>
+    <p>Le PWM sort à puissance <b>fixe</b> (M3). Quand la machine ralentit (accélérations de début de trait, coins), elle brûlerait plus longtemps au même endroit à <code>S</code> constant → début de trait plus épais. Le HAL multiplie donc la consigne par le rapport <b>vitesse réelle / vitesse demandée</b> avant conversion, pour une <b>énergie déposée constante par mm</b>&nbsp;:</p>
+    <p style="text-align:center;margin:.6em 0"><code>duty(%) = ( S × vitesse_réelle / vitesse_demandée ) / 10</code></p>
+    <p><b>Conséquence directe sur l'atelier&nbsp;:</b> à l'arrêt la vitesse est nulle → la puissance tombe à 0. Un <code>G4</code> (temporisation faisceau allumé) ne graverait donc <b>rien</b>. C'est pourquoi le générateur produit tous les points comme des <b>micro-segments</b> (un court <code>G1</code> dont l'avance reproduit le temps d'exposition), jamais des dwells à l'arrêt.</p>
+  </div>
+
+  <pre style="margin:16px 0 0;background:var(--slate);color:#e9edf2;padding:18px 20px;border-radius:12px;overflow-x:auto;font-size:.85rem;line-height:1.65"><code style="background:none;color:inherit;padding:0"># remora-flexi.hal — section LASER (extrait)
+loadrt limit1 names=laser_reqvel_floor,laser_ratio_clamp
+loadrt div2   names=laser_velratio
+loadrt mult2  names=laser_dyn
+loadrt scale  names=laser_scale
+setp laser_scale.gain 0.1           # S/10 = rapport cyclique %
+setp laser_reqvel_floor.min 0.1     # evite la division par zero a l'arret
+net laser-reqvel    motion.requested-vel   =&gt; laser_reqvel_floor.in
+net laser-curvel    motion.current-vel      =&gt; laser_velratio.in0
+net laser-reqvel-f  laser_reqvel_floor.out  =&gt; laser_velratio.in1
+net laser-ratio     laser_velratio.out      =&gt; laser_ratio_clamp.in
+net laser-ratio-c   laser_ratio_clamp.out   =&gt; laser_dyn.in1
+net laser-spd       spindle.1.speed-out     =&gt; laser_dyn.in0
+net laser-dyn       laser_dyn.out           =&gt; laser_scale.in
+net laser-pwm       laser_scale.out         =&gt; flexi.SP.SPINDLE_PWM
+net laser-arm       spindle.1.on            =&gt; flexi.output.AUX3   # interlock relais 24V</code></pre>
+
+  <div class="callout tip" style="margin-top:16px">
+    <span class="ci">at-speed — le correctif qui débloque un job laser seul</span>
+    <p>Un job 100&nbsp;% laser pilote <code>spindle.1</code>, mais le planificateur attend <code>spindle.0.at-speed</code> — que le VFD (broche de fraisage) rapporte FALSE à l'arrêt. Sans correctif&nbsp;: laser allumé, machine en position, <b>plus aucun mouvement</b>. Le HAL calcule un at-speed effectif = <i>VFD à vitesse</i> <b>OU</b> <i>broche&nbsp;0 arrêtée</i>. Procédure complète (palpage, modes Martyre / Pièce, pièges)&nbsp;: <a href="https://github.com/atelierduverdier/printnc-config/blob/main/WORKFLOW_LASER.md" target="_blank" rel="noopener">WORKFLOW_LASER.md</a>.</p>
   </div>
 </section>
 
