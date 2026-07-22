@@ -315,6 +315,35 @@ class CombinedCommand:
         _show(task_panels.TaskPanelCombined())
 
 
+class JobsToCombinedCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("combined.svg"),
+            "MenuText": "Jobs sélectionnés → job combiné",
+            "ToolTip": "Empile les Jobs sélectionnés dans l'arborescence comme opérations "
+                       "du job combiné (chacun avec les réglages portés par sa forme), "
+                       "puis ouvre le Job combiné pour les ordonner et générer le fichier unique",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
+
+    def Activated(self):
+        import laser_jobs
+        jobs = [o for o in Gui.Selection.getSelection() if laser_jobs._est_job(o)]
+        if not jobs:
+            _warn_selection("Sélectionne un ou plusieurs objets Job dans l'arborescence "
+                            "(dossier « Atelier Laser »).")
+            return
+        ajoutes, ignores = laser_jobs.ajouter_jobs_au_combine(jobs)
+        if ignores:
+            QtWidgets.QMessageBox.warning(
+                None, "Job combiné",
+                "Jobs ignorés :\n- " + "\n- ".join(ignores))
+        if ajoutes:
+            _show(task_panels.TaskPanelCombined())
+
+
 class SettingsCommand:
     def GetResources(self):
         return {
@@ -349,3 +378,4 @@ def register_commands():
     Gui.addCommand("LaserAtelier_CurvedCut", CurvedCutCommand())
     Gui.addCommand("LaserAtelier_Flat", FlatCommand())
     Gui.addCommand("LaserAtelier_Combined", CombinedCommand())
+    Gui.addCommand("LaserAtelier_JobsToCombined", JobsToCombinedCommand())

@@ -71,6 +71,7 @@ class LaserAtelierWorkbench(Workbench):
             "Separator",
             # -- Assemblage --
             "LaserAtelier_Combined",
+            "LaserAtelier_JobsToCombined",
             "Separator",
             # -- Réglages --
             "LaserAtelier_Settings",
