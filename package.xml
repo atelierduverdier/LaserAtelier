@@ -8,6 +8,7 @@
   <version>1.0.0</version>
   <date>2026-07-21</date>
   <maintainer email="leverdier@ik.me">Atelier du Verdier</maintainer>
+  <license file="LICENSE">LGPL-2.1-or-later</license>
   <url type="repository" branch="main">https://github.com/atelierduverdier/LaserAtelier</url>
   <url type="documentation">https://laser.atelierduverdier.fr</url>
   <icon>resources/icons/workbench.svg</icon>

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """task_panels.py -- panneaux de tâches (Tasks) de l'Atelier Laser.
+© Atelier du Verdier -- licence LGPL-2.1-or-later (cf. LICENSE).
 
 Un panneau par mode, affiché dans le panneau des tâches (dock à gauche,
 non-bloquant -- on peut tourner la vue 3D pendant qu'il reste ouvert) via

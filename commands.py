@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """commands.py -- commandes/icônes de la barre d'outils Atelier Laser.
+© Atelier du Verdier -- licence LGPL-2.1-or-later (cf. LICENSE).
 
 Chaque commande capture la sélection courante au moment du clic (même
 convention que l'ancienne macro : sélectionner AVANT de lancer), vérifie

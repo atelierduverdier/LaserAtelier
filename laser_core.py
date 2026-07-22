@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 laser_core.py -- Atelier Laser (FreeCAD Workbench)
+© Atelier du Verdier -- licence LGPL-2.1-or-later (cf. LICENSE).
 
 Logique métier pure (aucun code d'interface ici -- cf. task_panels.py pour
 les panneaux de tâches et commands.py pour les commandes/icônes) pour tout

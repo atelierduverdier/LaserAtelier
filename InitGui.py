@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """InitGui.py -- point d'entrée GUI de l'Atelier Laser (FreeCAD Workbench).
+© Atelier du Verdier -- licence LGPL-2.1-or-later (cf. LICENSE).
 
 Exécuté au démarrage de FreeCAD (mode graphique uniquement -- Init.py
 serait pour le mode sans interface, inutile ici puisque tout ce module
