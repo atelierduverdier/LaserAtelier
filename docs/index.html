@@ -108,7 +108,11 @@
   .btn-ghost:hover{border-color:var(--orange); text-decoration:none}
   .hero-art{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
     box-shadow:var(--shadow); padding:26px; display:grid; place-items:center}
-  .hero-art img{width:100%; max-width:360px; height:auto}
+  /* Plaque blanche sous le logo : l'illustration est noir/orange, elle
+     disparaissait sur la carte sombre du thème sombre. En thème clair la
+     plaque se fond dans la carte claire. */
+  .hero-art img{width:100%; max-width:360px; height:auto;
+    background:#fff; border-radius:14px; padding:20px; box-sizing:border-box}
 
   /* ---------- sections ---------- */
   section{padding:52px 0; border-bottom:1px solid var(--line)}
