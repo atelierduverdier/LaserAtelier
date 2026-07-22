@@ -236,9 +236,12 @@ plus `.` and `-`) so labels ("S400", "8.25") need no external font file. Extend 
 The **reverse** of photo mode: paint what the engraving will look like (a "Aperçu photo" button on
 Filled/Marquage/Combined). Lives entirely in `task_panels.py` (QPainter is Qt): each burn is drawn as
 a thick stroke at its **burn width** (`burn_width_defocus_scaled`, else the optical spot) and a
-**tone** (`_tone_peak` = relative peak irradiance `P/(spot²·v)`, saturating — defocused fills come out
-pale, near-focus contours dark), composited with `CompositionMode_Multiply` on a wood background so
-overlaps deepen. `_render_engraving_photo(strokes)` → QImage, `_show_image_dialog` shows it + PNG save.
+**tone** (`_tone_burn` = areal fluence `P/(width·v)` = energy per burned area, saturating `1-exp(-3·f)`).
+An earlier prototype used peak irradiance `P/(spot²·v)`, but it penalised defocus far too hard — a real
+MDF burn at S865 F600 defocused 36 mm comes out **dark, not pale** — so the model was **recalibrated on
+a real engraving** to areal fluence (fills read dark once above the char threshold; only genuinely
+under-powered/over-defocused settings stay pale). Strokes are composited with `CompositionMode_Multiply`
+on a wood background so overlaps deepen. `_render_engraving_photo(strokes)` → QImage, `_show_image_dialog` shows it + PNG save.
 `_strokes_from_operation(op)` maps a combined-job operation dict (filled/curved/flat/curved_cut) to
 strokes, so `TaskPanelCombined` renders the whole job at once; testgrid/unknown types are skipped.
 Per-panel previews build strokes directly (no `_build_combined_operation`, to avoid its save/Job side

@@ -419,25 +419,23 @@ def _scrollable(inner):
 
 
 # --- Aperçu photo réaliste (rendu du résultat gravé) -----------------------
-# Prototype : peint chaque trait à sa LARGEUR brûlée et à sa TEINTE, les
-# recouvrements s'assombrissant (mode Multiply). La teinte vient d'une
-# IRRADIANCE DE CRÊTE relative P/(spot²·v) : à énergie égale, un point
-# défocalisé (large) tape moins fort qu'un point net -> plus pâle, ce qui
-# reproduit « remplissage défocus pâle / contour net foncé ». (Le nuancier
-# mesuré pourra affiner cette teinte plus tard.)
+# Peint chaque trait à sa LARGEUR brûlée et à sa TEINTE, les recouvrements
+# s'assombrissant (mode Multiply). La teinte vient de la FLUENCE ARÉOLAIRE
+# P/(largeur·vitesse) -- l'énergie déposée par unité de surface brûlée --,
+# saturante : le MDF carbonise dès le seuil dépassé, au-delà plus d'énergie
+# ne noircit presque plus. (Un premier prototype utilisait l'irradiance de
+# crête P/(spot²·v) mais elle pénalisait trop le défocus : sur bois réel un
+# remplissage S865 F600 défocalisé à 36 mm ressort BIEN FONCÉ, pas pâle --
+# recalé sur une gravure réelle. Le nuancier mesuré pourra affiner plus tard.)
 
-def _tone_peak(power, feed, spot):
-    """Teinte 0..1 (0 = rien, 1 = noir) estimée depuis l'irradiance de crête
-    relative P/(spot²·v), saturante. Référence : un trait net au foyer, à
-    mi-puissance et vitesse moyenne, ressort déjà bien foncé."""
+def _tone_burn(power, feed, width):
+    """Teinte 0..1 (0 = rien, 1 = noir) depuis la fluence aréolaire
+    P/(largeur·vitesse), saturante. `width` = largeur brûlée du trait (mm)."""
     import math
-    if feed <= 0 or spot <= 0:
+    if feed <= 0 or width <= 0:
         return 0.0
-    inten = power / (spot * spot * feed)
-    ref = (core.S_MAX * 0.5) / (max(core.SPOT_FOCUS_MM, 0.1) ** 2 * 800.0)
-    if ref <= 0:
-        return 0.0
-    return 1.0 - math.exp(-2.0 * inten / ref)
+    fluence = power / (width * feed)
+    return 1.0 - math.exp(-3.0 * fluence)
 
 
 def _discretize_edge(edge, dist=0.3):
@@ -546,7 +544,7 @@ def _strokes_from_operation(op):
         spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half)
         fp, ff = p.get("fill_power", 0.0), p.get("fill_feed", 1.0)
         fw = core.burn_width_defocus_scaled(fp, defocus) or spot_fill
-        ft = _tone_peak(fp, ff, spot_fill)
+        ft = _tone_burn(fp, ff, fw)
         for e in (p.get("fill_edges") or []):
             pts = _discretize_edge(e)
             if pts:
@@ -556,7 +554,7 @@ def _strokes_from_operation(op):
             spot_c = core.spot_diameter_at_defocus(coff, core.SPOT_FOCUS_MM, half)
             cp, cf = p.get("contour_power", 0.0), p.get("contour_feed", 1.0)
             cw = core.burn_width_defocus_scaled(cp, coff) or spot_c
-            ct = _tone_peak(cp, cf, spot_c)
+            ct = _tone_burn(cp, cf, cw)
             for e in p["contour_edges"]:
                 pts = _discretize_edge(e)
                 if pts:
@@ -566,7 +564,7 @@ def _strokes_from_operation(op):
         # puissance/vitesse.
         pw, fd = p.get("power", 0.0), p.get("feed", 1.0)
         w = core.burn_width_defocus_scaled(pw, 0.0) or core.SPOT_FOCUS_MM
-        t = _tone_peak(pw, fd, core.SPOT_FOCUS_MM)
+        t = _tone_burn(pw, fd, w)
         for e in (p.get("edges") or []):
             pts = _discretize_edge(e)
             if pts:
@@ -2389,7 +2387,7 @@ class TaskPanelFilledEngraving:
         fill_power = self._effective_fill_power(defocus, half_angle)
         spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
         fill_width = core.burn_width_defocus_scaled(fill_power, defocus) or spot_fill
-        fill_tone = _tone_peak(fill_power, self.spn_fill_feed.value(), spot_fill)
+        fill_tone = _tone_burn(fill_power, self.spn_fill_feed.value(), fill_width)
         for e in (fill_edges or []):
             pts = _discretize_edge(e)
             if pts:
@@ -2399,7 +2397,7 @@ class TaskPanelFilledEngraving:
             c_power = self.spn_contour_power.value()
             spot_c = core.spot_diameter_at_defocus(contour_z_offset, core.SPOT_FOCUS_MM, half_angle)
             c_width = core.burn_width_defocus_scaled(c_power, contour_z_offset) or spot_c
-            c_tone = _tone_peak(c_power, self.spn_contour_feed.value(), spot_c)
+            c_tone = _tone_burn(c_power, self.spn_contour_feed.value(), c_width)
             for e in contour_edges:
                 pts = _discretize_edge(e)
                 if pts:
@@ -5685,7 +5683,7 @@ class TaskPanelCurved:
             return
         pw, fd = self._effective_power(), self.spn_feed.value()
         width = core.burn_width_defocus_scaled(pw, 0.0) or core.SPOT_FOCUS_MM
-        tone = _tone_peak(pw, fd, core.SPOT_FOCUS_MM)
+        tone = _tone_burn(pw, fd, width)
         strokes = []
         for e in self._edges:
             pts = _discretize_edge(e)
