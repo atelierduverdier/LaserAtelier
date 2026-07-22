@@ -59,6 +59,16 @@ class _WrapLabel(QtWidgets.QLabel):
     def setText(self, text):
         super().setText(" ".join(str(text).split()))
 
+    def resizeEvent(self, event):
+        # QFormLayout n'honore pas le heightForWidth des labels repliés :
+        # la rangée reste à la hauteur d'UNE ligne et les paragraphes se
+        # chevauchent/se rognent. On force donc la hauteur minimale à la
+        # hauteur réelle du texte replié à la largeur courante.
+        super().resizeEvent(event)
+        h = self.heightForWidth(self.width())
+        if h > 0:
+            self.setMinimumHeight(h)
+
 
 def _panel_header(form, icon_name, title):
     """Bandeau en tête de panneau : icône du mode + nom en gras/agrandi,
