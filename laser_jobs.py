@@ -214,6 +214,28 @@ def _est_job(obj):
         if getattr(obj, "Proxy", None) is not None else False
 
 
+def _poser_sources(obj, sources):
+    """Pose (ou remplace) la propriété Sources du Job en portée GLOBALE
+    (App::PropertyLinkListGlobal). Les formes gravées vivent souvent dans
+    une App::Part alors que le Job est rangé dans le groupe « Atelier
+    Laser » : un lien de portée LOCALE qui franchit cette frontière fait
+    râler FreeCAD (« Link(s) ... go out of the allowed scope »). La portée
+    globale l'autorise explicitement. Migre au passage les Jobs d'avant
+    v1.9.3 (Sources en portée locale) en recréant la propriété."""
+    a_migrer = True
+    if hasattr(obj, "Sources"):
+        try:
+            a_migrer = obj.getTypeIdOfProperty("Sources") != "App::PropertyLinkListGlobal"
+        except Exception:
+            a_migrer = False  # pas de portée globale disponible : on garde tel quel
+        if a_migrer:
+            obj.removeProperty("Sources")
+    if a_migrer:
+        obj.addProperty("App::PropertyLinkListGlobal", "Sources", "Job",
+                        "Formes sources du job (la première porte les réglages)")
+    obj.Sources = sources
+
+
 def creer_ou_maj_job(mode, sources, sous_elements=None):
     """Crée -- ou met à jour -- l'objet Job du triplet [mode, source
     principale, sous-éléments] dans le document actif. Appelé à chaque
@@ -240,7 +262,7 @@ def creer_ou_maj_job(mode, sources, sous_elements=None):
         if (_est_job(obj) and getattr(obj, "Mode", None) == mode
                 and (getattr(obj, "Sources", None) or [None])[0] is principal
                 and sorted(getattr(obj, "SousElements", None) or []) == sous):
-            obj.Sources = sources
+            _poser_sources(obj, sources)
             _ranger_dans_groupe(doc, obj, sources)
             return obj
 
@@ -251,9 +273,7 @@ def creer_ou_maj_job(mode, sources, sous_elements=None):
                     "Mode de l'atelier laser (clé interne)")
     obj.Mode = mode
     obj.setEditorMode("Mode", 1)
-    obj.addProperty("App::PropertyLinkList", "Sources", "Job",
-                    "Formes sources du job (la première porte les réglages)")
-    obj.Sources = sources
+    _poser_sources(obj, sources)
     obj.addProperty("App::PropertyStringList", "SousElements", "Job",
                     "Sous-éléments de la source principale (vide = objet entier)")
     obj.SousElements = sous
