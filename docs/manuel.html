@@ -117,9 +117,9 @@
   .pourquoi .t { color: var(--ardoise-clair); }
 
   /* ===================== Cartes de mode ===================== */
-  .mode { display: flex; gap: 5mm; align-items: flex-start; border: 1px solid var(--gris); border-left: 4px solid var(--orange); border-radius: 6px; padding: 4mm 5mm; margin: 4mm 0; break-inside: avoid; }
-  .mode img.ic { width: 15mm; height: 15mm; flex: 0 0 15mm; }
-  .mode .body { flex: 1; }
+  .mode { display: block; overflow: hidden; border: 1px solid var(--gris); border-left: 4px solid var(--orange); border-radius: 6px; padding: 4mm 5mm; margin: 4mm 0; break-inside: avoid; }
+  .mode img.ic { float: left; width: 14mm; height: 14mm; margin: 0 4mm 2mm 0; }
+  .mode .body { display: block; }
   .mode h4 { margin: 0 0 1mm; font-size: 12.5pt; }
   .mode .quoi { color: var(--ardoise-clair); font-style: italic; margin: 0 0 2mm; }
   .mode .meta { font-family:"DejaVu Sans",sans-serif; font-size: 9pt; color: var(--gris-txt); }
@@ -148,6 +148,33 @@
   .signature { text-align:center; margin: 12mm 0 0; color: var(--gris-txt); font-style: italic; font-size: 10.5pt; }
   .signature img { width: 20mm; opacity:.8; display:block; margin: 0 auto 2mm; }
   hr.sep { border: none; border-top: 1px solid var(--gris); margin: 7mm 0; }
+
+  /* ===================== Interface : barre & menu ===================== */
+  .toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:2mm; background:linear-gradient(#f7f8fa,#e7eaf0); border:1px solid #cfd5de; border-radius:6px; padding:2.5mm 3mm; margin:4mm 0 1.5mm; }
+  .toolbar img { width:7.6mm; height:7.6mm; }
+  .toolbar .tb-sep { width:0; border-left:1px solid #b9c0cb; align-self:stretch; margin:0 1.2mm; }
+  .cap { font-family:"DejaVu Sans",sans-serif; font-size:8.5pt; color:var(--gris-txt); text-align:center; margin:0 0 5mm; font-style:italic; }
+
+  .ui-wrap { display:flex; gap:6mm; align-items:flex-start; margin:4mm 0 2mm; break-inside:avoid; }
+  .menu { flex:0 0 82mm; border:1px solid #c4cbd6; border-radius:4px; overflow:hidden; font-family:"DejaVu Sans",sans-serif; font-size:9pt; }
+  .menu .menu-title { background:var(--ardoise); color:#fff; font-weight:700; padding:1.8mm 3mm; }
+  .menu .mi { display:flex; align-items:center; gap:2.5mm; padding:1.3mm 3mm; color:var(--encre); background:#fff; }
+  .menu .mi img { width:5mm; height:5mm; flex:0 0 5mm; }
+  .menu .mi.hl { background:var(--orange-pale); font-weight:700; color:var(--ardoise); }
+  .menu .msep { border-top:1px solid #e3e7ee; }
+  .ui-wrap .note { flex:1; font-size:10.5pt; }
+  .ui-wrap .note p { margin:0 0 2.5mm; }
+
+  .legende { margin:2mm 0; }
+  .legende .fam { font-family:"DejaVu Sans",sans-serif; font-weight:800; color:#fff; background:var(--ardoise-clair); border-radius:4px; padding:1.2mm 3mm; font-size:9pt; letter-spacing:.02em; margin:5mm 0 2mm; }
+  .legende .row { display:flex; gap:3mm; align-items:flex-start; margin:1.8mm 0; break-inside:avoid; }
+  .legende .row img { width:6.4mm; height:6.4mm; flex:0 0 6.4mm; margin-top:.2mm; }
+  .legende .row .nm { font-family:"DejaVu Sans",sans-serif; font-weight:700; color:var(--ardoise); }
+  .legende .row .ds { color:var(--encre); }
+
+  /* screenshot de panneau, flottant dans une carte de mode / prose */
+  .shot { float:right; width:40mm; margin:0 0 3mm 5mm; border:1px solid var(--gris); border-radius:4px; }
+  .shot-prose { float:right; width:52mm; margin:0 0 3mm 6mm; border:1px solid var(--gris); border-radius:5px; }
 </style>
 </head>
 <body>
@@ -179,6 +206,7 @@
     <li><a href="#c2">La philosophie : mesurer plutôt que deviner</a></li>
     <li><a href="#c3">Le matériel : PrintNC, LinuxCNC &amp; le laser</a></li>
     <li><a href="#c4">Installation</a></li>
+    <li><a href="#c-interface">L'interface : barre d'outils &amp; menu</a></li>
     <li><a href="#c5">Prise en main : votre premier marquage</a></li>
     <li><a href="#c6">Les modes de l'atelier</a>
       <ol>
@@ -296,7 +324,119 @@
   </div>
 </section>
 
-<!-- ================= 5. PRISE EN MAIN ================= -->
+<!-- ================= 5. L'INTERFACE ================= -->
+<section class="chap" id="c-interface">
+  <h2 class="titre"><span class="ttl">L'interface</span><span class="sub">La barre d'outils et le menu « Atelier Laser », bouton par bouton.</span></h2>
+
+  <p class="lead">Une fois LaserAtelier choisi dans le sélecteur d'ateliers, tout tient dans une barre d'outils et un menu du même nom. Voici à quoi ils ressemblent et ce que fait chaque bouton.</p>
+
+  <p>Dès que vous sélectionnez l'atelier <strong>LaserAtelier</strong>, deux choses apparaissent : une <strong>barre d'outils</strong> « Atelier Laser » en haut de FreeCAD, et un <strong>menu</strong> du même nom. Les deux contiennent exactement les mêmes commandes, dans le même ordre, séparées par thème.</p>
+
+  <h3>La barre d'outils</h3>
+  <p>De gauche à droite, les boutons suivent le fil du travail : d'abord la découverte, puis la gravure à plat, la surface 3D, la découpe, l'assemblage, ensuite la calibration, et enfin les réglages tout au bout.</p>
+  <div class="toolbar">
+    <img src="../resources/icons/guide.svg" alt="Guide rapide"><span class="tb-sep"></span>
+    <img src="../resources/icons/hatch.svg" alt="Hachures 2D">
+    <img src="../resources/icons/text.svg" alt="Texte">
+    <img src="../resources/icons/filled.svg" alt="Gravure remplie">
+    <img src="../resources/icons/halftone.svg" alt="Gravure photo"><span class="tb-sep"></span>
+    <img src="../resources/icons/project.svg" alt="Projeter sur 3D">
+    <img src="../resources/icons/curved.svg" alt="Marquage"><span class="tb-sep"></span>
+    <img src="../resources/icons/curved_cut.svg" alt="Découpe courbe">
+    <img src="../resources/icons/flat.svg" alt="Découpe plate"><span class="tb-sep"></span>
+    <img src="../resources/icons/combined.svg" alt="Job combiné">
+    <img src="../resources/icons/combined_from_jobs.svg" alt="Jobs vers combiné"><span class="tb-sep"></span>
+    <img src="../resources/icons/defocus.svg" alt="Calibration défocus">
+    <img src="../resources/icons/offset_test.svg" alt="Offsets X/Y">
+    <img src="../resources/icons/testgrid.svg" alt="Grille de test">
+    <img src="../resources/icons/powerramp.svg" alt="Rampe">
+    <img src="../resources/icons/kerf.svg" alt="Kerf">
+    <img src="../resources/icons/nuancier.svg" alt="Nuancier">
+    <img src="../resources/icons/catalogue.svg" alt="Catalogue"><span class="tb-sep"></span>
+    <img src="../resources/icons/settings.svg" alt="Préférences">
+  </div>
+  <p class="cap">La barre « Atelier Laser » telle qu'elle apparaît en haut de FreeCAD (icônes à taille réelle). Chaque intervalle correspond à un groupe.</p>
+
+  <h3>Le menu</h3>
+  <div class="ui-wrap">
+    <div class="menu">
+      <div class="menu-title">Atelier Laser</div>
+      <div class="mi"><img src="../resources/icons/guide.svg" alt="">Guide rapide</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/hatch.svg" alt="">Hachures 2D (géométrie)</div>
+      <div class="mi"><img src="../resources/icons/text.svg" alt="">Texte (trait simple)</div>
+      <div class="mi"><img src="../resources/icons/filled.svg" alt="">Gravure remplie (noir)</div>
+      <div class="mi"><img src="../resources/icons/halftone.svg" alt="">Gravure photo (trame de points)</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/project.svg" alt="">Projeter sur surface 3D</div>
+      <div class="mi hl"><img src="../resources/icons/curved.svg" alt="">Marquage de motif (plat ou courbe)</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/curved_cut.svg" alt="">Découpe multi-passes sur surface courbée</div>
+      <div class="mi"><img src="../resources/icons/flat.svg" alt="">Découpe multi-passes (matériau plat)</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/combined.svg" alt="">Job combiné (plusieurs opérations)</div>
+      <div class="mi"><img src="../resources/icons/combined_from_jobs.svg" alt="">Jobs sélectionnés → job combiné</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/defocus.svg" alt="">Bande de calibration défocus</div>
+      <div class="mi"><img src="../resources/icons/offset_test.svg" alt="">Test des offsets X/Y du laser</div>
+      <div class="mi"><img src="../resources/icons/testgrid.svg" alt="">Grille de test puissance/vitesse</div>
+      <div class="mi"><img src="../resources/icons/powerramp.svg" alt="">Test rampe puissance/vitesse (lignes)</div>
+      <div class="mi"><img src="../resources/icons/kerf.svg" alt="">Motif de calibration kerf</div>
+      <div class="mi"><img src="../resources/icons/nuancier.svg" alt="">Nuancier matériau</div>
+      <div class="mi"><img src="../resources/icons/catalogue.svg" alt="">Catalogue (planche d'exemples)</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/settings.svg" alt="">Préférences</div>
+    </div>
+    <div class="note">
+      <p>Le menu <strong>Atelier Laser</strong> reprend la barre à l'identique. Chaque trait de séparation marque un <strong>groupe</strong> — c'est la logique de tout l'atelier, du dessin au réglage.</p>
+      <p>Le repère surligné, <em>Marquage de motif</em>, est le mode le plus utilisé au quotidien.</p>
+      <p><strong>Astuce :</strong> survolez un bouton, une infobulle résume ce qu'il fait <em>et</em> ce qu'il attend en sélection (par exemple « sélectionne le motif projeté ET le modèle 3D »).</p>
+    </div>
+  </div>
+
+  <h3>Que fait chaque bouton</h3>
+  <div class="legende">
+    <div class="fam">Découverte</div>
+    <div class="row"><img src="../resources/icons/guide.svg" alt=""><div><span class="nm">Guide rapide</span> — <span class="ds">rappelle en une page l'ordre conseillé des opérations. À ouvrir en cas de doute.</span></div></div>
+
+    <div class="fam">Graver &amp; marquer à plat</div>
+    <div class="row"><img src="../resources/icons/hatch.svg" alt=""><div><span class="nm">Hachures 2D</span> — <span class="ds">prépare un remplissage par hachures (objet), à graver ensuite. Aucun G-code ici.</span></div></div>
+    <div class="row"><img src="../resources/icons/text.svg" alt=""><div><span class="nm">Texte (trait simple)</span> — <span class="ds">écrit un texte « bâton » monotrait, prêt à graver.</span></div></div>
+    <div class="row"><img src="../resources/icons/filled.svg" alt=""><div><span class="nm">Gravure remplie</span> — <span class="ds">noircit une surface fermée (défocus calibré + contour repassé).</span></div></div>
+    <div class="row"><img src="../resources/icons/halftone.svg" alt=""><div><span class="nm">Gravure photo</span> — <span class="ds">reproduit une image en niveaux de gris (cinq tramages).</span></div></div>
+
+    <div class="fam">Sur surface 3D</div>
+    <div class="row"><img src="../resources/icons/project.svg" alt=""><div><span class="nm">Projeter sur surface 3D</span> — <span class="ds">colle un motif 2D sur une surface courbe (préparation).</span></div></div>
+    <div class="row"><img src="../resources/icons/curved.svg" alt=""><div><span class="nm">Marquage de motif</span> — <span class="ds">grave le tracé, à plat ou en suivant une surface. Le cœur de l'atelier.</span></div></div>
+
+    <div class="fam">Découpe</div>
+    <div class="row"><img src="../resources/icons/curved_cut.svg" alt=""><div><span class="nm">Découpe sur surface courbée</span> — <span class="ds">découpe multi-passes qui suit le relief.</span></div></div>
+    <div class="row"><img src="../resources/icons/flat.svg" alt=""><div><span class="nm">Découpe matériau plat</span> — <span class="ds">découpe multi-passes à plat, avec compensation de kerf.</span></div></div>
+
+    <div class="fam">Assemblage</div>
+    <div class="row"><img src="../resources/icons/combined.svg" alt=""><div><span class="nm">Job combiné</span> — <span class="ds">enchaîne plusieurs opérations en un seul fichier, un seul armement.</span></div></div>
+    <div class="row"><img src="../resources/icons/combined_from_jobs.svg" alt=""><div><span class="nm">Jobs → job combiné</span> — <span class="ds">rassemble en un job combiné les jobs déjà sélectionnés dans l'arbre.</span></div></div>
+
+    <div class="fam">Calibration <span style="font-weight:400">(dans l'ordre ★1 → ★4)</span></div>
+    <div class="row"><img src="../resources/icons/defocus.svg" alt=""><div><span class="nm">Bande de calibration défocus</span> — <span class="ds">★1 · mesure le point laser à plusieurs hauteurs.</span></div></div>
+    <div class="row"><img src="../resources/icons/offset_test.svg" alt=""><div><span class="nm">Test des offsets X/Y</span> — <span class="ds">★2 · aligne le laser sur la fraise (valeur pour tool.tbl).</span></div></div>
+    <div class="row"><img src="../resources/icons/testgrid.svg" alt=""><div><span class="nm">Grille de test</span> — <span class="ds">★3 · balaie une matrice puissance/vitesse sur une chute.</span></div></div>
+    <div class="row"><img src="../resources/icons/powerramp.svg" alt=""><div><span class="nm">Rampe puissance/vitesse</span> — <span class="ds">complément de ★3 : des lignes à réglages croissants.</span></div></div>
+    <div class="row"><img src="../resources/icons/kerf.svg" alt=""><div><span class="nm">Motif de calibration kerf</span> — <span class="ds">★4 · mesure le trait de scie de la découpe.</span></div></div>
+    <div class="row"><img src="../resources/icons/nuancier.svg" alt=""><div><span class="nm">Nuancier matériau</span> — <span class="ds">le registre des gris mesurés (pas une étape numérotée).</span></div></div>
+    <div class="row"><img src="../resources/icons/catalogue.svg" alt=""><div><span class="nm">Catalogue</span> — <span class="ds">grave une planche d'exemples réels, une fois calibré.</span></div></div>
+
+    <div class="fam">Réglages</div>
+    <div class="row"><img src="../resources/icons/settings.svg" alt=""><div><span class="nm">Préférences</span> — <span class="ds">machine, profils laser, sauvegarde export/import (voir chapitre dédié).</span></div></div>
+  </div>
+
+  <div class="box astuce">
+    <span class="t">💡 Où sont les boutons « Générer », « Aperçu »… ?</span>
+    <p>Ils ne sont pas dans la barre : ils vivent <em>dans le panneau</em> de chaque mode, en bas. La barre d'outils ne sert qu'à <strong>ouvrir</strong> un mode ; tout le reste se passe dans son panneau (à gauche de FreeCAD).</p>
+  </div>
+</section>
+
+<!-- ================= 6. PRISE EN MAIN ================= -->
 <section class="chap" id="c5">
   <h2 class="titre"><span class="ttl">Prise en main</span><span class="sub">Votre premier marquage, pas à pas.</span></h2>
 
@@ -327,18 +467,20 @@
   <p>Chaque mode ouvre un panneau organisé de haut en bas dans l'ordre où l'on travaille. Les modes de test et de calibration suivent tous la même trame : <strong>① Graver</strong> (les réglages du tir), <strong>② Entrer les mesures</strong> (la donnée relevée, saisie sur place), <strong>③ Photo du résultat</strong> (pour garder une trace).</p>
 
   <!-- 6.1 -->
-  <h3 id="c6-1"><span class="n">6.1</span> Graver &amp; marquer</h3>
+  <h3 id="c6-1"><span class="n">7.1</span> Graver &amp; marquer</h3>
   <div class="groupe">Faire une marque, un texte, une image <span class="em">— sans découper</span></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/curved.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/curved.png" alt="Panneau Marquage de motif">
     <h4>Marquage de motif <span class="meta">(plat ou courbe)</span></h4>
     <p class="quoi">Graver le tracé d'un motif filaire — le cœur de l'atelier.</p>
-    <p>Sur une pièce <strong>plate</strong> : on sélectionne le motif 2D, la gravure se fait à plat. Sur une pièce <strong>courbe</strong> : le motif doit d'abord être posé sur la surface avec le mode <em>Projeter sur surface 3D</em> (§ 6.2) ; on sélectionne ensuite le motif projeté (<code>Hachures_3D</code>) <strong>et</strong> le modèle 3D d'origine <em>ensemble</em>, pour que le relief soit sondé exactement pendant le marquage et que la distance focale reste constante. Sans le modèle 3D, le Z n'est qu'interpolé entre les points projetés.</p>
+    <p>Sur une pièce <strong>plate</strong> : on sélectionne le motif 2D, la gravure se fait à plat. Sur une pièce <strong>courbe</strong> : le motif doit d'abord être posé sur la surface avec le mode <em>Projeter sur surface 3D</em> (§ 7.2) ; on sélectionne ensuite le motif projeté (<code>Hachures_3D</code>) <strong>et</strong> le modèle 3D d'origine <em>ensemble</em>, pour que le relief soit sondé exactement pendant le marquage et que la distance focale reste constante. Sans le modèle 3D, le Z n'est qu'interpolé entre les points projetés.</p>
     <p>Propose cinq styles de trait (plein, tirets, pointillé, vague défocus, point élargi par défocus) — tous suivent le relief — et sait graver l'<strong>axe médian</strong> d'une forme pleine : un « T » gravé par son squelette plutôt que par son contour rempli.</p>
     <p class="meta"><b>Réglages clés :</b> puissance · vitesse · style de trait · suivi de surface (motif projeté + modèle 3D). <b>Fichier :</b> <code>marquage.ngc</code></p>
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/filled.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/filled.png" alt="Panneau Gravure remplie">
     <h4>Gravure remplie (noir)</h4>
     <p class="quoi">Noircir une surface fermée par un remplissage.</p>
     <p>Utilise le <strong>défocus calibré</strong> pour élargir le point et remplir vite, avec un contour repassé net par-dessus. Le remplissage se glisse volontairement <em>sous</em> le contour pour éviter le liseré pâle sur les bords.</p>
@@ -346,6 +488,7 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/hatch.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/hatch.png" alt="Panneau Hachures 2D">
     <h4>Hachures 2D (géométrie)</h4>
     <p class="quoi">Préparer un remplissage par hachures, comme objet.</p>
     <p>Crée dans le document les traits de remplissage (parallèles, croisées) d'une face — une étape de <em>préparation</em> : aucun G-code n'est produit ici, on grave ensuite ces hachures avec le Marquage.</p>
@@ -360,6 +503,7 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/halftone.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/halftone.png" alt="Panneau Gravure photo">
     <h4>Gravure photo (trame de points)</h4>
     <p class="quoi">Reproduire une image en niveaux de gris.</p>
     <p>Cinq tramages : points façon Floyd-Steinberg, points à durée variable, <strong>lignes calibrées</strong> (puissance par pixel via la courbe du nuancier), lignes tramées, et points par diamètre (Z). Une mire compare tous les tramages d'un coup.</p>
@@ -374,10 +518,11 @@
   </div></div>
 
   <!-- 6.2 -->
-  <h3 id="c6-2"><span class="n">6.2</span> Découper &amp; projeter</h3>
+  <h3 id="c6-2"><span class="n">7.2</span> Découper &amp; projeter</h3>
   <div class="groupe">Traverser le matériau <span class="em">— ou habiller une surface 3D</span></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/flat.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/flat.png" alt="Panneau Découpe plate">
     <h4>Découpe multi-passes (matériau plat)</h4>
     <p class="quoi">Découper une pièce à plat, en plusieurs passes.</p>
     <p>Enchaîne les passes à la profondeur voulue avec compensation de <strong>kerf</strong> (le trait de scie mesuré au préalable) pour des cotes justes.</p>
@@ -385,6 +530,7 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/curved_cut.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/curvedcut.png" alt="Panneau Découpe courbe">
     <h4>Découpe multi-passes sur surface courbée</h4>
     <p class="quoi">Découper en suivant le relief d'une surface.</p>
     <p>Comme ci-dessus, mais la hauteur suit une surface de référence. <em>(À ce jour, les attaches ne sont posées qu'à plat.)</em></p>
@@ -392,17 +538,19 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/project.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/project.png" alt="Panneau Projeter sur surface 3D">
     <h4>Projeter sur surface 3D</h4>
     <p class="quoi">Coller un motif 2D sur une surface courbe.</p>
-    <p>Projette un texte ou des hachures sur une sphère, une vague… par projection verticale sur le solide. Étape de <strong>préparation</strong> : produit l'objet <code>Hachures_3D</code> que le Marquage grave ensuite en suivant le relief. C'est le <strong>préalable à toute gravure sur pièce courbe</strong> (§ 6.1).</p>
+    <p>Projette un texte ou des hachures sur une sphère, une vague… par projection verticale sur le solide. Étape de <strong>préparation</strong> : produit l'objet <code>Hachures_3D</code> que le Marquage grave ensuite en suivant le relief. C'est le <strong>préalable à toute gravure sur pièce courbe</strong> (§ 7.1).</p>
     <p class="meta"><b>Sortie :</b> objet « Hachures_3D » (motif + modèle 3D à sélectionner ensemble au marquage)</p>
   </div></div>
 
   <!-- 6.3 -->
-  <h3 id="c6-3"><span class="n">6.3</span> Tester &amp; calibrer</h3>
+  <h3 id="c6-3"><span class="n">7.3</span> Tester &amp; calibrer</h3>
   <div class="groupe">Trouver les bons réglages <span class="em">— et les garder</span></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/testgrid.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/testgrid.png" alt="Panneau Grille de test">
     <h4>Grille de test puissance/vitesse</h4>
     <p class="quoi">Balayer une matrice de réglages sur une chute.</p>
     <p>Grave une grille où puissance et vitesse varient case par case. Un menu « Objectif » propose une recette de départ ; le style de remplissage est réglable. On lit la meilleure case à l'œil.</p>
@@ -410,6 +558,7 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/powerramp.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/powerramp.png" alt="Panneau Rampe puissance">
     <h4>Test rampe puissance/vitesse (lignes)</h4>
     <p class="quoi">Une série de lignes à réglages croissants.</p>
     <p>Plus rapide qu'une grille pour dégrossir un seuil (à partir de quand ça marque, à partir de quand ça traverse).</p>
@@ -417,6 +566,7 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/defocus.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/defocus.png" alt="Panneau Calibration défocus">
     <h4>Bande de calibration défocus</h4>
     <p class="quoi">Mesurer le point laser à plusieurs hauteurs.</p>
     <p>Le pilier du remplissage : grave des repères à différents défocus, que vous mesurez et saisissez. C'est ce qui rend la gravure remplie <em>mesurée</em> plutôt que devinée.</p>
@@ -424,18 +574,21 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/nuancier.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/nuancier.png" alt="Panneau Nuancier">
     <h4>Nuancier matériau</h4>
     <p class="quoi">Le registre des gris mesurés sur un matériau.</p>
     <p>Associe une teinte de gris à un réglage, pour la gravure photo calibrée et les « tons sur mesure ». Pas d'étape de gravure ici : c'est le carnet partagé où l'on note ce qu'on a observé.</p>
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/kerf.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/kerf.png" alt="Panneau Calibration kerf">
     <h4>Motif de calibration kerf</h4>
     <p class="quoi">Mesurer le trait de scie de la découpe.</p>
     <p>Crée un carré (et un tenon+mortaise de validation) à découper avec compensation nulle : <em>kerf = cote dessinée − cote mesurée</em>. La valeur se reporte dans les modes de découpe.</p>
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/offset_test.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/offset.png" alt="Panneau Test des offsets">
     <h4>Test des offsets X/Y du laser</h4>
     <p class="quoi">Aligner le laser sur la broche/fraise.</p>
     <p>Grave un repère (avec la fraise et le laser) dont l'écart des croix donne le décalage X/Y à reporter dans la table d'outils <code>tool.tbl</code> de LinuxCNC.</p>
@@ -443,8 +596,9 @@
   </div></div>
 
   <!-- 6.4 -->
-  <h3 id="c6-4"><span class="n">6.4</span> Le Job combiné</h3>
+  <h3 id="c6-4"><span class="n">7.4</span> Le Job combiné</h3>
   <div class="mode"><img class="ic" src="../resources/icons/combined.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/combined.png" alt="Panneau Job combiné">
     <h4>Job combiné (plusieurs opérations)</h4>
     <p class="quoi">Enchaîner plusieurs opérations en un seul fichier.</p>
     <p>Rassemble marquage, gravure, découpe, grille… en <strong>un seul travail</strong> avec un seul armement du laser au début et un seul désarmement à la fin — transitions plus rapides, et une hauteur de sécurité commune pour ne jamais plonger au mauvais endroit entre deux opérations. Son aperçu de cadrage trace <em>un seul</em> rectangle englobant global. Les modes combinables s'y ajoutent par un bouton, sans ressaisir leurs réglages.</p>
@@ -480,6 +634,7 @@
 <section class="chap" id="c8">
   <h2 class="titre"><span class="ttl">Réglages, profils &amp; sauvegarde</span><span class="sub">Tout ce qui se règle une fois pour toutes.</span></h2>
 
+  <img class="shot-prose" src="manuel_img/settings.png" alt="Panneau Préférences">
   <p>Le panneau <strong>Préférences</strong> centralise les réglages machine. Les plus utiles :</p>
 
   <table class="reglages">
