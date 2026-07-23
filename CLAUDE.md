@@ -223,8 +223,11 @@ dir** (`_WORKBENCH_DIR`, next to the code so they survive deleting the original;
 migrated once from the old `app-data/laser_atelier_photos`); core helpers `photos_dir`/
 `result_photos`/`add_result_photo`/`delete_result_photo` (the last takes an optional filename; None
 clears all) copy/list/forget them (no Qt — the panel paints the thumbnail). `export_all(dest_zip)`
-bundles the config JSON + all photos into a .zip (Settings panel → "Exporter réglages + photos");
-restore by unzipping. User settings are a
+bundles the config JSON + all photos into a .zip and `import_all(src_zip)` restores it (validates
+the JSON + basename-only photo extraction against zip-slip; re-applies settings live). Both are in
+the Settings panel ("Exporter réglages + photos" / "Importer une sauvegarde") — import closes the
+panel afterwards so its now-stale fields can't clobber the freshly-imported config on OK. User
+settings are a
 registry `_USER_SETTINGS` (JSON key → module global → cast → validator); `_apply_settings_config()`
 runs at the **bottom of the module** to override globals (`GCODE_DIR`, `RAPID_FEED_MM_MIN`,
 `TRAVEL_CLEARANCE_MM`, `SPINDLE_SELECT`, nozzle, etc.). Invalid values are warned and the default

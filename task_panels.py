@@ -7910,6 +7910,15 @@ class TaskPanelSettings:
         self.btn_export.clicked.connect(self._on_export_all)
         form.addRow(self.btn_export)
 
+        self.btn_import = QtWidgets.QPushButton("Importer une sauvegarde…")
+        self.btn_import.setToolTip(
+            "Restaure une archive .zip précédemment exportée : REMPLACE tous\n"
+            "les réglages actuels (préréglages, nuancier, calibration, profils\n"
+            "laser…) et rétablit les photos. Pour récupérer après une perte ou\n"
+            "transférer la config sur une autre machine.")
+        self.btn_import.clicked.connect(self._on_import_all)
+        form.addRow(self.btn_import)
+
         _section(form, "Machine / G-code", "sect_options.svg")
         self.edt_spindle = QtWidgets.QLineEdit(settings["spindle_select"])
         self.edt_spindle.setToolTip(
@@ -8191,6 +8200,33 @@ class TaskPanelSettings:
         ok, msg = core.export_all(path)
         (QtWidgets.QMessageBox.information if ok
          else QtWidgets.QMessageBox.critical)(self.form, "Export", msg)
+
+    def _on_import_all(self):
+        """Restaure une sauvegarde .zip (remplace réglages + photos). Ferme le
+        panneau ensuite : ses champs sont devenus obsolètes, cliquer OK
+        ré-écraserait la config tout juste importée."""
+        path, _f = QtWidgets.QFileDialog.getOpenFileName(
+            self.form, "Importer une sauvegarde", os.path.expanduser("~"),
+            "Archive ZIP (*.zip)")
+        if not path:
+            return
+        if QtWidgets.QMessageBox.warning(
+                self.form, "Importer une sauvegarde",
+                "Cela REMPLACE tous les réglages actuels (préréglages, "
+                "nuancier, calibration, profils laser…) et rétablit les photos "
+                "de l'archive. Continuer ?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
+            return
+        ok, msg = core.import_all(path)
+        if not ok:
+            QtWidgets.QMessageBox.critical(self.form, "Import", msg)
+            return
+        QtWidgets.QMessageBox.information(
+            self.form, "Import",
+            msg + "\n\nLe panneau Réglages va se fermer : rouvre-le (ou "
+            "redémarre FreeCAD) pour voir tous les champs à jour.")
+        Gui.Control.closeDialog()
 
     def _on_laser_changed(self, idx):
         lid = self.combo_laser.itemData(idx)

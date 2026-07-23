@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.15.2"
+VERSION = "1.15.3"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -323,6 +323,39 @@ def export_all(dest_path):
         return True, "Sauvegarde créée : réglages + {} photo(s)\n{}".format(nph, dest_path)
     except Exception as exc:
         return False, "Échec de l'export : {}".format(exc)
+
+
+def import_all(src_path):
+    """Restaure une sauvegarde .zip créée par export_all : REMPLACE la config
+    (tous les réglages) et rétablit les photos de l'archive. Destructif pour
+    les réglages ; applique les nouveaux réglages tout de suite. Renvoie
+    (ok, message)."""
+    try:
+        if not zipfile.is_zipfile(src_path):
+            return False, "Ce fichier n'est pas une archive .zip valide."
+        with zipfile.ZipFile(src_path) as z:
+            names = z.namelist()
+            cfg_bytes = None
+            if "laser_atelier_config.json" in names:
+                cfg_bytes = z.read("laser_atelier_config.json")
+                json.loads(cfg_bytes.decode("utf-8"))   # valide AVANT d'écrire
+            pd = photos_dir()
+            nph = 0
+            for n in names:
+                if n.startswith(PHOTOS_DIRNAME + "/") and not n.endswith("/"):
+                    base = os.path.basename(n)           # anti « zip-slip »
+                    if base:
+                        with open(os.path.join(pd, base), "wb") as dst:
+                            dst.write(z.read(n))
+                        nph += 1
+            if cfg_bytes is not None:
+                with open(CONFIG_FILE, "wb") as dst:
+                    dst.write(cfg_bytes)
+                _apply_settings_config()                 # applique tout de suite
+        return True, "Sauvegarde restaurée : réglages{} + {} photo(s).".format(
+            "" if cfg_bytes is not None else " (absents de l'archive)", nph)
+    except Exception as exc:
+        return False, "Échec de l'import : {}".format(exc)
 
 
 def _photo_safe(cle):
