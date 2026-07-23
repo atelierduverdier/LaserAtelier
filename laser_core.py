@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.15.3"
+VERSION = "1.16.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1011,6 +1011,271 @@ def chain_edges(edges, distance=DISCRETIZE_DISTANCE, tolerance=CHAIN_TOLERANCE):
         chains.append(chain)
 
     return chains
+
+
+# ==========================================================================
+# AXE MÉDIAN (SQUELETTE) -- graver le CENTRE d'un glyphe plein
+# ==========================================================================
+# Transforme une forme FERMÉE (ex. la lettre « T ») en son axe médian, gravé
+# ensuite comme des polylignes avec un point élargi dimensionné à la largeur
+# du trait : le glyphe est rendu en quelques passes au lieu de contour +
+# remplissage. Chaîne : rastérisation even-odd -> amincissement Zhang-Suen
+# -> tracé de polylignes (barbes/amas de jonction élagués) -> fusion des
+# branches colinéaires aux jonctions. numpy requis (livré avec FreeCAD ;
+# l'entrée publique `centerline_edges` échoue proprement s'il manque).
+
+def _cl_rasterize(segs, W, H):
+    """Masque plein (règle pair-impair) d'un jeu de segments fermés, en px."""
+    import numpy as np
+    mask = np.zeros((H, W), bool)
+    for y in range(H):
+        yc = y + 0.5
+        xs = []
+        for (x0, y0), (x1, y1) in segs:
+            if (y0 <= yc < y1) or (y1 <= yc < y0):
+                xs.append(x0 + (x1 - x0) * (yc - y0) / (y1 - y0))
+        xs.sort()
+        for k in range(0, len(xs) - 1, 2):
+            xa = int(math.ceil(xs[k] - 0.5))
+            xb = int(math.floor(xs[k + 1] - 0.5))
+            if xb >= xa:
+                mask[y, max(0, xa):min(W, xb + 1)] = True
+    return mask
+
+
+def _cl_thin(mask):
+    """Amincissement Zhang-Suen -> squelette d'un pixel d'épaisseur."""
+    import numpy as np
+    img = mask.astype(np.uint8)
+    while True:
+        removed = 0
+        for step in (0, 1):
+            N = np.roll(img, 1, 0);  S = np.roll(img, -1, 0)
+            Wc = np.roll(img, 1, 1); E = np.roll(img, -1, 1)
+            NE = np.roll(N, -1, 1);  NW = np.roll(N, 1, 1)
+            SE = np.roll(S, -1, 1);  SW = np.roll(S, 1, 1)
+            P2, P3, P4, P5, P6, P7, P8, P9 = N, NE, E, SE, S, SW, Wc, NW
+            B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
+            seq = [P2, P3, P4, P5, P6, P7, P8, P9, P2]
+            A = sum(((seq[i] == 0) & (seq[i + 1] == 1)).astype(np.uint8)
+                    for i in range(8))
+            if step == 0:
+                c1, c2 = (P2 * P4 * P6 == 0), (P4 * P6 * P8 == 0)
+            else:
+                c1, c2 = (P2 * P4 * P8 == 0), (P2 * P6 * P8 == 0)
+            cond = (img == 1) & (B >= 2) & (B <= 6) & (A == 1) & c1 & c2
+            if cond.any():
+                img[cond] = 0
+                removed += int(cond.sum())
+        if removed == 0:
+            break
+    return img.astype(bool)
+
+
+def _cl_trace(skel, prune_len):
+    """Squelette (bool) -> polylignes en pixels (x, y) ; barbes et amas de
+    jonction courts (< prune_len) élagués."""
+    import numpy as np
+    pts = set(map(tuple, np.argwhere(skel)))              # (r, c)
+
+    def nbrs(p):
+        r, c = p
+        return [(r + dr, c + dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1)
+                if (dr or dc) and (r + dr, c + dc) in pts]
+
+    deg = {p: len(nbrs(p)) for p in pts}
+    nodes = {p for p in pts if deg[p] != 2}
+    visited = set()
+    polylines = []
+
+    def walk(a, b):
+        path = [a, b]; prev, cur = a, b
+        while deg[cur] == 2 and cur not in nodes:
+            nxt = [n for n in nbrs(cur) if n != prev]
+            if not nxt:
+                break
+            prev, cur = cur, nxt[0]; path.append(cur)
+        return path
+
+    for node in nodes:
+        for n in nbrs(node):
+            if (node, n) in visited:
+                continue
+            path = walk(node, n)
+            for a, b in zip(path, path[1:]):
+                visited.add((a, b)); visited.add((b, a))
+            polylines.append(path)
+
+    remaining = pts - {p for pl in polylines for p in pl}   # boucles pures
+    while remaining:
+        start = next(iter(remaining)); nb = nbrs(start)
+        if not nb:
+            remaining.discard(start); continue
+        path = walk(start, nb[0])
+        for p in path:
+            remaining.discard(p)
+        polylines.append(path)
+
+    def plen(pl):
+        return sum(math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1])
+                   for i in range(len(pl) - 1))
+
+    out = []
+    for pl in polylines:
+        if len(pl) < 2:
+            continue
+        at_junction = deg.get(pl[0], 0) >= 3 or deg.get(pl[-1], 0) >= 3
+        if plen(pl) < prune_len and at_junction:
+            continue
+        out.append([(c, r) for (r, c) in pl])              # -> (x, y)
+    return out
+
+
+def _cl_merge(polys, snap, angle_tol=30.0):
+    """Fusionne aux jonctions les deux branches les plus colinéaires (T ->
+    barre + jambe). Regroupe d'abord les extrémités proches (< snap : le tracé
+    laisse des bouts légèrement disjoints autour d'une jonction)."""
+    polys = [list(p) for p in polys if len(p) >= 2]
+
+    def tangent(pl, end):
+        k = min(len(pl) - 1, 8)
+        ax, ay = pl[0] if end == 0 else pl[-1]
+        bx, by = pl[k] if end == 0 else pl[-1 - k]
+        dx, dy = bx - ax, by - ay
+        L = math.hypot(dx, dy) or 1e-9
+        return (dx / L, dy / L)
+
+    thr = -math.cos(math.radians(angle_tol))
+    changed = True
+    while changed:
+        changed = False
+        eps = []
+        for i, pl in enumerate(polys):
+            if pl is not None:
+                eps.append((i, 0, tuple(pl[0]))); eps.append((i, -1, tuple(pl[-1])))
+        assigned = [-1] * len(eps); clusters = []
+        for a in range(len(eps)):
+            if assigned[a] >= 0:
+                continue
+            cid = len(clusters); clusters.append([a]); assigned[a] = cid
+            for b in range(a + 1, len(eps)):
+                if assigned[b] < 0 and math.hypot(
+                        eps[a][2][0] - eps[b][2][0],
+                        eps[a][2][1] - eps[b][2][1]) <= snap:
+                    assigned[b] = cid; clusters[cid].append(b)
+        for cl in clusters:
+            inc = [(eps[k][0], eps[k][1]) for k in cl]
+            if len({i for i, _ in inc}) < 2:
+                continue
+            tans = [tangent(polys[i], e) for (i, e) in inc]
+            best, bestdot = None, thr
+            for x in range(len(inc)):
+                for y in range(x + 1, len(inc)):
+                    if inc[x][0] == inc[y][0]:
+                        continue
+                    d = tans[x][0] * tans[y][0] + tans[x][1] * tans[y][1]
+                    if d < bestdot:
+                        bestdot, best = d, (x, y)
+            if best is None:
+                continue
+            (ia, ea), (ib, eb) = inc[best[0]], inc[best[1]]
+            A = polys[ia][::-1] if ea == 0 else polys[ia][:]
+            Bb = polys[ib][::-1] if eb == -1 else polys[ib][:]
+            jx = (A[-1][0] + Bb[0][0]) / 2.0; jy = (A[-1][1] + Bb[0][1]) / 2.0
+            A[-1] = (jx, jy); Bb[0] = (jx, jy)
+            polys[ia] = A + Bb[1:]; polys[ib] = None
+            changed = True; break
+    return [p for p in polys if p]
+
+
+def _cl_rdp(pts, tol):
+    """Simplification Douglas-Peucker d'une polyligne (x, y)."""
+    if len(pts) < 3:
+        return pts
+    x0, y0 = pts[0]; x1, y1 = pts[-1]
+    dx, dy = x1 - x0, y1 - y0
+    L = math.hypot(dx, dy) or 1e-9
+    dmax, idx = 0.0, 0
+    for i in range(1, len(pts) - 1):
+        d = abs((pts[i][0] - x0) * dy - (pts[i][1] - y0) * dx) / L
+        if d > dmax:
+            dmax, idx = d, i
+    if dmax > tol:
+        return _cl_rdp(pts[:idx + 1], tol)[:-1] + _cl_rdp(pts[idx:], tol)
+    return [pts[0], pts[-1]]
+
+
+def _centerline_polylines(loops_xy, px_per_mm):
+    """Coeur numpy : boucles fermées (x, y en mm) -> (polylignes mm, largeur
+    de trait mm)."""
+    xs = [p[0] for lp in loops_xy for p in lp]
+    ys = [p[1] for lp in loops_xy for p in lp]
+    if not xs:
+        return [], 0.0
+    minx, miny = min(xs), min(ys)
+    pad = 3
+    W = int(math.ceil((max(xs) - minx) * px_per_mm)) + 2 * pad + 1
+    H = int(math.ceil((max(ys) - miny) * px_per_mm)) + 2 * pad + 1
+    segs = []
+    for lp in loops_xy:
+        px = [((x - minx) * px_per_mm + pad, (y - miny) * px_per_mm + pad)
+              for x, y in lp]
+        if px[0] != px[-1]:
+            px.append(px[0])
+        segs += [(px[i], px[i + 1]) for i in range(len(px) - 1)]
+    mask = _cl_rasterize(segs, W, H)
+    if not mask.any():
+        return [], 0.0
+    skel = _cl_thin(mask)
+    npix = int(skel.sum())
+    if npix == 0:
+        return [], 0.0
+    stroke = (float(mask.sum()) / px_per_mm ** 2) / (npix / px_per_mm)
+    polys_px = _cl_trace(skel, prune_len=0.9 * stroke * px_per_mm)
+    polys_mm = [[((x - pad) / px_per_mm + minx, (y - pad) / px_per_mm + miny)
+                 for x, y in pl] for pl in polys_px]
+    polys_mm = _cl_merge(polys_mm, snap=0.6 * stroke)
+    # simplification : ~1/30 de la largeur de trait (invisible à la gravure),
+    # bornée -- lisse aussi le petit zigzag laissé aux jonctions fusionnées.
+    tol = min(0.25, max(0.08, stroke / 30.0))
+    out = []
+    for pl in polys_mm:
+        try:
+            out.append(_cl_rdp(pl, tol))
+        except RecursionError:
+            out.append(pl)
+    return out, stroke
+
+
+def centerline_edges(edges, px_per_mm=None):
+    """Axe médian d'une/des forme(s) FERMÉE(s) décrite(s) par `edges` (le
+    contour d'un glyphe). Renvoie (arêtes Part de l'axe, largeur_trait_mm) ;
+    ([], 0.0) si impossible (numpy absent, aucune boucle fermée...)."""
+    try:
+        import numpy  # noqa: F401  (dépendance vérifiée avant de calculer)
+    except ImportError:
+        FreeCAD.Console.PrintError(
+            "Axe médian : numpy est requis (normalement livré avec FreeCAD).\n")
+        return [], 0.0
+    loops = [c for c in chain_edges(edges) if len(c) >= 4]
+    if not loops:
+        return [], 0.0
+    zs = [p.z for c in loops for p in c]
+    z0 = sum(zs) / len(zs)
+    loops_xy = [[(p.x, p.y) for p in c] for c in loops]
+    if px_per_mm is None:
+        xs = [x for lp in loops_xy for x, _ in lp]
+        ys = [y for lp in loops_xy for _, y in lp]
+        span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+        px_per_mm = max(4.0, min(15.0, 700.0 / span))   # borne la grille
+    polys, stroke = _centerline_polylines(loops_xy, px_per_mm)
+    out = []
+    for pl in polys:
+        vs = [FreeCAD.Vector(x, y, z0) for x, y in pl]
+        for i in range(len(vs) - 1):
+            if vs[i].distanceToPoint(vs[i + 1]) > 1e-6:
+                out.append(Part.LineSegment(vs[i], vs[i + 1]).toShape())
+    return out, stroke
 
 
 # ==========================================================================

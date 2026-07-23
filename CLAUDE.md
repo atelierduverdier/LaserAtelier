@@ -76,7 +76,11 @@ Five modules, cleanly layered — keep the layering:
   Organized into banner-commented sections, one per mode. This is the layer you unit-test headless.
   Notable shared sections beyond the per-mode generators: STYLES DE TRAIT (curvilinear helpers
   `_chain_cumlen`/`slice_chain`/`dash_chain`/`dot_positions`/`wave_resample`, used by stroke styles
-  AND cutting tabs), fluence (`line_fluence`/`power_for_line_fluence`), the measured-tones nuancier
+  AND cutting tabs), the AXE MÉDIAN / centerline extractor (`centerline_edges(edges)` → skeleton
+  edges + stroke width: even-odd rasterise → Zhang-Suen thinning → polyline tracing → spur prune →
+  collinear-branch merge; numpy-only, lazily imported & guarded; Marquage's "Graver l'axe médian"
+  checkbox uses it to engrave a filled glyph's skeleton with the defocused fat spot instead of
+  contour+fill), fluence (`line_fluence`/`power_for_line_fluence`), the measured-tones nuancier
   (`load_shades`/`shade_for_darkness`), factory presets (`_FACTORY_PRESETS`/`all_presets`), and
   centralized machine settings (`Z_WORK_MM`, `TRANSIT_MARGIN_MM`, `SPOT_FOCUS_MM`… via
   `_USER_SETTINGS`; panels read these instead of exposing their own Z fields — cutting modes keep

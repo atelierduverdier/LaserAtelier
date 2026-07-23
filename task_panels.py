@@ -5722,7 +5722,10 @@ class TaskPanelTestGrid:
 class TaskPanelCurved:
     def __init__(self, selection):
         self.selection = selection
-        self._edges, self._reference_shape = self._get_edges()
+        # _source_edges = la sélection brute (le contour) ; _edges = ce qu'on
+        # grave réellement (le contour, ou son axe médian si la case est cochée).
+        self._source_edges, self._reference_shape = self._get_edges()
+        self._edges = self._source_edges
         # Sonde Z gardée pour toute la durée de vie du panneau : la surface
         # de référence ne change pas pendant que le panneau est ouvert, donc
         # les raycasts d'un premier calcul (ouverture, aperçu durée...)
@@ -5881,6 +5884,24 @@ class TaskPanelCurved:
         form.addRow("Avance (Feed) :", self.spn_feed)
         self.spn_surface_offset = _make_surface_offset_row(form)
 
+
+        _section(form, "Axe médian (squelette)", "sect_contour.svg")
+        self.chk_centerline = QtWidgets.QCheckBox(
+            "Graver l'axe médian au lieu du contour")
+        self.chk_centerline.setToolTip(
+            "Au lieu de suivre le CONTOUR de la forme, calcule son AXE MÉDIAN\n"
+            "(squelette) et le grave avec un point élargi dimensionné à la\n"
+            "largeur du trait : un glyphe plein (ex. « T ») est rendu en\n"
+            "quelques passes au lieu de contour + remplissage.\n"
+            "Sélectionne une forme FERMÉE (contour d'un glyphe, tracé fermé).\n"
+            "Cocher passe automatiquement en style « Défocus (point élargi) »\n"
+            "et règle la largeur de point sur la largeur mesurée.")
+        self.chk_centerline.toggled.connect(self._on_centerline_toggled)
+        form.addRow(self.chk_centerline)
+        form.addRow(_WrapLabel(
+            "Idéal pour les formes à largeur régulière (lettres bâton, "
+            "pochoirs, logos simples). L'axe est approché : de petites barbes "
+            "aux angles sont élaguées automatiquement."))
 
         _section(form, "Style de trait", "sect_options.svg")
         self.combo_style = QtWidgets.QComboBox()
@@ -6154,6 +6175,38 @@ class TaskPanelCurved:
         edges = core.get_all_edges_from_selection(edge_sel)
         return edges, reference_shape
 
+    def _apply_centerline(self, suggest):
+        """(Re)calcule les arêtes à graver depuis la sélection : l'axe médian
+        si la case est cochée, sinon le contour tel quel. `suggest` (coche
+        manuelle) règle aussi le style et la largeur de point conseillés."""
+        if not self.chk_centerline.isChecked():
+            self._edges = self._source_edges
+            return
+        skel, stroke = core.centerline_edges(self._source_edges)
+        if not skel:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Axe médian",
+                "Aucun axe médian trouvé. Sélectionne une forme FERMÉE (le "
+                "contour d'un glyphe, un tracé fermé) — pas un trait déjà "
+                "ouvert.")
+            self.chk_centerline.blockSignals(True)
+            self.chk_centerline.setChecked(False)
+            self.chk_centerline.blockSignals(False)
+            self._edges = self._source_edges
+            return
+        self._edges = skel
+        if suggest:
+            self.combo_style.setCurrentIndex(4)          # Défocus (point élargi)
+            self.spn_spot_width.setValue(round(stroke, 2))
+            self._update_style_ui()
+        FreeCAD.Console.PrintMessage(
+            "Axe médian : {} segment(s), largeur de trait ~{:.2f} mm.\n".format(
+                len(skel), stroke))
+
+    def _on_centerline_toggled(self, _on):
+        self._apply_centerline(suggest=True)
+        self._update_duration_preview()
+
     def _on_style_sampler(self):
         sk = self._style_kwargs()["style_params"]
         gcode = core.generate_gcode_style_sampler(
@@ -6170,18 +6223,20 @@ class TaskPanelCurved:
         """Reprend la sélection courante (vue 3D / arbre) : le panneau ne la
         capture qu'à l'ouverture, or on sélectionne souvent après coup."""
         self.selection = Gui.Selection.getSelectionEx()
-        self._edges, self._reference_shape = self._get_edges()
+        self._source_edges, self._reference_shape = self._get_edges()
         self._probe = (core.make_ray_probe(self._reference_shape)
                        if self._reference_shape is not None else None)
-        if not self._edges:
+        if not self._source_edges:
+            self._edges = self._source_edges
             QtWidgets.QMessageBox.warning(
                 self.form, "Sélection",
                 "Aucun segment dans la sélection courante. Sélectionne le "
                 "motif (ex. l'objet Hachures) dans la vue ou l'arbre, puis "
                 "reclique ce bouton.")
         else:
+            self._apply_centerline(suggest=False)   # ré-applique l'axe si coché
             FreeCAD.Console.PrintMessage(
-                "Sélection reprise : {} segment(s).\n".format(len(self._edges)))
+                "Sélection reprise : {} segment(s).\n".format(len(self._source_edges)))
         self._update_duration_preview()
 
     def _on_custom_shade(self):
