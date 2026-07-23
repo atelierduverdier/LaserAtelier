@@ -83,12 +83,11 @@
   .toc a::after { content: leader('. ') target-counter(attr(href), page); color: var(--gris-txt); font-weight: 400; }
 
   /* ===================== Sections ===================== */
-  section.chap { counter-increment: chap; margin-top: 13mm; }
-  section.chap:first-of-type { margin-top: 0; }
+  section.chap { break-before: page; counter-increment: chap; }
   h2.titre {
     display: flex; flex-wrap: wrap; align-items: center;
     background: linear-gradient(105deg, #ff8a00 0%, #ffa22f 100%);
-    border-radius: 9px; padding: 4.5mm 6mm; margin: 0 0 7mm; line-height: 1.12;
+    border-radius: 9px; padding: 4mm 6mm; margin: 0 0 5mm; line-height: 1.12;
     break-inside: avoid; break-after: avoid;
   }
   h2.titre::before {
@@ -104,7 +103,7 @@
     flex: 1 0 100%; font-weight: 400; font-size: 12pt; color: rgba(255,255,255,.94);
     font-family: "Liberation Serif", serif; font-style: italic; margin: 2.5mm 0 0;
   }
-  h3 { font-size: 14pt; color: var(--ardoise); margin: 7mm 0 2mm; break-after: avoid; }
+  h3 { font-size: 14pt; color: var(--ardoise); margin: 5mm 0 2mm; break-after: avoid; }
   h3 .n { color: var(--orange); }
   h4 { font-size: 11.5pt; color: var(--ardoise); margin: 4mm 0 1mm; break-after: avoid; }
   body { counter-reset: chap; }
@@ -116,7 +115,7 @@
   .lead { font-size: 12.5pt; color: var(--ardoise-clair); font-style: italic; border-left: 3px solid var(--orange); padding-left: 5mm; margin: 0 0 7mm; }
 
   /* ===================== Encadrés ===================== */
-  .box { border-radius: 6px; padding: 4mm 5mm 3mm; margin: 5mm 0; break-inside: avoid; font-size: 10.5pt; }
+  .box { border-radius: 6px; padding: 3mm 5mm 2.5mm; margin: 4mm 0; break-inside: avoid; font-size: 10.5pt; }
   .box .t { font-family:"DejaVu Sans",sans-serif; font-weight:700; font-size: 9.5pt; letter-spacing:.03em; text-transform: uppercase; display:block; margin-bottom: 1.5mm; }
   .box p:last-child { margin-bottom: 0; }
   .astuce  { background: var(--orange-pale); border: 1px solid #f4d9ad; }
@@ -140,7 +139,7 @@
   .groupe .em { color: var(--orange-clair); }
 
   table.reglages { width: 100%; border-collapse: collapse; margin: 4mm 0; font-size: 10pt; break-inside: avoid; }
-  table.reglages th, table.reglages td { text-align: left; padding: 2mm 3mm; border-bottom: 1px solid var(--gris); vertical-align: top; }
+  table.reglages th, table.reglages td { text-align: left; padding: 1.4mm 3mm; border-bottom: 1px solid var(--gris); vertical-align: top; }
   table.reglages th { font-family:"DejaVu Sans",sans-serif; background: var(--gris); color: var(--ardoise); font-size: 9pt; text-transform: uppercase; letter-spacing:.03em; }
   table.reglages td:first-child { font-family:"DejaVu Sans Mono",monospace; color: #1c2b3a; white-space: nowrap; }
 
@@ -184,7 +183,7 @@
 
   /* screenshot de panneau, flottant dans une carte de mode / prose */
   .shot { float:right; width:40mm; margin:0 0 3mm 5mm; border:1px solid var(--gris); border-radius:4px; }
-  .shot-prose { float:right; width:46mm; margin:0 0 3mm 6mm; border:1px solid var(--gris); border-radius:5px; }
+  .shot-prose { float:right; width:40mm; margin:0 0 3mm 6mm; border:1px solid var(--gris); border-radius:5px; }
 </style>
 </head>
 <body>
