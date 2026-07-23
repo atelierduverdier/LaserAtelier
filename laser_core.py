@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.14.1"
+VERSION = "1.15.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -251,6 +251,87 @@ def save_config(data):
             json.dump(data, f)
     except Exception as exc:
         FreeCAD.Console.PrintWarning("Impossible de sauvegarder la config : {}\n".format(exc))
+
+
+# --------------------------------------------------------------------------
+# Photos de résultats (test / calibration)
+# --------------------------------------------------------------------------
+# On garde UNE photo de référence par « clé » (mode + éventuel matériau, ex.
+# « testgrid:MDF ») pour comparer le rendu au réel plus tard. Les fichiers
+# vivent dans un sous-dossier de l'app-data ; la config ne stocke que le nom
+# de fichier relatif, sous le bloc « photos ». Pas de Qt ici : la vignette
+# est peinte dans le panneau -- core se contente de copier/retrouver/oublier
+# le fichier.
+PHOTOS_DIRNAME = "laser_atelier_photos"
+
+
+def photos_dir():
+    """Dossier des photos de résultats (créé au besoin)."""
+    d = os.path.join(FreeCAD.getUserAppDataDir(), PHOTOS_DIRNAME)
+    try:
+        os.makedirs(d, exist_ok=True)
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning("Dossier photos indisponible ({}).\n".format(exc))
+    return d
+
+
+def _photo_filename(cle, ext):
+    """Nom de fichier stable et sûr dérivé de la clé (ex. « testgrid:MDF »
+    -> « testgrid_MDF.jpg ») : tout caractère non alphanumérique devient _."""
+    safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in cle) or "photo"
+    return safe + (ext if ext.startswith(".") else "." + ext)
+
+
+def result_photo_path(cle):
+    """Chemin absolu de la photo mémorisée pour `cle`, ou None si aucune."""
+    rel = (load_config().get("photos") or {}).get(cle)
+    if not rel:
+        return None
+    p = os.path.join(photos_dir(), rel)
+    return p if os.path.isfile(p) else None
+
+
+def save_result_photo(cle, source_path):
+    """Copie `source_path` dans le dossier photos et l'associe à `cle`
+    (remplace toute photo précédente de cette clé). Renvoie le chemin absolu
+    stocké, ou None en cas d'échec."""
+    ext = os.path.splitext(source_path)[1].lower() or ".jpg"
+    dest_rel = _photo_filename(cle, ext)
+    dest_abs = os.path.join(photos_dir(), dest_rel)
+    try:
+        with open(source_path, "rb") as src:
+            data = src.read()
+        # oublie un éventuel ancien fichier d'extension différente
+        old = (load_config().get("photos") or {}).get(cle)
+        if old and old != dest_rel:
+            try:
+                os.remove(os.path.join(photos_dir(), old))
+            except OSError:
+                pass
+        with open(dest_abs, "wb") as dst:
+            dst.write(data)
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning("Photo non enregistrée ({}).\n".format(exc))
+        return None
+    cfg = load_config()
+    cfg.setdefault("photos", {})[cle] = dest_rel
+    save_config(cfg)
+    return dest_abs
+
+
+def delete_result_photo(cle):
+    """Oublie la photo de `cle` (supprime le fichier + l'entrée config)."""
+    cfg = load_config()
+    photos = cfg.get("photos") or {}
+    rel = photos.pop(cle, None)
+    if rel:
+        try:
+            os.remove(os.path.join(photos_dir(), rel))
+        except OSError:
+            pass
+        cfg["photos"] = photos
+        save_config(cfg)
+
 
 # ==========================================================================
 # CONFIGURATION COMMUNE (les deux modes)

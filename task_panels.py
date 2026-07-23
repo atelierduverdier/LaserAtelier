@@ -585,6 +585,83 @@ def _show_image_dialog(img, title):
     dlg.exec()
 
 
+def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
+    """Section réutilisable « Photo du résultat » pour les modes de test :
+    une vignette cliquable (agrandissement) + boutons Ajouter/Remplacer et
+    Oublier. `cle_getter()` renvoie la clé courante (ex. « testgrid:MDF »)
+    servant à ranger/retrouver la photo. `titre` permet de numéroter la
+    section selon le flux du panneau (ex. « ③ Photo du résultat »). Renvoie
+    {"reload": fn} : l'appelant appelle reload() en fin d'__init__ et à chaque
+    changement de matériau."""
+    _section(form, titre, "sect_photo.svg")
+    form.addRow(_WrapLabel(
+        "Garde une photo de la pièce gravée + mesurée, pour comparer au réel "
+        "plus tard. Une photo par test (par matériau le cas échéant). Clique "
+        "la vignette pour l'agrandir."))
+
+    lbl = QtWidgets.QLabel()
+    lbl.setAlignment(QtCore.Qt.AlignCenter)
+    lbl.setMinimumHeight(150)
+    lbl.setFrameShape(QtWidgets.QFrame.StyledPanel)
+    lbl.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+    lbl.setToolTip("Clique pour agrandir (si une photo est mémorisée).")
+    form.addRow(lbl)
+
+    btn_add = QtWidgets.QPushButton("Ajouter / remplacer une photo…")
+    btn_add.setToolTip("Choisis une photo (JPG/PNG…) du résultat réel : elle "
+                       "est copiée dans le dossier de l'atelier et rattachée "
+                       "à ce test/matériau.")
+    form.addRow(btn_add)
+    btn_del = QtWidgets.QPushButton("Oublier la photo")
+    form.addRow(btn_del)
+
+    state = {"path": None}
+
+    def reload():
+        cle = (cle_getter() or "").strip()
+        path = core.result_photo_path(cle) if cle else None
+        state["path"] = path
+        pm = QtGui.QPixmap(path) if path else QtGui.QPixmap()
+        if path and not pm.isNull():
+            lbl.setPixmap(pm.scaled(320, 180, QtCore.Qt.KeepAspectRatio,
+                                    QtCore.Qt.SmoothTransformation))
+            lbl.setText("")
+            btn_del.setEnabled(True)
+        else:
+            lbl.setPixmap(QtGui.QPixmap())
+            lbl.setText("— aucune photo —")
+            btn_del.setEnabled(False)
+
+    def _on_add():
+        cle = (cle_getter() or "").strip()
+        if not cle:
+            QtWidgets.QMessageBox.warning(
+                None, "Photo", "Indique d'abord le matériau/test concerné.")
+            return
+        path, _f = QtWidgets.QFileDialog.getOpenFileName(
+            None, "Choisir une photo du résultat", "",
+            "Images (*.jpg *.jpeg *.png *.bmp *.webp)")
+        if path and core.save_result_photo(cle, path):
+            reload()
+
+    def _on_del():
+        cle = (cle_getter() or "").strip()
+        if cle:
+            core.delete_result_photo(cle)
+            reload()
+
+    def _on_click(_ev):
+        if state["path"]:
+            img = QtGui.QImage(state["path"])
+            if not img.isNull():
+                _show_image_dialog(img, "Photo du résultat")
+    lbl.mousePressEvent = _on_click
+
+    btn_add.clicked.connect(_on_add)
+    btn_del.clicked.connect(_on_del)
+    return {"reload": reload}
+
+
 def _strokes_from_operation(op):
     """Traits (points, largeur_mm, teinte0..1) d'une opération de job
     combiné, pour l'aperçu photo. Gravure (filled/curved) peinte réaliste ;
@@ -1285,6 +1362,7 @@ class TaskPanelNuancier:
             "et le «&nbsp;ton sur mesure&nbsp;» (ton mesuré le plus proche).",
         ])
 
+        _section(form, "Tons mesurés (saisie)", "sect_measure.svg", ouvert=True)
         self.combo_mat = QtWidgets.QComboBox()
         self.combo_mat.setEditable(True)
         self.combo_mat.setToolTip(
@@ -1310,12 +1388,18 @@ class TaskPanelNuancier:
         btn_del.clicked.connect(self._on_del_row)
         form.addRow(btn_del)
 
+        self._photo = _make_photo_section(
+            form, lambda: "nuancier:" + self.combo_mat.currentText().strip(),
+            titre="Photo du résultat")
+
         self._reload_materials()
-        self.combo_mat.activated.connect(lambda _i: self._load_material())
+        self.combo_mat.activated.connect(
+            lambda _i: (self._load_material(), self._photo["reload"]()))
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Nuancier matériau")
         self.form.setWindowIcon(_icon("nuancier.svg"))
+        self._photo["reload"]()
 
     def _reload_materials(self):
         current = self.combo_mat.currentText()
@@ -2780,6 +2864,7 @@ class TaskPanelKerf:
             "serré pour coller, glissant pour du démontable.",
         ])
 
+        _section(form, "① Graver le test", "sect_contour.svg", ouvert=True)
         self.combo_test = QtWidgets.QComboBox()
         self.combo_test.addItems(["Carré (mesure du kerf)",
                                   "Tenon + mortaise (ajustement)"])
@@ -2878,9 +2963,47 @@ class TaskPanelKerf:
                              "clr_step": self.spn_clr_step}
         self._presets = _PresetController(form, inner, "kerf", lambda: self._last_fields)
 
+        self._build_kerf_measures(form)
+        self._photo = _make_photo_section(form, lambda: "kerf",
+                                          titre="③ Photo du résultat")
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Calibration kerf")
         self.form.setWindowIcon(_icon("kerf.svg"))
+        self._photo["reload"]()
+
+    def _build_kerf_measures(self, form):
+        """Section ② : petit calcul de kerf inline. On grave le carré
+        (Compensation = 0), on mesure la pièce, kerf = dessiné − mesuré."""
+        _section(form, "② Entrer les mesures (kerf)", "sect_measure.svg")
+        form.addRow(_WrapLabel(
+            "Après avoir découpé le CARRÉ (Compensation de kerf = 0), mesure "
+            "la pièce au pied à coulisse. Le kerf est calculé ici : reporte-le "
+            "dans « Compensation de kerf » des modes de découpe."))
+        self.spn_measured = QtWidgets.QDoubleSpinBox()
+        self.spn_measured.setRange(0.0, 200.0)
+        self.spn_measured.setDecimals(2)
+        self.spn_measured.setSuffix(" mm")
+        self.spn_measured.setSpecialValueText("—")
+        self.spn_measured.setToolTip(
+            "Côté du carré RÉELLEMENT obtenu, mesuré au pied à coulisse.")
+        form.addRow("Taille mesurée :", self.spn_measured)
+        self.lbl_kerf = _WrapLabel("Kerf = — (saisis la taille mesurée)")
+        form.addRow(self.lbl_kerf)
+        self.spn_measured.valueChanged.connect(self._update_kerf)
+        self.spn_size.valueChanged.connect(self._update_kerf)
+        self._update_kerf()
+
+    def _update_kerf(self):
+        drawn = self.spn_size.value()
+        meas = self.spn_measured.value()
+        if meas <= 0:
+            self.lbl_kerf.setText("Kerf = — (saisis la taille mesurée)")
+            return
+        self.lbl_kerf.setText(
+            "<b>Kerf = {:.2f} mm</b> (dessiné {:.1f} − mesuré {:.2f}) — "
+            "reporte-le dans « Compensation de kerf ».".format(
+                drawn - meas, drawn, meas))
 
     def _sync_mode(self):
         fit = self.combo_test.currentIndex() == 1
@@ -2967,7 +3090,7 @@ class TaskPanelDefocusCalibration:
 
         self._presets = _PresetController(form, inner, "defocus_calib", lambda: self._last_fields)
 
-        _section(form, "Balayage en hauteur (Z)", "sect_zheight.svg")
+        _section(form, "① Graver — balayage en hauteur (Z)", "sect_zheight.svg", ouvert=True)
         self.spn_zstart = QtWidgets.QDoubleSpinBox()
         self.spn_zstart.setRange(-50, 200)
         self.spn_zstart.setDecimals(2)
@@ -3191,12 +3314,17 @@ class TaskPanelDefocusCalibration:
         # Un préréglage chargé rafraîchit la plage affichée et la durée.
         self._presets.on_loaded = lambda: (_update_range(), self._update_duration_preview())
 
+        self._build_spot_measures(form)
+        self._photo = _make_photo_section(form, lambda: "defocus",
+                                          titre="③ Photo du résultat")
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Bande de calibration défocus")
         self.form.setWindowIcon(_icon("defocus.svg"))
 
         _update_range()
         self._update_duration_preview()
+        self._photo["reload"]()
 
     def _gen_kwargs(self):
         return {
@@ -3217,6 +3345,67 @@ class TaskPanelDefocusCalibration:
             "label_feed": self.spn_label_feed.value(),
             "label_z": self.spn_label_z.value(),
         }
+
+    def _build_spot_measures(self, form):
+        """Section ② : la calibration du point, saisie INLINE (au lieu d'aller
+        dans les Préférences). Ø net au foyer + Ø mesuré à une hauteur de test
+        connue -> le modèle d'élargissement du point en découle (utilisé
+        partout : remplissages, nuancier, planche)."""
+        _section(form, "② Entrer les mesures (calibration du point)", "sect_measure.svg")
+        form.addRow(_WrapLabel(
+            "Mesure la LARGEUR du trait le plus net (au foyer) et celle d'un "
+            "trait gravé bec relevé d'une hauteur connue. « Enregistrer » range "
+            "ces valeurs dans le laser actif (appliqué tout de suite)."))
+        self.spn_spot_focus = QtWidgets.QDoubleSpinBox()
+        self.spn_spot_focus.setRange(0.01, 5.0)
+        self.spn_spot_focus.setDecimals(2)
+        self.spn_spot_focus.setSingleStep(0.01)
+        self.spn_spot_focus.setSuffix(" mm")
+        self.spn_spot_focus.setValue(core.SPOT_FOCUS_MM)
+        self.spn_spot_focus.setToolTip("Ø (largeur) du trait le plus net, au foyer.")
+        form.addRow("Ø du point au foyer :", self.spn_spot_focus)
+
+        self.spn_spot_ztest = QtWidgets.QDoubleSpinBox()
+        self.spn_spot_ztest.setRange(0.1, 200.0)
+        self.spn_spot_ztest.setDecimals(1)
+        self.spn_spot_ztest.setSuffix(" mm")
+        self.spn_spot_ztest.setValue(core.SPOT_TEST_DEFOCUS_MM)
+        self.spn_spot_ztest.setToolTip(
+            "Hauteur dont le bec a été relevé au-dessus du foyer pour le trait "
+            "de test défocalisé.")
+        form.addRow("Hauteur de test :", self.spn_spot_ztest)
+
+        self.spn_spot_dtest = QtWidgets.QDoubleSpinBox()
+        self.spn_spot_dtest.setRange(0.01, 20.0)
+        self.spn_spot_dtest.setDecimals(2)
+        self.spn_spot_dtest.setSingleStep(0.01)
+        self.spn_spot_dtest.setSuffix(" mm")
+        self.spn_spot_dtest.setValue(core.SPOT_TEST_DIAMETER_MM)
+        self.spn_spot_dtest.setToolTip("Ø (largeur) du trait mesuré à cette hauteur de test.")
+        form.addRow("Ø mesuré à cette hauteur :", self.spn_spot_dtest)
+
+        self.btn_save_spot = QtWidgets.QPushButton("Enregistrer la calibration du point")
+        self.btn_save_spot.setToolTip(
+            "Range ces trois valeurs dans les réglages du laser actif "
+            "(appliqué tout de suite, sans redémarrer).")
+        self.btn_save_spot.clicked.connect(self._on_save_spot)
+        form.addRow(self.btn_save_spot)
+
+    def _on_save_spot(self):
+        if self.spn_spot_dtest.value() <= self.spn_spot_focus.value():
+            QtWidgets.QMessageBox.warning(
+                self.form, "Calibration du point",
+                "Le Ø mesuré au défocus doit être plus grand que le Ø au foyer "
+                "(le point s'élargit en s'éloignant du foyer).")
+            return
+        core.save_settings({
+            "spot_focus_mm": self.spn_spot_focus.value(),
+            "spot_test_defocus_mm": self.spn_spot_ztest.value(),
+            "spot_test_diameter_mm": self.spn_spot_dtest.value(),
+        })
+        QtWidgets.QMessageBox.information(
+            self.form, "Calibration du point",
+            "Calibration du point enregistrée pour le laser actif.")
 
     def _update_duration_preview(self):
         gcode = core.generate_gcode_defocus_calibration(quiet=True, **self._gen_kwargs())
@@ -3306,7 +3495,7 @@ class TaskPanelPowerRamp:
 
         self._presets = _PresetController(form, inner, "powerramp", lambda: self._last_fields)
 
-        _section(form, "Lignes (vitesses)", "sect_power.svg")
+        _section(form, "① Graver — lignes (vitesses)", "sect_power.svg", ouvert=True)
         self.spn_length = QtWidgets.QDoubleSpinBox()
         self.spn_length.setRange(10.0, 500.0)
         self.spn_length.setValue(80.0)
@@ -3482,11 +3671,26 @@ class TaskPanelPowerRamp:
         _restore_last_values("powerramp", self._last_fields)
         self._presets.on_loaded = self._update_duration_preview
 
+        self._build_ramp_next(form)
+        self._photo = _make_photo_section(form, lambda: "powerramp",
+                                          titre="③ Photo du résultat")
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test rampe puissance / vitesse (lignes)")
         self.form.setWindowIcon(_icon("powerramp.svg"))
 
         self._update_duration_preview()
+        self._photo["reload"]()
+
+    def _build_ramp_next(self, form):
+        """Section ② : la rampe ne donne pas une mesure chiffrée mais un
+        éventail de tons -- on reporte ceux qu'on garde dans le Nuancier."""
+        _section(form, "② Reporter les tons retenus", "sect_measure.svg")
+        form.addRow(_WrapLabel(
+            "La rampe sert à CHOISIR : repère les lignes dont le rendu te "
+            "plaît, puis ouvre le mode Nuancier et saisis-les (noirceur "
+            "0-100 %, réglage S/F/défocus, largeur). C'est le Nuancier qui "
+            "mémorise ces tons pour les dégradés et les photos calibrées."))
 
     def _gen_kwargs(self):
         return {
@@ -3609,7 +3813,7 @@ class TaskPanelOffsetTest:
 
         self._presets = _PresetController(form, inner, "offset_test", lambda: self._last_fields)
 
-        _section(form, "Croix (géométrie)", "sect_options.svg")
+        _section(form, "① Graver — croix (géométrie)", "sect_options.svg", ouvert=True)
         self.spn_half = QtWidgets.QDoubleSpinBox()
         self.spn_half.setRange(2.0, 100.0)
         self.spn_half.setValue(10.0)
@@ -3731,11 +3935,55 @@ class TaskPanelOffsetTest:
         _restore_last_values("offset_test", self._last_fields)
         self._presets.on_loaded = self._update_duration_preview
 
+        self._build_offset_measures(form)
+        self._photo = _make_photo_section(form, lambda: "offset",
+                                          titre="③ Photo du résultat")
+
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test des offsets X/Y du laser")
         self.form.setWindowIcon(_icon("offset_test.svg"))
 
         self._update_duration_preview()
+        self._photo["reload"]()
+
+    def _build_offset_measures(self, form):
+        """Section ② : saisie de l'écart mesuré entre la croix laser et la
+        croix fraisée -> correction d'offset X/Y à reporter dans la table
+        d'outils du laser (tool.tbl ; l'atelier ne gère pas tool.tbl)."""
+        _section(form, "② Entrer les mesures (écart des croix)", "sect_measure.svg")
+        form.addRow(_WrapLabel(
+            "Mesure l'écart entre le centre de la croix LASER et celui de la "
+            "croix FRAISÉE : dX = X_laser − X_fraisé, dY = Y_laser − Y_fraisé "
+            "(signés). La correction à reporter dans tool.tbl est calculée "
+            "ci-dessous."))
+        self.spn_dx = QtWidgets.QDoubleSpinBox()
+        self.spn_dx.setRange(-50.0, 50.0)
+        self.spn_dx.setDecimals(2)
+        self.spn_dx.setSingleStep(0.05)
+        self.spn_dx.setSuffix(" mm")
+        self.spn_dx.setToolTip("Écart en X entre croix laser et croix fraisée (signé).")
+        form.addRow("Écart dX :", self.spn_dx)
+        self.spn_dy = QtWidgets.QDoubleSpinBox()
+        self.spn_dy.setRange(-50.0, 50.0)
+        self.spn_dy.setDecimals(2)
+        self.spn_dy.setSingleStep(0.05)
+        self.spn_dy.setSuffix(" mm")
+        self.spn_dy.setToolTip("Écart en Y entre croix laser et croix fraisée (signé).")
+        form.addRow("Écart dY :", self.spn_dy)
+        self.lbl_offset = _WrapLabel("Saisis l'écart mesuré (dX, dY).")
+        form.addRow(self.lbl_offset)
+        self.spn_dx.valueChanged.connect(self._update_offset)
+        self.spn_dy.valueChanged.connect(self._update_offset)
+
+    def _update_offset(self):
+        dx, dy = self.spn_dx.value(), self.spn_dy.value()
+        if dx == 0 and dy == 0:
+            self.lbl_offset.setText("Saisis l'écart mesuré (dX, dY).")
+            return
+        tool = int(getattr(core, "LASER_TOOL", 100))
+        self.lbl_offset.setText(
+            "<b>Correction outil laser (T{}) : X {:+.2f}, Y {:+.2f} mm</b> — "
+            "à ajouter à ses offsets dans tool.tbl.".format(tool, -dx, -dy))
 
     def _gen_kwargs(self):
         return {
@@ -4454,18 +4702,8 @@ class TaskPanelTestGrid:
             "sur le dessus.")
         self.btn_material_board.clicked.connect(self._on_material_board)
         form.addRow(self.btn_material_board)
-
-        self.btn_burn_widths = QtWidgets.QPushButton(
-            "Saisir les mesures de la planche…")
-        self.btn_burn_widths.setToolTip(
-            "Une fois la planche gravée : mesurer la LARGEUR brûlée de\n"
-            "chaque trait (sections 1 et 2, pied à coulisse, 1/10 mm) et la\n"
-            "saisir ici. La table alimente l'interpolation largeur(S, F)\n"
-            "utilisée par le bouton « Auto (½ point) » des Hachures.\n"
-            "(Les bandes de la section 3 se saisissent dans\n"
-            "Préférences > Nuancier : noirceur en %.)")
-        self.btn_burn_widths.clicked.connect(self._on_burn_widths)
-        form.addRow(self.btn_burn_widths)
+        # La saisie des mesures n'est plus un dialogue séparé : elle est
+        # désormais inline, dans la section « ② Entrer les mesures » plus bas.
         _intro(form,
                "Grave (ou découpe) une grille de cellules sur une chute : "
                "chaque cellule teste UN couple puissance/vitesse. Tu choisis "
@@ -4497,9 +4735,53 @@ class TaskPanelTestGrid:
             "préréglage.",
         ])
 
-        # Préréglages nommés (par matériau), catégorie "testgrid" : TOUS les
-        # réglages de la grille sont couverts (pas seulement puissance/vitesse).
-        _section(form, "Préréglage matériau", "sect_preset.svg")
+        # ① GRAVER : d'abord un « objectif » (préréglage recommandé prêt à
+        # graver selon ce qu'on veut mesurer), puis les préréglages nommés par
+        # matériau (jeu complet de réglages sauvegardé sous un nom).
+        _section(form, "① Graver — préréglage recommandé", "sect_preset.svg", ouvert=True)
+
+        self._recipes = [
+            ("nuancier_clair", {
+                "label": "Nuancier — tons clairs (défocus)",
+                "mode": 0, "power_min": 200, "power_max": 600, "power_steps": 4,
+                "feed_min": 1000, "feed_max": 4000, "feed_steps": 4,
+                "filltype": 2, "hatch_spacing": 1.0, "border": True,
+                "note": "16 cases du clair (S200/F4000 ≈ 5 %) au foncé "
+                        "(S600/F1000 ≈ 74 %, raccord avec le nuancier mesuré). "
+                        "Point élargi ≈ 1 mm : complète le bas du nuancier."}),
+            ("largeurs_foyer", {
+                "label": "Largeurs brûlées — grille au foyer",
+                "mode": 0, "power_min": 200, "power_max": 1000, "power_steps": 5,
+                "feed_min": 400, "feed_max": 6000, "feed_steps": 5,
+                "filltype": 0, "hatch_spacing": 0.2, "border": True,
+                "note": "Traits nets au foyer sur toute la plage : mesure la "
+                        "LARGEUR de chaque case au pied à coulisse (section ②)."}),
+            ("decoupe", {
+                "label": "Découpe — trouver le passage",
+                "mode": 1, "power_min": 400, "power_max": 1000, "power_steps": 4,
+                "feed_min": 100, "feed_max": 600, "feed_steps": 4,
+                "border": False,
+                "note": "Contours seuls : repère la case qui traverse "
+                        "proprement en une passe."}),
+        ]
+        self.combo_recipe = QtWidgets.QComboBox()
+        self.combo_recipe.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_recipe.setMinimumContentsLength(20)
+        self.combo_recipe.addItem("— (réglages manuels) —", None)
+        for key, r in self._recipes:
+            self.combo_recipe.addItem(r["label"], key)
+        self.combo_recipe.setToolTip(
+            "Remplit d'un coup toute la grille (mode, plages S/F, "
+            "remplissage) avec des réglages prêts à graver selon la donnée "
+            "que tu veux obtenir. Tu peux ensuite ajuster à la main.")
+        form.addRow("Objectif :", self.combo_recipe)
+
+        self.lbl_recipe_note = _WrapLabel("")
+        self.lbl_recipe_note.setVisible(False)
+        form.addRow(self.lbl_recipe_note)
+        self.combo_recipe.currentIndexChanged.connect(self._on_recipe_selected)
+
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)
@@ -4861,6 +5143,18 @@ class TaskPanelTestGrid:
         self.txt_pre.setPlainText(cfg.get("pre_t", ""))
         self.txt_post.setPlainText(cfg.get("post_t", ""))
 
+        # ② Entrer les mesures (inline) + ③ Photo du résultat : le flux d'un
+        # mode de test = graver (au-dessus) puis mesurer/saisir juste en
+        # dessous, avec une photo du réel gardée à côté.
+        self._build_measures_section(form)
+        self._photo = _make_photo_section(
+            form, lambda: "testgrid:" + self.edt_measure_mat.currentText().strip(),
+            titre="③ Photo du résultat")
+        self.edt_measure_mat.currentIndexChanged.connect(
+            lambda _i: self._reload_measures_and_photo())
+        self.edt_measure_mat.lineEdit().editingFinished.connect(
+            self._reload_measures_and_photo)
+
         self._last_fields = {
             "mode": self.combo_mode, "power_min": self.spn_power_min,
             "power_max": self.spn_power_max, "power_steps": self.spn_power_steps,
@@ -4882,6 +5176,7 @@ class TaskPanelTestGrid:
 
         self._populate_preset_combo()
         self._update_duration_preview()
+        self._photo["reload"]()
 
     # --- Préréglages nommés (catégorie "testgrid") ---
     @staticmethod
@@ -5174,29 +5469,58 @@ class TaskPanelTestGrid:
         if op:
             _add_to_combined_job(op)
 
-    def _on_burn_widths(self):
-        """Dialogue de saisie des largeurs brûlées mesurées sur la planche
-        de calibration (sections 1 foyer et 2 défocus). 0 / « — » = case
-        non mesurée (ignorée). Pré-rempli depuis la table existante."""
-        powers = [1000, 800, 600, 400, 200]
-        feeds = [400, 800, 1500, 3000, 6000]
+    def _on_recipe_selected(self, index):
+        """Applique un « objectif » recommandé : remplit d'un coup mode,
+        plages S/F et remplissage avec un jeu de réglages prêt à graver."""
+        key = self.combo_recipe.itemData(index)
+        r = dict(self._recipes).get(key) if key else None
+        if not r:
+            self.lbl_recipe_note.setVisible(False)
+            return
+        self.combo_mode.setCurrentIndex(r.get("mode", 0))
+        self.spn_power_min.setValue(r["power_min"])
+        self.spn_power_max.setValue(r["power_max"])
+        self.spn_power_steps.setValue(r["power_steps"])
+        self.spn_feed_min.setValue(r["feed_min"])
+        self.spn_feed_max.setValue(r["feed_max"])
+        self.spn_feed_steps.setValue(r["feed_steps"])
+        if "filltype" in r:
+            self.combo_filltype.setCurrentIndex(r["filltype"])
+        if "hatch_spacing" in r:
+            self.spn_hatch_spacing.setValue(r["hatch_spacing"])
+        self.chk_border.setChecked(r.get("border", True))
+        self.lbl_recipe_note.setText("\U0001f4a1 " + r["note"])
+        self.lbl_recipe_note.setVisible(True)
 
-        dlg = QtWidgets.QDialog(self.form)
-        dlg.setWindowTitle("Mesures de la planche de calibration")
-        vbox = QtWidgets.QVBoxLayout(dlg)
-        vbox.addWidget(_WrapLabel(
-            "Largeur brûlée de chaque trait, en mm (pied à coulisse, "
-            "1/10 mm). Laisser « — » pour les traits non mesurés ou "
-            "vierges. Les valeurs alimentent l'interpolation "
-            "largeur(S, F) de l'atelier."))
+    def _build_measures_section(self, form):
+        """Section ② : saisie INLINE des largeurs brûlées mesurées sur la
+        planche/grille (foyer + défocus), qui alimentent l'interpolation
+        largeur(S, F). Remplace l'ancien dialogue séparé « Saisir les
+        mesures… » -- on grave au-dessus, on mesure ici, juste en dessous."""
+        _section(form, "② Entrer les mesures (largeurs brûlées)", "sect_measure.svg")
+        form.addRow(_WrapLabel(
+            "Une fois la planche/grille gravée : mesure la LARGEUR brûlée de "
+            "chaque trait au pied à coulisse (1/10 mm) et saisis-la ici. "
+            "Laisse « — » pour un trait non mesuré ou vierge. Ces valeurs "
+            "servent au bouton « Auto (½ point) » des Hachures et au calage du "
+            "remplissage. (Pour la NOIRCEUR d'un ton, vois le mode Nuancier.)"))
 
-        row_mat = QtWidgets.QHBoxLayout()
-        row_mat.addWidget(QtWidgets.QLabel("Matériau :"))
+        self.edt_measure_mat = QtWidgets.QComboBox()
+        self.edt_measure_mat.setEditable(True)
+        self.edt_measure_mat.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.edt_measure_mat.setMinimumContentsLength(14)
         mats = core.burn_width_materials() or core.shade_materials()
-        edt_mat = QtWidgets.QLineEdit(mats[0] if len(mats) == 1
-                                      else (mats[0] if mats else "MDF"))
-        row_mat.addWidget(edt_mat, 1)
-        vbox.addLayout(row_mat)
+        self.edt_measure_mat.addItems(mats)
+        self.edt_measure_mat.setCurrentText(mats[0] if mats else "MDF")
+        self.edt_measure_mat.setToolTip(
+            "Matériau caractérisé : les mesures y sont rangées (et la photo du "
+            "résultat ci-dessous). Choisis-en un ou tape un nouveau nom.")
+        form.addRow("Matériau mesuré :", self.edt_measure_mat)
+
+        self._m_powers = [1000, 800, 600, 400, 200]
+        self._m_feeds = [400, 800, 1500, 3000, 6000]
+        self._m_levels = [round(float(dz), 3) for dz in core.DEFOCUS_LEVELS_MM]
 
         def _spin():
             sp = QtWidgets.QDoubleSpinBox()
@@ -5206,78 +5530,91 @@ class TaskPanelTestGrid:
             sp.setSpecialValueText("—")
             return sp
 
-        grp1 = QtWidgets.QGroupBox("Section 1 — traits au FOYER")
-        grid = QtWidgets.QGridLayout(grp1)
-        for j, f in enumerate(feeds):
-            grid.addWidget(QtWidgets.QLabel("F{}".format(f)), 0, j + 1)
-        cells = {}
-        for i, p in enumerate(powers):
-            grid.addWidget(QtWidgets.QLabel("S{}".format(p)), i + 1, 0)
-            for j, f in enumerate(feeds):
+        grp1 = QtWidgets.QGroupBox("Traits au FOYER — largeur (mm)")
+        g1 = QtWidgets.QGridLayout(grp1)
+        for j, f in enumerate(self._m_feeds):
+            g1.addWidget(QtWidgets.QLabel("F{}".format(f)), 0, j + 1)
+        self._focus_cells = {}
+        for i, p in enumerate(self._m_powers):
+            g1.addWidget(QtWidgets.QLabel("S{}".format(p)), i + 1, 0)
+            for j, f in enumerate(self._m_feeds):
                 sp = _spin()
-                grid.addWidget(sp, i + 1, j + 1)
-                cells[(p, f)] = sp
-        vbox.addWidget(grp1)
+                g1.addWidget(sp, i + 1, j + 1)
+                self._focus_cells[(p, f)] = sp
+        form.addRow(grp1)
 
-        levels = list(core.DEFOCUS_LEVELS_MM)
-        lvl_keys = [round(float(dz), 3) for dz in levels]
         grp2 = QtWidgets.QGroupBox(
-            "Section 2 — traits au DÉFOCUS (F800), une colonne par niveau")
-        grid2 = QtWidgets.QGridLayout(grp2)
-        for k, dz in enumerate(levels):
-            grid2.addWidget(QtWidgets.QLabel("d{:.0f} mm".format(dz)), 0, k + 1)
-        dcells = {}
-        for i, p in enumerate(powers):
-            grid2.addWidget(QtWidgets.QLabel("S{}".format(p)), i + 1, 0)
-            for k, dz in enumerate(levels):
+            "Traits au DÉFOCUS (F800) — largeur (mm), une colonne par niveau")
+        g2 = QtWidgets.QGridLayout(grp2)
+        for k, dz in enumerate(self._m_levels):
+            g2.addWidget(QtWidgets.QLabel("d{:.0f} mm".format(dz)), 0, k + 1)
+        self._defocus_cells = {}
+        for i, p in enumerate(self._m_powers):
+            g2.addWidget(QtWidgets.QLabel("S{}".format(p)), i + 1, 0)
+            for k, zk in enumerate(self._m_levels):
                 sp = _spin()
-                grid2.addWidget(sp, i + 1, k + 1)
-                dcells[(p, lvl_keys[k])] = sp
-        vbox.addWidget(grp2)
+                g2.addWidget(sp, i + 1, k + 1)
+                self._defocus_cells[(p, zk)] = sp
+        form.addRow(grp2)
 
-        # pré-remplissage depuis la table existante
-        existing = core.load_burn_widths(edt_mat.text().strip())
-        for pt in existing.get("focus", []):
+        self.btn_save_measures = QtWidgets.QPushButton("Enregistrer les mesures")
+        self.btn_save_measures.setToolTip(
+            "Range ces largeurs pour le matériau indiqué. Indépendant de "
+            "l'OK du panneau, qui lui génère la gravure.")
+        self.btn_save_measures.clicked.connect(self._on_save_measures)
+        form.addRow(self.btn_save_measures)
+
+        self._reload_measures()
+
+    def _reload_measures(self):
+        """Pré-remplit les grilles depuis les mesures déjà enregistrées pour
+        le matériau courant (0 / « — » = non mesuré)."""
+        mat = self.edt_measure_mat.currentText().strip()
+        data = core.load_burn_widths(mat) if mat else {}
+        for sp in self._focus_cells.values():
+            sp.setValue(0.0)
+        for sp in self._defocus_cells.values():
+            sp.setValue(0.0)
+        for pt in data.get("focus", []):
             key = (int(pt.get("power", 0)), int(pt.get("feed", 0)))
-            if key in cells:
-                cells[key].setValue(float(pt.get("width", 0.0)))
-        for pt in existing.get("defocus", []):
+            if key in self._focus_cells:
+                self._focus_cells[key].setValue(float(pt.get("width", 0.0)))
+        for pt in data.get("defocus", []):
             p = int(pt.get("power", 0))
             z = float(pt.get("z_offset", 0.0) or 0.0)
-            if not lvl_keys:
-                continue
-            zk = min(lvl_keys, key=lambda L: abs(L - z))  # niveau le plus proche
-            if (p, zk) in dcells:
-                dcells[(p, zk)].setValue(float(pt.get("width", 0.0)))
+            if self._m_levels:
+                zk = min(self._m_levels, key=lambda L: abs(L - z))
+                if (p, zk) in self._defocus_cells:
+                    self._defocus_cells[(p, zk)].setValue(float(pt.get("width", 0.0)))
 
-        btns = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Save
-            | QtWidgets.QDialogButtonBox.Cancel)
-        vbox.addWidget(btns)
-        btns.rejected.connect(dlg.reject)
+    def _reload_measures_and_photo(self):
+        self._reload_measures()
+        if getattr(self, "_photo", None):
+            self._photo["reload"]()
 
-        def _save():
-            mat = edt_mat.text().strip()
-            if not mat:
-                QtWidgets.QMessageBox.warning(
-                    dlg, "Mesures", "Indiquer un nom de matériau.")
-                return
-            focus = [{"power": p, "feed": f,
-                      "width": round(sp.value(), 2)}
-                     for (p, f), sp in cells.items() if sp.value() > 0]
-            defocus = [{"power": p, "feed": 800,
-                        "width": round(sp.value(), 2),
-                        "z_offset": zk}
-                       for (p, zk), sp in dcells.items() if sp.value() > 0]
-            core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
-            QtWidgets.QMessageBox.information(
-                dlg, "Mesures", "{} mesure(s) foyer + {} défocus "
-                "enregistrées pour « {} ».".format(
-                    len(focus), len(defocus), mat))
-            dlg.accept()
-
-        btns.accepted.connect(_save)
-        dlg.exec_()
+    def _on_save_measures(self):
+        mat = self.edt_measure_mat.currentText().strip()
+        if not mat:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Mesures", "Indiquer un nom de matériau.")
+            return
+        focus = [{"power": p, "feed": f, "width": round(sp.value(), 2)}
+                 for (p, f), sp in self._focus_cells.items() if sp.value() > 0]
+        defocus = [{"power": p, "feed": 800, "width": round(sp.value(), 2),
+                    "z_offset": zk}
+                   for (p, zk), sp in self._defocus_cells.items() if sp.value() > 0]
+        core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
+        QtWidgets.QMessageBox.information(
+            self.form, "Mesures",
+            "{} mesure(s) foyer + {} défocus enregistrées pour « {} ».".format(
+                len(focus), len(defocus), mat))
+        # rafraîchit la liste des matériaux du sélecteur (nouveau nom éventuel)
+        cur = self.edt_measure_mat.currentText()
+        self.edt_measure_mat.blockSignals(True)
+        self.edt_measure_mat.clear()
+        self.edt_measure_mat.addItems(core.burn_width_materials() or core.shade_materials())
+        self.edt_measure_mat.setCurrentText(cur)
+        self.edt_measure_mat.blockSignals(False)
 
     def _on_material_board(self):
         gcode = core.generate_gcode_material_board()

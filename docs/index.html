@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>1.14.1</b></span>
+        <span class="badge">Version <b>1.15.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -374,7 +374,7 @@
   <p class="sec-lede">C'est le fil conducteur de tout l'atelier, résumé dans le Guide rapide : on calibre une fois, on teste sur une chute, on prépare le motif, on génère, on vérifie le cadrage, puis on grave.</p>
 
   <div class="pipe">
-    <div class="step"><div class="n">1</div><h4>Calibrer</h4><p>Une fois : focale, calibration du point (bande de défocus), offsets X/Y du laser — dans les Préférences.</p></div>
+    <div class="step"><div class="n">1</div><h4>Calibrer</h4><p>Une fois : focale (Préférences), puis calibration du point (bande de défocus) et offsets X/Y — mesurés et saisis directement dans les panneaux ★1 et ★2.</p></div>
     <div class="step"><div class="n">2</div><h4>Tester</h4><p>Sur une chute : grille de test ou rampe puissance/vitesse pour trouver les bons réglages du matériau.</p></div>
     <div class="step"><div class="n">3</div><h4>Motif</h4><p>Hachures, texte/forme, image ou projection sur surface courbe selon ce que vous gravez.</p></div>
     <div class="step"><div class="n">4</div><h4>G-code</h4><p>Marquage, gravure remplie ou découpe génèrent le fichier <code>.ngc</code>.</p></div>
@@ -560,7 +560,7 @@
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/defocus.svg" alt=""></span><h4>Bande de calibration défocus</h4></div>
         <p>Rangée de courts traits à hauteurs de bec croissantes, étiquetés en hauteur et en puissance — pour mesurer le foyer et la divergence. Option <b>multi-bandes</b> : plusieurs bandes côte à côte, une par vitesse, tous les niveaux de gris en un seul job.</p>
-        <div class="when"><b>Quand&nbsp;?</b> Une fois, pour caler le modèle de défocus dans les Préférences.</div>
+        <div class="when"><b>Quand&nbsp;?</b> Une fois, pour caler le modèle de défocus.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>
           <img src="assets/diag_defocus.svg" alt="Rangée de traits à hauteurs de bec croissantes : le plus fin donne le foyer, les larges la divergence">
@@ -568,7 +568,7 @@
             <li>Zéro Z sur la surface. Aucune sélection.</li>
             <li>Régler le <b>balayage en hauteur</b> (Z) et la puissance/vitesse&nbsp;; option multi-bandes (une par vitesse).</li>
             <li>Graver, puis mesurer&nbsp;: le trait le plus fin → <b>Z de foyer</b> + point au foyer&nbsp;; un trait large → <b>défocus de test</b> + point au défocus.</li>
-            <li>Reporter les <b>trois mesures</b> dans Préférences → «&nbsp;Calibration du point&nbsp;».</li>
+            <li>Saisir les <b>trois mesures</b> dans la section «&nbsp;② Entrer les mesures (calibration du point)&nbsp;» du panneau.</li>
           </ol>
         </details>
       </div>
@@ -707,12 +707,12 @@
 
   <div class="callout note">
     <span class="ci">Par où commencer&nbsp;? — première calibration</span>
-    <p>Vous venez d'installer l'atelier et rien n'est réglé&nbsp;? Faites ces gravures <b>dans l'ordre</b> — les étapes ★1 et ★2 une seule fois pour la machine, l'étape ★3 pour chaque nouveau matériau. Chaque panneau de calibration rappelle son numéro d'étape en tête.</p>
+    <p>Vous venez d'installer l'atelier et rien n'est réglé&nbsp;? Faites ces gravures <b>dans l'ordre</b> — les étapes ★1 et ★2 une seule fois pour la machine, l'étape ★3 pour chaque nouveau matériau. Chaque panneau de calibration rappelle son numéro d'étape en tête et suit le même fil&nbsp;: <b>① graver</b>, <b>② entrer les mesures</b> (juste en dessous, plus besoin d'aller les chercher ailleurs) et garder une <b>③ photo du résultat</b>.</p>
     <ol>
-      <li><b>★1 — Bande de calibration défocus.</b> Pour trouver le foyer et la divergence&nbsp;: charge le préréglage ★ «&nbsp;Recherche du foyer (fin)&nbsp;», grave, mesure → reporte dans <b>Préférences → Calibration du point</b>.</li>
-      <li><b>★2 — Test des offsets X/Y.</b> Pour aligner l'axe du laser&nbsp;: charge le préréglage ★ «&nbsp;Croix standard (10&nbsp;mm)&nbsp;» → reporte dans <code>tool.tbl</code> (LinuxCNC&nbsp;; à sauter en GRBL ou laser seul).</li>
-      <li><b>★3 — Grille de test.</b> Pour caractériser un matériau&nbsp;: clique «&nbsp;Planche de calibration matériau&nbsp;», puis «&nbsp;Saisir les mesures…&nbsp;» → table de largeurs + <b>Nuancier</b>.</li>
-      <li><b>★4 — Calibration kerf.</b> Pour tenir les cotes&nbsp;: charge le préréglage ★ «&nbsp;Standard (20&nbsp;mm)&nbsp;» (test Carré), mesure → <b>Compensation de kerf</b>.</li>
+      <li><b>★1 — Bande de calibration défocus.</b> Pour trouver le foyer et la divergence&nbsp;: charge le préréglage ★ «&nbsp;Recherche du foyer (fin)&nbsp;», grave, mesure → saisis dans la section <b>② Entrer les mesures (calibration du point)</b> du panneau.</li>
+      <li><b>★2 — Test des offsets X/Y.</b> Pour aligner l'axe du laser&nbsp;: charge le préréglage ★ «&nbsp;Croix standard (10&nbsp;mm)&nbsp;», grave, saisis l'écart en section <b>②</b>&nbsp;: la correction à reporter dans <code>tool.tbl</code> est calculée (LinuxCNC&nbsp;; à sauter en GRBL ou laser seul).</li>
+      <li><b>★3 — Grille de test.</b> Pour caractériser un matériau&nbsp;: un <b>préréglage recommandé</b> (objectif) remplit la grille prête à graver&nbsp;; après gravure, saisis les largeurs en section <b>②</b> et les gris au <b>Nuancier</b>.</li>
+      <li><b>★4 — Calibration kerf.</b> Pour tenir les cotes&nbsp;: charge le préréglage ★ «&nbsp;Standard (20&nbsp;mm)&nbsp;» (test Carré), mesure en section <b>②</b> → le kerf calculé se reporte en <b>Compensation de kerf</b>.</li>
     </ol>
     <p style="margin-bottom:0"><small>Complément&nbsp;: la <b>Rampe puissance/vitesse</b> (préréglage ★ «&nbsp;Gravure MDF (puissance/vitesse)&nbsp;») donne la version <b>continue</b> de l'étape&nbsp;3.</small></p>
   </div>
@@ -720,14 +720,14 @@
   <h3>La hiérarchie des tests — dans l'ordre</h3>
   <p>Chaque test alimente le suivant. Les étapes machine se font <b>une seule fois par laser</b> ; pour un nouveau matériau, une seule planche suffit&nbsp;:</p>
   <ol>
-    <li><b>Une fois par laser</b> — la <b>Bande de calibration défocus</b> (deux mesures du point → Préférences) puis le <b>Test offsets fraise + laser</b> (X/Y du laser dans <code>tool.tbl</code>). Sans le point calibré, les sections défocus de la planche seraient fausses.</li>
+    <li><b>Une fois par laser</b> — la <b>Bande de calibration défocus</b> (deux mesures du point, saisies dans le panneau) puis le <b>Test offsets fraise + laser</b> (X/Y du laser dans <code>tool.tbl</code>). Sans le point calibré, les sections défocus de la planche seraient fausses.</li>
     <li><b>Nouveau matériau</b> — bouton «&nbsp;<b>Planche de calibration matériau</b>&nbsp;» (panneau Grille de test)&nbsp;: UN SEUL G-code, gravé sur une chute ~130&nbsp;×&nbsp;125&nbsp;mm (zéro machine au coin bas-gauche, sur le dessus). Trois sections numérotées, de bas en haut&nbsp;:
       <ul class="clean" style="margin:.55em 0 .7em">
         <li><b>1 — traits au foyer.</b> Grille 5&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses (F400&nbsp;→&nbsp;F6000, jusqu'au maxi machine). Mesurer la largeur brûlée de chaque trait, et <b>noter ceux qui restent vierges</b>&nbsp;: un trait vierge est une donnée — c'est le seuil du matériau.</li>
         <li><b>2 — traits au défocus.</b> 5&nbsp;puissances à F800, à <b>trois niveaux de défocus</b> (~15&nbsp;/&nbsp;36&nbsp;/&nbsp;50&nbsp;mm, une colonne par niveau). Mesurer la largeur brûlée de chaque trait.</li>
-        <li><b>3 — bandes nuancier.</b> Rectangles remplis au défocus (2&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses). Estimer la noirceur (0–100&nbsp;%) et mesurer la largeur, puis saisir chaque bande dans <b>Préférences&nbsp;&gt;&nbsp;Nuancier</b>.</li>
+        <li><b>3 — bandes nuancier.</b> Rectangles remplis au défocus (2&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses). Estimer la noirceur (0–100&nbsp;%) et mesurer la largeur, puis saisir chaque bande dans le mode <b>Nuancier</b>.</li>
       </ul>
-      Les largeurs des sections&nbsp;1–2 se saisissent via «&nbsp;<b>Saisir les mesures de la planche</b>&nbsp;» (une colonne par niveau de défocus). La <b>Gravure remplie</b> resserre alors l'espacement de ses hachures à la largeur <b>réellement brûlée</b> — interpolée entre les niveaux mesurés selon le défocus du job — dès qu'elle est plus étroite que le point optique&nbsp;: fini les lignes visibles sur les tons clairs.
+      Les largeurs des sections&nbsp;1–2 se saisissent dans la section «&nbsp;<b>② Entrer les mesures</b>&nbsp;» du panneau Grille de test (une colonne par niveau de défocus). La <b>Gravure remplie</b> resserre alors l'espacement de ses hachures à la largeur <b>réellement brûlée</b> — interpolée entre les niveaux mesurés selon le défocus du job — dès qu'elle est plus étroite que le point optique&nbsp;: fini les lignes visibles sur les tons clairs.
       <br><small>Toutes ces mesures restent dans la config locale — rien de spécifique à votre machine ne part avec l'atelier.</small></li>
     <li><b>Après le nuancier</b> (facultatif, pour choisir à l'œil) — la <b>Mire des styles</b> (Marquage) et la <b>Mire des tramages</b> (Gravure photo).</li>
   </ol>
@@ -737,7 +737,7 @@
   </figure>
 
   <h3>Le point &amp; le modèle de défocus</h3>
-  <p>Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un <b>cône de divergence linéaire</b> calibré à partir de deux mesures réelles — le point au foyer, puis le point à un défocus connu — jamais deviné. La <b>Bande de calibration défocus</b> fournit ces mesures ; on les saisit une seule fois dans les Préférences («&nbsp;point au foyer&nbsp;», «&nbsp;défocus de test&nbsp;», «&nbsp;point au défocus de test&nbsp;») et tous les modes concernés les réutilisent. Le remplissage est automatiquement <b>rentré du rayon de point</b> pour rester à l'intérieur du contour.</p>
+  <p>Pour noircir une surface en un seul passage, le remplissage éloigne le bec du foyer : le point s'élargit et des hachures espacées se recouvrent. Le modèle est un <b>cône de divergence linéaire</b> calibré à partir de deux mesures réelles — le point au foyer, puis le point à un défocus connu — jamais deviné. La <b>Bande de calibration défocus</b> fournit ces mesures ; on les saisit une seule fois dans la section «&nbsp;② Entrer les mesures&nbsp;» de son panneau («&nbsp;point au foyer&nbsp;», «&nbsp;défocus de test&nbsp;», «&nbsp;point au défocus de test&nbsp;») et tous les modes concernés les réutilisent. Le remplissage est automatiquement <b>rentré du rayon de point</b> pour rester à l'intérieur du contour.</p>
 
   <div class="diagram-row">
     <figure class="diagram" style="margin:0">
