@@ -114,6 +114,16 @@ Five modules, cleanly layered — keep the layering:
   - `_make_fluence_widgets` / `_fluence_advice` — "Puissance vs défocus" section (power compensation
     from a measured reference, model F ∝ P/(d·v)).
   - `_make_shade_picker(form, on_apply)` — "Nuancier matériau" block (apply a measured gray tone).
+  - `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat" section (clickable
+    thumbnail → `_show_image_dialog`, add/replace + forget buttons). Keeps ONE reference photo per
+    `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`); returns `{"reload": fn}` to call at end
+    of `__init__` and on material change. Backed by core photo helpers (see persistence).
+  - **Test/calibration panel convention (①②③)**: every burn-and-measure mode reads top-to-bottom
+    as **① Graver** (burn params; Test grid adds an "Objectif" recommended-recipe combo via
+    `self._recipes`) → **② Entrer les mesures** (data typed INLINE — no separate dialog, no trip to
+    Preferences; writes to `save_burn_widths`/`save_shades`/`save_settings` or computes a value to
+    copy out for kerf/offset) → **③ Photo du résultat** (`_make_photo_section`). Nuancier is the
+    shared ledger (no burn step → no ①). Follow this for any new test mode.
   - **Job combiné**: operations are NOT added via bespoke mini-dialogs anymore. Each combinable mode
     (Flat cut, Curved cut, Curved marking, Test grid) has a `_build_combined_operation()` returning
     `{type,label,params}` (params = the exact kwargs its own generator uses, full-featured) and a
@@ -205,7 +215,11 @@ measured point (~15 mm) — the root cause of the liseré that v1.11.2 could onl
 
 Single JSON file `laser_atelier_config.json` in FreeCAD's user app-data dir
 (`load_config`/`save_config`). Holds: material `presets_*`, `nozzle` profile, per-mode pre/post
-G-code, a `settings` block, and laser profiles (`lasers` + `active_laser`). User settings are a
+G-code, a `settings` block, laser profiles (`lasers` + `active_laser`), and a `photos` block
+(key → relative filename). **Result photos** (one per test/calibration key) live in a
+`laser_atelier_photos/` subdir of the app-data dir; core helpers `photos_dir`/`result_photo_path`/
+`save_result_photo`/`delete_result_photo` copy/find/forget them (no Qt — the panel paints the
+thumbnail). User settings are a
 registry `_USER_SETTINGS` (JSON key → module global → cast → validator); `_apply_settings_config()`
 runs at the **bottom of the module** to override globals (`GCODE_DIR`, `RAPID_FEED_MM_MIN`,
 `TRAVEL_CLEARANCE_MM`, `SPINDLE_SELECT`, nozzle, etc.). Invalid values are warned and the default
