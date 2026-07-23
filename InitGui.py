@@ -74,6 +74,7 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_PowerRamp",           # complément de ★3 (rampe continue)
             "LaserAtelier_Kerf",                # ★4 kerf
             "LaserAtelier_Nuancier",            # récap des tons (pas une étape numérotée)
+            "LaserAtelier_Catalogue",           # planche d'exemples (après calibration)
             "Separator",
             # ===== RÉGLAGES (tout à droite, bord écran) =====
             "LaserAtelier_Settings",

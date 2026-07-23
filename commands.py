@@ -70,6 +70,23 @@ class TextCommand:
         _show(task_panels.TaskPanelText())
 
 
+class CatalogueCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("catalogue.svg"),
+            "MenuText": "Catalogue (planche d'exemples)",
+            "ToolTip": "Grave en un seul job une planche d'EXEMPLES de plusieurs modes "
+                       "(styles Marquage, Texte trait simple, Gravure remplie), avec aperçu "
+                       "photo -- une planche de référence à garder après calibration",
+        }
+
+    def IsActive(self):
+        return True
+
+    def Activated(self):
+        _show(task_panels.TaskPanelCatalogue())
+
+
 class HatchCommand:
     def GetResources(self):
         return {
@@ -392,6 +409,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_DefocusCalibration", DefocusCalibrationCommand())
     Gui.addCommand("LaserAtelier_OffsetTest", OffsetTestCommand())
     Gui.addCommand("LaserAtelier_Nuancier", NuancierCommand())
+    Gui.addCommand("LaserAtelier_Catalogue", CatalogueCommand())
     Gui.addCommand("LaserAtelier_Curved", CurvedCommand())
     Gui.addCommand("LaserAtelier_CurvedCut", CurvedCutCommand())
     Gui.addCommand("LaserAtelier_Flat", FlatCommand())

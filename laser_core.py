@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.18.0"
+VERSION = "1.19.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -6495,23 +6495,12 @@ def generate_gcode_style_sampler(power, feed, z_focus, style_params=None,
                                    post_gcode=post_gcode, quiet=quiet)
 
 
-def generate_gcode_style_showcase(power, feed, z_focus, sample_text="Laser",
-                                  text_height=8.0, spot_widths=(1.0, 2.0, 3.0),
-                                  style_params=None, row_gap=7.0,
-                                  caption_height=3.0, pre_gcode="",
-                                  post_gcode="", quiet=False):
-    """PLANCHE DES STYLES : grave un même MOT exemple dans chaque style de
-    trait du Marquage -- plein, tirets, pointillé, vague, défocus point élargi
-    (à plusieurs largeurs), dégradé -- chaque exemple NUMÉROTÉ et légendé au
-    foyer (style + réglage). Une planche de référence à garder après
-    calibration : on voit le rendu réel de chaque style sur de vraies lettres,
-    pas sur un simple trait. Assemblée en un seul job (un seul armement)."""
-    sample = (sample_text or "Laser").strip() or "Laser"
-    sp = dict(style_params or {})
-    sp["deg_angle"] = 0.0                      # dégradé le long de la ligne
+def _style_showcase_ops(power, feed, z_focus, sample, sp, spot_widths,
+                        text_height, caption_height, row_gap, y_top):
+    """Ops de marquage d'un bloc « styles » : un MOT exemple gravé dans chaque
+    style, numéroté et légendé. Renvoie (ops, caption_edges, y_bas)."""
     half = calibrated_half_angle()
-
-    cells = [                                  # (légende, style, défocus Z)
+    cells = [
         ("plein (foyer)", "plein", 0.0),
         ("tirets", "tirets", 0.0),
         ("pointille", "pointille", 0.0),
@@ -6522,34 +6511,148 @@ def generate_gcode_style_showcase(power, feed, z_focus, sample_text="Laser",
         cells.append(("point elargi {:g} mm".format(w), "plein", dz))
     cells.append(("degrade Z", "degrade", 0.0))
 
-    ops = []
-    caption_edges = []
-    gap_cap = 2.0
-    descender = text_height * 0.35
-    y = 0.0
+    ops, caps = [], []
+    gap_cap, descender, y = 2.0, text_height * 0.35, y_top
     for i, (label, style, dz) in enumerate(cells):
-        caption_edges.extend(single_line_text_to_edges(
+        caps.extend(single_line_text_to_edges(
             "{}. {}".format(i + 1, label), height=caption_height, x0=0.0, y0=y))
         samp_y = y - caption_height - gap_cap - text_height
         ex = single_line_text_to_edges(sample, height=text_height, x0=0.0, y0=samp_y)
         if ex:
             ops.append({
                 "type": "curved",
-                "label": "Planche styles {} ({})".format(i + 1, style),
+                "label": "Styles {} ({})".format(i + 1, style),
                 "params": dict(edges=ex, power=power, feed=feed,
                                z_focus=z_focus + dz,
                                marge_survol=TRANSIT_MARGIN_MM,
                                style=style, style_params=dict(sp)),
             })
         y = samp_y - descender - row_gap
+    return ops, caps, y
 
-    if caption_edges:
-        ops.append({
-            "type": "curved",
-            "label": "Planche styles : legendes",
-            "params": dict(edges=caption_edges, power=power, feed=feed,
-                           z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM),
-        })
+
+def generate_gcode_style_showcase(power, feed, z_focus, sample_text="Laser",
+                                  text_height=8.0, spot_widths=(1.0, 2.0, 3.0),
+                                  style_params=None, row_gap=7.0,
+                                  caption_height=3.0, pre_gcode="",
+                                  post_gcode="", quiet=False):
+    """PLANCHE DES STYLES : grave un même MOT exemple dans chaque style de
+    trait du Marquage, chaque exemple numéroté et légendé au foyer -- planche
+    de référence à garder après calibration. Un seul job (un seul armement)."""
+    sample = (sample_text or "Laser").strip() or "Laser"
+    sp = dict(style_params or {})
+    sp["deg_angle"] = 0.0
+    ops, caps, _ = _style_showcase_ops(power, feed, z_focus, sample, sp,
+                                       spot_widths, text_height, caption_height,
+                                       row_gap, 0.0)
+    if caps:
+        ops.append({"type": "curved", "label": "Planche styles : legendes",
+                    "params": dict(edges=caps, power=power, feed=feed,
+                                   z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM)})
+    if not ops:
+        return None
+    return generate_gcode_combined(ops, pre_gcode=pre_gcode,
+                                   post_gcode=post_gcode, quiet=quiet)
+
+
+def _catalogue_star_ops(power, feed, z_focus, r_out, cx, cy, spacing=1.0):
+    """Exemple « gravure remplie » du catalogue : une étoile hachurée au
+    défocus (point élargi = noir plein) + son contour net au foyer. Renvoie []
+    si la géométrie Part échoue (l'exemple est alors simplement omis)."""
+    try:
+        half = calibrated_half_angle()
+        n = 5
+        pts = []
+        for i in range(2 * n + 1):
+            ang = math.pi / 2 + i * math.pi / n
+            r = r_out if i % 2 == 0 else r_out * 0.42
+            pts.append(FreeCAD.Vector(cx + r * math.cos(ang),
+                                      cy + r * math.sin(ang), 0.0))
+        face = Part.Face(Part.Wire(Part.makePolygon(pts)))
+        defocus = defocus_for_fill_spacing(spacing, SPOT_FOCUS_MM, half) or 0.0
+        fill = generate_hatch_edges([face], spacing, 45.0)
+        outline = [Part.LineSegment(pts[i], pts[i + 1]).toShape()
+                   for i in range(len(pts) - 1)]
+        ops = []
+        if fill:
+            ops.append({"type": "curved", "label": "Catalogue remplie : fond",
+                        "params": dict(edges=fill, power=power, feed=feed,
+                                       z_focus=z_focus + defocus,
+                                       marge_survol=TRANSIT_MARGIN_MM,
+                                       style="plein", style_params={})})
+        if outline:
+            ops.append({"type": "curved", "label": "Catalogue remplie : contour",
+                        "params": dict(edges=outline, power=power, feed=feed,
+                                       z_focus=z_focus,
+                                       marge_survol=TRANSIT_MARGIN_MM,
+                                       style="plein", style_params={})})
+        return ops
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning(
+            "Catalogue : exemple gravure remplie ignoré ({}).\n".format(exc))
+        return []
+
+
+def build_catalogue_ops(power, feed, z_focus, sample_text="Laser",
+                        blocks=("marquage", "texte", "remplie"),
+                        style_params=None):
+    """Ops (marquage) d'une PLANCHE CATALOGUE : un bloc titré par mode de
+    gravure -- styles Marquage, Texte trait simple, Gravure remplie --
+    empilés verticalement. Sert à la fois au G-code et à l'aperçu photo."""
+    sample = (sample_text or "Laser").strip() or "Laser"
+    sp = dict(style_params or {})
+    sp["deg_angle"] = 0.0
+    ops, caps, y = [], [], 0.0
+    title_h, block_gap = 5.0, 10.0
+
+    def add_title(txt):
+        caps.extend(single_line_text_to_edges(txt, height=title_h, x0=0.0, y0=y))
+
+    if "marquage" in blocks:
+        add_title("MARQUAGE - styles")
+        y -= title_h + 4.0
+        b_ops, b_caps, y = _style_showcase_ops(
+            power, feed, z_focus, sample, sp, (1.0, 2.0, 3.0), 8.0, 3.0, 7.0, y)
+        ops += b_ops
+        caps += b_caps
+        y -= block_gap
+    if "texte" in blocks:
+        add_title("TEXTE trait simple")
+        y -= title_h + 4.0
+        for h in (10.0, 6.0):
+            samp_y = y - h
+            ex = single_line_text_to_edges(sample, height=h, x0=0.0, y0=samp_y)
+            if ex:
+                ops.append({"type": "curved",
+                            "label": "Catalogue texte {:g} mm".format(h),
+                            "params": dict(edges=ex, power=power, feed=feed,
+                                           z_focus=z_focus,
+                                           marge_survol=TRANSIT_MARGIN_MM,
+                                           style="plein", style_params={})})
+            y = samp_y - h * 0.35 - 5.0
+        y -= block_gap
+    if "remplie" in blocks:
+        add_title("GRAVURE REMPLIE (noir plein)")
+        y -= title_h + 4.0
+        cy = y - 14.0
+        ops += _catalogue_star_ops(power, feed, z_focus, 14.0, 14.0, cy)
+        y = cy - 14.0 - block_gap
+    if caps:
+        ops.append({"type": "curved", "label": "Catalogue : titres/legendes",
+                    "params": dict(edges=caps, power=power, feed=feed,
+                                   z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM,
+                                   style="plein", style_params={})})
+    return ops
+
+
+def generate_gcode_catalogue(power, feed, z_focus, sample_text="Laser",
+                             blocks=("marquage", "texte", "remplie"),
+                             style_params=None, pre_gcode="", post_gcode="",
+                             quiet=False):
+    """PLANCHE CATALOGUE : assemble en UN job des exemples de plusieurs modes
+    de gravure (voir build_catalogue_ops). La photo tramée reste une planche
+    à part (rendu raster, cf. generate_gcode_photo_sampler)."""
+    ops = build_catalogue_ops(power, feed, z_focus, sample_text, blocks, style_params)
     if not ops:
         return None
     return generate_gcode_combined(ops, pre_gcode=pre_gcode,

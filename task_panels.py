@@ -716,10 +716,13 @@ def _strokes_from_operation(op):
                 if pts:
                     strokes.append((pts, cw, ct))
     elif typ == "curved":
-        # Marquage : suivi de surface au foyer -> trait fin, teinte selon
-        # puissance/vitesse.
+        # Marquage : largeur du trait selon le défocus effectif (z_focus au-
+        # dessus du foyer de travail -> point élargi), sinon fin au foyer.
         pw, fd = p.get("power", 0.0), p.get("feed", 1.0)
-        w = core.burn_width_defocus_scaled(pw, 0.0) or core.SPOT_FOCUS_MM
+        defocus = max(0.0, p.get("z_focus", core.Z_WORK_MM) - core.Z_WORK_MM)
+        w = (core.burn_width_defocus_scaled(pw, defocus)
+             or core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half)
+             or core.SPOT_FOCUS_MM)
         t = _tone_burn(pw, fd, w)
         for e in (p.get("edges") or []):
             pts = _discretize_edge(e)
@@ -1685,6 +1688,144 @@ class TaskPanelText:
             "Texte créé : « {} ». Sélectionne-le puis ouvre Marquage pour le "
             "graver.\n".format(obj.Label))
         return True
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
+# MODE : CATALOGUE (planche d'exemples de plusieurs modes)
+# ==========================================================================
+class TaskPanelCatalogue:
+    """Grave, en un seul job, une planche d'EXEMPLES de plusieurs modes de
+    gravure (styles Marquage, Texte trait simple, Gravure remplie), chaque
+    bloc titré -- une planche de référence à garder après calibration. La
+    photo tramée est une planche à part (rendu raster : bouton dédié)."""
+
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        _panel_header(form, "catalogue.svg", "Catalogue (planche d'exemples)")
+        _intro(form,
+               "Grave sur une chute des EXEMPLES de ce que produit l'atelier "
+               "-- les styles de Marquage, le Texte trait simple, la Gravure "
+               "remplie -- chaque bloc titré, en un seul job.",
+               "Une planche de référence à garder une fois tes réglages calés. "
+               "Utilise « Aperçu photo » pour voir le rendu avant de graver. "
+               "La photo tramée (rendu raster) est une planche séparée : bouton "
+               "dédié plus bas.")
+
+        _section(form, "Contenu", "sect_options.svg", ouvert=True)
+        self.edt_sample = QtWidgets.QLineEdit("Laser")
+        self.edt_sample.setToolTip("Mot exemple gravé dans les blocs styles/texte.")
+        form.addRow("Mot exemple :", self.edt_sample)
+        self.chk_marquage = QtWidgets.QCheckBox("Marquage — les styles de trait")
+        self.chk_marquage.setChecked(True)
+        self.chk_texte = QtWidgets.QCheckBox("Texte trait simple")
+        self.chk_texte.setChecked(True)
+        self.chk_remplie = QtWidgets.QCheckBox("Gravure remplie (étoile noire)")
+        self.chk_remplie.setChecked(True)
+        for c in (self.chk_marquage, self.chk_texte, self.chk_remplie):
+            form.addRow(c)
+
+        _section(form, "Puissance / vitesse", "sect_power.svg")
+        self.spn_power = QtWidgets.QDoubleSpinBox()
+        self.spn_power.setRange(0, core.S_MAX)
+        self.spn_power.setValue(500)
+        self.spn_power.setToolTip("Puissance (S) commune à tous les exemples.")
+        form.addRow("Puissance (S) :", self.spn_power)
+        self.spn_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_feed.setRange(1, 20000)
+        self.spn_feed.setValue(1000)
+        self.spn_feed.setSuffix(" mm/min")
+        form.addRow("Vitesse :", self.spn_feed)
+
+        _section(form, "Aperçu & génération", "sect_gcode.svg", ouvert=True)
+        self.btn_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
+        self.btn_preview.setToolTip(
+            "Peint le rendu de la planche (marquage / texte / remplie) avant\n"
+            "de graver. Les blocs défocalisés apparaissent plus épais.")
+        self.btn_preview.clicked.connect(self._on_preview)
+        form.addRow(self.btn_preview)
+        self.btn_photo = QtWidgets.QPushButton("Mire des tramages photo (fichier séparé)…")
+        self.btn_photo.setToolTip(
+            "Grave la mire comparative des tramages photo -- FICHIER À PART\n"
+            "car c'est un rendu raster (points/lignes), incompatible avec un\n"
+            "seul job vectoriel. Réglages rapides ; pour tout maîtriser,\n"
+            "utilise la « Mire des tramages » du mode Gravure photo.")
+        self.btn_photo.clicked.connect(self._on_photo_sampler)
+        form.addRow(self.btn_photo)
+        form.addRow(_WrapLabel(
+            "OK grave le catalogue (blocs cochés) dans un seul fichier."))
+
+        self._last_fields = {"sample": self.edt_sample, "power": self.spn_power,
+                             "feed": self.spn_feed, "marquage": self.chk_marquage,
+                             "texte": self.chk_texte, "remplie": self.chk_remplie}
+        _restore_last_values("catalogue", self._last_fields)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Catalogue (planche d'exemples)")
+        self.form.setWindowIcon(_icon("catalogue.svg"))
+
+    def _blocks(self):
+        b = []
+        if self.chk_marquage.isChecked():
+            b.append("marquage")
+        if self.chk_texte.isChecked():
+            b.append("texte")
+        if self.chk_remplie.isChecked():
+            b.append("remplie")
+        return tuple(b)
+
+    def _on_preview(self):
+        if not self._blocks():
+            QtWidgets.QMessageBox.warning(self.form, "Catalogue", "Coche au moins un bloc.")
+            return
+        ops = core.build_catalogue_ops(
+            power=self.spn_power.value(), feed=self.spn_feed.value(),
+            z_focus=core.Z_WORK_MM, sample_text=self.edt_sample.text().strip() or "Laser",
+            blocks=self._blocks())
+        strokes = []
+        for op in ops:
+            strokes.extend(_strokes_from_operation(op))
+        if not strokes:
+            QtWidgets.QMessageBox.information(self.form, "Aperçu photo", "Rien à afficher.")
+            return
+        img = _render_engraving_photo(strokes)
+        if img is None:
+            QtWidgets.QMessageBox.critical(self.form, "Aperçu photo", "Rendu impossible.")
+            return
+        _show_image_dialog(img, "Aperçu photo — Catalogue")
+
+    def _on_photo_sampler(self):
+        mats = core.shade_materials()
+        gcode = core.generate_gcode_photo_sampler(
+            pitch=0.5, z_work=core.Z_WORK_MM, dwell_min_s=0.0005, dwell_max_s=0.005,
+            power=self.spn_power.value() or core.S_MAX / 2.0,
+            feed=self.spn_feed.value(), line_width=0.5,
+            material=(mats[0] if mats else "MDF"))
+        if not gcode:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Aucun G-code de mire tramages généré.")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/mire_tramages_photo.ngc")
+
+    def accept(self):
+        if not self._blocks():
+            QtWidgets.QMessageBox.warning(self.form, "Catalogue", "Coche au moins un bloc.")
+            return False
+        _save_last_values("catalogue", self._last_fields)
+        gcode = core.generate_gcode_catalogue(
+            power=self.spn_power.value(), feed=self.spn_feed.value(),
+            z_focus=core.Z_WORK_MM, sample_text=self.edt_sample.text().strip() or "Laser",
+            blocks=self._blocks())
+        if not gcode:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
+            return False
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/catalogue.ngc")
 
     def reject(self):
         return True
