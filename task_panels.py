@@ -6829,7 +6829,7 @@ class TaskPanelCurved:
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
-        _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_courbe.ngc")
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_marquage.ngc")
 
     def _build_combined_operation(self):
         if not self._edges:
@@ -6891,7 +6891,7 @@ class TaskPanelCurved:
 
         # Bouton : le panneau reste ouvert quoi qu'il arrive -- re-cliquer
         # regénère avec les réglages courants.
-        return _write_gcode_with_dialog(self.form, gcode, "/tmp/marquage_courbe.ngc")
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/marquage.ngc")
 
     def reject(self):
         return True
@@ -7402,7 +7402,7 @@ class TaskPanelFlat:
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
-        _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_decoupe.ngc")
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_decoupe_plat.ngc")
 
     def _build_combined_operation(self):
         if not self._edges:
@@ -7459,7 +7459,7 @@ class TaskPanelFlat:
             return False
 
         # Bouton : le panneau reste ouvert, re-cliquer regénère.
-        return _write_gcode_with_dialog(self.form, gcode, "/tmp/decoupe_multipasse.ngc")
+        return _write_gcode_with_dialog(self.form, gcode, "/tmp/decoupe_plat.ngc")
 
     def reject(self):
         return True
