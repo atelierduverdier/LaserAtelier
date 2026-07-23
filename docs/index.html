@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>1.13.0</b></span>
+        <span class="badge">Version <b>1.14.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -704,6 +704,18 @@
   <div class="sec-tag">● Calibration en profondeur</div>
   <h2>Caler l'optique et le matériau, une fois</h2>
   <p class="sec-lede">Le cœur de l'atelier : deux mesures du point calibrent le modèle de défocus, la fluence relie puissance et largeur de trait, le test d'offsets aligne le laser, et le nuancier capitalise les gris qui marchent.</p>
+
+  <div class="callout note">
+    <span class="ci">Par où commencer&nbsp;? — première calibration</span>
+    <p>Vous venez d'installer l'atelier et rien n'est réglé&nbsp;? Faites ces gravures <b>dans l'ordre</b> — les étapes ★1 et ★2 une seule fois pour la machine, l'étape ★3 pour chaque nouveau matériau. Chaque panneau de calibration rappelle son numéro d'étape en tête.</p>
+    <ol>
+      <li><b>★1 — Bande de calibration défocus.</b> Pour trouver le foyer et la divergence&nbsp;: charge le préréglage ★ «&nbsp;Recherche du foyer (fin)&nbsp;», grave, mesure → reporte dans <b>Préférences → Calibration du point</b>.</li>
+      <li><b>★2 — Test des offsets X/Y.</b> Pour aligner l'axe du laser&nbsp;: charge le préréglage ★ «&nbsp;Croix standard (10&nbsp;mm)&nbsp;» → reporte dans <code>tool.tbl</code> (LinuxCNC&nbsp;; à sauter en GRBL ou laser seul).</li>
+      <li><b>★3 — Grille de test.</b> Pour caractériser un matériau&nbsp;: clique «&nbsp;Planche de calibration matériau&nbsp;», puis «&nbsp;Saisir les mesures…&nbsp;» → table de largeurs + <b>Nuancier</b>.</li>
+      <li><b>★4 — Calibration kerf.</b> Pour tenir les cotes&nbsp;: charge le préréglage ★ «&nbsp;Standard (20&nbsp;mm)&nbsp;» (test Carré), mesure → <b>Compensation de kerf</b>.</li>
+    </ol>
+    <p style="margin-bottom:0"><small>Complément&nbsp;: la <b>Rampe puissance/vitesse</b> (préréglage ★ «&nbsp;Gravure MDF (puissance/vitesse)&nbsp;») donne la version <b>continue</b> de l'étape&nbsp;3.</small></p>
+  </div>
 
   <h3>La hiérarchie des tests — dans l'ordre</h3>
   <p>Chaque test alimente le suivant. Les étapes machine se font <b>une seule fois par laser</b> ; pour un nouveau matériau, une seule planche suffit&nbsp;:</p>

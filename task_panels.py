@@ -114,6 +114,39 @@ class _WrapLabel(QtWidgets.QLabel):
         QtCore.QTimer.singleShot(0, self._ajuster_hauteur)
 
 
+def _calibration_banner(form, mode_titre):
+    """Bandeau ★ toujours visible en tête d'un mode de calibration : il situe
+    ce mode dans le PARCOURS DE PREMIÈRE CALIBRATION (numéro d'étape + le
+    préréglage d'usine à charger + où reporter le résultat). Pensé pour le
+    nouvel utilisateur qui a plein de préréglages sous la main mais ne sait
+    pas par où commencer. Ne fait rien si le mode n'est pas dans le parcours."""
+    etape = core.calibration_step_for(mode_titre)
+    if etape is None:
+        return
+    if etape["n"] is None:
+        tete = "★ Complément du parcours de calibration"
+    else:
+        total = len(core.calibration_numbered_steps())
+        tete = "★ Étape {}/{} de la première calibration".format(etape["n"], total)
+    lbl = _WrapLabel(
+        "<b><span style=\"color:#ff8a00\">{tete}.</span></b> Pour {but} : "
+        "{action}, grave sur une chute, mesure, puis reporte dans "
+        "<b>{reporter}</b>. Le parcours complet est dans le "
+        "<b>Guide rapide</b>.".format(
+            tete=tete, but=etape["but"], action=etape["action"],
+            reporter=etape["reporter"]))
+    # Conteneur VBox : QFormLayout n'honore pas le heightForWidth d'un label
+    # replié posé en rangée directe (rangée trop basse) -- le conteneur, lui,
+    # propage la hauteur repliée. Cf. _make_fluence_widgets.
+    holder = QtWidgets.QWidget()
+    lay = QtWidgets.QVBoxLayout(holder)
+    lay.setContentsMargins(0, 2, 0, 6)
+    lay.setSpacing(0)
+    lay.addWidget(lbl)
+    form.addRow(holder)
+    _hline(form)
+
+
 def _panel_header(form, icon_name, title):
     """Bandeau en tête de panneau : icône du mode + nom en gras/agrandi,
     suivi d'un trait. Repère visuel immédiat du mode ouvert. À droite,
@@ -1121,6 +1154,28 @@ class TaskPanelGuide:
 
         _panel_header(form, "guide.svg", "Guide rapide de l'atelier")
         _diagram(form, "diag_pipeline.svg", width=280, height=110)
+
+        _section(form, "Par où commencer ? (première calibration)",
+                 "sect_guide.svg", ouvert=True)
+        depart = _WrapLabel(
+            "Tu viens d'installer l'atelier et rien n'est réglé ? Fais ces "
+            "gravures de calibration DANS L'ORDRE : les étapes ★1 et ★2 une "
+            "fois pour la machine, l'étape ★3 pour chaque nouveau matériau. "
+            "Chaque panneau de calibration rappelle son numéro d'étape en tête.")
+        form.addRow(depart)
+        puces_calib = []
+        for e in core.calibration_numbered_steps():
+            puces_calib.append(
+                "<b>★{n} — {mode}.</b> Pour {but} : {action} → reporte dans "
+                "<b>{reporter}</b>.".format(
+                    n=e["n"], mode=e["mode"], but=e["but"],
+                    action=e["action"], reporter=e["reporter"]))
+        for e in core.CALIBRATION_JOURNEY:
+            if e["n"] is None:
+                puces_calib.append(
+                    "<b>★ Complément — {mode}.</b> Pour {but} : {action}.".format(
+                        mode=e["mode"], but=e["but"], action=e["action"]))
+        _bullet_list(form, puces_calib)
 
         _section(form, "Le flux de travail", "sect_options.svg")
         _bullet_list(form, [
@@ -2697,6 +2752,7 @@ class TaskPanelKerf:
         self._formlayout = form
 
         _panel_header(form, "kerf.svg", "Calibration kerf")
+        _calibration_banner(form, "Calibration kerf")
         _intro(form,
                "Deux tests, à découper ensuite en mode Découpe multi-passes : "
                "le CARRÉ pour MESURER le kerf, le TENON + MORTAISE pour VALIDER "
@@ -2870,6 +2926,7 @@ class TaskPanelDefocusCalibration:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "defocus.svg", "Bande de calibration défocus")
+        _calibration_banner(form, "Bande de calibration défocus")
         _intro(form,
                "Grave une rangée de traits, chacun à une hauteur de bec "
                "croissante (étiquetée) : le trait LE PLUS FIN te donne le "
@@ -3216,6 +3273,7 @@ class TaskPanelPowerRamp:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "powerramp.svg", "Test rampe puissance / vitesse (lignes)")
+        _calibration_banner(form, "Test rampe puissance / vitesse (lignes)")
         _intro(form,
                "Grave de longues lignes, UNE PAR VITESSE, avec la puissance "
                "qui MONTE le long de chaque ligne : on repère d'un coup où le "
@@ -3519,6 +3577,7 @@ class TaskPanelOffsetTest:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "offset_test.svg", "Test des offsets X/Y du laser")
+        _calibration_banner(form, "Test des offsets X/Y du laser")
         _intro(form,
                "Job MIXTE fraise + laser : fraise une croix sur X0 Y0, puis "
                "grave une croix laser au même X0 Y0 programmé. L'écart mesuré "
@@ -4377,6 +4436,7 @@ class TaskPanelTestGrid:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "testgrid.svg", "Grille de test puissance / vitesse")
+        _calibration_banner(form, "Grille de test puissance / vitesse")
 
         self.btn_material_board = QtWidgets.QPushButton(
             "Planche de calibration matériau (fichier séparé)")

@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.13.0"
+VERSION = "1.14.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3182,6 +3182,66 @@ _FACTORY_PRESETS = {
             "border_power": 300.0, "border_feed": 1000.0},
     },
 }
+
+
+# ----------------------------------------------------------------------------
+# PARCOURS DE PREMIERE CALIBRATION
+# ----------------------------------------------------------------------------
+# Un nouvel utilisateur vient d'installer l'atelier et n'a RIEN reglé. Cette
+# liste ordonnée lui dit quoi graver, DANS L'ORDRE, avec le préréglage d'usine
+# (★) à charger, et où reporter le résultat. Le Guide rapide l'affiche en
+# entier ; chaque panneau de calibration affiche son étape en tête.
+# `n` = numéro d'étape (None = complément facultatif, hors numérotation).
+CALIBRATION_JOURNEY = [
+    {
+        "n": 1,
+        "mode": "Bande de calibration défocus",
+        "but": "trouver le foyer et la divergence du faisceau",
+        "action": "charge le préréglage ★ « Recherche du foyer (fin) »",
+        "reporter": "Préférences → Calibration du point",
+    },
+    {
+        "n": 2,
+        "mode": "Test des offsets X/Y du laser",
+        "but": "aligner l'axe du laser sur celui de la broche",
+        "action": "charge le préréglage ★ « Croix standard (10 mm) »",
+        "reporter": "tool.tbl (LinuxCNC ; à sauter en GRBL ou laser seul)",
+    },
+    {
+        "n": 3,
+        "mode": "Grille de test puissance / vitesse",
+        "but": "caractériser un matériau (largeurs brûlées + noirceurs)",
+        "action": "clique « Planche de calibration matériau », puis « Saisir les mesures… »",
+        "reporter": "table de largeurs + Préférences → Nuancier",
+    },
+    {
+        "n": 4,
+        "mode": "Calibration kerf",
+        "but": "mesurer le trait pour tenir les cotes",
+        "action": "charge le préréglage ★ « Standard (20 mm) » (test Carré)",
+        "reporter": "Compensation de kerf des modes de découpe",
+    },
+    {
+        "n": None,
+        "mode": "Test rampe puissance / vitesse (lignes)",
+        "but": "voir en continu où le trait apparaît et où il sature",
+        "action": "charge le préréglage ★ « Gravure MDF (puissance/vitesse) »",
+        "reporter": "Nuancier — complément de l'étape 3",
+    },
+]
+
+
+def calibration_step_for(mode_titre):
+    """Étape du parcours de calibration pour ce titre de panneau, ou None."""
+    for etape in CALIBRATION_JOURNEY:
+        if etape["mode"] == mode_titre:
+            return etape
+    return None
+
+
+def calibration_numbered_steps():
+    """Les étapes numérotées du parcours (hors compléments), dans l'ordre."""
+    return [e for e in CALIBRATION_JOURNEY if e["n"] is not None]
 
 
 def factory_presets(category):
