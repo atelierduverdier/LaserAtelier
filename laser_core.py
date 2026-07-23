@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.20.0"
+VERSION = "1.20.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -6603,44 +6603,12 @@ def _catalogue_star_ops(power, feed, z_focus, r_out, cx, cy, spacing=1.0):
         return []
 
 
-def _catalogue_hachures_ops(power, feed, z_focus, cx, y_top, size=16.0, spacing=1.4):
-    """Exemple « Hachures 2D » du catalogue : un carré à hachures parallèles
-    puis un à hachures croisées (au foyer), avec contour. Renvoie
-    (ops, caption_edges, y_bas) ; ([], [], y_top) si la géométrie échoue."""
-    try:
-        ops, caps, y = [], [], y_top
-        for label, angles in (("paralleles", [45.0]), ("croisees", [45.0, 135.0])):
-            caps.extend(single_line_text_to_edges(label, height=3.0, x0=0.0, y0=y))
-            top = y - 4.0
-            bot = top - size
-            pts = [FreeCAD.Vector(cx, bot, 0.0), FreeCAD.Vector(cx + size, bot, 0.0),
-                   FreeCAD.Vector(cx + size, top, 0.0), FreeCAD.Vector(cx, top, 0.0),
-                   FreeCAD.Vector(cx, bot, 0.0)]
-            face = Part.Face(Part.Wire(Part.makePolygon(pts)))
-            edges = []
-            for a in angles:
-                edges += generate_hatch_edges([face], spacing, a)
-            edges += [Part.LineSegment(pts[i], pts[i + 1]).toShape() for i in range(4)]
-            if edges:
-                ops.append({"type": "curved", "label": "Catalogue hachures " + label,
-                            "params": dict(edges=edges, power=power, feed=feed,
-                                           z_focus=z_focus,
-                                           marge_survol=TRANSIT_MARGIN_MM,
-                                           style="plein", style_params={})})
-            y = bot - 8.0
-        return ops, caps, y
-    except Exception as exc:
-        FreeCAD.Console.PrintWarning(
-            "Catalogue : bloc hachures ignoré ({}).\n".format(exc))
-        return [], [], y_top
-
-
 def build_catalogue_ops(power, feed, z_focus, sample_text="Laser",
-                        blocks=("marquage", "texte", "hachures", "remplie"),
+                        blocks=("marquage", "remplie"),
                         style_params=None):
-    """Ops (marquage) d'une PLANCHE CATALOGUE : un bloc titré par mode de
-    gravure -- styles Marquage, Texte trait simple, Gravure remplie --
-    empilés verticalement. Sert à la fois au G-code et à l'aperçu photo."""
+    """Ops (marquage) d'une PLANCHE CATALOGUE de RÉFÉRENCE : les styles de
+    trait du Marquage (sur un mot exemple) + un exemple de gravure remplie,
+    titrés. Sert au G-code et à l'aperçu photo."""
     sample = (sample_text or "Laser").strip() or "Laser"
     sp = dict(style_params or {})
     sp["deg_angle"] = 0.0
@@ -6658,28 +6626,6 @@ def build_catalogue_ops(power, feed, z_focus, sample_text="Laser",
         ops += b_ops
         caps += b_caps
         y -= block_gap
-    if "texte" in blocks:
-        add_title("TEXTE trait simple")
-        y -= title_h + 4.0
-        for h in (10.0, 6.0):
-            samp_y = y - h
-            ex = single_line_text_to_edges(sample, height=h, x0=0.0, y0=samp_y)
-            if ex:
-                ops.append({"type": "curved",
-                            "label": "Catalogue texte {:g} mm".format(h),
-                            "params": dict(edges=ex, power=power, feed=feed,
-                                           z_focus=z_focus,
-                                           marge_survol=TRANSIT_MARGIN_MM,
-                                           style="plein", style_params={})})
-            y = samp_y - h * 0.35 - 5.0
-        y -= block_gap
-    if "hachures" in blocks:
-        add_title("HACHURES 2D")
-        y -= title_h + 4.0
-        h_ops, h_caps, y = _catalogue_hachures_ops(power, feed, z_focus, 0.0, y)
-        ops += h_ops
-        caps += h_caps
-        y -= block_gap
     if "remplie" in blocks:
         add_title("GRAVURE REMPLIE (noir plein)")
         y -= title_h + 4.0
@@ -6695,7 +6641,7 @@ def build_catalogue_ops(power, feed, z_focus, sample_text="Laser",
 
 
 def generate_gcode_catalogue(power, feed, z_focus, sample_text="Laser",
-                             blocks=("marquage", "texte", "remplie"),
+                             blocks=("marquage", "remplie"),
                              style_params=None, pre_gcode="", post_gcode="",
                              quiet=False):
     """PLANCHE CATALOGUE : assemble en UN job des exemples de plusieurs modes

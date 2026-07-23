@@ -1743,10 +1743,10 @@ class TaskPanelText:
 # MODE : CATALOGUE (planche d'exemples de plusieurs modes)
 # ==========================================================================
 class TaskPanelCatalogue:
-    """Grave, en un seul job, une planche d'EXEMPLES de plusieurs modes de
-    gravure (styles Marquage, Texte trait simple, Gravure remplie), chaque
-    bloc titré -- une planche de référence à garder après calibration. La
-    photo tramée est une planche à part (rendu raster : bouton dédié)."""
+    """Grave, en un seul job, une planche de RÉFÉRENCE : les styles de trait
+    du Marquage (sur un mot exemple) + un exemple de gravure remplie, titrés.
+    À graver sur une chute une fois les réglages calés. (La gravure photo se
+    valide dans son propre mode, avec tous ses réglages.)"""
 
     def __init__(self):
         inner = QtWidgets.QWidget()
@@ -1754,29 +1754,25 @@ class TaskPanelCatalogue:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
-        _panel_header(form, "catalogue.svg", "Catalogue (planche d'exemples)")
+        _panel_header(form, "catalogue.svg", "Catalogue (planche de référence)")
         _intro(form,
-               "Grave sur une chute des EXEMPLES de ce que produit l'atelier "
-               "-- les styles de Marquage, le Texte trait simple, la Gravure "
-               "remplie -- chaque bloc titré, en un seul job.",
-               "Une planche de référence à garder une fois tes réglages calés. "
-               "Utilise « Aperçu photo » pour voir le rendu avant de graver. "
-               "La photo tramée (rendu raster) est une planche séparée : bouton "
-               "dédié plus bas.")
+               "Grave sur une chute une planche de RÉFÉRENCE : les 6 styles de "
+               "trait du Marquage (sur un mot exemple) + un exemple de gravure "
+               "remplie, titrés, en un seul job.",
+               "À garder une fois tes réglages calés : tu vois le rendu réel de "
+               "chaque style sur ton matériau. « Aperçu photo » montre le rendu "
+               "avant de graver. La gravure photo se teste dans son propre mode "
+               "(Gravure photo), avec la mire des tramages et tous les réglages.")
 
         _section(form, "Contenu", "sect_options.svg", ouvert=True)
         self.edt_sample = QtWidgets.QLineEdit("Laser")
-        self.edt_sample.setToolTip("Mot exemple gravé dans les blocs styles/texte.")
+        self.edt_sample.setToolTip("Mot exemple gravé dans chaque style.")
         form.addRow("Mot exemple :", self.edt_sample)
         self.chk_marquage = QtWidgets.QCheckBox("Marquage — les styles de trait")
         self.chk_marquage.setChecked(True)
-        self.chk_texte = QtWidgets.QCheckBox("Texte trait simple")
-        self.chk_texte.setChecked(True)
-        self.chk_hachures = QtWidgets.QCheckBox("Hachures 2D (parallèles / croisées)")
-        self.chk_hachures.setChecked(True)
         self.chk_remplie = QtWidgets.QCheckBox("Gravure remplie (étoile noire)")
         self.chk_remplie.setChecked(True)
-        for c in (self.chk_marquage, self.chk_texte, self.chk_hachures, self.chk_remplie):
+        for c in (self.chk_marquage, self.chk_remplie):
             form.addRow(c)
 
         _section(form, "Puissance / vitesse", "sect_power.svg")
@@ -1794,55 +1790,25 @@ class TaskPanelCatalogue:
         _section(form, "Aperçu & génération", "sect_gcode.svg", ouvert=True)
         self.btn_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
         self.btn_preview.setToolTip(
-            "Peint le rendu de la planche (marquage / texte / remplie) avant\n"
-            "de graver. Les blocs défocalisés apparaissent plus épais.")
+            "Peint le rendu de la planche avant de graver -- chaque style\n"
+            "distinct (tirets, pointillé, vague, point élargi, dégradé).")
         self.btn_preview.clicked.connect(self._on_preview)
         form.addRow(self.btn_preview)
-        form.addRow(_WrapLabel(
-            "OK grave le catalogue vectoriel (blocs cochés) dans un seul fichier."))
-
-        _section(form, "Gravure photo (fichier séparé)", "sect_preview.svg")
-        form.addRow(_WrapLabel(
-            "La photo est un rendu RASTER : elle ne peut pas partager le job "
-            "vectoriel, d'où un bouton et un fichier à part. Par défaut la "
-            "photo de démonstration ; sinon choisis une image. Gravée en "
-            "lignes calibrées (nuancier du 1er matériau mesuré)."))
-        self.edt_image = QtWidgets.QLineEdit()
-        self.edt_image.setReadOnly(True)
-        self.edt_image.setPlaceholderText("(photo de démonstration par défaut)")
-        row = QtWidgets.QWidget()
-        rl = QtWidgets.QHBoxLayout(row)
-        rl.setContentsMargins(0, 0, 0, 0)
-        rl.addWidget(self.edt_image, 1)
-        btn_browse = QtWidgets.QPushButton("Parcourir…")
-        btn_browse.clicked.connect(self._on_browse_img)
-        rl.addWidget(btn_browse)
-        form.addRow("Image :", row)
-        btn_demo = QtWidgets.QPushButton("Photo de démonstration (par défaut)")
-        btn_demo.clicked.connect(lambda: self.edt_image.clear())
-        form.addRow(btn_demo)
-        self.btn_photo = QtWidgets.QPushButton("Graver le bloc photo (fichier séparé)…")
-        self.btn_photo.clicked.connect(self._on_photo_block)
-        form.addRow(self.btn_photo)
+        form.addRow(_WrapLabel("OK grave la planche dans un seul fichier."))
 
         self._last_fields = {"sample": self.edt_sample, "power": self.spn_power,
                              "feed": self.spn_feed, "marquage": self.chk_marquage,
-                             "texte": self.chk_texte, "hachures": self.chk_hachures,
                              "remplie": self.chk_remplie}
         _restore_last_values("catalogue", self._last_fields)
 
         self.form = _scrollable(inner)
-        self.form.setWindowTitle("Catalogue (planche d'exemples)")
+        self.form.setWindowTitle("Catalogue (planche de référence)")
         self.form.setWindowIcon(_icon("catalogue.svg"))
 
     def _blocks(self):
         b = []
         if self.chk_marquage.isChecked():
             b.append("marquage")
-        if self.chk_texte.isChecked():
-            b.append("texte")
-        if self.chk_hachures.isChecked():
-            b.append("hachures")
         if self.chk_remplie.isChecked():
             b.append("remplie")
         return tuple(b)
@@ -1866,48 +1832,6 @@ class TaskPanelCatalogue:
             QtWidgets.QMessageBox.critical(self.form, "Aperçu photo", "Rendu impossible.")
             return
         _show_image_dialog(img, "Aperçu photo — Catalogue")
-
-    def _on_browse_img(self):
-        path, _f = QtWidgets.QFileDialog.getOpenFileName(
-            self.form, "Choisir une image", "",
-            "Images (*.jpg *.jpeg *.png *.bmp *.webp)")
-        if path:
-            self.edt_image.setText(path)
-
-    def _photo_rows(self, target_w_mm=45.0, pitch=0.5):
-        """Grille de noirceur (0..1) depuis l'image choisie, ou la photo de
-        démonstration si aucune. None si l'image est illisible."""
-        path = self.edt_image.text().strip() or os.path.join(
-            os.path.dirname(core.__file__), "resources", "demo", "photo_demo.jpg")
-        img = QtGui.QImage(path)
-        if img.isNull() or img.width() < 1:
-            return None
-        cols = max(2, int(round(target_w_mm / pitch)) + 1)
-        rows = max(2, int(round(cols * img.height() / float(img.width()))))
-        sc = img.scaled(cols, rows, QtCore.Qt.IgnoreAspectRatio,
-                        QtCore.Qt.SmoothTransformation).convertToFormat(
-            QtGui.QImage.Format_Grayscale8)
-        return [[1.0 - QtGui.qGray(sc.pixel(x, y)) / 255.0
-                 for x in range(sc.width())] for y in range(sc.height())]
-
-    def _on_photo_block(self):
-        rows = self._photo_rows()
-        if rows is None:
-            QtWidgets.QMessageBox.critical(
-                self.form, "Erreur", "Image introuvable ou illisible.")
-            return
-        mats = core.shade_materials()
-        gcode = core.generate_gcode_photo_lines(
-            darkness_rows=rows, pitch=0.5, z_work=core.Z_WORK_MM,
-            feed=self.spn_feed.value(), line_width=0.5,
-            material=(mats[0] if mats else "MDF"))
-        if not gcode:
-            QtWidgets.QMessageBox.critical(
-                self.form, "Erreur",
-                "Aucun G-code photo. Le matériau a-t-il un nuancier mesuré "
-                "(≥ 2 tons en défocus) ? Sinon, calibre-le d'abord.")
-            return
-        _write_gcode_with_dialog(self.form, gcode, "/tmp/catalogue_photo.ngc")
 
     def accept(self):
         if not self._blocks():
