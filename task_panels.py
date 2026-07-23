@@ -6538,7 +6538,22 @@ class TaskPanelCurved:
                 self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return
         pw, fd = self._effective_power(), self.spn_feed.value()
-        width = core.burn_width_defocus_scaled(pw, 0.0) or core.SPOT_FOCUS_MM
+        # Largeur du trait selon le STYLE : le point élargi (défocus) et les
+        # styles à Z variable élargissent le trait -- sinon l'aperçu resterait
+        # à la largeur au foyer quoi qu'on règle.
+        idx = self.combo_style.currentIndex()
+        half = core.calibrated_half_angle()
+        w_focus = core.burn_width_defocus_scaled(pw, 0.0) or core.SPOT_FOCUS_MM
+        if idx == 4:                                   # Défocus (point élargi)
+            defocus = core.defocus_for_spot_diameter(
+                self.spn_spot_width.value(), core.SPOT_FOCUS_MM, half) or 0.0
+            width = core.burn_width_defocus_scaled(pw, defocus) or self.spn_spot_width.value()
+        elif idx == 3:                                 # Vague : moyenne foyer/max
+            width = (w_focus + self.spn_wave_width.value()) / 2.0
+        elif idx == 5:                                 # Dégradé : moyenne des deux
+            width = (self.spn_deg_w0.value() + self.spn_deg_w1.value()) / 2.0
+        else:                                          # plein / tirets / pointillé
+            width = w_focus
         tone = _tone_burn(pw, fd, width)
         strokes = []
         for e in self._edges:
