@@ -247,9 +247,15 @@ laser's per-laser values are **mirrored into the top-level `settings`/`nozzle`**
 reads them unchanged. `set_active_laser`/`add_laser`(clone)/`rename_laser`/`delete_laser` manage them;
 `_ensure_lasers` migrates a flat config by seeding a "Bleu 450 nm" profile from current values (lazy —
 persisted by `ensure_laser_profiles()`, called from the Settings panel). `save_settings`/`save_nozzle`
-also mirror the per-laser subset into the active profile. **Still global (next step):** the nuancier
-(`shades`) and material `presets_*` are not yet per-laser. The Settings panel has a "Laser actif"
-section (combo + clone/rename/delete) that re-applies + reloads fields on switch.
+also mirror the per-laser subset into the active profile. **Per-laser DATA** (`_is_per_laser_data_key`):
+the `nuancier`, `burn_widths` and every `presets_*` block are also stored per profile — a blue 450 nm
+and an IR 1064 nm don't share grays, burn widths or material power/feed. They stay mirrored at top-level
+(the read path: `load_shades`/`load_presets`/`load_burn_widths` are unchanged); `_ensure_lasers` migrates
+them into the active profile (incl. a scaffold config where only settings/nozzle were per-laser),
+`set_active_laser`/`delete_laser` swap them, and `save_shades`/`save_preset`/`delete_preset`/
+`save_burn_widths` call `_mirror_data_to_active_laser`. A new (cloned) laser starts with EMPTY
+nuancier/presets/widths. The Settings panel has a "Laser actif" section (combo + clone/rename/delete)
+that re-applies + reloads fields on switch.
 
 ### Vector label font
 

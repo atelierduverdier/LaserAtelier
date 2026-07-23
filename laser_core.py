@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.20.1"
+VERSION = "1.21.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -691,18 +691,52 @@ def _current_per_laser(cfg):
     return per, dict(noz)
 
 
+def _is_per_laser_data_key(k):
+    """Clés de config qui sont des DONNÉES par laser (à ranger dans le profil
+    du laser actif) : nuancier, largeurs brûlées, préréglages matériau. Un
+    laser bleu 450 nm et un IR 1064 nm n'ont ni les mêmes gris, ni les mêmes
+    largeurs, ni les mêmes puissances/vitesses pour un même matériau."""
+    return k in ("nuancier", "burn_widths") or k.startswith("presets_")
+
+
+def _mirror_data_to_active_laser(cfg):
+    """Recopie les blocs de données par-laser du top-level vers le profil du
+    laser actif (miroir, comme settings/nozzle)."""
+    prof = cfg.get("lasers", {}).get(cfg.get("active_laser"))
+    if not isinstance(prof, dict):
+        return
+    for k in [k for k in list(prof) if _is_per_laser_data_key(k)]:
+        del prof[k]
+    for k in list(cfg):
+        if _is_per_laser_data_key(k):
+            prof[k] = cfg[k]
+
+
 def _ensure_lasers(cfg):
     """Migre une config à plat vers la structure à profils : crée un profil
     « Bleu 450 nm » à partir des réglages actuels si « lasers » est absent.
-    Mute cfg, renvoie True si une modification a été faite (à sauvegarder)."""
+    Range aussi les données par-laser (nuancier/largeurs/préréglages) dans le
+    profil actif si elles sont encore seulement au top-level (config
+    « scaffold »). Mute cfg, renvoie True si modifié (à sauvegarder)."""
     lasers = cfg.get("lasers")
     if isinstance(lasers, dict) and lasers:
+        changed = False
         if cfg.get("active_laser") not in lasers:
             cfg["active_laser"] = next(iter(lasers))
-            return True
-        return False
+            changed = True
+        prof = lasers.get(cfg.get("active_laser"))
+        if isinstance(prof, dict) and not any(_is_per_laser_data_key(k) for k in prof):
+            for k in list(cfg):
+                if _is_per_laser_data_key(k):
+                    prof[k] = cfg[k]
+                    changed = True
+        return changed
     per, noz = _current_per_laser(cfg)
-    cfg["lasers"] = {"bleu": {"name": "Bleu 450 nm", "settings": per, "nozzle": noz}}
+    prof = {"name": "Bleu 450 nm", "settings": per, "nozzle": noz}
+    for k in list(cfg):
+        if _is_per_laser_data_key(k):
+            prof[k] = cfg[k]
+    cfg["lasers"] = {"bleu": prof}
     cfg["active_laser"] = "bleu"
     return True
 
@@ -751,6 +785,12 @@ def set_active_laser(laser_id):
     cfg["settings"] = settings
     if isinstance(prof.get("nozzle"), dict):
         cfg["nozzle"] = dict(prof["nozzle"])
+    # données par laser : nuancier / largeurs / préréglages du profil visé
+    for k in [k for k in list(cfg) if _is_per_laser_data_key(k)]:
+        del cfg[k]
+    for k, v in prof.items():
+        if _is_per_laser_data_key(k):
+            cfg[k] = v
     cfg["active_laser"] = laser_id
     save_config(cfg)
     _apply_settings_config()
@@ -809,6 +849,11 @@ def delete_laser(laser_id):
         cfg["settings"] = settings
         if isinstance(prof.get("nozzle"), dict):
             cfg["nozzle"] = dict(prof["nozzle"])
+        for k in [k for k in list(cfg) if _is_per_laser_data_key(k)]:
+            del cfg[k]
+        for k, v in prof.items():
+            if _is_per_laser_data_key(k):
+                cfg[k] = v
     save_config(cfg)
     _apply_settings_config()
     _apply_nozzle_config()
@@ -3637,10 +3682,12 @@ def save_preset(category, name, values):
     """Sauvegarde (ou remplace) un préréglage nommé pour cette
     catégorie."""
     cfg = load_config()
+    _ensure_lasers(cfg)
     key = "presets_" + category
     presets = cfg.get(key, {})
     presets[name] = values
     cfg[key] = presets
+    _mirror_data_to_active_laser(cfg)
     save_config(cfg)
 
 
@@ -3648,11 +3695,13 @@ def delete_preset(category, name):
     """Supprime un préréglage nommé, sans erreur s'il n'existe déjà
     plus."""
     cfg = load_config()
+    _ensure_lasers(cfg)
     key = "presets_" + category
     presets = cfg.get(key, {})
     if name in presets:
         del presets[name]
         cfg[key] = presets
+        _mirror_data_to_active_laser(cfg)
         save_config(cfg)
 
 
@@ -3847,12 +3896,14 @@ def save_shades(material, shades):
     """Remplace la liste des tons du matériau (liste vide = suppression
     du matériau du nuancier)."""
     cfg = load_config()
+    _ensure_lasers(cfg)
     nuancier = cfg.get("nuancier", {})
     if shades:
         nuancier[material] = shades
     else:
         nuancier.pop(material, None)
     cfg["nuancier"] = nuancier
+    _mirror_data_to_active_laser(cfg)
     save_config(cfg)
 
 
@@ -3893,12 +3944,14 @@ def load_burn_widths(material):
 def save_burn_widths(material, data):
     """Remplace la table du matériau (données vides = suppression)."""
     cfg = load_config()
+    _ensure_lasers(cfg)
     table = cfg.get("burn_widths", {})
     if data and (data.get("focus") or data.get("defocus")):
         table[material] = data
     else:
         table.pop(material, None)
     cfg["burn_widths"] = table
+    _mirror_data_to_active_laser(cfg)
     save_config(cfg)
 
 
