@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 108">
+  <!-- Hachures 2D : trois types de remplissage, rentres du bord. -->
+  <g fill="none" stroke="#2f3540" stroke-width="2">
+    <rect x="18" y="14" width="64" height="64" rx="6"/>
+    <rect x="118" y="14" width="64" height="64" rx="6"/>
+    <rect x="218" y="14" width="64" height="64" rx="6"/>
+  </g>
+  <!-- 1. paralleles -->
+  <g stroke="#ff8a00" stroke-width="2" opacity="0.75">
+    <line x1="26" y1="26" x2="74" y2="26"/><line x1="26" y1="34" x2="74" y2="34"/><line x1="26" y1="42" x2="74" y2="42"/><line x1="26" y1="50" x2="74" y2="50"/><line x1="26" y1="58" x2="74" y2="58"/><line x1="26" y1="66" x2="74" y2="66"/>
+  </g>
+  <!-- 2. croisees -->
+  <g stroke="#ff8a00" stroke-width="1.5" opacity="0.7">
+    <line x1="126" y1="26" x2="174" y2="26"/><line x1="126" y1="34" x2="174" y2="34"/><line x1="126" y1="42" x2="174" y2="42"/><line x1="126" y1="50" x2="174" y2="50"/><line x1="126" y1="58" x2="174" y2="58"/><line x1="126" y1="66" x2="174" y2="66"/>
+    <line x1="126" y1="22" x2="126" y2="70"/><line x1="134" y1="22" x2="134" y2="70"/><line x1="142" y1="22" x2="142" y2="70"/><line x1="150" y1="22" x2="150" y2="70"/><line x1="158" y1="22" x2="158" y2="70"/><line x1="166" y1="22" x2="166" y2="70"/><line x1="174" y1="22" x2="174" y2="70"/>
+  </g>
+  <!-- 3. defocus (point elargi) -->
+  <g stroke="#ff8a00" stroke-width="5.5" opacity="0.55" stroke-linecap="round">
+    <line x1="228" y1="30" x2="272" y2="30"/><line x1="228" y1="46" x2="272" y2="46"/><line x1="228" y1="62" x2="272" y2="62"/>
+  </g>
+  <g font-family="sans-serif" font-size="11" fill="#2f3540" text-anchor="middle">
+    <text x="50" y="96">Parallèles</text>
+    <text x="150" y="96">Croisées</text>
+    <text x="250" y="96">Défocus</text>
+  </g>
+</svg>
