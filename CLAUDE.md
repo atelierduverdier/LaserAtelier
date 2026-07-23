@@ -218,10 +218,13 @@ Single JSON file `laser_atelier_config.json` in FreeCAD's user app-data dir
 (`load_config`/`save_config`). Holds: material `presets_*`, `nozzle` profile, per-mode pre/post
 G-code, a `settings` block, laser profiles (`lasers` + `active_laser`), and a `photos` block
 (key → LIST of relative filenames; an old single-string value is migrated on read). **Result
-photos** (several per test/calibration key) live in a `laser_atelier_photos/` subdir of the
-app-data dir; core helpers `photos_dir`/`result_photos`/`add_result_photo`/`delete_result_photo`
-(the last takes an optional filename; None clears all) copy/list/forget them (no Qt — the panel
-paints the thumbnail). User settings are a
+photos** (several per test/calibration key) live in a `photos_resultats/` subdir of the **workbench
+dir** (`_WORKBENCH_DIR`, next to the code so they survive deleting the original; gitignored;
+migrated once from the old `app-data/laser_atelier_photos`); core helpers `photos_dir`/
+`result_photos`/`add_result_photo`/`delete_result_photo` (the last takes an optional filename; None
+clears all) copy/list/forget them (no Qt — the panel paints the thumbnail). `export_all(dest_zip)`
+bundles the config JSON + all photos into a .zip (Settings panel → "Exporter réglages + photos");
+restore by unzipping. User settings are a
 registry `_USER_SETTINGS` (JSON key → module global → cast → validator); `_apply_settings_config()`
 runs at the **bottom of the module** to override globals (`GCODE_DIR`, `RAPID_FEED_MM_MIN`,
 `TRAVEL_CLEARANCE_MM`, `SPINDLE_SELECT`, nozzle, etc.). Invalid values are warned and the default

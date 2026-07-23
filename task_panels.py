@@ -7900,6 +7900,16 @@ class TaskPanelSettings:
             "rectangle est facile à suivre à l'œil.")
         form.addRow("Vitesse de cadrage :", self.spn_frame_feed)
 
+        self.btn_export = QtWidgets.QPushButton("Exporter réglages + photos (.zip)…")
+        self.btn_export.setToolTip(
+            "Crée une archive .zip contenant TOUS les réglages (préréglages,\n"
+            "nuancier, calibration, profils laser…) ET toutes les photos de\n"
+            "résultats -- à ranger en lieu sûr, au cas où. Restauration :\n"
+            "dézipper « laser_atelier_config.json » dans le dossier app-data\n"
+            "de FreeCAD, et « photos_resultats » dans le dossier de l'atelier.")
+        self.btn_export.clicked.connect(self._on_export_all)
+        form.addRow(self.btn_export)
+
         _section(form, "Machine / G-code", "sect_options.svg")
         self.edt_spindle = QtWidgets.QLineEdit(settings["spindle_select"])
         self.edt_spindle.setToolTip(
@@ -8165,6 +8175,22 @@ class TaskPanelSettings:
         self.spn_nozzle_bottom.setValue(n["bottom_diameter_mm"])
         self.spn_nozzle_top.setValue(n["top_diameter_mm"])
         self.spn_nozzle_height.setValue(n["height_mm"])
+
+    def _on_export_all(self):
+        """Exporte tous les réglages + photos dans une archive .zip choisie
+        par l'utilisateur (sauvegarde à ranger en lieu sûr)."""
+        default = os.path.join(os.path.expanduser("~"),
+                               "laseratelier_sauvegarde.zip")
+        path, _f = QtWidgets.QFileDialog.getSaveFileName(
+            self.form, "Exporter réglages + photos", default,
+            "Archive ZIP (*.zip)")
+        if not path:
+            return
+        if not path.lower().endswith(".zip"):
+            path += ".zip"
+        ok, msg = core.export_all(path)
+        (QtWidgets.QMessageBox.information if ok
+         else QtWidgets.QMessageBox.critical)(self.form, "Export", msg)
 
     def _on_laser_changed(self, idx):
         lid = self.combo_laser.itemData(idx)

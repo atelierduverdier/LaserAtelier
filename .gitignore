@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# Photos de résultats de test/calibration (données locales de l'utilisateur,
+# rangées dans l'atelier mais hors dépôt ; sauvegarde via l'export .zip)
+photos_resultats/

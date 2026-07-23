@@ -166,6 +166,7 @@ import math
 import json
 import os
 import unicodedata
+import zipfile
 import FreeCAD
 import Part
 from collections import defaultdict
@@ -174,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.15.1"
+VERSION = "1.15.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -258,21 +259,70 @@ def save_config(data):
 # --------------------------------------------------------------------------
 # On garde une LISTE de photos par « clé » (mode + éventuel matériau, ex.
 # « testgrid:MDF ») pour comparer le rendu au réel plus tard. Les fichiers
-# vivent dans un sous-dossier de l'app-data ; la config ne stocke que les noms
-# de fichiers relatifs, sous le bloc « photos » (une liste par clé ; un ancien
-# enregistrement mono-photo, simple chaîne, est migré à la volée). Pas de Qt
-# ici : la vignette est peinte dans le panneau -- core copie/retrouve/oublie.
-PHOTOS_DIRNAME = "laser_atelier_photos"
+# vivent DANS le dossier de l'atelier (à côté du code, pour être conservés
+# avec lui même si la photo d'origine est effacée) ; la config ne stocke que
+# les noms de fichiers relatifs, sous le bloc « photos » (une liste par clé ;
+# un ancien enregistrement mono-photo, simple chaîne, est migré à la volée).
+# Pas de Qt ici : la vignette est peinte dans le panneau.
+PHOTOS_DIRNAME = "photos_resultats"
+_WORKBENCH_DIR = os.path.dirname(os.path.abspath(__file__))
+_photos_migrated = False
 
 
 def photos_dir():
-    """Dossier des photos de résultats (créé au besoin)."""
-    d = os.path.join(FreeCAD.getUserAppDataDir(), PHOTOS_DIRNAME)
+    """Dossier des photos de résultats, DANS le dossier de l'atelier (créé au
+    besoin). Migre une fois d'un ancien emplacement (app-data) si besoin."""
+    d = os.path.join(_WORKBENCH_DIR, PHOTOS_DIRNAME)
     try:
         os.makedirs(d, exist_ok=True)
     except Exception as exc:
         FreeCAD.Console.PrintWarning("Dossier photos indisponible ({}).\n".format(exc))
+    _migrate_old_photos(d)
     return d
+
+
+def _migrate_old_photos(new_dir):
+    """Déplace une seule fois (par session) les photos d'un ancien emplacement
+    (app-data/laser_atelier_photos) vers le dossier de l'atelier."""
+    global _photos_migrated
+    if _photos_migrated:
+        return
+    _photos_migrated = True
+    old = os.path.join(FreeCAD.getUserAppDataDir(), "laser_atelier_photos")
+    if not os.path.isdir(old) or os.path.abspath(old) == os.path.abspath(new_dir):
+        return
+    try:
+        for fn in os.listdir(old):
+            src, dst = os.path.join(old, fn), os.path.join(new_dir, fn)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                with open(src, "rb") as a, open(dst, "wb") as b:
+                    b.write(a.read())
+                os.remove(src)
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning("Migration des photos ignorée ({}).\n".format(exc))
+
+
+def export_all(dest_path):
+    """Exporte TOUS les réglages (config JSON) + toutes les photos de
+    résultats dans une archive .zip à `dest_path` -- à ranger en lieu sûr.
+    Restauration : dézipper « laser_atelier_config.json » dans le dossier
+    app-data de FreeCAD et le dossier « photos_resultats » dans l'atelier.
+    Renvoie (ok, message)."""
+    try:
+        nph = 0
+        with zipfile.ZipFile(dest_path, "w", zipfile.ZIP_DEFLATED) as z:
+            if os.path.isfile(CONFIG_FILE):
+                z.write(CONFIG_FILE, "laser_atelier_config.json")
+            pd = photos_dir()
+            if os.path.isdir(pd):
+                for fn in sorted(os.listdir(pd)):
+                    fp = os.path.join(pd, fn)
+                    if os.path.isfile(fp):
+                        z.write(fp, "{}/{}".format(PHOTOS_DIRNAME, fn))
+                        nph += 1
+        return True, "Sauvegarde créée : réglages + {} photo(s)\n{}".format(nph, dest_path)
+    except Exception as exc:
+        return False, "Échec de l'export : {}".format(exc)
 
 
 def _photo_safe(cle):
