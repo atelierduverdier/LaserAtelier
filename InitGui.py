@@ -66,13 +66,13 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_Combined",
             "LaserAtelier_JobsToCombined",
             "Separator",
-            # ===== CALIBRATION (après le travail) =====
-            "LaserAtelier_Kerf",
-            "LaserAtelier_TestGrid",
-            "LaserAtelier_PowerRamp",
-            "LaserAtelier_DefocusCalibration",
-            "LaserAtelier_OffsetTest",
-            "LaserAtelier_Nuancier",
+            # ===== CALIBRATION (après le travail, dans l'ordre du parcours ★1->★4) =====
+            "LaserAtelier_DefocusCalibration",  # ★1 foyer + défocus
+            "LaserAtelier_OffsetTest",          # ★2 offsets X/Y
+            "LaserAtelier_TestGrid",            # ★3 planche matériau
+            "LaserAtelier_PowerRamp",           # complément de ★3 (rampe continue)
+            "LaserAtelier_Kerf",                # ★4 kerf
+            "LaserAtelier_Nuancier",            # récap des tons (pas une étape numérotée)
             "Separator",
             # ===== RÉGLAGES (tout à droite, bord écran) =====
             "LaserAtelier_Settings",

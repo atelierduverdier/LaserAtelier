@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>1.14.0</b></span>
+        <span class="badge">Version <b>1.14.1</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -556,19 +556,37 @@
   <p class="group-sub">Trouver les bons réglages et caler l'optique — tous avec préréglages d'usine (★).</p>
   <div class="modes">
     <div class="mode">
-      <div class="shot"><img src="screenshots/panneaux/09_calibration_kerf.png" alt="Panneau Calibration kerf"></div>
+      <div class="shot"><img src="screenshots/panneaux/12_calibration_defocus.png" alt="Panneau Bande de calibration défocus"></div>
       <div class="body">
-        <div class="head"><span class="mi"><img src="assets/kerf.svg" alt=""></span><h4>Calibration kerf</h4></div>
-        <p>Deux géométries : un <b>carré</b> pour mesurer le kerf (taille dessinée − taille mesurée), et un <b>tenon + mortaise</b> à jeux gradués pour valider l'ajustement réel une fois le kerf connu.</p>
-        <div class="when"><b>Quand&nbsp;?</b> Avant une découpe où les cotes — ou l'emboîtement — doivent être justes.</div>
+        <div class="head"><span class="mi"><img src="assets/defocus.svg" alt=""></span><h4>Bande de calibration défocus</h4></div>
+        <p>Rangée de courts traits à hauteurs de bec croissantes, étiquetés en hauteur et en puissance — pour mesurer le foyer et la divergence. Option <b>multi-bandes</b> : plusieurs bandes côte à côte, une par vitesse, tous les niveaux de gris en un seul job.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Une fois, pour caler le modèle de défocus dans les Préférences.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>
-          <img src="assets/diag_fit.svg" alt="Carré pour mesurer le kerf, et tenon + mortaise à jeux gradués pour valider l'ajustement">
+          <img src="assets/diag_defocus.svg" alt="Rangée de traits à hauteurs de bec croissantes : le plus fin donne le foyer, les larges la divergence">
           <ol>
-            <li>Choisir le test&nbsp;: <b>carré</b> (mesure) ou <b>tenon + mortaise</b> (validation).</li>
-            <li><b>OK</b> crée la géométrie&nbsp;; la découper en <b>Découpe multi-passes</b> avec compensation de kerf = 0.</li>
-            <li>Mesurer&nbsp;: <b>kerf = taille dessinée − taille mesurée</b>, à reporter en «&nbsp;Compensation de kerf&nbsp;».</li>
-            <li>Valider avec le tenon + mortaise&nbsp;: retenir le <b>jeu</b> (gravé sous chacune) qui donne l'ajustement voulu.</li>
+            <li>Zéro Z sur la surface. Aucune sélection.</li>
+            <li>Régler le <b>balayage en hauteur</b> (Z) et la puissance/vitesse&nbsp;; option multi-bandes (une par vitesse).</li>
+            <li>Graver, puis mesurer&nbsp;: le trait le plus fin → <b>Z de foyer</b> + point au foyer&nbsp;; un trait large → <b>défocus de test</b> + point au défocus.</li>
+            <li>Reporter les <b>trois mesures</b> dans Préférences → «&nbsp;Calibration du point&nbsp;».</li>
+          </ol>
+        </details>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/13_test_offsets.png" alt="Panneau Test des offsets X/Y"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/offset_test.svg" alt=""></span><h4>Test des offsets X/Y du laser</h4></div>
+        <p>Job <b>mixte fraise + laser</b> : fraise une croix sur X0 Y0, puis grave une croix laser au même point programmé. L'écart mesuré entre les deux croix corrige les offsets X/Y dans <code>tool.tbl</code>.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Après le montage du laser, pour aligner son axe sur celui de la broche.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <img src="assets/diag_offset.svg" alt="Croix fraisée et croix laser au même X0 Y0 : l'écart mesuré corrige les offsets dans tool.tbl">
+          <ol>
+            <li><b>Lunettes laser.</b> Chute sur le martyre, fraise à graver montée, zéro X/Y au centre de la chute.</li>
+            <li>Régler la taille de la croix, la fraise (profondeur/vitesse) et le laser (puissance/vitesse).</li>
+            <li>Lancer&nbsp;; monter la glissière laser pendant la pause du 2ᵉ changement d'outil.</li>
+            <li>Mesurer l'écart&nbsp;: dX = X&nbsp;laser − X&nbsp;fraisé&nbsp;; corriger <code>tool.tbl</code> (X ← X − dX, idem Y).</li>
           </ol>
         </details>
       </div>
@@ -611,37 +629,19 @@
       </div>
     </div>
     <div class="mode">
-      <div class="shot"><img src="screenshots/panneaux/12_calibration_defocus.png" alt="Panneau Bande de calibration défocus"></div>
+      <div class="shot"><img src="screenshots/panneaux/09_calibration_kerf.png" alt="Panneau Calibration kerf"></div>
       <div class="body">
-        <div class="head"><span class="mi"><img src="assets/defocus.svg" alt=""></span><h4>Bande de calibration défocus</h4></div>
-        <p>Rangée de courts traits à hauteurs de bec croissantes, étiquetés en hauteur et en puissance — pour mesurer le foyer et la divergence. Option <b>multi-bandes</b> : plusieurs bandes côte à côte, une par vitesse, tous les niveaux de gris en un seul job.</p>
-        <div class="when"><b>Quand&nbsp;?</b> Une fois, pour caler le modèle de défocus dans les Préférences.</div>
+        <div class="head"><span class="mi"><img src="assets/kerf.svg" alt=""></span><h4>Calibration kerf</h4></div>
+        <p>Deux géométries : un <b>carré</b> pour mesurer le kerf (taille dessinée − taille mesurée), et un <b>tenon + mortaise</b> à jeux gradués pour valider l'ajustement réel une fois le kerf connu.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Avant une découpe où les cotes — ou l'emboîtement — doivent être justes.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>
-          <img src="assets/diag_defocus.svg" alt="Rangée de traits à hauteurs de bec croissantes : le plus fin donne le foyer, les larges la divergence">
+          <img src="assets/diag_fit.svg" alt="Carré pour mesurer le kerf, et tenon + mortaise à jeux gradués pour valider l'ajustement">
           <ol>
-            <li>Zéro Z sur la surface. Aucune sélection.</li>
-            <li>Régler le <b>balayage en hauteur</b> (Z) et la puissance/vitesse&nbsp;; option multi-bandes (une par vitesse).</li>
-            <li>Graver, puis mesurer&nbsp;: le trait le plus fin → <b>Z de foyer</b> + point au foyer&nbsp;; un trait large → <b>défocus de test</b> + point au défocus.</li>
-            <li>Reporter les <b>trois mesures</b> dans Préférences → «&nbsp;Calibration du point&nbsp;».</li>
-          </ol>
-        </details>
-      </div>
-    </div>
-    <div class="mode">
-      <div class="shot"><img src="screenshots/panneaux/13_test_offsets.png" alt="Panneau Test des offsets X/Y"></div>
-      <div class="body">
-        <div class="head"><span class="mi"><img src="assets/offset_test.svg" alt=""></span><h4>Test des offsets X/Y du laser</h4></div>
-        <p>Job <b>mixte fraise + laser</b> : fraise une croix sur X0 Y0, puis grave une croix laser au même point programmé. L'écart mesuré entre les deux croix corrige les offsets X/Y dans <code>tool.tbl</code>.</p>
-        <div class="when"><b>Quand&nbsp;?</b> Après le montage du laser, pour aligner son axe sur celui de la broche.</div>
-        <details class="howto">
-          <summary>Mode d'emploi</summary>
-          <img src="assets/diag_offset.svg" alt="Croix fraisée et croix laser au même X0 Y0 : l'écart mesuré corrige les offsets dans tool.tbl">
-          <ol>
-            <li><b>Lunettes laser.</b> Chute sur le martyre, fraise à graver montée, zéro X/Y au centre de la chute.</li>
-            <li>Régler la taille de la croix, la fraise (profondeur/vitesse) et le laser (puissance/vitesse).</li>
-            <li>Lancer&nbsp;; monter la glissière laser pendant la pause du 2ᵉ changement d'outil.</li>
-            <li>Mesurer l'écart&nbsp;: dX = X&nbsp;laser − X&nbsp;fraisé&nbsp;; corriger <code>tool.tbl</code> (X ← X − dX, idem Y).</li>
+            <li>Choisir le test&nbsp;: <b>carré</b> (mesure) ou <b>tenon + mortaise</b> (validation).</li>
+            <li><b>OK</b> crée la géométrie&nbsp;; la découper en <b>Découpe multi-passes</b> avec compensation de kerf = 0.</li>
+            <li>Mesurer&nbsp;: <b>kerf = taille dessinée − taille mesurée</b>, à reporter en «&nbsp;Compensation de kerf&nbsp;».</li>
+            <li>Valider avec le tenon + mortaise&nbsp;: retenir le <b>jeu</b> (gravé sous chacune) qui donne l'ajustement voulu.</li>
           </ol>
         </details>
       </div>
