@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.22.1"
+VERSION = "1.22.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5871,9 +5871,10 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
     tout du long, cf. CMD_BEAM_ON/CMD_BEAM_OFF qui continuent de gérer
     la puissance réelle indépendamment de cet armement).
 
-    frame_only : ne génère QUE les rectangles englobants de chaque
-    opération (laser jamais armé), pour un fichier de vérification de
-    cadrage séparé -- mêmes garanties que sur les modes simples.
+    frame_only : ne génère QU'UN SEUL rectangle englobant GLOBAL du job
+    (l'emprise de toutes les opérations réunies, laser jamais armé), pour
+    un fichier de vérification de cadrage séparé -- et non un rectangle
+    par opération, qui ferait sautiller la tête d'un cadre à l'autre.
 
     Une opération dont le générateur renvoie None (aucune géométrie,
     ex: sélection vide) est ignorée avec un avertissement (sauf si
@@ -5943,12 +5944,38 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
     lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
 
+    if frame_only:
+        # UN SEUL rectangle englobant GLOBAL (et non un par opération) : le
+        # cadrage sert à vérifier que TOUT le job tient sur la pièce, en un
+        # seul tour propre. On récupère l'emprise en relisant les cadrages
+        # par opération déjà générés (chacun = 4 coins), puis on ne trace
+        # que leur enveloppe commune. Pas de pré/post-code : simple contrôle
+        # de position, comme sur les modes simples.
+        xs, ys, zs = [], [], []
+        for _, body in bodies:
+            rapides, marques = parse_gcode_toolpath(body)
+            for seg in rapides + marques:
+                for pt in seg:
+                    xs.append(pt.x)
+                    ys.append(pt.y)
+                    zs.append(pt.z)
+        if not xs:
+            return None
+        z_cadrage = max(zs) if zs else (
+            global_min_safe_z if global_min_safe_z is not None else 0.0)
+        lines.append("(-- Cadrage : rectangle englobant global du job --)")
+        lines.append("G0 Z{:.4f}".format(z_cadrage))
+        lines.extend(build_frame_trace(
+            min(xs), max(xs), min(ys), max(ys), z_cadrage))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
     if pre_gcode.strip():
         lines.append("(-- G-code personnalisé (avant) --)")
         lines.append(pre_gcode.strip())
 
-    if not frame_only:
-        lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
 
     for label, gcode in bodies:
         lines.append("(===== Operation : {} =====)".format(label))
