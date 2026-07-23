@@ -116,7 +116,9 @@ Five modules, cleanly layered — keep the layering:
   - `_PresetController(form, parent, category, fields_getter)` — preset selector block backed by
     `core.factory_presets` (★, non-deletable) + user presets.
   - `_make_fluence_widgets` / `_fluence_advice` — "Puissance vs défocus" section (power compensation
-    from a measured reference, model F ∝ P/(d·v)).
+    from a measured reference, model F ∝ P/(d·v)). The reference fields are a **calibration**, not job
+    params: read-only by default (an "Modifier la référence" checkbox unlocks them) so tweaking the
+    job can't clobber them; `setValue` (restore/presets) still works while locked.
   - `_make_shade_picker(form, on_apply)` — "Nuancier matériau" block (apply a measured gray tone).
   - `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat" section: a
     dropdown of ALL photos for the current `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`) +

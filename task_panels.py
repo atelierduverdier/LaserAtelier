@@ -1159,6 +1159,17 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
         "d'ajuster). Utile pour comparer les deux approches sur une chute.")
     outer.addWidget(chk)
 
+    # La référence est une CALIBRATION (un réglage réussi), pas un paramètre
+    # du job : verrouillée par défaut pour ne pas la changer par mégarde en
+    # réglant le job. La case la déverrouille pour la modifier volontairement.
+    edit_chk = QtWidgets.QCheckBox("Modifier la référence (déverrouiller)")
+    edit_chk.setToolTip(
+        "La référence est une calibration (un réglage de gravure réussi),\n"
+        "pas un paramètre du job -- elle est VERROUILLÉE pour éviter de la\n"
+        "changer sans le vouloir. Coche pour la modifier. Les valeurs restent\n"
+        "lisibles et sauvegardées (préréglage matériau + dernière session).")
+    outer.addWidget(edit_chk)
+
     refs = QtWidgets.QFormLayout()
     refs.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
@@ -1187,6 +1198,16 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
         "au pied à coulisse ou lue sur la bande de calibration défocus).")
     refs.addRow("Réf. largeur du point :", ref_spot_w)
     outer.addLayout(refs)
+
+    # verrouillage : lecture seule + pas de flèches tant que « Modifier » est
+    # décoché (setValue programmatique -- restauration/préréglages -- reste OK).
+    def _set_ref_editable(on):
+        for rw in (ref_power_w, ref_feed_w, ref_spot_w):
+            rw.setReadOnly(not on)
+            rw.setButtonSymbols(QtWidgets.QAbstractSpinBox.UpDownArrows if on
+                                else QtWidgets.QAbstractSpinBox.NoButtons)
+    edit_chk.toggled.connect(_set_ref_editable)
+    _set_ref_editable(False)
 
     info = _WrapLabel("")
     outer.addWidget(info)
