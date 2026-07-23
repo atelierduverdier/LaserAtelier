@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.21.0"
+VERSION = "1.22.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2477,8 +2477,34 @@ def print_test_grid_legend(mode, cells, n_power, n_feed):
     FreeCAD.Console.PrintMessage("--- fin grille ---\n\n")
 
 
+def _apply_grid_line_style(chains, style, sp):
+    """Applique un STYLE DE TRAIT au remplissage d'une cellule (à Z fixe) :
+    plein (inchangé), tirets (tronçons espacés) ou pointillé (micro-traits).
+    Renvoie une liste de chaînes (chacune gravée beam on/off). vague/dégradé
+    sont des effets de défocus (Z) -> non proposés ici (grille à Z fixe)."""
+    if style == "tirets":
+        out = []
+        for ch in chains:
+            for piece, on in dash_chain(ch, sp.get("dash_len", 3.0), sp.get("gap_len", 2.0)):
+                if on and len(piece) >= 2:
+                    out.append(piece)
+        return out
+    if style == "pointille":
+        out = []
+        half = 0.15
+        for ch in chains:
+            dots = dot_positions(ch, sp.get("dot_spacing", 1.5))
+            for i, d in enumerate(dots):
+                ux, uy = dot_stroke_dir(dots, i)
+                out.append([FreeCAD.Vector(d.x - ux * half, d.y - uy * half, d.z),
+                            FreeCAD.Vector(d.x + ux * half, d.y + uy * half, d.z)])
+        return out
+    return chains
+
+
 def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0, label_feed=1500.0,
                               cell_z_offset=0.0, use_proximity=False,
+                              line_style="plein", line_style_params=None,
                               draw_border=False, z_border=8.5, border_power=300.0, border_feed=1000.0,
                               pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
                               min_safe_z=None):
@@ -2576,11 +2602,12 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
     # entrelaçait les cellules (trajet illisible, sauts partout, une même
     # cellule reprise en plusieurs fois).
     cell_band = []  # [(chain, power, feed, comment), ...] à z_cells
+    lsp = dict(line_style_params or {})
     for cell in sorted(cells, key=lambda c: (c["row"], c["col"])):
         comment = "(-- Cellule L{} C{} : S={:.0f} F={:.0f} --)".format(
             cell["row"], cell["col"], cell["power"], cell["feed"])
-        cell_chains = [(chain, cell["power"], cell["feed"], comment)
-                       for chain in chain_edges(cell["edges"])]
+        chains = _apply_grid_line_style(chain_edges(cell["edges"]), line_style, lsp)
+        cell_chains = [(chain, cell["power"], cell["feed"], comment) for chain in chains]
         cell_band.extend(_order_band(cell_chains))
 
     label_band = []  # [(chain, power, feed, comment), ...] à z_work (toujours au foyer)

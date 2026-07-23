@@ -5246,6 +5246,19 @@ class TaskPanelTestGrid:
             "normal.")
         form.addRow("Type de remplissage :", self.combo_filltype)
 
+        self.combo_line_style = QtWidgets.QComboBox()
+        self.combo_line_style.addItems(["Plein", "Tirets", "Pointillé"])
+        self.combo_line_style.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_line_style.setMinimumContentsLength(14)
+        self.combo_line_style.setToolTip(
+            "Style du trait de remplissage des cellules : plein, tirets\n"
+            "(tronçons espacés) ou pointillé (micro-traits) -- pour tester le\n"
+            "rendu d'un style à travers la matrice puissance/vitesse.\n"
+            "Vague et dégradé sont des effets de défocus (Z) : à tester dans\n"
+            "Marquage, pas dans une grille à Z fixe.")
+        form.addRow("Style de trait :", self.combo_line_style)
+
         self.spn_hatch_spacing = QtWidgets.QDoubleSpinBox()
         self.spn_hatch_spacing.setRange(0.05, 5.0)
         self.spn_hatch_spacing.setValue(0.2)
@@ -5476,6 +5489,7 @@ class TaskPanelTestGrid:
             "feed_min": self.spn_feed_min, "feed_max": self.spn_feed_max,
             "feed_steps": self.spn_feed_steps, "cell_size": self.spn_cell_size,
             "gap": self.spn_gap, "zwork": self.spn_zwork, "filltype": self.combo_filltype,
+            "line_style": self.combo_line_style,
             "hatch_spacing": self.spn_hatch_spacing, "hatch_angle": self.spn_hatch_angle,
             "proximity": self.chk_proximity,
             "labels": self.chk_labels, "label_power": self.spn_label_power,
@@ -5522,6 +5536,10 @@ class TaskPanelTestGrid:
             lines.append("Cadre au foyer S{:g} F{:g}".format(
                 values.get("border_power", 0), values.get("border_feed", 0)))
         return "\n".join(lines)
+
+    def _line_style(self):
+        """Style de trait du remplissage des cellules (combo -> clé core)."""
+        return ("plein", "tirets", "pointille")[self.combo_line_style.currentIndex()]
 
     def _border_kwargs(self):
         """Paramètres du cadre net passés au générateur (partagés par
@@ -5658,7 +5676,7 @@ class TaskPanelTestGrid:
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
-            quiet=True, **self._border_kwargs()
+            quiet=True, line_style=self._line_style(), **self._border_kwargs()
         )
         if not gcode:
             self.lbl_duration.setText("Durée estimée : --")
@@ -5758,7 +5776,7 @@ class TaskPanelTestGrid:
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(), quiet=True,
-            **self._border_kwargs()
+            line_style=self._line_style(), **self._border_kwargs()
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -5978,7 +5996,7 @@ class TaskPanelTestGrid:
             cell_z_offset=cell_z_offset,
             use_proximity=self.chk_proximity.isChecked(),
             pre_gcode=pre_text, post_gcode=post_text,
-            **self._border_kwargs()
+            line_style=self._line_style(), **self._border_kwargs()
         )
 
         cfg = core.load_config()
