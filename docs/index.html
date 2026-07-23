@@ -602,7 +602,7 @@
             <li><b>Lunettes laser.</b> Chute sur le martyre, fraise à graver montée, zéro X/Y au centre de la chute.</li>
             <li>Régler la taille de la croix, la fraise (profondeur/vitesse) et le laser (puissance/vitesse).</li>
             <li>Lancer&nbsp;; monter la glissière laser pendant la pause du 2ᵉ changement d'outil.</li>
-            <li>Mesurer l'écart&nbsp;: dX = X&nbsp;laser − X&nbsp;fraisé&nbsp;; corriger <code>tool.tbl</code> (X ← X − dX, idem Y).</li>
+            <li>Saisir l'écart <b>dX/dY</b> en section «&nbsp;② Entrer les mesures&nbsp;»&nbsp;: la correction à reporter dans <code>tool.tbl</code> (X ← X − dX, idem Y) est calculée.</li>
           </ol>
         </details>
       </div>
@@ -611,7 +611,7 @@
       <div class="shot"><img src="screenshots/panneaux/10_grille_test.png" alt="Panneau Grille de test"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/testgrid.svg" alt=""></span><h4>Grille de test puissance/vitesse</h4></div>
-        <p>Matrice de cellules à puissance/vitesse variables, étiquetées, avec cadre net autour de chaque cellule. Champ <b>Hauteur (Z) de test</b> pour rejouer la même matrice à une autre hauteur de bec.</p>
+        <p>Matrice de cellules à puissance/vitesse variables, étiquetées, avec cadre net autour de chaque cellule. Un <b>préréglage recommandé</b> (« objectif ») remplit la grille prête à graver ; les <b>largeurs brûlées</b> se saisissent <b>inline</b> (section ②). Champ <b>Hauteur (Z) de test</b> pour rejouer la matrice à une autre hauteur, et <b>style de trait</b> du remplissage (plein / tirets / pointillé).</p>
         <div class="when"><b>Quand&nbsp;?</b> Trouver le couple puissance/vitesse d'un nouveau matériau, par paliers discrets.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>
@@ -621,7 +621,7 @@
             <li>Choisir gravure/découpe, les plages de <b>puissance</b> (colonnes) et <b>vitesse</b> (lignes), le nombre de cellules.</li>
             <li>Régler taille des cellules, plein/contour, étiquettes S/F.</li>
             <li><b>Hauteur (Z) de test</b>&nbsp;: rejouer la grille à une autre hauteur (bec défocalisé).</li>
-            <li>Graver sur chute, choisir la meilleure cellule à l'œil, reporter au <b>Nuancier</b>.</li>
+            <li>Graver sur chute, choisir la meilleure cellule&nbsp;; saisir les <b>largeurs brûlées</b> en section «&nbsp;② Entrer les mesures&nbsp;» et les tons au <b>Nuancier</b>.</li>
           </ol>
         </details>
       </div>
@@ -656,7 +656,7 @@
           <ol>
             <li>Choisir le test&nbsp;: <b>carré</b> (mesure) ou <b>tenon + mortaise</b> (validation).</li>
             <li><b>OK</b> crée la géométrie&nbsp;; la découper en <b>Découpe multi-passes</b> avec compensation de kerf = 0.</li>
-            <li>Mesurer&nbsp;: <b>kerf = taille dessinée − taille mesurée</b>, à reporter en «&nbsp;Compensation de kerf&nbsp;».</li>
+            <li>Saisir la <b>taille mesurée</b> en section «&nbsp;② Entrer les mesures&nbsp;»&nbsp;: le <b>kerf = dessiné − mesuré</b> est calculé, à reporter en «&nbsp;Compensation de kerf&nbsp;».</li>
             <li>Valider avec le tenon + mortaise&nbsp;: retenir le <b>jeu</b> (gravé sous chacune) qui donne l'ajustement voulu.</li>
           </ol>
         </details>
@@ -716,7 +716,7 @@
       <div class="shot"><img src="screenshots/panneaux/16_preferences.png" alt="Panneau Préférences"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/settings.svg" alt=""></span><h4>Préférences</h4></div>
-        <p>Tous les réglages machine centralisés, avec des <b>profils laser</b> (un par module : outil, calibration du point, Z, bec, échelle S — prêt pour un 2ᵉ laser IR) : appliqués immédiatement, sans redémarrer.</p>
+        <p>Tous les réglages machine centralisés, avec des <b>profils laser</b> (un par module : outil, calibration du point, Z, bec, échelle S, <b>et son propre nuancier / largeurs brûlées / préréglages matériau</b> — prêt pour un 2ᵉ laser IR) : appliqués immédiatement, sans redémarrer. <b>Export / import</b> de toute la config + les photos de résultat en un <code>.zip</code>, à ranger en lieu sûr.</p>
         <div class="when"><b>Quand&nbsp;?</b> À l'installation, puis dès qu'un réglage machine change.</div>
       </div>
     </div>
