@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 110">
+  <!-- Nuancier : palette de gris MESURES, du clair au fonce, un ton par reglage. -->
+  <text x="150" y="14" font-family="sans-serif" font-size="10" font-weight="bold" fill="#ff8a00" text-anchor="middle">palette mesurée par matériau</text>
+  <g stroke="#2f3540" stroke-width="1">
+    <rect x="18"  y="24" width="40" height="46" fill="#2f3540" fill-opacity="0.15"/>
+    <rect x="64"  y="24" width="40" height="46" fill="#2f3540" fill-opacity="0.32"/>
+    <rect x="110" y="24" width="40" height="46" fill="#2f3540" fill-opacity="0.50"/>
+    <rect x="156" y="24" width="40" height="46" fill="#2f3540" fill-opacity="0.66"/>
+    <rect x="202" y="24" width="40" height="46" fill="#2f3540" fill-opacity="0.82"/>
+    <rect x="248" y="24" width="40" height="46" fill="#2f3540" fill-opacity="0.95"/>
+  </g>
+  <g font-family="sans-serif" font-size="8" fill="#2f3540" text-anchor="middle">
+    <text x="38" y="82">15%</text><text x="84" y="82">35%</text><text x="130" y="82">55%</text><text x="176" y="82">70%</text><text x="222" y="82">85%</text><text x="268" y="82">95%</text>
+  </g>
+  <text x="150" y="101" font-family="sans-serif" font-size="9.5" fill="#2f3540" text-anchor="middle">on mesure, on ne devine pas</text>
+</svg>

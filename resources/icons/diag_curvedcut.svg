@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 120">
+  <!-- Decoupe courbe (vue en coupe) : dessus ondule, passes qui suivent le relief. -->
+  <path d="M20 55 C60 35 100 35 140 55 S220 75 260 55 L260 102 L20 102 Z" fill="#2f3540" opacity="0.12"/>
+  <path d="M20 55 C60 35 100 35 140 55 S220 75 260 55" fill="none" stroke="#2f3540" stroke-width="2.5"/>
+  <!-- tete laser au sommet -->
+  <rect x="128" y="12" width="24" height="20" rx="3" fill="#2f3540" opacity="0.15" stroke="#2f3540" stroke-width="1.5"/>
+  <line x1="140" y1="32" x2="140" y2="54" stroke="#ff8a00" stroke-width="2" stroke-dasharray="3 3"/>
+  <!-- passes successives, de plus en plus profondes -->
+  <line x1="140" y1="55" x2="140" y2="90" stroke="#ff8a00" stroke-width="1.4"/>
+  <g stroke="#ff8a00" stroke-width="2.4" stroke-linecap="round">
+    <line x1="134" y1="63" x2="146" y2="63"/><line x1="134" y1="72" x2="146" y2="72"/><line x1="134" y1="81" x2="146" y2="81"/><line x1="134" y1="90" x2="146" y2="90"/>
+  </g>
+  <text x="140" y="115" font-family="sans-serif" font-size="9.5" fill="#ff8a00" text-anchor="middle">les passes suivent le relief</text>
+</svg>

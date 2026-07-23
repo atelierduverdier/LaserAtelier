@@ -1211,6 +1211,8 @@ class TaskPanelNuancier:
                "pour les dégradés, photos et choix rapides -- « on mesure, "
                "on ne devine pas ». OK enregistre le tableau.")
 
+        _diagram(form, "diag_nuancier.svg")
+
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Grave d'abord une <b>Grille de test</b>, une <b>Rampe</b> "
@@ -1426,6 +1428,8 @@ class TaskPanelHatch:
                "à utiliser est calculé plus bas depuis la calibration des "
                "Préférences). Le Retrait du bord rentre les hachures pour que "
                "la brûlure ne déborde pas de la forme.")
+
+        _diagram(form, "diag_hatch.svg")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
@@ -3760,6 +3764,8 @@ class TaskPanelHalftone:
                "s'arrête à chaque point : compter ~2-4 points/seconde -- le "
                "pas de trame pilote directement la durée du job.")
 
+        _diagram(form, "diag_photo.svg")
+
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1. Image</b>&nbsp;: «&nbsp;Parcourir…&nbsp;» pour charger un "
@@ -5328,6 +5334,8 @@ class TaskPanelCurved:
                "un passage) -- tous suivent le relief. Le Z de travail et la "
                "marge de transit viennent des Préférences.")
 
+        _diagram(form, "diag_marquage.svg")
+
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Sélectionne le <b>motif</b>. Pièce PLATE&nbsp;: le motif "
@@ -6080,6 +6088,8 @@ class TaskPanelFlat:
         # d'élargir la fenêtre.
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
+        _diagram(form, "diag_flat.svg")
+
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Sélectionne le(s) <b>profil(s) fermé(s)</b> à découper "
@@ -6653,6 +6663,8 @@ class TaskPanelCurvedCut:
                "ordre trous-avant-contour et optimisation par proximité "
                "disponibles comme à plat.")
 
+        _diagram(form, "diag_curvedcut.svg")
+
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Sélectionne le motif projeté (<code>Hachures_3D</code>) "
@@ -7100,6 +7112,8 @@ class TaskPanelCombined:
             "armement (M3) au début, un seul désarmement (M5)/M2 à la fin, "
             "exécutées dans l'ordre de la liste.")
         form.addRow(info)
+        _diagram(form, "diag_combined.svg")
+
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Dans chaque mode combinable (Découpe plat/courbe, "
