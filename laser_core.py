@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.11.2"
+VERSION = "1.12.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3252,6 +3252,15 @@ def shade_materials():
 # point optique qu'à forte puissance (1,09 mm mesuré à S1000 pour 1,18
 # optique ; 0,50 mm à S200 : seuls les bords chauds marquent).
 
+# La section 2 mesure la brûlure à PLUSIEURS niveaux de défocus (mm
+# au-dessus du foyer) : un remplissage gravé à un défocus quelconque
+# interpole la largeur brûlée entre ces niveaux (burn_width_defocus_scaled),
+# au lieu d'extrapoler depuis un seul point. Couvre du remplissage fin
+# (~15) au très défocalisé (~50). Partagé par la planche, le dialogue de
+# saisie et l'interpolation.
+DEFOCUS_LEVELS_MM = (15.0, 36.0, 50.0)
+
+
 def load_burn_widths(material):
     """Table des largeurs brûlées du matériau ({"focus": [...],
     "defocus": [...]}), ou {} si aucune mesure."""
@@ -3345,34 +3354,69 @@ def burn_width_defocus_at(power, material=None):
 
 
 def burn_width_defocus_scaled(power, defocus, material=None):
-    """Largeur brûlée (mm) ATTENDUE au défocus `defocus` pour la puissance
-    `power` : la mesure de la planche (section 2, faite au z_offset
-    enregistré avec les mesures) est extrapolée PROPORTIONNELLEMENT au
-    diamètre optique du point (modèle conique calibré) quand le défocus
-    demandé diffère de celui de la mesure. Constat planche : aux faibles
-    puissances la brûlure réelle est nettement plus étroite que le point
+    """Largeur brûlée (mm) attendue au défocus `defocus` pour la puissance
+    `power`, INTERPOLÉE entre les niveaux de défocus mesurés (section 2 de
+    la planche, cf. DEFOCUS_LEVELS_MM) :
+
+    - à chaque niveau mesuré, la largeur est interpolée linéairement en S ;
+    - entre deux niveaux encadrants, interpolation linéaire en défocus ;
+    - hors de la plage mesurée (ou un seul niveau connu), extrapolation
+      PROPORTIONNELLE au diamètre optique du point (modèle conique) depuis
+      le niveau le plus proche.
+
+    Constat planche : la brûlure réelle est plus étroite que le point
     optique (0,50 mm à S200 contre 1,18 mm optique) -- c'est elle qui
-    décide si deux hachures voisines se rejoignent. None si aucune table
-    de mesures (l'appelant retombe sur le modèle optique pur)."""
+    décide si deux hachures voisines se rejoignent et du retrait du
+    remplissage. None si aucune mesure (l'appelant retombe sur le modèle
+    optique pur)."""
     mat = _burn_width_material(material)
     if not mat:
         return None
     pts = load_burn_widths(mat).get("defocus") or []
     if not pts:
         return None
-    w = burn_width_defocus_at(power, mat)
-    if not w or w <= 0:
+    # Regroupe les mesures par niveau de défocus (z_offset).
+    levels = {}
+    for p in pts:
+        z = round(float(p.get("z_offset", 0.0) or 0.0), 3)
+        if z > 0 and p.get("width"):
+            levels.setdefault(z, []).append(p)
+    zs = sorted(levels)
+    if not zs:
         return None
-    zs = [float(p.get("z_offset", 0.0) or 0.0) for p in pts]
-    zs = [z for z in zs if z > 0]
+
+    def _w_at(z):
+        """Largeur au niveau z pour `power`, interpolée linéairement en S."""
+        lv = sorted(levels[z], key=lambda q: float(q["power"]))
+        s = min(max(float(power), float(lv[0]["power"])),
+                float(lv[-1]["power"]))
+        for a, b in zip(lv, lv[1:]):
+            pa, pb = float(a["power"]), float(b["power"])
+            if pa <= s <= pb:
+                t = 0.0 if pb == pa else (s - pa) / (pb - pa)
+                return float(a["width"]) * (1 - t) + float(b["width"]) * t
+        return float(lv[-1]["width"])
+
     ha = calibrated_half_angle()
-    if not zs or not ha or ha <= 1e-9:
-        return w
-    z_meas = sum(zs) / len(zs)
-    spot_meas = spot_diameter_at_defocus(z_meas, SPOT_FOCUS_MM, ha)
-    if spot_meas <= 0:
-        return w
-    return w * spot_diameter_at_defocus(defocus, SPOT_FOCUS_MM, ha) / spot_meas
+
+    # Dans la plage mesurée : interpolation linéaire entre les deux niveaux
+    # encadrants (exacte quand le défocus tombe sur un niveau).
+    if zs[0] <= defocus <= zs[-1]:
+        for za, zb in zip(zs, zs[1:]):
+            if za <= defocus <= zb:
+                t = 0.0 if zb == za else (defocus - za) / (zb - za)
+                return _w_at(za) * (1 - t) + _w_at(zb) * t
+        return _w_at(zs[0])
+    # Hors plage (ou un seul niveau) : extrapolation optique depuis le
+    # niveau le plus proche.
+    z0 = zs[0] if defocus < zs[0] else zs[-1]
+    w0 = _w_at(z0)
+    if not ha or ha <= 1e-9 or z0 <= 0:
+        return w0
+    spot0 = spot_diameter_at_defocus(z0, SPOT_FOCUS_MM, ha)
+    if spot0 <= 0:
+        return w0
+    return w0 * spot_diameter_at_defocus(defocus, SPOT_FOCUS_MM, ha) / spot0
 
 
 def burn_width_focus_max(material=None):
@@ -5835,6 +5879,7 @@ def generate_gcode_material_board(z_focus=None,
                                    band_powers=(600.0, 1000.0),
                                    trait_len=20.0, row_gap=6.0,
                                    band_w=15.0, band_h=8.0, band_spacing=1.0,
+                                   defocus_levels_mm=DEFOCUS_LEVELS_MM,
                                    label_height=3.0,
                                    pre_gcode="", post_gcode="", quiet=False):
     """PLANCHE DE CALIBRATION MATÉRIAU : un seul job qui grave, sur une
@@ -5845,10 +5890,11 @@ def generate_gcode_material_board(z_focus=None,
          F400 -> F6000 : jusqu'au maxi machine, un trait vierge est une
          donnée -- c'est le seuil du matériau). À mesurer : la LARGEUR
          brûlée de chaque trait (et noter ceux qui ne marquent pas).
-      2  TRAITS AU DÉFOCUS -- 5 puissances à F800, au défocus standard
-         du remplissage (point élargi ~ band_spacing / 0,85).
-         À mesurer : la largeur brûlée (valide le modèle « brûlure =
-         max(point optique, élargissement thermique) »).
+      2  TRAITS AU DÉFOCUS -- 5 puissances à F800, à PLUSIEURS niveaux de
+         défocus (une colonne par niveau, cf. defocus_levels_mm : ~15 / 36
+         / 50 mm). À mesurer : la largeur brûlée de chaque trait -> le
+         remplissage interpole entre ces niveaux selon son défocus réel
+         (fin comme très défocalisé, sans extrapolation hasardeuse).
       3  BANDES NUANCIER -- rectangles remplis au défocus,
          2 puissances x 5 vitesses. À mesurer : NOIRCEUR (0-100 %%) et
          largeur de trait -> à saisir dans Préférences > Nuancier.
@@ -5896,15 +5942,21 @@ def generate_gcode_material_board(z_focus=None,
         _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head1)
     _lab("1", 0.0, y_head1, sec_h)
 
-    # ---- Section 2 : traits au défocus, F800 --------------------------
+    # ---- Section 2 : traits au défocus, F800, à plusieurs niveaux ------
+    # Une colonne par niveau de défocus (mm au-dessus du foyer) : la largeur
+    # brûlée mesurée à chaque niveau alimente l'interpolation du remplissage
+    # (burn_width_defocus_scaled). En-tête colonne = « d<mm> ».
     y2 = y_head1 + sec_h + 6.0
+    col_pitch2 = trait_len + 12.0
     for i, s_pw in enumerate(powers):
         y = y2 + i * row_gap
         _lab("S{:.0f}".format(s_pw), 2.0, y - label_height / 2.0)
-        _trait(x0, y, s_pw, 800.0, z_focus + defocus,
-               "Planche 2 : defocus S{:.0f} F800".format(s_pw))
+        for k, dz in enumerate(defocus_levels_mm):
+            _trait(x0 + k * col_pitch2, y, s_pw, 800.0, z_focus + dz,
+                   "Planche 2 : defocus {:.0f}mm S{:.0f} F800".format(dz, s_pw))
     y_head2 = y2 + len(powers) * row_gap + 1.0
-    _lab("F800", x0, y_head2)
+    for k, dz in enumerate(defocus_levels_mm):
+        _lab("d{:.0f}".format(dz), x0 + k * col_pitch2, y_head2)
     _lab("2", 0.0, y_head2, sec_h)
 
     # ---- Section 3 : bandes nuancier au défocus -----------------------

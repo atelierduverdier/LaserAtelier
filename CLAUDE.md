@@ -190,6 +190,17 @@ at focus on top) — closing the pale liseré left at the edge, most visible at 
 optical spot over-estimates the real burn width. Outward overspill is bounded by the contour radius so
 it stays hidden; a wider contour closes more of the gap.
 
+The **measured** burn width (which drives fill spacing/inset, not the optical spot) is
+`burn_width_defocus_scaled(power, defocus)`. The calibration plank (`generate_gcode_material_board`,
+section 2) burns the defocus test at **several levels** — `DEFOCUS_LEVELS_MM` (≈15/36/50 mm), one
+column each — and `burn_width_defocus_scaled` **interpolates** the width between the two bracketing
+levels (linear in defocus, linear in S within a level); outside the measured range, or with a single
+level, it falls back to the old proportional-to-optical-spot extrapolation. Measurements are entered
+per level in the "Saisir les mesures de la planche…" dialog (one defocus column per level, stored with
+each point's `z_offset`; old single-level data maps to the nearest level). This replaces the earlier
+single-point average that over-estimated the burn at a working defocus (e.g. 36 mm) far from the one
+measured point (~15 mm) — the root cause of the liseré that v1.11.2 could only mask with the contour.
+
 ### Persistence & user settings
 
 Single JSON file `laser_atelier_config.json` in FreeCAD's user app-data dir

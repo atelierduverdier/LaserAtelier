@@ -4941,15 +4941,20 @@ class TaskPanelTestGrid:
                 cells[(p, f)] = sp
         vbox.addWidget(grp1)
 
+        levels = list(core.DEFOCUS_LEVELS_MM)
+        lvl_keys = [round(float(dz), 3) for dz in levels]
         grp2 = QtWidgets.QGroupBox(
-            "Section 2 — traits au DÉFOCUS (F800, point du remplissage)")
+            "Section 2 — traits au DÉFOCUS (F800), une colonne par niveau")
         grid2 = QtWidgets.QGridLayout(grp2)
+        for k, dz in enumerate(levels):
+            grid2.addWidget(QtWidgets.QLabel("d{:.0f} mm".format(dz)), 0, k + 1)
         dcells = {}
         for i, p in enumerate(powers):
-            grid2.addWidget(QtWidgets.QLabel("S{}".format(p)), 0, i * 2)
-            sp = _spin()
-            grid2.addWidget(sp, 0, i * 2 + 1)
-            dcells[p] = sp
+            grid2.addWidget(QtWidgets.QLabel("S{}".format(p)), i + 1, 0)
+            for k, dz in enumerate(levels):
+                sp = _spin()
+                grid2.addWidget(sp, i + 1, k + 1)
+                dcells[(p, lvl_keys[k])] = sp
         vbox.addWidget(grp2)
 
         # pré-remplissage depuis la table existante
@@ -4960,8 +4965,12 @@ class TaskPanelTestGrid:
                 cells[key].setValue(float(pt.get("width", 0.0)))
         for pt in existing.get("defocus", []):
             p = int(pt.get("power", 0))
-            if p in dcells:
-                dcells[p].setValue(float(pt.get("width", 0.0)))
+            z = float(pt.get("z_offset", 0.0) or 0.0)
+            if not lvl_keys:
+                continue
+            zk = min(lvl_keys, key=lambda L: abs(L - z))  # niveau le plus proche
+            if (p, zk) in dcells:
+                dcells[(p, zk)].setValue(float(pt.get("width", 0.0)))
 
         btns = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Save
@@ -4978,13 +4987,10 @@ class TaskPanelTestGrid:
             focus = [{"power": p, "feed": f,
                       "width": round(sp.value(), 2)}
                      for (p, f), sp in cells.items() if sp.value() > 0]
-            ha = core.calibrated_half_angle()
-            dz = (core.defocus_for_fill_spacing(
-                1.0, core.SPOT_FOCUS_MM, ha) or 0.0) if ha else 0.0
             defocus = [{"power": p, "feed": 800,
                         "width": round(sp.value(), 2),
-                        "z_offset": round(dz, 2)}
-                       for p, sp in dcells.items() if sp.value() > 0]
+                        "z_offset": zk}
+                       for (p, zk), sp in dcells.items() if sp.value() > 0]
             core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
             QtWidgets.QMessageBox.information(
                 dlg, "Mesures", "{} mesure(s) foyer + {} défocus "
