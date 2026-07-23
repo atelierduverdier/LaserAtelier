@@ -1211,6 +1211,23 @@ class TaskPanelNuancier:
                "pour les dégradés, photos et choix rapides -- « on mesure, "
                "on ne devine pas ». OK enregistre le tableau.")
 
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Grave d'abord une <b>Grille de test</b>, une <b>Rampe</b> "
+            "ou la <b>Planche de calibration</b>, et garde les cases/tons qui te "
+            "plaisent.",
+            "<b>2.</b> Choisis un <b>matériau</b> existant, ou tape un nouveau "
+            "nom (ex.&nbsp;«&nbsp;MDF&nbsp;6mm&nbsp;»).",
+            "<b>3.</b> Pour chaque ton retenu, «&nbsp;+ Ajouter un ton&nbsp;» et "
+            "renseigne le <b>réglage</b> (S, F, défocus) <b>et ce qu'il "
+            "produit</b>&nbsp;: noirceur 0-100&nbsp;% à l'œil (0 = matériau "
+            "intact, 100 = noir max), largeur du trait au pied à coulisse, "
+            "libellé libre.",
+            "<b>4.</b> Clique <b>OK</b> pour enregistrer le tableau. Il "
+            "alimente ensuite les <b>dégradés</b>, les <b>photos calibrées</b> "
+            "et le «&nbsp;ton sur mesure&nbsp;» (ton mesuré le plus proche).",
+        ])
+
         self.combo_mat = QtWidgets.QComboBox()
         self.combo_mat.setEditable(True)
         self.combo_mat.setToolTip(
@@ -1409,6 +1426,23 @@ class TaskPanelHatch:
                "à utiliser est calculé plus bas depuis la calibration des "
                "Préférences). Le Retrait du bord rentre les hachures pour que "
                "la brûlure ne déborde pas de la forme.")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Sélectionne la <b>face 2D</b> (ou esquisse fermée) à "
+            "remplir de hachures.",
+            "<b>2. Type de remplissage</b>&nbsp;: Parallèles (zigzag), Croisées "
+            "(grille, plus dense) ou Défocus (destiné à être gravé au point "
+            "élargi pour noircir en un passage).",
+            "<b>3. Espacement / angle</b>&nbsp;: règle l'écart entre lignes et "
+            "l'angle. Le <b>retrait du bord</b> rentre les hachures pour que la "
+            "brûlure ne déborde pas («&nbsp;Auto (½ point)&nbsp;»).",
+            "<b>4.</b> Clique <b>OK</b>&nbsp;: crée un objet <code>Hachures</code>"
+            " dans le document. <b>Aucun G-code ici</b> — c'est de la géométrie.",
+            "<b>5.</b> Enchaîne&nbsp;: grave l'objet avec <b>Marquage de motif</b>,"
+            " ou <b>projette-le</b> sur une surface 3D (<b>Projection</b>) avant "
+            "marquage / découpe courbe.",
+        ])
 
         self.combo_filltype = QtWidgets.QComboBox()
         self.combo_filltype.addItems(["Parallèles", "Croisées (grille)", "Défocus (noir)"])
@@ -2577,6 +2611,21 @@ class TaskPanelProject:
         form.addRow(lbl)
         _diagram(form, "diag_projection.svg")
 
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Prépare le <b>motif 2D à plat</b> (texte ShapeString, "
+            "hachures, tracés Draft) et la <b>surface 3D</b> cible (sphère, "
+            "vague, coque…).",
+            "<b>2.</b> Dans la vue 3D, sélectionne les <b>motifs 2D ET la "
+            "surface</b>, tout ensemble. L'état ci-dessous passe au vert quand "
+            "la sélection est valide (exactement une surface + ≥ 1 motif).",
+            "<b>3.</b> Clique <b>OK</b>&nbsp;: les motifs sont projetés sur la "
+            "surface en un objet <code>Hachures_3D</code>.",
+            "<b>4.</b> Enchaîne avec <b>Marquage de motif</b> ou <b>Découpe "
+            "courbe</b>&nbsp;: sélectionne l'objet projeté <b>+</b> le modèle 3D "
+            "pour graver/découper en suivant le relief.",
+        ])
+
         self.lbl_status = _WrapLabel()
         form.addRow(self.lbl_status)
 
@@ -2654,6 +2703,22 @@ class TaskPanelKerf:
                "MORTAISE : insère le tenon dans chaque mortaise et retiens le "
                "JEU (gravé sous chacune) qui donne l'ajustement voulu -- serré "
                "pour un collage, glissant pour du démontable.")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Choisis le test&nbsp;: <b>Carré</b> (mesure du kerf) ou "
+            "<b>Tenon + mortaise</b> (validation de l'ajustement). Règle la "
+            "taille&nbsp;; OK crée la géométrie.",
+            "<b>2.</b> Découpe-la en <b>Découpe multi-passes</b>, avec "
+            "<b>Compensation de kerf = 0</b>.",
+            "<b>3.</b> Mesure la pièce&nbsp;: <b>kerf = taille dessinée − taille "
+            "mesurée</b>. Reporte cette valeur dans «&nbsp;Compensation de "
+            "kerf&nbsp;» des modes de découpe.",
+            "<b>4. Valide</b> (facultatif)&nbsp;: découpe le <b>tenon + "
+            "mortaise</b>, insère le tenon dans chaque mortaise et retiens le "
+            "<b>jeu</b> (gravé sous chacune) qui donne l'ajustement voulu&nbsp;— "
+            "serré pour coller, glissant pour du démontable.",
+        ])
 
         self.combo_test = QtWidgets.QComboBox()
         self.combo_test.addItems(["Carré (mesure du kerf)",
@@ -2819,6 +2884,25 @@ class TaskPanelDefocusCalibration:
                "(de la 1re à la dernière) -- tous tes niveaux de gris/noir en "
                "un seul job, chaque bande étiquetée de sa vitesse.")
         _diagram(form, "diag_defocus.svg")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Pose le <b>zéro Z</b> sur la surface d'une chute. Aucune "
+            "sélection requise.",
+            "<b>2. Balayage en hauteur (Z)</b>&nbsp;: plage de hauteurs de bec "
+            "(du foyer vers le haut) et pas&nbsp;; chaque trait est étiqueté de "
+            "sa hauteur.",
+            "<b>3. Traits</b>&nbsp;: règle puissance/vitesse. Option <b>plusieurs"
+            " bandes</b> pour graver une bande par vitesse en un seul job.",
+            "<b>4. Génère et grave</b>, puis mesure au pied à coulisse&nbsp;: "
+            "(1)&nbsp;le trait le plus fin → ton <b>Z de foyer</b> et sa largeur "
+            "= «&nbsp;point au foyer&nbsp;»&nbsp;; (2)&nbsp;un trait bien plus "
+            "large → sa hauteur moins le foyer = <b>défocus de test</b>, sa "
+            "largeur = «&nbsp;point au défocus&nbsp;».",
+            "<b>5.</b> <b>Reporte ces trois mesures</b> dans les Préférences "
+            "(⚙, section «&nbsp;Calibration du point&nbsp;»)&nbsp;: elles "
+            "servent à tous les modes (remplissage noir, styles vague/défocus…).",
+        ])
 
         self._presets = _PresetController(form, inner, "defocus_calib", lambda: self._last_fields)
 
@@ -3142,6 +3226,22 @@ class TaskPanelPowerRamp:
                "puissance fait micro-branler la machine).")
         _diagram(form, "diag_ramp.svg")
 
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Pose le <b>zéro Z</b> sur la surface d'une chute. Aucune "
+            "sélection requise.",
+            "<b>2. Lignes (vitesses)</b>&nbsp;: longueur des lignes et liste des "
+            "vitesses&nbsp;— une ligne par vitesse.",
+            "<b>3. Rampe de puissance</b>&nbsp;: puissance min→max qui monte le "
+            "long de chaque ligne, et nombre de paliers.",
+            "<b>4. Rampe de hauteur (Z)</b> (option)&nbsp;: le bec monte aussi "
+            "le long de la ligne (défocus progressif).",
+            "<b>5. Génère et grave.</b> La règle graduée sous la 1re ligne "
+            "donne la puissance sous chaque point&nbsp;: repère où le trait "
+            "<b>apparaît</b> et où il <b>sature</b>, à chaque vitesse, puis "
+            "reporte les bons réglages au <b>Nuancier</b>.",
+        ])
+
         self._presets = _PresetController(form, inner, "powerramp", lambda: self._last_fields)
 
         _section(form, "Lignes (vitesses)", "sect_power.svg")
@@ -3429,6 +3529,21 @@ class TaskPanelOffsetTest:
                "sélection requise.")
         _diagram(form, "diag_offset.svg")
 
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1. Sécurité</b>&nbsp;: <b>lunettes laser obligatoires</b>. Chute "
+            "de bois sur le martyre (prévoir large), fraise à graver montée à la "
+            "main, zéro X/Y à l'œil au centre de la chute. Aucune sélection.",
+            "<b>2. Croix (géométrie)</b>&nbsp;: taille des bras de la croix.",
+            "<b>3. Croix fraisée / Croix laser</b>&nbsp;: profondeur et vitesse "
+            "de la fraise, puissance et vitesse du laser.",
+            "<b>4. Génère et lance.</b> Monte la glissière laser pendant la "
+            "pause du 2e changement d'outil.",
+            "<b>5. Mesure l'écart</b> entre les deux croix&nbsp;: dX = X&nbsp;"
+            "laser − X&nbsp;fraisé (signé, sens machine). Corrige "
+            "<code>tool.tbl</code>&nbsp;: X_nouveau = X_actuel − dX (idem Y).",
+        ])
+
         self._presets = _PresetController(form, inner, "offset_test", lambda: self._last_fields)
 
         _section(form, "Croix (géométrie)", "sect_options.svg")
@@ -3644,6 +3759,29 @@ class TaskPanelHalftone:
                "zéro X/Y sur la pièce, zéro Z sur sa surface. La machine "
                "s'arrête à chaque point : compter ~2-4 points/seconde -- le "
                "pas de trame pilote directement la durée du job.")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1. Image</b>&nbsp;: «&nbsp;Parcourir…&nbsp;» pour charger un "
+            "PNG/JPG (ou «&nbsp;Photo de démonstration&nbsp;»). Aucune sélection "
+            "dans la vue 3D n'est requise.",
+            "<b>2. Cadre &amp; taille</b>&nbsp;: règle la <b>largeur</b> de "
+            "l'image et le <b>pas de trame</b> (il pilote la finesse ET la "
+            "durée). Tourne l'angle si l'image doit être pivotée&nbsp;; le gamma "
+            "éclaircit/assombrit l'ensemble.",
+            "<b>3. Tramage &amp; puissance</b>&nbsp;: choisis le tramage "
+            "(Floyd-Steinberg recommandé, lignes calibrées, points Z…) et la "
+            "puissance. «&nbsp;Mire des tramages&nbsp;» les compare sur une "
+            "chute.",
+            "<b>4.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin "
+            "<b>bas-gauche</b> (l'image y est posée en X0&nbsp;Y0), Z sur la "
+            "surface.",
+            "<b>5. Vérifie</b>&nbsp;: «&nbsp;Aperçu des points&nbsp;» (vue 3D) "
+            "et «&nbsp;Aperçu cadrage&nbsp;» (fichier séparé, à blanc).",
+            "<b>6. Génère</b>&nbsp;: «&nbsp;Générer et sauvegarder le "
+            "G-code…&nbsp;». Compter ~2-4 points/seconde&nbsp;— un pas de trame "
+            "trop fin donne un job très long.",
+        ])
 
         self._presets = _PresetController(
             form, inner, "photo", lambda: self._last_fields,
@@ -4274,6 +4412,24 @@ class TaskPanelTestGrid:
                "(bec défocalisé) pour caractériser un matériau proprement, "
                "une hauteur à la fois.")
         _diagram(form, "diag_grid.svg")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Aucune sélection requise. Pour caler un <b>nouveau "
+            "matériau</b>, préfère la «&nbsp;Planche de calibration&nbsp;» "
+            "ci-dessus (tout en un seul job).",
+            "<b>2. Mode &amp; plages</b>&nbsp;: gravure ou découpe, plage de "
+            "puissances (colonnes&nbsp;X) et de vitesses (lignes&nbsp;Y), nombre "
+            "de cellules.",
+            "<b>3. Cellules &amp; remplissage</b>&nbsp;: taille des cellules, "
+            "plein ou contour, étiquettes S/F imprimées sur la pièce.",
+            "<b>4. Hauteur (Z) de test</b>&nbsp;: rejoue la même grille à une "
+            "autre hauteur (bec défocalisé) pour caractériser un matériau, une "
+            "hauteur à la fois.",
+            "<b>5. Génère et grave</b> sur une chute. Choisis la meilleure "
+            "cellule à l'œil, puis reporte S/F au <b>Nuancier</b> ou en "
+            "préréglage.",
+        ])
 
         # Préréglages nommés (par matériau), catégorie "testgrid" : TOUS les
         # réglages de la grille sont couverts (pas seulement puissance/vitesse).
@@ -5172,6 +5328,29 @@ class TaskPanelCurved:
                "un passage) -- tous suivent le relief. Le Z de travail et la "
                "marge de transit viennent des Préférences.")
 
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Sélectionne le <b>motif</b>. Pièce PLATE&nbsp;: le motif "
+            "2D seul. Surface COURBE&nbsp;: le motif projeté (<code>Hachures_3D"
+            "</code>) <b>ET</b> le modèle 3D d'origine, les deux ensemble.",
+            "<b>2.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin de "
+            "référence, Z sur le point haut de la surface. Avec le modèle 3D le "
+            "relief est sondé exactement&nbsp;; sans lui le Z est seulement "
+            "interpolé entre les points projetés.",
+            "<b>3. Matériau / ton</b>&nbsp;: applique un préréglage, ou un ton "
+            "du <b>Nuancier</b> via «&nbsp;Calculer le réglage (interpolé)&nbsp;»,"
+            " sinon règle puissance/vitesse à la main.",
+            "<b>4. Style de trait</b>&nbsp;: plein, tirets, pointillé, vague "
+            "défocus (trait qui ondule en largeur) ou point élargi (noircit un "
+            "remplissage en un passage). Tous suivent le relief.",
+            "<b>5. Vérifie</b>&nbsp;: «&nbsp;Aperçu photo&nbsp;» (rendu réaliste)"
+            " et «&nbsp;Aperçu du trajet&nbsp;». «&nbsp;Mire des styles&nbsp;» "
+            "compare les styles sur une chute.",
+            "<b>6. Génère</b>&nbsp;: «&nbsp;Générer et sauvegarder le "
+            "G-code…&nbsp;» (ou «&nbsp;Ajouter au job combiné&nbsp;»). Relis le "
+            "<code>G0&nbsp;Z…</code> en tête du .ngc avant de lancer.",
+        ])
+
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)
@@ -5901,6 +6080,29 @@ class TaskPanelFlat:
         # d'élargir la fenêtre.
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Sélectionne le(s) <b>profil(s) fermé(s)</b> à découper "
+            "(faces, esquisses fermées, contours). Plusieurs pièces&nbsp;: "
+            "sélectionne-les ensemble.",
+            "<b>2.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin de "
+            "référence, Z sur le <b>dessus</b> de la pièce&nbsp;— le foyer "
+            "descend passe après passe selon l'épaisseur.",
+            "<b>3. Matériau</b>&nbsp;: applique un préréglage, ou règle "
+            "épaisseur / nombre de passes / puissance / vitesse. Le <b>kerf</b> "
+            "compense la largeur du trait pour rester à la cote.",
+            "<b>4. Attaches &amp; amorce</b>&nbsp;: ajoute des attaches (ponts "
+            "de matière) pour que la pièce ne se libère pas en fin de coupe, et "
+            "une amorce si besoin.",
+            "<b>5. Copies en matrice</b> (option)&nbsp;: répète la découpe en "
+            "grille X/Y pour débiter plusieurs pièces.",
+            "<b>6. Vérifie</b>&nbsp;: «&nbsp;Aperçu cadrage&nbsp;» (fichier "
+            "séparé, à blanc sur la chute) puis «&nbsp;Aperçu du trajet&nbsp;».",
+            "<b>7. Génère</b>&nbsp;: «&nbsp;Générer et sauvegarder le "
+            "G-code…&nbsp;». Relis le <code>G0&nbsp;Z…</code> et la hauteur de "
+            "bec avant de lancer.",
+        ])
+
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)
@@ -6451,6 +6653,27 @@ class TaskPanelCurvedCut:
                "ordre trous-avant-contour et optimisation par proximité "
                "disponibles comme à plat.")
 
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Sélectionne le motif projeté (<code>Hachures_3D</code>) "
+            "<b>ET</b> le modèle 3D d'origine, les deux en même temps.",
+            "<b>2.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin de "
+            "référence, Z sur le point haut de la surface&nbsp;— le relief est "
+            "sondé exactement à chaque point pendant la découpe.",
+            "<b>3. Matériau</b>&nbsp;: applique un préréglage, ou règle "
+            "épaisseur / nombre de passes / puissance / vitesse. Chaque passe "
+            "recule le foyer un peu plus DANS la matière, tout en suivant le "
+            "relief.",
+            "<b>4. Kerf &amp; ordre</b>&nbsp;: compensation de kerf, trous "
+            "avant contour et optimisation par proximité, exactement comme à "
+            "plat.",
+            "<b>5. Vérifie</b>&nbsp;: «&nbsp;Aperçu cadrage&nbsp;» (fichier "
+            "séparé) puis «&nbsp;Aperçu du trajet&nbsp;».",
+            "<b>6. Génère</b>&nbsp;: «&nbsp;Générer et sauvegarder le "
+            "G-code…&nbsp;». Relis le <code>G0&nbsp;Z…</code> en tête avant de "
+            "lancer.",
+        ])
+
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)
@@ -6877,12 +7100,21 @@ class TaskPanelCombined:
             "armement (M3) au début, un seul désarmement (M5)/M2 à la fin, "
             "exécutées dans l'ordre de la liste.")
         form.addRow(info)
-        howto = _WrapLabel(
-            "Pour AJOUTER une opération : ouvre son mode normal (Découpe, "
-            "Marquage, Grille de test...), règle tout comme d'habitude, puis "
-            "clique \u00ab \u2795 Ajouter au job combiné \u00bb dans ce mode. "
-            "Reviens ici pour ordonner la liste et générer le fichier.")
-        form.addRow(howto)
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Dans chaque mode combinable (Découpe plat/courbe, "
+            "Marquage, Grille de test…), règle l'opération comme d'habitude "
+            "puis clique «&nbsp;➕ Ajouter au job combiné&nbsp;».",
+            "<b>2.</b> Reviens ici&nbsp;: la <b>liste</b> empile les opérations "
+            "dans l'ordre d'exécution. Monte / descends / supprime pour les "
+            "ordonner.",
+            "<b>3. Vérifie</b>&nbsp;: «&nbsp;Aperçu cadrage&nbsp;» (fichier "
+            "séparé), «&nbsp;Aperçu du trajet&nbsp;» et «&nbsp;Aperçu "
+            "photo&nbsp;» (rendu de tout le job d'un coup).",
+            "<b>4.</b> Clique <b>OK</b>&nbsp;: le job part en <b>un seul "
+            "fichier</b>&nbsp;— un seul armement (<code>M3</code>) au début, un "
+            "seul désarmement (<code>M5</code>)/<code>M2</code> à la fin.",
+        ])
 
         self.list_ops = QtWidgets.QListWidget()
         self.list_ops.setToolTip("Opérations empilées, exécutées dans cet ordre.")
