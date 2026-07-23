@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LaserAtelier — Manuel de l'atelier</title>
+<style>
+  /* ===================== Mise en page PDF ===================== */
+  @page {
+    size: A4;
+    margin: 22mm 20mm 20mm 20mm;
+    @bottom-left  { content: "LaserAtelier · Manuel de l'atelier"; font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #9aa1ac; }
+    @bottom-right { content: counter(page); font-family: "DejaVu Sans", sans-serif; font-size: 9pt; color: #5a626e; }
+    @top-right    { content: string(chap); font-family: "DejaVu Sans", sans-serif; font-size: 8pt; color: #b9bec7; }
+  }
+  @page cover { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } @top-right { content: none; } }
+  @page :blank { @bottom-left { content: none; } @bottom-right { content: none; } }
+
+  :root {
+    --orange: #ff8a00;
+    --orange-clair: #ffab45;
+    --orange-pale: #fff3e2;
+    --ardoise: #2f3540;
+    --ardoise-clair: #5a626e;
+    --gris: #eef0f3;
+    --gris-txt: #6b7280;
+    --rouge: #ff5e5b;
+    --encre: #23272e;
+  }
+
+  * { box-sizing: border-box; }
+  html { font-size: 11pt; }
+  body {
+    font-family: "Liberation Serif", "Tinos", Georgia, serif;
+    color: var(--encre);
+    line-height: 1.55;
+    margin: 0;
+    hyphens: auto;
+    text-align: justify;
+  }
+  h1, h2, h3, h4, .sans { font-family: "DejaVu Sans", "Liberation Sans", sans-serif; text-align: left; }
+
+  p { margin: 0 0 .7em; }
+  a { color: var(--ardoise); text-decoration: none; }
+  code, .mono { font-family: "DejaVu Sans Mono", monospace; font-size: .86em; background: var(--gris); padding: .05em .35em; border-radius: 3px; color: #1c2b3a; }
+  em { color: var(--ardoise-clair); }
+  strong { color: var(--ardoise); }
+
+  /* ===================== Couverture ===================== */
+  .cover {
+    page: cover;
+    break-after: page;
+    height: 297mm;
+    color: #fff;
+    position: relative;
+    background:
+      radial-gradient(120% 80% at 80% 12%, rgba(255,138,0,.30), transparent 55%),
+      radial-gradient(90% 60% at 10% 95%, rgba(255,138,0,.14), transparent 60%),
+      linear-gradient(160deg, #363d49 0%, #2f3540 45%, #262b34 100%);
+    overflow: hidden;
+  }
+  .cover .bande { position: absolute; top: 0; left: 0; width: 12mm; height: 100%; background: linear-gradient(var(--orange), var(--orange-clair)); }
+  .cover-inner { position: absolute; left: 26mm; right: 20mm; top: 55mm; }
+  .cover .kicker { font-family:"DejaVu Sans",sans-serif; letter-spacing: .35em; text-transform: uppercase; font-size: 10pt; color: var(--orange-clair); margin: 0 0 6mm; }
+  .cover h1 { font-size: 46pt; line-height: 1.02; margin: 0; font-weight: 800; letter-spacing: -1px; }
+  .cover h1 .light { font-weight: 300; color: #cfd4db; display:block; font-size: 30pt; letter-spacing:0; margin-top: 3mm; }
+  .cover .tagline { font-family:"Liberation Serif",serif; font-style: italic; font-size: 15pt; color: #dfe3e9; margin: 10mm 0 0; max-width: 130mm; }
+  .cover .foot { position: absolute; left: 26mm; right: 20mm; bottom: 22mm; display: flex; align-items: flex-end; justify-content: space-between; }
+  .cover .foot .meta { font-family:"DejaVu Sans",sans-serif; font-size: 10pt; color: #b8bec7; line-height: 1.7; }
+  .cover .foot .meta b { color: #fff; }
+  .cover .chapeau { width: 46mm; opacity: .96; }
+  .cover .ver { display:inline-block; font-family:"DejaVu Sans",sans-serif; font-size: 9pt; font-weight:700; letter-spacing:.05em; color: var(--ardoise); background: var(--orange); padding: 2mm 4mm; border-radius: 999px; margin-bottom: 4mm; }
+
+  /* ===================== Sommaire ===================== */
+  .toc { break-after: page; }
+  .toc h2 { font-size: 24pt; color: var(--ardoise); border-bottom: 3px solid var(--orange); padding-bottom: 3mm; margin: 0 0 8mm; }
+  .toc ol { list-style: none; padding: 0; margin: 0; counter-reset: t; }
+  .toc > ol > li { font-family:"DejaVu Sans",sans-serif; font-weight: 700; color: var(--ardoise); margin: 4.5mm 0 1.5mm; font-size: 12pt; }
+  .toc > ol > li > a::before { counter-increment: t; content: counter(t) ".  "; color: var(--orange); }
+  .toc ol ol { margin: 0 0 0 8mm; counter-reset: s; }
+  .toc ol ol li { font-family:"DejaVu Sans",sans-serif; font-weight: 400; color: var(--ardoise-clair); font-size: 10.5pt; margin: 1mm 0; }
+  .toc ol ol li > a::before { counter-increment: s; content: counter(t) "." counter(s) "   "; color: var(--orange-clair); }
+  .toc a { display: block; }
+  .toc a::after { content: leader('. ') target-counter(attr(href), page); color: var(--gris-txt); font-weight: 400; }
+
+  /* ===================== Sections ===================== */
+  section.chap { break-before: page; counter-increment: chap; }
+  h2.titre {
+    font-size: 22pt; color: var(--ardoise); margin: 0 0 6mm; line-height: 1.1;
+    padding-top: 2mm;
+  }
+  h2.titre .ttl { string-set: chap content(); }
+  h2.titre::before {
+    content: counter(chap); display:block;
+    font-size: 13pt; color: var(--orange); font-weight: 800; letter-spacing:.1em; margin-bottom: 1mm;
+  }
+  h2.titre .sub { display:block; font-weight: 400; font-size: 12pt; color: var(--ardoise-clair); margin-top: 2mm; font-family:"Liberation Serif",serif; font-style: italic; }
+  h3 { font-size: 14pt; color: var(--ardoise); margin: 7mm 0 2mm; }
+  h3 .n { color: var(--orange); }
+  h4 { font-size: 11.5pt; color: var(--ardoise); margin: 4mm 0 1mm; }
+  body { counter-reset: chap; }
+
+  ul.puces { margin: 0 0 .7em; padding-left: 5mm; }
+  ul.puces li { margin: .25em 0; padding-left: 1mm; }
+  ul.puces li::marker { color: var(--orange); content: "▸  "; }
+
+  .lead { font-size: 12.5pt; color: var(--ardoise-clair); font-style: italic; border-left: 3px solid var(--orange); padding-left: 5mm; margin: 0 0 7mm; }
+
+  /* ===================== Encadrés ===================== */
+  .box { border-radius: 6px; padding: 4mm 5mm 3mm; margin: 5mm 0; break-inside: avoid; font-size: 10.5pt; }
+  .box .t { font-family:"DejaVu Sans",sans-serif; font-weight:700; font-size: 9.5pt; letter-spacing:.03em; text-transform: uppercase; display:block; margin-bottom: 1.5mm; }
+  .box p:last-child { margin-bottom: 0; }
+  .astuce  { background: var(--orange-pale); border: 1px solid #f4d9ad; }
+  .astuce .t { color: #b96b00; }
+  .attention { background: #fff0ef; border: 1px solid #ffcecc; }
+  .attention .t { color: #d43b37; }
+  .pourquoi { background: var(--gris); border: 1px solid #dfe3e9; }
+  .pourquoi .t { color: var(--ardoise-clair); }
+
+  /* ===================== Cartes de mode ===================== */
+  .mode { display: flex; gap: 5mm; align-items: flex-start; border: 1px solid var(--gris); border-left: 4px solid var(--orange); border-radius: 6px; padding: 4mm 5mm; margin: 4mm 0; break-inside: avoid; }
+  .mode img.ic { width: 15mm; height: 15mm; flex: 0 0 15mm; }
+  .mode .body { flex: 1; }
+  .mode h4 { margin: 0 0 1mm; font-size: 12.5pt; }
+  .mode .quoi { color: var(--ardoise-clair); font-style: italic; margin: 0 0 2mm; }
+  .mode .meta { font-family:"DejaVu Sans",sans-serif; font-size: 9pt; color: var(--gris-txt); }
+  .mode .meta b { color: var(--ardoise); font-weight: 700; }
+  .mode ul.puces { font-size: 10pt; margin-top: 1.5mm; }
+
+  .groupe { font-family:"DejaVu Sans",sans-serif; font-size: 12pt; font-weight: 800; color: #fff; background: var(--ardoise); border-radius: 5px; padding: 2mm 4mm; margin: 8mm 0 3mm; letter-spacing:.02em; }
+  .groupe .em { color: var(--orange-clair); }
+
+  table.reglages { width: 100%; border-collapse: collapse; margin: 4mm 0; font-size: 10pt; break-inside: avoid; }
+  table.reglages th, table.reglages td { text-align: left; padding: 2mm 3mm; border-bottom: 1px solid var(--gris); vertical-align: top; }
+  table.reglages th { font-family:"DejaVu Sans",sans-serif; background: var(--gris); color: var(--ardoise); font-size: 9pt; text-transform: uppercase; letter-spacing:.03em; }
+  table.reglages td:first-child { font-family:"DejaVu Sans Mono",monospace; color: #1c2b3a; white-space: nowrap; }
+
+  .etape { display:flex; gap:4mm; margin: 3mm 0; break-inside: avoid; }
+  .etape .num { flex:0 0 9mm; height:9mm; border-radius:50%; background:var(--orange); color:#fff; font-family:"DejaVu Sans",sans-serif; font-weight:800; font-size:13pt; display:flex; align-items:center; justify-content:center; }
+  .etape .txt { flex:1; padding-top: .5mm; }
+  .etape .txt b { color: var(--ardoise); }
+
+  .timeline { border-left: 3px solid var(--orange); margin: 5mm 0 5mm 3mm; padding-left: 6mm; }
+  .timeline .ev { margin: 0 0 5mm; break-inside: avoid; position: relative; }
+  .timeline .ev::before { content:""; position:absolute; left:-7.9mm; top:1.5mm; width:3.2mm; height:3.2mm; border-radius:50%; background:var(--orange); border: 1.2mm solid #fff; }
+  .timeline .d { font-family:"DejaVu Sans",sans-serif; font-weight:800; color: var(--orange); font-size: 10pt; letter-spacing:.02em; }
+  .timeline .ev p { margin:.3mm 0 0; }
+
+  .signature { text-align:center; margin: 12mm 0 0; color: var(--gris-txt); font-style: italic; font-size: 10.5pt; }
+  .signature img { width: 20mm; opacity:.8; display:block; margin: 0 auto 2mm; }
+  hr.sep { border: none; border-top: 1px solid var(--gris); margin: 7mm 0; }
+</style>
+</head>
+<body>
+
+<!-- ================= COUVERTURE ================= -->
+<div class="cover">
+  <div class="bande"></div>
+  <div class="cover-inner">
+    <p class="kicker">Atelier du Verdier</p>
+    <h1>LaserAtelier<span class="light">Le manuel de l'atelier</span></h1>
+    <p class="tagline">Du dessin FreeCAD au trait de lumière : graver, marquer et découper au laser sur une fraiseuse PrintNC pilotée par LinuxCNC.</p>
+  </div>
+  <div class="foot">
+    <div class="meta">
+      <span class="ver">Version 1.22.2</span><br>
+      <b>Manuel complet</b> — installation &amp; utilisation<br>
+      Juillet 2026 · licence LGPL-2.1-or-later<br>
+      laser.atelierduverdier.fr
+    </div>
+    <img class="chapeau" src="../resources/icons/chapeau.svg" alt="">
+  </div>
+</div>
+
+<!-- ================= SOMMAIRE ================= -->
+<nav class="toc">
+  <h2>Sommaire</h2>
+  <ol>
+    <li><a href="#c1">Bienvenue — d'une petite macro à un atelier</a></li>
+    <li><a href="#c2">La philosophie : mesurer plutôt que deviner</a></li>
+    <li><a href="#c3">Le matériel : PrintNC, LinuxCNC &amp; le laser</a></li>
+    <li><a href="#c4">Installation</a></li>
+    <li><a href="#c5">Prise en main : votre premier marquage</a></li>
+    <li><a href="#c6">Les modes de l'atelier</a>
+      <ol>
+        <li><a href="#c6-1">Graver &amp; marquer</a></li>
+        <li><a href="#c6-2">Découper &amp; projeter</a></li>
+        <li><a href="#c6-3">Tester &amp; calibrer</a></li>
+        <li><a href="#c6-4">Le Job combiné</a></li>
+      </ol>
+    </li>
+    <li><a href="#c7">La calibration, cœur du système</a></li>
+    <li><a href="#c8">Réglages, profils &amp; sauvegarde</a></li>
+    <li><a href="#c9">Sécurité machine : ce qu'il faut avoir compris</a></li>
+    <li><a href="#c10">Astuces &amp; bonnes pratiques</a></li>
+    <li><a href="#c11">Dépannage — questions fréquentes</a></li>
+    <li><a href="#c12">Annexe : glossaire &amp; liens</a></li>
+  </ol>
+</nav>
+
+<!-- ================= 1. BIENVENUE ================= -->
+<section class="chap" id="c1">
+  <h2 class="titre"><span class="ttl">Bienvenue</span><span class="sub">D'une petite macro Python à un atelier laser complet.</span></h2>
+
+  <p class="lead">Si vous détestez lire les manuels — moi aussi. Alors celui-ci va droit au but : de quoi comprendre l'esprit de l'outil, l'installer, et graver votre première pièce sans vous perdre.</p>
+
+  <p>LaserAtelier n'est pas né d'un grand plan. À la mi-juillet 2026, il n'existait qu'une <strong>petite macro Python</strong> pour FreeCAD, écrite pour un besoin précis : marquer un motif au laser sur la fraiseuse, contour plus hachures, avec la bonne astuce pour ne pas fatiguer le relais du module laser. Quelques centaines de lignes, une seule boîte de dialogue.</p>
+
+  <p>En une dizaine de jours, ce petit bout de code a grossi — un mode, puis un autre, puis le suivi de surfaces courbes, la découpe multi-passes, la calibration… Jusqu'à devenir ce qu'il est aujourd'hui : un <strong>véritable atelier de fabrication laser</strong> intégré à FreeCAD, avec dix-huit modes et un système de calibration fondé sur la mesure.</p>
+
+  <div class="timeline">
+    <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
+    <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
+    <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : cinq modules propres, dix-huit modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.22.2</strong>.</p></div>
+  </div>
+
+  <div class="box pourquoi">
+    <span class="t">Pourquoi cette histoire compte</span>
+    <p>Parce qu'elle explique la forme de l'outil. LaserAtelier a été façonné par l'usage réel, une frustration après l'autre, sur <em>une machine précise</em> — pas conçu sur le papier. C'est pour ça qu'il colle au grain du bois plutôt qu'aux belles théories.</p>
+  </div>
+</section>
+
+<!-- ================= 2. PHILOSOPHIE ================= -->
+<section class="chap" id="c2">
+  <h2 class="titre"><span class="ttl">La philosophie</span><span class="sub">Deux principes tiennent tout l'atelier.</span></h2>
+
+  <h3><span class="n">1.</span> Mesurer plutôt que deviner</h3>
+  <p>La divergence d'un faisceau, la largeur réellement brûlée, le trait de scie (kerf) d'une découpe, la teinte d'un gris sur du MDF : rien de tout cela ne se devine correctement. LaserAtelier part donc systématiquement de <strong>mesures réelles</strong> que vous faites une fois, au pied à coulisse ou à l'œil, et qu'il conserve.</p>
+  <p>L'exemple le plus parlant est le <strong>défocus</strong>. Pour noircir une surface, on écarte volontairement le bec du point focal : le faisceau diverge, le point s'élargit, un seul passage suffit à remplir. Mais de combien élargir ? Plutôt qu'un angle de divergence supposé, l'atelier le calcule à partir de <em>deux mesures</em> : le diamètre du point au foyer, puis à un défocus de test connu. Le reste est de la géométrie.</p>
+
+  <h3><span class="n">2.</span> Respecter la machine</h3>
+  <p>Le laser n'est pas une broche comme les autres. Sur cette PrintNC, la puissance est asservie à la <em>vitesse réelle</em> par la couche HAL de LinuxCNC : à l'arrêt, la puissance retombe à zéro. Toute une famille de « pièges » en découle (on ne peut pas graver un point en restant immobile, par exemple), et l'atelier est construit pour les éviter d'office. Le chapitre <a href="#c9">Sécurité machine</a> y revient — c'est le seul passage vraiment important à lire avant de lancer un vrai travail.</p>
+
+  <div class="box astuce">
+    <span class="t">💡 À retenir</span>
+    <p>Si un résultat vous surprend, la question n'est presque jamais « quel réglage magique ? » mais « qu'est-ce que je n'ai pas encore <em>mesuré</em> ? ». Calibrez d'abord, gravez ensuite.</p>
+  </div>
+</section>
+
+<!-- ================= 3. MATÉRIEL ================= -->
+<section class="chap" id="c3">
+  <h2 class="titre"><span class="ttl">Le matériel</span><span class="sub">Une fraiseuse, un contrôleur, un module laser — et comment ils se parlent.</span></h2>
+
+  <p>LaserAtelier a été mis au point sur une configuration précise. Il fonctionne ailleurs, mais tout le modèle (collisions, focale, dialecte G-code) part de ce trio.</p>
+
+  <h3>La fraiseuse : PrintNC + LinuxCNC</h3>
+  <p>La machine hôte est une <strong>PrintNC</strong>, une fraiseuse CNC robuste pilotée par <strong>LinuxCNC 2.9.x</strong>. Le laser y est monté comme un outil supplémentaire : l'atelier produit du G-code RS-274 standard, chargé et exécuté comme n'importe quel programme d'usinage.</p>
+
+  <h3>Le module laser : LaserTree LT-80W-AA-PRO</h3>
+  <p>Le profil par défaut est le module diode <strong>LaserTree LT-80W-AA-PRO</strong>, dont le capot carré a été retiré pour que le bec puisse suivre des surfaces courbes sans accrocher. De cette géométrie viennent le modèle de collision du cône (<span class="mono">NOZZLE_*</span>) et la table de focale.</p>
+
+  <h3>Le dialogue laser ↔ contrôleur : la stratégie « relais »</h3>
+  <p>Le laser est câblé comme la <strong>broche 1</strong> (<code>$1</code>) de LinuxCNC ; son alimentation 24 V passe par un relais. Allumer/éteindre ce relais à chaque trait l'userait et ralentirait tout. D'où l'astuce présente depuis la première macro :</p>
+  <ul class="puces">
+    <li>on <strong>arme</strong> le laser une seule fois en début de travail (<code>M3&nbsp;$1</code> à puissance nulle) ;</li>
+    <li>entre les traits, seul le mot <code>S</code> change — <code>S0</code> pour un déplacement, la puissance réglée pour graver ;</li>
+    <li>on <strong>désarme</strong> une seule fois à la fin (<code>M5&nbsp;$1</code>, puis <code>M2</code>).</li>
+  </ul>
+  <p>Le relais et l'alimentation ne subissent donc qu'un cycle par travail, quel que soit le nombre de traits.</p>
+
+  <div class="box pourquoi">
+    <span class="t">Trois dialectes G-code</span>
+    <p>Par défaut l'atelier écrit pour <strong>LinuxCNC</strong>. Deux autres dialectes existent pour d'autres contrôleurs (<strong>GRBL</strong> et <strong>grblHAL</strong>) : ils se choisissent par profil laser dans les Préférences, et l'atelier adapte automatiquement l'armement, la sélection de broche et le lissage de trajectoire. Vous n'avez jamais à écrire ces différences à la main.</p>
+  </div>
+
+  <div class="box attention">
+    <span class="t">⚠️ Sécurité — le bon sens d'abord</span>
+    <p>Un laser de gravure aveugle et brûle. Lunettes adaptées à la longueur d'onde, ventilation/extraction des fumées, jamais de matériaux qui dégagent des vapeurs toxiques (PVC…), et on ne quitte pas la machine des yeux pendant un tir. Ce manuel parle logiciel ; la sécurité physique reste sous votre responsabilité.</p>
+  </div>
+</section>
+
+<!-- ================= 4. INSTALLATION ================= -->
+<section class="chap" id="c4">
+  <h2 class="titre"><span class="ttl">Installation</span><span class="sub">Cinq minutes, une seule fois.</span></h2>
+
+  <p>LaserAtelier <em>est</em> son dossier : le dépôt se clone directement dans le dossier <code>Mod</code> de FreeCAD. Il n'y a rien à compiler.</p>
+
+  <div class="etape"><div class="num">1</div><div class="txt"><b>Cloner le dépôt</b> dans le dossier des ateliers de FreeCAD :<br>
+    <code>git clone https://github.com/atelierduverdier/LaserAtelier \<br>&nbsp;&nbsp;~/.local/share/FreeCAD/v1-1/Mod/LaserAtelier</code><br>
+    (adaptez <code>v1-1</code> à votre version de FreeCAD.)</div></div>
+
+  <div class="etape"><div class="num">2</div><div class="txt"><b>Redémarrer FreeCAD.</b> L'atelier est chargé au démarrage ; un redémarrage suffit à prendre en compte l'installation comme toute mise à jour ultérieure.</div></div>
+
+  <div class="etape"><div class="num">3</div><div class="txt"><b>Choisir l'atelier</b> « <strong>LaserAtelier</strong> » dans le sélecteur d'ateliers (la liste déroulante en haut de FreeCAD). La barre d'outils et le menu de l'atelier apparaissent.</div></div>
+
+  <div class="etape"><div class="num">4</div><div class="txt"><b>Ouvrir le Guide rapide</b> (première icône). Il rappelle en une page l'ordre conseillé des opérations.</div></div>
+
+  <div class="box astuce">
+    <span class="t">💡 Mise à jour</span>
+    <p>Comme le dépôt vit dans le dossier <code>Mod</code>, une mise à jour se fait par un simple <code>git pull</code> dans ce dossier, puis un redémarrage de FreeCAD. Vos réglages et vos photos ne sont pas dans le dépôt : ils sont conservés à part (voir <a href="#c8">Réglages &amp; sauvegarde</a>).</p>
+  </div>
+
+  <div class="box pourquoi">
+    <span class="t">Où sont mes données ?</span>
+    <p>Les réglages tiennent dans un unique fichier <code>laser_atelier_config.json</code> rangé dans le dossier de données de FreeCAD (hors dépôt). Les photos de résultats sont rangées dans un sous-dossier <code>photos_resultats/</code> de l'atelier lui-même, pour survivre à l'effacement des originaux. Tout cela s'exporte en un <code>.zip</code> depuis les Préférences.</p>
+  </div>
+</section>
+
+<!-- ================= 5. PRISE EN MAIN ================= -->
+<section class="chap" id="c5">
+  <h2 class="titre"><span class="ttl">Prise en main</span><span class="sub">Votre premier marquage, pas à pas.</span></h2>
+
+  <p class="lead">Objectif : graver un texte ou un motif simple à plat, pour vérifier toute la chaîne — du dessin au fichier envoyé à la machine.</p>
+
+  <div class="etape"><div class="num">1</div><div class="txt"><b>Dessiner ou choisir un motif.</b> Une esquisse (Sketch), une face plane, un texte Draft. Pour un texte « bâton » propre en un seul trait, utilisez le mode <strong>Texte (trait simple)</strong>, qui crée un fil prêt à graver.</div></div>
+
+  <div class="etape"><div class="num">2</div><div class="txt"><b>Le sélectionner</b> dans l'arbre ou la vue 3D, puis lancer le mode <strong>Marquage de motif</strong>.</div></div>
+
+  <div class="etape"><div class="num">3</div><div class="txt"><b>Régler la puissance et la vitesse.</b> En cas de doute, partez d'un préréglage matériau, ou d'abord une <strong>Grille de test</strong> (voir plus loin) pour trouver le bon couple sur votre bois.</div></div>
+
+  <div class="etape"><div class="num">4</div><div class="txt"><b>Vérifier avec l'aperçu.</b> Le bouton <strong>Aperçu photo</strong> peint un rendu réaliste de la gravure ; le bouton <strong>Aperçu de cadrage</strong> génère un petit fichier qui ne trace que le rectangle englobant, laser éteint, pour vérifier que la pièce est bien placée sous la machine.</div></div>
+
+  <div class="etape"><div class="num">5</div><div class="txt"><b>Générer le G-code.</b> Le bouton « Générer et sauvegarder le G-code… » propose un nom de fichier adapté au mode (par exemple <code>marquage.ngc</code>) et l'enregistre.</div></div>
+
+  <div class="etape"><div class="num">6</div><div class="txt"><b>Cadrer, puis graver.</b> Sur la machine : chargez d'abord le fichier de cadrage pour positionner la pièce, puis le fichier de gravure. Ne quittez pas la machine des yeux.</div></div>
+
+  <div class="box astuce">
+    <span class="t">💡 L'ordre qui évite les mauvaises surprises</span>
+    <p><strong>Calibrer → tester sur chute → cadrer → graver.</strong> Une grille de test de deux minutes sur une chute vous épargne une pièce ratée.</p>
+  </div>
+</section>
+
+<!-- ================= 6. LES MODES ================= -->
+<section class="chap" id="c6">
+  <h2 class="titre"><span class="ttl">Les modes de l'atelier</span><span class="sub">Dix-huit outils, quatre familles. Voici à quoi sert chacun.</span></h2>
+
+  <p>Chaque mode ouvre un panneau organisé de haut en bas dans l'ordre où l'on travaille. Les modes de test et de calibration suivent tous la même trame : <strong>① Graver</strong> (les réglages du tir), <strong>② Entrer les mesures</strong> (la donnée relevée, saisie sur place), <strong>③ Photo du résultat</strong> (pour garder une trace).</p>
+
+  <!-- 6.1 -->
+  <h3 id="c6-1"><span class="n">6.1</span> Graver &amp; marquer</h3>
+  <div class="groupe">Faire une marque, un texte, une image <span class="em">— sans découper</span></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/curved.svg" alt=""><div class="body">
+    <h4>Marquage de motif <span class="meta">(plat ou courbe)</span></h4>
+    <p class="quoi">Graver le tracé d'un motif — le cœur de l'atelier.</p>
+    <p>Suit au besoin une surface de référence pour graver sur une pièce courbe, à hauteur focale constante. Propose plusieurs styles de trait (plein, tirets, pointillé, ondulé, point élargi par défocus, dégradé de Z) et sait graver l'<strong>axe médian</strong> d'une forme pleine — un « T » gravé par son squelette plutôt que par son contour rempli.</p>
+    <p class="meta"><b>Réglages clés :</b> puissance · vitesse · style de trait · suivi de surface. <b>Fichier :</b> <code>marquage.ngc</code></p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/filled.svg" alt=""><div class="body">
+    <h4>Gravure remplie (noir)</h4>
+    <p class="quoi">Noircir une surface fermée par un remplissage.</p>
+    <p>Utilise le <strong>défocus calibré</strong> pour élargir le point et remplir vite, avec un contour repassé net par-dessus. Le remplissage se glisse volontairement <em>sous</em> le contour pour éviter le liseré pâle sur les bords.</p>
+    <p class="meta"><b>Réglages clés :</b> puissance · vitesse · défocus · contour. <b>Fichier :</b> <code>gravure_remplie.ngc</code></p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/hatch.svg" alt=""><div class="body">
+    <h4>Hachures 2D (géométrie)</h4>
+    <p class="quoi">Préparer un remplissage par hachures, comme objet.</p>
+    <p>Crée dans le document les traits de remplissage (parallèles, croisées) d'une face — une étape de <em>préparation</em> : aucun G-code n'est produit ici, on grave ensuite ces hachures avec le Marquage.</p>
+    <p class="meta"><b>Réglages clés :</b> espacement · angle · type. <b>Sortie :</b> objet « Hachures_… »</p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/text.svg" alt=""><div class="body">
+    <h4>Texte (trait simple)</h4>
+    <p class="quoi">Écrire un texte « bâton », un seul trait par branche.</p>
+    <p>Une police monotrait (façon table traçante) idéale quand le remplissage n'a pas de sens — les lettres à trou notamment. Crée un fil dans l'arbre, à graver ensuite avec le Marquage.</p>
+    <p class="meta"><b>Réglages clés :</b> texte · hauteur · espacements. <b>Sortie :</b> objet fil</p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/halftone.svg" alt=""><div class="body">
+    <h4>Gravure photo (trame de points)</h4>
+    <p class="quoi">Reproduire une image en niveaux de gris.</p>
+    <p>Cinq tramages : points façon Floyd-Steinberg, points à durée variable, <strong>lignes calibrées</strong> (puissance par pixel via la courbe du nuancier), lignes tramées, et points par diamètre (Z). Une mire compare tous les tramages d'un coup.</p>
+    <p class="meta"><b>Réglages clés :</b> image · pas de trame · tramage · gamma. <b>Fichier :</b> <code>gravure_photo.ngc</code></p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/catalogue.svg" alt=""><div class="body">
+    <h4>Catalogue (planche d'exemples)</h4>
+    <p class="quoi">Graver une planche d'exemples réels, numérotés.</p>
+    <p>Une planche de référence qui grave des exemples concrets (styles de trait, gravure remplie) avec leurs réglages, pour voir le <em>vrai</em> rendu sur votre matériau plutôt que de l'imaginer.</p>
+    <p class="meta"><b>Fichier :</b> <code>catalogue.ngc</code></p>
+  </div></div>
+
+  <!-- 6.2 -->
+  <h3 id="c6-2"><span class="n">6.2</span> Découper &amp; projeter</h3>
+  <div class="groupe">Traverser le matériau <span class="em">— ou habiller une surface 3D</span></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/flat.svg" alt=""><div class="body">
+    <h4>Découpe multi-passes (matériau plat)</h4>
+    <p class="quoi">Découper une pièce à plat, en plusieurs passes.</p>
+    <p>Enchaîne les passes à la profondeur voulue avec compensation de <strong>kerf</strong> (le trait de scie mesuré au préalable) pour des cotes justes.</p>
+    <p class="meta"><b>Réglages clés :</b> puissance · vitesse · épaisseur · nb passes · kerf. <b>Fichier :</b> <code>decoupe_plat.ngc</code></p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/curved_cut.svg" alt=""><div class="body">
+    <h4>Découpe multi-passes sur surface courbée</h4>
+    <p class="quoi">Découper en suivant le relief d'une surface.</p>
+    <p>Comme ci-dessus, mais la hauteur suit une surface de référence. <em>(À ce jour, les attaches ne sont posées qu'à plat.)</em></p>
+    <p class="meta"><b>Fichier :</b> <code>decoupe_courbe.ngc</code></p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/project.svg" alt=""><div class="body">
+    <h4>Projeter sur surface 3D</h4>
+    <p class="quoi">Coller un motif 2D sur une surface courbe.</p>
+    <p>Projette un texte ou des hachures sur une sphère, une vague… par projection verticale sur le solide. Étape de préparation : produit un objet à graver ou découper ensuite.</p>
+    <p class="meta"><b>Sortie :</b> objet « Hachures_3D »</p>
+  </div></div>
+
+  <!-- 6.3 -->
+  <h3 id="c6-3"><span class="n">6.3</span> Tester &amp; calibrer</h3>
+  <div class="groupe">Trouver les bons réglages <span class="em">— et les garder</span></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/testgrid.svg" alt=""><div class="body">
+    <h4>Grille de test puissance/vitesse</h4>
+    <p class="quoi">Balayer une matrice de réglages sur une chute.</p>
+    <p>Grave une grille où puissance et vitesse varient case par case. Un menu « Objectif » propose une recette de départ ; le style de remplissage est réglable. On lit la meilleure case à l'œil.</p>
+    <p class="meta"><b>Fichier :</b> <code>grille_test.ngc</code></p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/powerramp.svg" alt=""><div class="body">
+    <h4>Test rampe puissance/vitesse (lignes)</h4>
+    <p class="quoi">Une série de lignes à réglages croissants.</p>
+    <p>Plus rapide qu'une grille pour dégrossir un seuil (à partir de quand ça marque, à partir de quand ça traverse).</p>
+    <p class="meta"><b>Fichier :</b> <code>test_rampe_puissance.ngc</code></p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/defocus.svg" alt=""><div class="body">
+    <h4>Bande de calibration défocus</h4>
+    <p class="quoi">Mesurer le point laser à plusieurs hauteurs.</p>
+    <p>Le pilier du remplissage : grave des repères à différents défocus, que vous mesurez et saisissez. C'est ce qui rend la gravure remplie <em>mesurée</em> plutôt que devinée.</p>
+    <p class="meta"><b>Fichier :</b> <code>calibration_defocus.ngc</code></p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/nuancier.svg" alt=""><div class="body">
+    <h4>Nuancier matériau</h4>
+    <p class="quoi">Le registre des gris mesurés sur un matériau.</p>
+    <p>Associe une teinte de gris à un réglage, pour la gravure photo calibrée et les « tons sur mesure ». Pas d'étape de gravure ici : c'est le carnet partagé où l'on note ce qu'on a observé.</p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/kerf.svg" alt=""><div class="body">
+    <h4>Motif de calibration kerf</h4>
+    <p class="quoi">Mesurer le trait de scie de la découpe.</p>
+    <p>Crée un carré (et un tenon+mortaise de validation) à découper avec compensation nulle : <em>kerf = cote dessinée − cote mesurée</em>. La valeur se reporte dans les modes de découpe.</p>
+  </div></div>
+
+  <div class="mode"><img class="ic" src="../resources/icons/offset_test.svg" alt=""><div class="body">
+    <h4>Test des offsets X/Y du laser</h4>
+    <p class="quoi">Aligner le laser sur la broche/fraise.</p>
+    <p>Grave un repère (avec la fraise et le laser) dont l'écart des croix donne le décalage X/Y à reporter dans la table d'outils <code>tool.tbl</code> de LinuxCNC.</p>
+    <p class="meta"><b>Fichier :</b> <code>test_offsets_laser.ngc</code></p>
+  </div></div>
+
+  <!-- 6.4 -->
+  <h3 id="c6-4"><span class="n">6.4</span> Le Job combiné</h3>
+  <div class="mode"><img class="ic" src="../resources/icons/combined.svg" alt=""><div class="body">
+    <h4>Job combiné (plusieurs opérations)</h4>
+    <p class="quoi">Enchaîner plusieurs opérations en un seul fichier.</p>
+    <p>Rassemble marquage, gravure, découpe, grille… en <strong>un seul travail</strong> avec un seul armement du laser au début et un seul désarmement à la fin — transitions plus rapides, et une hauteur de sécurité commune pour ne jamais plonger au mauvais endroit entre deux opérations. Son aperçu de cadrage trace <em>un seul</em> rectangle englobant global. Les modes combinables s'y ajoutent par un bouton, sans ressaisir leurs réglages.</p>
+    <p class="meta"><b>Fichier :</b> <code>job_combine.ngc</code></p>
+  </div></div>
+</section>
+
+<!-- ================= 7. CALIBRATION ================= -->
+<section class="chap" id="c7">
+  <h2 class="titre"><span class="ttl">La calibration</span><span class="sub">Le cœur du système — ce qui sépare un beau résultat d'un coup de chance.</span></h2>
+
+  <p class="lead">Tout l'atelier repose sur une poignée de mesures que vous faites une fois par matériau et par laser. Elles se saisissent sur place, dans la section « ② Entrer les mesures » de chaque panneau.</p>
+
+  <h3>Le modèle de défocus (deux mesures)</h3>
+  <p>Un cône de divergence linéaire calibré sur <strong>deux mesures réelles</strong> : le diamètre du point au foyer, puis à un défocus de test connu. De là, l'atelier sait le diamètre du point à n'importe quelle hauteur, donc l'espacement idéal des hachures pour un remplissage plein en un passage. Le remplissage est <em>rentré</em> du rayon du point pour rester à l'intérieur du tracé.</p>
+
+  <h3>La largeur réellement brûlée</h3>
+  <p>Attention : la largeur qui compte pour l'espacement du remplissage n'est pas le point <em>optique</em> mais la largeur <strong>brûlée</strong>, mesurée. La planche de calibration en grave plusieurs à différents niveaux de défocus ; l'atelier interpole entre les deux niveaux qui encadrent votre défocus de travail. C'est ce qui a supprimé le liseré pâle que masquait, avant, un contour repassé.</p>
+
+  <h3>Le nuancier</h3>
+  <p>Pour la photo et les « tons sur mesure », l'atelier relie une <strong>teinte de gris</strong> à une dose (puissance/vitesse) à partir des tons que vous avez gravés et mesurés — une courbe lissée qui traduit « je veux ce gris-là » en réglage machine.</p>
+
+  <h3>Préréglages &amp; profils par laser</h3>
+  <p>Vos bons couples puissance/vitesse se rangent en <strong>préréglages</strong> par matériau. Et comme un bleu 450 nm et un infrarouge 1064 nm ne partagent ni gris, ni largeurs, ni doses, chaque <strong>profil laser</strong> garde <em>ses propres</em> nuancier, largeurs et préréglages. Basculer de laser bascule toutes ces données d'un coup.</p>
+
+  <div class="box astuce">
+    <span class="t">💡 L'ordre de calibration conseillé</span>
+    <p>① le point (offsets X/Y) → ② les offsets et le kerf pour la découpe → ③ la planche de défocus à plusieurs niveaux + le nuancier. Une fois ces mesures saisies, la plupart des modes « savent » se régler seuls.</p>
+  </div>
+</section>
+
+<!-- ================= 8. RÉGLAGES ================= -->
+<section class="chap" id="c8">
+  <h2 class="titre"><span class="ttl">Réglages, profils &amp; sauvegarde</span><span class="sub">Tout ce qui se règle une fois pour toutes.</span></h2>
+
+  <p>Le panneau <strong>Préférences</strong> centralise les réglages machine. Les plus utiles :</p>
+
+  <table class="reglages">
+    <tr><th>Réglage</th><th>À quoi ça sert</th></tr>
+    <tr><td>Laser actif</td><td>Basculer entre profils laser (cloner / renommer / supprimer). Chaque profil a sa calibration <em>et</em> ses données (nuancier, largeurs, préréglages).</td></tr>
+    <tr><td>Dialecte G-code</td><td>LinuxCNC (défaut), GRBL ou grblHAL — par profil.</td></tr>
+    <tr><td>Puissance S max</td><td>L'échelle de puissance (0…S_max) ; les panneaux s'y adaptent, aucune valeur codée en dur.</td></tr>
+    <tr><td>Puissance de cadrage</td><td>Si &gt; 0, le rectangle de cadrage est parcouru faisceau très faible, pour <em>voir</em> la zone sur la pièce sans marquer.</td></tr>
+    <tr><td>Bec &amp; focale</td><td>Le cône anti-collision et la table de focale du module laser.</td></tr>
+  </table>
+
+  <h3>Exporter / importer (sauvegarde)</h3>
+  <p>Deux boutons rendent tout cela portable et sûr :</p>
+  <ul class="puces">
+    <li><strong>Exporter réglages + photos</strong> : rassemble la configuration et toutes les photos de résultats dans un <code>.zip</code>. À mettre en lieu sûr dès que vous avez accumulé des mesures.</li>
+    <li><strong>Importer une sauvegarde</strong> : restaure un <code>.zip</code> (la configuration est validée, les photos extraites proprement). Le panneau se ferme ensuite, pour ne pas réécrire par-dessus la config fraîchement importée.</li>
+  </ul>
+
+  <div class="box astuce">
+    <span class="t">💡 Le vrai « à ne pas oublier »</span>
+    <p>Faites un export <code>.zip</code> après chaque grosse séance de calibration. Vos mesures (nuancier, largeurs, offsets) valent bien plus de temps que le fichier ne pèse.</p>
+  </div>
+</section>
+
+<!-- ================= 9. SÉCURITÉ MACHINE ================= -->
+<section class="chap" id="c9">
+  <h2 class="titre"><span class="ttl">Sécurité machine</span><span class="sub">Le seul chapitre vraiment obligatoire. Une page, trois idées.</span></h2>
+
+  <h3>1. Puissance asservie à la vitesse — jamais de point immobile</h3>
+  <p>La couche HAL multiplie la puissance par la vitesse réelle du déplacement. <strong>À l'arrêt, la puissance tombe à zéro.</strong> Conséquence : on ne peut pas graver un point en restant immobile et en attendant (une temporisation <code>G4</code> faisceau allumé ne graverait <em>rien</em>). Tous les points de l'atelier sont donc de <em>micro-traits</em> : un court déplacement dont la vitesse reproduit le temps d'exposition voulu. Vous n'avez pas à y penser — l'atelier le fait — mais c'est la raison de bien des choix internes.</p>
+
+  <h3>2. Le laser reste « armé » tout le travail</h3>
+  <p>Grâce à la stratégie relais (chapitre 3), le module est réputé prêt à tirer du début à la fin ; c'est la valeur <code>S</code> qui fait foi. Un <code>S0</code> pendant un transit = pas de tir. Ne vous fiez donc pas à l'armement pour juger si « ça tire » : fiez-vous à S.</p>
+
+  <h3>3. Transit à hauteur de travail, cône anti-collision</h3>
+  <p>Le bec sans capot peut suivre des surfaces courbes, mais peut aussi accrocher. L'atelier transite à la hauteur de travail plus une petite marge (plutôt que de remonter loin puis replonger), et vérifie le cône du bec. En job combiné, une hauteur de sécurité <em>commune</em> évite qu'une opération replonge au mauvais endroit après une autre.</p>
+
+  <div class="box attention">
+    <span class="t">⚠️ Avant chaque vrai travail</span>
+    <p>Cadrez (fichier de cadrage, laser éteint) pour vérifier le positionnement, gardez les lunettes, la ventilation en marche, et un œil sur la machine. Le logiciel gère la logique ; le reste, c'est vous.</p>
+  </div>
+</section>
+
+<!-- ================= 10. ASTUCES ================= -->
+<section class="chap" id="c10">
+  <h2 class="titre"><span class="ttl">Astuces &amp; bonnes pratiques</span><span class="sub">Ce qui fait gagner du temps et du matériau.</span></h2>
+
+  <h3>Voir avant de graver</h3>
+  <p>L'<strong>Aperçu photo</strong> peint un rendu réaliste du résultat (chaque trait à sa largeur brûlée et à sa teinte, superposés sur un fond bois). Utile pour juger un remplissage ou comparer des styles sans consommer de bois. Sa fidélité dépend de la qualité de votre planche de largeurs.</p>
+
+  <h3>Toujours cadrer</h3>
+  <p>Le fichier de <strong>cadrage</strong> ne trace que le rectangle englobant, laser éteint : trente secondes pour être sûr que la pièce est bien sous la machine. En job combiné, ce rectangle couvre l'ensemble des opérations.</p>
+
+  <h3>Tester sur chute</h3>
+  <p>Une <strong>grille de test</strong> ou une <strong>rampe</strong> de deux minutes sur une chute du <em>même</em> matériau vaut mieux qu'un réglage « au feeling ». Le bois varie d'une planche à l'autre.</p>
+
+  <h3>Ranger ses réglages</h3>
+  <p>Un bon couple trouvé ? Enregistrez-le en préréglage. Une belle teinte ? Ajoutez-la au nuancier. Vous construisez peu à peu une bibliothèque qui rend l'atelier de plus en plus autonome.</p>
+
+  <div class="box pourquoi">
+    <span class="t">Un carnet de frottements</span>
+    <p>Gardez une note de ce que vous avez dû refaire à la main, de ce qui vous a surpris dans un panneau, de l'information que vous auriez voulu voir au moment de graver. Chaque ligne est une amélioration future <em>justifiée par l'usage</em> — la meilleure feuille de route qui soit.</p>
+  </div>
+</section>
+
+<!-- ================= 11. DÉPANNAGE ================= -->
+<section class="chap" id="c11">
+  <h2 class="titre"><span class="ttl">Dépannage</span><span class="sub">Les questions qui reviennent.</span></h2>
+
+  <h4>La gravure est plus pâle que prévu.</h4>
+  <p>Presque toujours une question de calibration : la planche de largeurs de brûlure n'a pas été mesurée à votre défocus de travail, donc l'espacement du remplissage est extrapolé. Gravez la planche de défocus à plusieurs niveaux et saisissez les mesures.</p>
+
+  <h4>Les cotes de découpe sont fausses de quelques dixièmes.</h4>
+  <p>Le kerf n'a pas été mesuré (ou pas reporté). Découpez le carré de calibration à compensation nulle, mesurez, saisissez la valeur.</p>
+
+  <h4>Le laser n'est pas aligné avec la fraise.</h4>
+  <p>Faites le test des offsets X/Y et reportez l'écart des croix dans <code>tool.tbl</code> de LinuxCNC.</p>
+
+  <h4>Un point/pointillé ne marque rien.</h4>
+  <p>Rappel du chapitre 9 : pas de tir à l'arrêt. Les points doivent être des micro-traits — c'est le cas partout dans l'atelier ; si vous bricolez un G-code à la main, ne posez jamais de <code>G4</code> faisceau allumé.</p>
+
+  <h4>Le tracé d'axe médian d'une lettre à trou est bizarre.</h4>
+  <p>C'est attendu : l'axe médian d'un « O » ou d'un « A » longe le trou. Pour ces lettres, préférez le mode <strong>Texte (trait simple)</strong>.</p>
+
+  <h4>Où sont passés mes réglages après réinstallation ?</h4>
+  <p>Ils sont hors dépôt (fichier de config + <code>photos_resultats/</code>). Restaurez votre <code>.zip</code> d'export via « Importer une sauvegarde ».</p>
+</section>
+
+<!-- ================= 12. ANNEXE ================= -->
+<section class="chap" id="c12">
+  <h2 class="titre"><span class="ttl">Annexe</span><span class="sub">Glossaire &amp; liens.</span></h2>
+
+  <h3>Glossaire</h3>
+  <table class="reglages">
+    <tr><th>Terme</th><th>Définition</th></tr>
+    <tr><td>Défocus</td><td>Écart volontaire entre le bec et le point focal ; élargit le point pour remplir vite.</td></tr>
+    <tr><td>Kerf</td><td>Largeur du trait enlevé par la découpe (le « trait de scie ») ; à compenser pour des cotes justes.</td></tr>
+    <tr><td>Nuancier</td><td>Table reliant une teinte de gris mesurée à une dose (puissance/vitesse) sur un matériau.</td></tr>
+    <tr><td>Fluence</td><td>Énergie déposée par unité de surface (∝ puissance / (largeur × vitesse)) ; gouverne la teinte brûlée.</td></tr>
+    <tr><td>Axe médian</td><td>Squelette d'une forme pleine ; permet de graver un trait central au lieu du contour + remplissage.</td></tr>
+    <tr><td>Cadrage</td><td>Parcours du seul rectangle englobant, laser éteint, pour vérifier le positionnement.</td></tr>
+    <tr><td>Armement</td><td>Mise en route unique du laser (relais) en début de travail ; la puissance réelle reste pilotée par S.</td></tr>
+    <tr><td>Job combiné</td><td>Plusieurs opérations réunies en un fichier, un seul armement/désarmement.</td></tr>
+  </table>
+
+  <h3>Liens</h3>
+  <ul class="puces">
+    <li>Dépôt du code : <code>github.com/atelierduverdier/LaserAtelier</code></li>
+    <li>Site &amp; documentation en ligne : <code>laser.atelierduverdier.fr</code></li>
+    <li>Machine hôte : PrintNC · LinuxCNC 2.9.x</li>
+    <li>Module laser de référence : LaserTree LT-80W-AA-PRO</li>
+  </ul>
+
+  <div class="signature">
+    <img src="../resources/icons/chapeau.svg" alt="">
+    <p>LaserAtelier v1.22.2 — Atelier du Verdier<br>
+    Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
+    Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
+  </div>
+</section>
+
+</body>
+</html>
