@@ -1657,6 +1657,32 @@ class TaskPanelFilledEngraving:
                "noir constant quel que soit le défocus.")
         _diagram(form, "diag_filled.svg")
 
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Sélectionne la <b>forme 2D fermée</b> à noircir (face, "
+            "esquisse fermée, ShapeString/texte Draft). Plusieurs lettres ou "
+            "formes&nbsp;: sélectionne-les ensemble.",
+            "<b>2.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin de "
+            "référence, Z sur la surface à graver (mode Martyre ou Pièce). "
+            "«&nbsp;Décalage de surface&nbsp;» sert à graver un fond de poche.",
+            "<b>3. Matériau / ton</b>&nbsp;: applique un préréglage matériau ou "
+            "un ton du <b>Nuancier</b> («&nbsp;Appliquer ce ton&nbsp;»), sinon "
+            "règle puissance/vitesse à la main. Sans nuancier, coche "
+            "«&nbsp;Puissance vs défocus&nbsp;» et donne une référence connue.",
+            "<b>4. Remplissage</b>&nbsp;: espacement des hachures (resserré "
+            "automatiquement à la largeur brûlée mesurée), angle, style de "
+            "trait. Option <b>dégradé</b> pour un fondu de puissance.",
+            "<b>5. Contour</b> (recommandé pour une arête nette)&nbsp;: "
+            "puissance/vitesse au foyer. Il est repassé après le remplissage, "
+            "qui se glisse dessous&nbsp;— pas de liseré clair au bord.",
+            "<b>6. Vérifie</b>&nbsp;: bouton «&nbsp;Aperçu photo&nbsp;» (rendu "
+            "réaliste) et «&nbsp;Aperçu du trajet&nbsp;». Ajuste si le rendu "
+            "paraît trop clair ou trop foncé.",
+            "<b>7. Génère</b>&nbsp;: «&nbsp;Générer et sauvegarder le "
+            "G-code…&nbsp;» (ou «&nbsp;Ajouter au job combiné&nbsp;»). Relis le "
+            "<code>G0&nbsp;Z…</code> en tête du .ngc avant de lancer.",
+        ])
+
         _section(form, "Préréglage matériau", "sect_preset.svg")
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)

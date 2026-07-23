@@ -200,6 +200,14 @@
   details.faq summary:hover{color:var(--orange-d)}
   details.faq .a{padding:0 18px 16px; color:var(--fg-2); font-size:.94rem}
   details.faq .a p:first-child{margin-top:0}
+  details.howto{margin-top:14px; border-top:1px solid var(--line); padding-top:10px}
+  details.howto>summary{cursor:pointer; font-weight:600; color:var(--orange-d); list-style:none; font-size:.9rem}
+  details.howto>summary::-webkit-details-marker{display:none}
+  details.howto>summary::before{content:"▸\00a0"}
+  details.howto[open]>summary::before{content:"▾\00a0"}
+  details.howto img{display:block; max-width:220px; margin:12px auto 4px; background:#fdfdfd; border:1px solid var(--line); border-radius:8px; padding:6px}
+  details.howto ol{margin:.6em 0 0; padding-left:1.25em; font-size:.9rem; color:var(--fg-2)}
+  details.howto li{margin:.4em 0}
 
   ul.clean{margin:.6em 0; padding-left:1.25em}
   ul.clean li{margin:.35em 0}
@@ -410,6 +418,18 @@
         <div class="head"><span class="mi"><img src="assets/filled.svg" alt=""></span><h4>Gravure remplie (noir)</h4></div>
         <p>Grave un texte ou une forme 2D en <b>noir plein</b> : remplissage en défocus rentré du bord + contour repassé net au foyer. Styles de trait, <b>remplissage en dégradé</b> (la puissance varie le long d'une direction réglable), préréglages matériau, compensation puissance/défocus. Un <b>aperçu photo</b> (rendu réaliste) montre le résultat brûlé — teintes selon puissance/vitesse, superpositions plus foncées — avant de lancer.</p>
         <div class="when"><b>Quand&nbsp;?</b> Un logo, un texte, une forme pleine sur une pièce plate.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <img src="assets/diag_filled.svg" alt="Remplissage hachuré au défocus rentré du bord + contour net repassé au foyer">
+          <ol>
+            <li>Sélectionner la <b>forme 2D fermée</b> (face, esquisse, texte).</li>
+            <li>Poser le zéro&nbsp;: X/Y au coin de référence, Z sur la surface (le champ «&nbsp;Décalage de surface&nbsp;» sert à un fond de poche).</li>
+            <li>Choisir un <b>ton du Nuancier</b> ou un préréglage matériau&nbsp;; sinon régler puissance/vitesse et cocher «&nbsp;Puissance vs défocus&nbsp;».</li>
+            <li>Régler le <b>remplissage</b>&nbsp;: espacement (resserré automatiquement à la largeur brûlée mesurée), angle, style, dégradé éventuel.</li>
+            <li>Activer le <b>contour</b> (repassé net au foyer, le remplissage se glisse dessous&nbsp;: pas de liseré).</li>
+            <li>Vérifier avec l'<b>Aperçu photo</b>, puis «&nbsp;Générer et sauvegarder le G-code…&nbsp;». Relire le <code>G0&nbsp;Z…</code> en tête du fichier avant de lancer.</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
