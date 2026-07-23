@@ -20,16 +20,27 @@
   <text x="216" y="57" font-family="sans-serif" font-size="9" fill="#2f3540">S600</text>
   <text x="34" y="72" font-family="sans-serif" font-size="9" fill="#2f3540">F200  F400  F600  F800  F1000</text>
 
-  <!-- Section 2 (milieu) : traits au défocus -->
-  <text x="18" y="102" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">2</text>
-  <g stroke="#ff8a00" stroke-width="4" opacity="0.7" stroke-linecap="round">
-    <line x1="34" y1="92" x2="94" y2="92"/>
-    <line x1="34" y1="102" x2="94" y2="102"/>
-    <line x1="34" y1="112" x2="94" y2="112"/>
-    <line x1="34" y1="122" x2="94" y2="122"/>
-    <line x1="34" y1="132" x2="94" y2="132"/>
+  <!-- Section 2 (milieu) : traits au défocus, 3 niveaux (colonne = défocus,
+       épaisseur croissante = point plus large quand on remonte le bec) -->
+  <text x="18" y="116" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">2</text>
+  <g font-family="sans-serif" font-size="8.5" fill="#2f3540" text-anchor="middle" font-weight="bold">
+    <text x="53" y="87">d15</text>
+    <text x="105" y="87">d36</text>
+    <text x="157" y="87">d50</text>
   </g>
-  <text x="102" y="115" font-family="sans-serif" font-size="9" fill="#2f3540">S200 → S1000, F800, défocus</text>
+  <g stroke="#ff8a00" stroke-linecap="round" opacity="0.75">
+    <g stroke-width="2.6">
+      <line x1="34" y1="94" x2="72" y2="94"/><line x1="34" y1="104" x2="72" y2="104"/><line x1="34" y1="114" x2="72" y2="114"/><line x1="34" y1="124" x2="72" y2="124"/><line x1="34" y1="134" x2="72" y2="134"/>
+    </g>
+    <g stroke-width="3.6">
+      <line x1="86" y1="94" x2="124" y2="94"/><line x1="86" y1="104" x2="124" y2="104"/><line x1="86" y1="114" x2="124" y2="114"/><line x1="86" y1="124" x2="124" y2="124"/><line x1="86" y1="134" x2="124" y2="134"/>
+    </g>
+    <g stroke-width="4.8">
+      <line x1="138" y1="94" x2="176" y2="94"/><line x1="138" y1="104" x2="176" y2="104"/><line x1="138" y1="114" x2="176" y2="114"/><line x1="138" y1="124" x2="176" y2="124"/><line x1="138" y1="134" x2="176" y2="134"/>
+    </g>
+  </g>
+  <text x="182" y="97" font-family="sans-serif" font-size="8.5" fill="#2f3540">S1000</text>
+  <text x="182" y="137" font-family="sans-serif" font-size="8.5" fill="#2f3540">S200</text>
 
   <!-- Section 1 (bas) : grille de traits au foyer -->
   <text x="18" y="170" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">1</text>
@@ -51,8 +62,9 @@
     <text x="268" y="61" fill="#2f3540">+ largeur → Préférences</text>
     <text x="268" y="74" fill="#2f3540">&gt; Nuancier</text>
     <text x="268" y="100" fill="#ff8a00" font-weight="bold">2. Traits au défocus</text>
-    <text x="268" y="114" fill="#2f3540">mesurer : largeur brûlée</text>
-    <text x="268" y="127" fill="#2f3540">(point élargi ~1,2 mm)</text>
+    <text x="268" y="114" fill="#2f3540">3 niveaux : 15 / 36 / 50 mm</text>
+    <text x="268" y="127" fill="#2f3540">mesurer : largeur brûlée</text>
+    <text x="268" y="140" fill="#2f3540">→ interpolée selon le défocus</text>
     <text x="268" y="166" fill="#ff8a00" font-weight="bold">1. Traits au foyer</text>
     <text x="268" y="180" fill="#2f3540">mesurer : largeur brûlée,</text>
     <text x="268" y="193" fill="#2f3540">noter les traits absents</text>

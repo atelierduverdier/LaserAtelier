@@ -553,15 +553,19 @@
   <p>Chaque test alimente le suivant. Les étapes machine se font <b>une seule fois par laser</b> ; pour un nouveau matériau, une seule planche suffit&nbsp;:</p>
   <ol>
     <li><b>Une fois par laser</b> — la <b>Bande de calibration défocus</b> (deux mesures du point → Préférences) puis le <b>Test offsets fraise + laser</b> (X/Y du laser dans <code>tool.tbl</code>). Sans le point calibré, les sections défocus de la planche seraient fausses.</li>
-    <li><b>Nouveau matériau</b> — bouton «&nbsp;<b>Planche de calibration matériau</b>&nbsp;» (panneau Grille de test)&nbsp;: UN SEUL G-code à graver sur une chute ~130&nbsp;×&nbsp;125&nbsp;mm, zéro machine au coin bas-gauche sur le dessus. Trois sections numérotées, de bas en haut&nbsp;:
-      <b>1</b>&nbsp;traits au foyer (grille 5&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses, F400&nbsp;→&nbsp;F6000&nbsp;: jusqu'au maxi machine)&nbsp;→ mesurer la largeur brûlée de chaque trait et noter ceux qui restent vierges (un trait vierge est une donnée&nbsp;: c'est le seuil du matériau)&nbsp;;
-      <b>2</b>&nbsp;traits au défocus (5&nbsp;puissances à F800, point élargi du remplissage)&nbsp;→ mesurer les largeurs&nbsp;;
-      <b>3</b>&nbsp;bandes nuancier (rectangles remplis au défocus, 2&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses)&nbsp;→ estimer la noirceur (0–100&nbsp;%) et mesurer la largeur, puis saisir chaque bande dans Préférences&nbsp;&gt;&nbsp;Nuancier. Les largeurs des sections 1&#8211;2 se saisissent via «&nbsp;<b>Saisir les mesures de la planche</b>&nbsp;» (panneau Grille de test)&nbsp;: elles alimentent l'interpolation largeur(S,&nbsp;F), et la <b>Gravure remplie</b> (style plein) resserre automatiquement l'espacement de ses hachures à la largeur réellement brûlée quand elle est plus étroite que le point optique — fini les lignes visibles sur les tons clairs. Toutes ces mesures restent dans la config locale — rien de spécifique à votre machine ne part avec l'atelier.</li>
+    <li><b>Nouveau matériau</b> — bouton «&nbsp;<b>Planche de calibration matériau</b>&nbsp;» (panneau Grille de test)&nbsp;: UN SEUL G-code, gravé sur une chute ~130&nbsp;×&nbsp;125&nbsp;mm (zéro machine au coin bas-gauche, sur le dessus). Trois sections numérotées, de bas en haut&nbsp;:
+      <ul class="clean" style="margin:.55em 0 .7em">
+        <li><b>1 — traits au foyer.</b> Grille 5&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses (F400&nbsp;→&nbsp;F6000, jusqu'au maxi machine). Mesurer la largeur brûlée de chaque trait, et <b>noter ceux qui restent vierges</b>&nbsp;: un trait vierge est une donnée — c'est le seuil du matériau.</li>
+        <li><b>2 — traits au défocus.</b> 5&nbsp;puissances à F800, à <b>trois niveaux de défocus</b> (~15&nbsp;/&nbsp;36&nbsp;/&nbsp;50&nbsp;mm, une colonne par niveau). Mesurer la largeur brûlée de chaque trait.</li>
+        <li><b>3 — bandes nuancier.</b> Rectangles remplis au défocus (2&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses). Estimer la noirceur (0–100&nbsp;%) et mesurer la largeur, puis saisir chaque bande dans <b>Préférences&nbsp;&gt;&nbsp;Nuancier</b>.</li>
+      </ul>
+      Les largeurs des sections&nbsp;1–2 se saisissent via «&nbsp;<b>Saisir les mesures de la planche</b>&nbsp;» (une colonne par niveau de défocus). La <b>Gravure remplie</b> resserre alors l'espacement de ses hachures à la largeur <b>réellement brûlée</b> — interpolée entre les niveaux mesurés selon le défocus du job — dès qu'elle est plus étroite que le point optique&nbsp;: fini les lignes visibles sur les tons clairs.
+      <br><small>Toutes ces mesures restent dans la config locale — rien de spécifique à votre machine ne part avec l'atelier.</small></li>
     <li><b>Après le nuancier</b> (facultatif, pour choisir à l'œil) — la <b>Mire des styles</b> (Marquage) et la <b>Mire des tramages</b> (Gravure photo).</li>
   </ol>
   <figure class="diagram" style="margin:0">
     <img src="assets/diag_planche_calibration.svg" alt="Plan de la planche de calibration matériau : trois sections numérotées">
-    <figcaption>La planche de calibration matériau&nbsp;: sections 1 (traits au foyer), 2 (traits au défocus), 3 (bandes nuancier), avec ce qu'il faut mesurer sur chacune.</figcaption>
+    <figcaption>La planche de calibration matériau&nbsp;: sections 1 (traits au foyer), 2 (traits au défocus, 3 niveaux 15/36/50&nbsp;mm), 3 (bandes nuancier), avec ce qu'il faut mesurer sur chacune.</figcaption>
   </figure>
 
   <h3>Le point &amp; le modèle de défocus</h3>
@@ -735,6 +739,11 @@ net laser-arm       spindle.1.on            =&gt; flexi.output.AUX3   # interloc
   <div class="sec-tag">● Performances</div>
   <h2>Suivi de surface&nbsp;: de la minute à la milliseconde</h2>
   <p class="sec-lede">La sonde de hauteur Z (pour le marquage/découpe courbe et la projection) reposait au départ sur une intersection géométrique OpenCascade par point (~5&nbsp;ms chacune) — des minutes sur un remplissage dense. Elle utilise maintenant une <b>tessellation unique</b> de la surface suivie d'une interpolation barycentrique par point (quelques microsecondes).</p>
+
+  <figure class="diagram" style="margin:18px 0">
+    <img src="assets/diag_sonde_z.svg" alt="Sonde de hauteur Z : avant, une intersection géométrique par point ; après, une tessellation unique puis interpolation barycentrique">
+    <figcaption>Avant&nbsp;: une intersection géométrique <b>par point</b> (~5&nbsp;ms chacune). Après&nbsp;: la surface est <b>tessellée une seule fois</b>, puis chaque point est interpolé dans son triangle (~µs).</figcaption>
+  </figure>
 
   <div class="twrap">
     <table>

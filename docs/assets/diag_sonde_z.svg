@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 220" font-family="sans-serif">
+  <!-- Sonde de hauteur Z : AVANT = 1 intersection géométrique par point ;
+       APRÈS = 1 tessellation de la surface, puis interpolation barycentrique. -->
+
+  <!-- ===================== AVANT ===================== -->
+  <text x="12" y="22" font-size="12" font-weight="bold" fill="#2f3540">AVANT — 1 calcul par point</text>
+
+  <!-- surface lisse (BSpline) -->
+  <path d="M12 152 Q54 108 96 132 T182 126" fill="none" stroke="#2f3540" stroke-width="2.5"/>
+
+  <!-- rayons verticaux : une intersection OpenCascade par point -->
+  <g stroke="#9aa3ad" stroke-width="1.4" stroke-dasharray="4 3">
+    <line x1="40" y1="44" x2="40" y2="134"/>
+    <line x1="74" y1="44" x2="74" y2="120"/>
+    <line x1="112" y1="44" x2="112" y2="130"/>
+    <line x1="150" y1="44" x2="150" y2="126"/>
+  </g>
+  <g fill="#2f3540">
+    <circle cx="40" cy="134" r="3.2"/>
+    <circle cx="74" cy="120" r="3.2"/>
+    <circle cx="112" cy="130" r="3.2"/>
+    <circle cx="150" cy="126" r="3.2"/>
+  </g>
+  <text x="44" y="58" font-size="9" fill="#2f3540">~5 ms chacun</text>
+
+  <text x="12" y="192" font-size="10.5" fill="#2f3540">Intersection géométrique <tspan font-weight="bold">par point</tspan></text>
+  <text x="12" y="207" font-size="10.5" fill="#2f3540">→ des <tspan font-weight="bold">minutes</tspan> sur un remplissage dense</text>
+
+  <!-- ===================== FLÈCHE ===================== -->
+  <text x="219" y="104" font-size="9.5" font-weight="bold" fill="#ff8a00" text-anchor="middle">tessellation</text>
+  <line x1="197" y1="120" x2="240" y2="120" stroke="#ff8a00" stroke-width="3"/>
+  <path d="M240 120 l-10 -5.5 v11 z" fill="#ff8a00"/>
+
+  <!-- ===================== APRÈS ===================== -->
+  <text x="250" y="22" font-size="12" font-weight="bold" fill="#2f3540">APRÈS — tessellation + barycentrique</text>
+
+  <!-- maillage triangulé, calculé une seule fois -->
+  <g stroke="#ff8a00" stroke-width="1.6" fill="#ff8a00" fill-opacity="0.10">
+    <polygon points="252,150 286,110 300,138"/>
+    <polygon points="286,110 300,138 334,116"/>
+    <polygon points="300,138 334,116 346,144"/>
+    <polygon points="334,116 346,144 382,124"/>
+    <polygon points="346,144 382,124 396,150"/>
+  </g>
+
+  <!-- point quelconque : interpolation barycentrique dans SON triangle -->
+  <g stroke="#2f3540" stroke-width="0.9" stroke-dasharray="2 2">
+    <line x1="320" y1="128" x2="300" y2="138"/>
+    <line x1="320" y1="128" x2="334" y2="116"/>
+    <line x1="320" y1="128" x2="346" y2="144"/>
+  </g>
+  <g fill="#ff8a00">
+    <circle cx="300" cy="138" r="2.6"/>
+    <circle cx="334" cy="116" r="2.6"/>
+    <circle cx="346" cy="144" r="2.6"/>
+  </g>
+  <circle cx="320" cy="128" r="3.4" fill="#2f3540"/>
+
+  <text x="250" y="192" font-size="10.5" fill="#2f3540"><tspan font-weight="bold">1 tessellation</tspan> de la surface (une seule fois),</text>
+  <text x="250" y="207" font-size="10.5" fill="#2f3540">puis <tspan font-weight="bold">~µs</tspan> par point → des <tspan font-weight="bold">millisecondes</tspan></text>
+</svg>
