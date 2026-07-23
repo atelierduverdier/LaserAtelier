@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>1.12.0</b></span>
+        <span class="badge">Version <b>1.13.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -410,6 +410,16 @@
         <div class="head"><span class="mi"><img src="assets/hatch.svg" alt=""></span><h4>Hachures 2D (géométrie)</h4></div>
         <p>Remplit une face 2D de hachures parallèles, croisées ou en défocus — crée la <b>géométrie</b> des hachures, à graver ensuite avec le Marquage.</p>
         <div class="when"><b>Quand&nbsp;?</b> Préparer un remplissage, seul ou avant une projection sur surface courbe.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Sélectionner la <b>face 2D</b> (ou esquisse fermée) à remplir.</li>
+            <li>Choisir le <b>type</b>&nbsp;: parallèles, croisées ou défocus.</li>
+            <li>Régler espacement, angle et <b>retrait du bord</b> («&nbsp;Auto (½ point)&nbsp;») pour que la brûlure ne déborde pas.</li>
+            <li><b>OK</b> crée l'objet <code>Hachures</code>&nbsp;— c'est de la géométrie, <b>pas de G-code</b>.</li>
+            <li>Enchaîner&nbsp;: <b>Marquage</b> pour graver, ou <b>Projection</b> sur une surface 3D.</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
@@ -438,6 +448,16 @@
         <div class="head"><span class="mi"><img src="assets/halftone.svg" alt=""></span><h4>Gravure photo (trame de points)</h4></div>
         <p>Convertit une image en gravure laser, <b>5 tramages</b> : points (diffusion Floyd-Steinberg, durée variable), <b>lignes calibrées</b> (photo calibrée : puissance modulée par pixel via le nuancier mesuré), <b>diffusion en lignes</b> (points fins rapides) et <b>gros points Z</b> (taille de point = noirceur, artistique). Tonalité (gamma) avec aperçu en direct, et <b>mire des tramages</b> pour comparer les styles sur chute. Bouton <b>photo de démonstration</b> (Maupassant par Nadar, 1888, domaine public) et <b>préréglages ★</b> (portrait qualité, essai rapide, équilibré, artistique) pour démarrer sans tâtonner.</p>
         <div class="when"><b>Quand&nbsp;?</b> Graver une photo, un portrait, un dégradé photographique.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Charger l'image («&nbsp;Parcourir…&nbsp;» ou la photo de démonstration). Aucune sélection dans la vue 3D.</li>
+            <li>Régler la <b>largeur</b>, le <b>pas de trame</b> (finesse ET durée), l'angle et le gamma.</li>
+            <li>Choisir le <b>tramage</b> (Floyd-Steinberg recommandé) et la puissance&nbsp;; «&nbsp;Mire des tramages&nbsp;» les compare sur chute.</li>
+            <li>Zéro machine&nbsp;: X/Y au coin <b>bas-gauche</b> (l'image y est posée), Z sur la surface.</li>
+            <li>Vérifier («&nbsp;Aperçu des points&nbsp;», «&nbsp;Aperçu cadrage&nbsp;») puis générer&nbsp;— compter ~2-4 points/seconde.</li>
+          </ol>
+        </details>
       </div>
     </div>
   </div>
@@ -452,6 +472,16 @@
         <div class="head"><span class="mi"><img src="assets/project.svg" alt=""></span><h4>Projection sur surface 3D</h4></div>
         <p>Projette un motif 2D sur une surface courbe (sonde par tessellation, quasi instantanée). Le panneau s'ouvre d'abord, puis on sélectionne motif et surface dans la vue — l'état reconnu s'affiche en direct.</p>
         <div class="when"><b>Quand&nbsp;?</b> Poser des hachures ou un motif à plat sur une pièce bombée avant marquage.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <img src="assets/diag_projection.svg" alt="Un motif 2D projeté sur une surface courbe, sondée par tessellation">
+          <ol>
+            <li>Préparer le <b>motif 2D</b> à plat et la <b>surface 3D</b> cible.</li>
+            <li>Dans la vue, sélectionner le(s) motif(s) <b>et</b> la surface ensemble&nbsp;; l'état passe au vert quand c'est valide.</li>
+            <li><b>OK</b>&nbsp;: crée l'objet projeté <code>Hachures_3D</code>.</li>
+            <li>Enchaîner avec <b>Marquage</b> ou <b>Découpe courbe</b> (objet projeté + modèle 3D) pour suivre le relief.</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
@@ -460,6 +490,16 @@
         <div class="head"><span class="mi"><img src="assets/curved.svg" alt=""></span><h4>Marquage de motif (plat ou courbe)</h4></div>
         <p>Grave un motif filaire, à plat ou en suivant le relief d'un modèle 3D, avec 6 styles de trait (plein, tirets, pointillé, vague défocus, défocus point élargi, <b>dégradé Z</b>), le nuancier matériau, le <b>ton sur mesure interpolé</b> (largeur + noirceur → vitesse calculée) et la <b>mire des styles</b> (les 6 styles gravés en bandes étiquetées sur chute). Un <b>aperçu photo</b> (rendu réaliste) montre le tracé brûlé avant de lancer.</p>
         <div class="when"><b>Quand&nbsp;?</b> Générer le G-code d'un tracé filaire, sur pièce plane ou courbe.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Sélectionner le motif&nbsp;: à plat, le motif 2D&nbsp;; sur courbe, l'objet projeté <b>et</b> le modèle 3D.</li>
+            <li>Zéro machine&nbsp;: X/Y au coin, Z sur le point haut de la surface.</li>
+            <li>Matériau/ton&nbsp;: préréglage, ton du Nuancier («&nbsp;Calculer le réglage (interpolé)&nbsp;»), ou puissance/vitesse à la main.</li>
+            <li>Choisir le <b>style de trait</b> (plein, tirets, pointillé, vague défocus, point élargi).</li>
+            <li>Vérifier («&nbsp;Aperçu photo&nbsp;», «&nbsp;Mire des styles&nbsp;») puis «&nbsp;Générer et sauvegarder le G-code…&nbsp;».</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
@@ -468,6 +508,16 @@
         <div class="head"><span class="mi"><img src="assets/curved_cut.svg" alt=""></span><h4>Découpe multi-passes (courbe)</h4></div>
         <p>Combine le suivi de relief du marquage courbe avec la logique multi-passes / kerf / imbrication de la découpe à plat.</p>
         <div class="when"><b>Quand&nbsp;?</b> Découper le long d'une surface qui n'est pas parfaitement plane.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Sélectionner l'objet projeté <b>et</b> le modèle 3D d'origine, ensemble.</li>
+            <li>Zéro machine&nbsp;: X/Y au coin, Z sur le point haut&nbsp;; le relief est sondé à chaque point.</li>
+            <li>Matériau&nbsp;: préréglage, ou épaisseur / passes / puissance / vitesse. Chaque passe recule le foyer dans la matière.</li>
+            <li><b>Kerf</b>, trous-avant-contour et optimisation par proximité, comme à plat.</li>
+            <li>Vérifier («&nbsp;Aperçu cadrage&nbsp;», «&nbsp;Aperçu du trajet&nbsp;») puis générer.</li>
+          </ol>
+        </details>
       </div>
     </div>
   </div>
@@ -482,6 +532,16 @@
         <div class="head"><span class="mi"><img src="assets/flat.svg" alt=""></span><h4>Découpe multi-passes (matériau plat)</h4></div>
         <p>Passes progressives, compensation de kerf, ordre trous-avant-contour, <b>attaches</b> (ponts de matière), <b>amorce</b> (lead-in hors du bord fini) et <b>copies en matrice</b> pour découper une série en un seul job.</p>
         <div class="when"><b>Quand&nbsp;?</b> Découper une ou plusieurs pièces dans une plaque à plat.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Sélectionner le(s) <b>profil(s) fermé(s)</b> à découper.</li>
+            <li>Zéro machine&nbsp;: X/Y au coin, Z sur le <b>dessus</b> de la pièce (le foyer descend passe après passe).</li>
+            <li>Matériau&nbsp;: préréglage, ou épaisseur / passes / puissance / vitesse&nbsp;; le <b>kerf</b> compense la largeur du trait.</li>
+            <li>Ajouter <b>attaches</b> (ponts) et <b>amorce</b>&nbsp;; <b>copies en matrice</b> pour une série.</li>
+            <li>Vérifier («&nbsp;Aperçu cadrage&nbsp;», «&nbsp;Aperçu du trajet&nbsp;»), générer, relire le <code>G0&nbsp;Z…</code> et la hauteur de bec.</li>
+          </ol>
+        </details>
       </div>
     </div>
   </div>
@@ -496,6 +556,16 @@
         <div class="head"><span class="mi"><img src="assets/kerf.svg" alt=""></span><h4>Calibration kerf</h4></div>
         <p>Deux géométries : un <b>carré</b> pour mesurer le kerf (taille dessinée − taille mesurée), et un <b>tenon + mortaise</b> à jeux gradués pour valider l'ajustement réel une fois le kerf connu.</p>
         <div class="when"><b>Quand&nbsp;?</b> Avant une découpe où les cotes — ou l'emboîtement — doivent être justes.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <img src="assets/diag_fit.svg" alt="Carré pour mesurer le kerf, et tenon + mortaise à jeux gradués pour valider l'ajustement">
+          <ol>
+            <li>Choisir le test&nbsp;: <b>carré</b> (mesure) ou <b>tenon + mortaise</b> (validation).</li>
+            <li><b>OK</b> crée la géométrie&nbsp;; la découper en <b>Découpe multi-passes</b> avec compensation de kerf = 0.</li>
+            <li>Mesurer&nbsp;: <b>kerf = taille dessinée − taille mesurée</b>, à reporter en «&nbsp;Compensation de kerf&nbsp;».</li>
+            <li>Valider avec le tenon + mortaise&nbsp;: retenir le <b>jeu</b> (gravé sous chacune) qui donne l'ajustement voulu.</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
@@ -504,6 +574,17 @@
         <div class="head"><span class="mi"><img src="assets/testgrid.svg" alt=""></span><h4>Grille de test puissance/vitesse</h4></div>
         <p>Matrice de cellules à puissance/vitesse variables, étiquetées, avec cadre net autour de chaque cellule. Champ <b>Hauteur (Z) de test</b> pour rejouer la même matrice à une autre hauteur de bec.</p>
         <div class="when"><b>Quand&nbsp;?</b> Trouver le couple puissance/vitesse d'un nouveau matériau, par paliers discrets.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <img src="assets/diag_planche_calibration.svg" alt="Planche de calibration : traits au foyer, traits au défocus (3 niveaux) et bandes nuancier">
+          <ol>
+            <li>Aucune sélection. Pour un nouveau matériau, préférer la <b>Planche de calibration</b> (tout en un job).</li>
+            <li>Choisir gravure/découpe, les plages de <b>puissance</b> (colonnes) et <b>vitesse</b> (lignes), le nombre de cellules.</li>
+            <li>Régler taille des cellules, plein/contour, étiquettes S/F.</li>
+            <li><b>Hauteur (Z) de test</b>&nbsp;: rejouer la grille à une autre hauteur (bec défocalisé).</li>
+            <li>Graver sur chute, choisir la meilleure cellule à l'œil, reporter au <b>Nuancier</b>.</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
@@ -512,6 +593,16 @@
         <div class="head"><span class="mi"><img src="assets/powerramp.svg" alt=""></span><h4>Rampe puissance/vitesse (lignes)</h4></div>
         <p>Longues lignes, <b>une par vitesse</b>, chacune à puissance croissante de gauche à droite (rampe Z optionnelle). Règle graduée en chiffres verticaux pour lire la puissance sous n'importe quel point.</p>
         <div class="when"><b>Quand&nbsp;?</b> Le complément <b>continu</b> de la grille : voir où le trait commence à marquer et où il sature.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <img src="assets/diag_ramp.svg" alt="Lignes à puissance croissante de gauche à droite, une par vitesse, avec règle graduée">
+          <ol>
+            <li>Zéro Z sur la surface. Aucune sélection.</li>
+            <li>Régler la longueur des lignes et la liste des <b>vitesses</b> (une ligne par vitesse).</li>
+            <li>Régler la <b>rampe de puissance</b> (min→max) et le nombre de paliers&nbsp;; rampe Z optionnelle.</li>
+            <li>Graver&nbsp;: lire sous la règle graduée où le trait <b>apparaît</b> et où il <b>sature</b>, à chaque vitesse.</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
@@ -520,6 +611,16 @@
         <div class="head"><span class="mi"><img src="assets/defocus.svg" alt=""></span><h4>Bande de calibration défocus</h4></div>
         <p>Rangée de courts traits à hauteurs de bec croissantes, étiquetés en hauteur et en puissance — pour mesurer le foyer et la divergence. Option <b>multi-bandes</b> : plusieurs bandes côte à côte, une par vitesse, tous les niveaux de gris en un seul job.</p>
         <div class="when"><b>Quand&nbsp;?</b> Une fois, pour caler le modèle de défocus dans les Préférences.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <img src="assets/diag_defocus.svg" alt="Rangée de traits à hauteurs de bec croissantes : le plus fin donne le foyer, les larges la divergence">
+          <ol>
+            <li>Zéro Z sur la surface. Aucune sélection.</li>
+            <li>Régler le <b>balayage en hauteur</b> (Z) et la puissance/vitesse&nbsp;; option multi-bandes (une par vitesse).</li>
+            <li>Graver, puis mesurer&nbsp;: le trait le plus fin → <b>Z de foyer</b> + point au foyer&nbsp;; un trait large → <b>défocus de test</b> + point au défocus.</li>
+            <li>Reporter les <b>trois mesures</b> dans Préférences → «&nbsp;Calibration du point&nbsp;».</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
@@ -528,6 +629,16 @@
         <div class="head"><span class="mi"><img src="assets/offset_test.svg" alt=""></span><h4>Test des offsets X/Y du laser</h4></div>
         <p>Job <b>mixte fraise + laser</b> : fraise une croix sur X0 Y0, puis grave une croix laser au même point programmé. L'écart mesuré entre les deux croix corrige les offsets X/Y dans <code>tool.tbl</code>.</p>
         <div class="when"><b>Quand&nbsp;?</b> Après le montage du laser, pour aligner son axe sur celui de la broche.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <img src="assets/diag_offset.svg" alt="Croix fraisée et croix laser au même X0 Y0 : l'écart mesuré corrige les offsets dans tool.tbl">
+          <ol>
+            <li><b>Lunettes laser.</b> Chute sur le martyre, fraise à graver montée, zéro X/Y au centre de la chute.</li>
+            <li>Régler la taille de la croix, la fraise (profondeur/vitesse) et le laser (puissance/vitesse).</li>
+            <li>Lancer&nbsp;; monter la glissière laser pendant la pause du 2ᵉ changement d'outil.</li>
+            <li>Mesurer l'écart&nbsp;: dX = X&nbsp;laser − X&nbsp;fraisé&nbsp;; corriger <code>tool.tbl</code> (X ← X − dX, idem Y).</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
@@ -536,6 +647,15 @@
         <div class="head"><span class="mi"><img src="assets/nuancier.svg" alt=""></span><h4>Nuancier matériau</h4></div>
         <p>La palette de gris <b>mesurée</b> d'un matériau : chaque ton = un réglage (puissance, vitesse, défocus) + son résultat constaté (noirceur 0-100&nbsp;%, largeur). Les modes Marquage et Gravure remplie proposent «&nbsp;Appliquer ce ton&nbsp;».</p>
         <div class="when"><b>Quand&nbsp;?</b> Après les grilles/rampes, pour capitaliser les réglages qui marchent.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Graver d'abord une grille/rampe/planche&nbsp;; garder les tons qui plaisent.</li>
+            <li>Choisir un matériau, ou taper un nouveau nom.</li>
+            <li>Pour chaque ton&nbsp;: «&nbsp;+ Ajouter&nbsp;» et saisir le réglage (S, F, défocus) + le résultat (noirceur 0-100&nbsp;%, largeur).</li>
+            <li><b>OK</b> enregistre&nbsp;: le tableau nourrit dégradés, photos calibrées et «&nbsp;ton sur mesure&nbsp;».</li>
+          </ol>
+        </details>
       </div>
     </div>
   </div>
@@ -550,6 +670,15 @@
         <div class="head"><span class="mi"><img src="assets/combined.svg" alt=""></span><h4>Job combiné</h4></div>
         <p>Assemble plusieurs opérations en un seul fichier (un armement, transitions anti-collision). Chaque opération s'ajoute <b>depuis son vrai mode</b> (bouton « ➕ Ajouter au job combiné ») avec toutes ses options — plus de fenêtres simplifiées. Un <b>aperçu photo</b> peint tout le job d'un coup (gravures + découpes) avant lancement.</p>
         <div class="when"><b>Quand&nbsp;?</b> Enchaîner marquage puis découpe d'une même pièce sans relancer.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Dans chaque mode combinable, régler l'opération puis «&nbsp;➕ Ajouter au job combiné&nbsp;».</li>
+            <li>Revenir ici&nbsp;: ordonner la liste (monter / descendre / supprimer).</li>
+            <li>Vérifier («&nbsp;Aperçu cadrage&nbsp;», «&nbsp;Aperçu du trajet&nbsp;», «&nbsp;Aperçu photo&nbsp;» de tout le job).</li>
+            <li><b>OK</b>&nbsp;: un seul fichier, un seul armement (<code>M3</code>) / désarmement (<code>M5</code>, <code>M2</code>).</li>
+          </ol>
+        </details>
       </div>
     </div>
     <div class="mode">
