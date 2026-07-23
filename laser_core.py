@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.17.2"
+VERSION = "1.18.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1312,12 +1312,12 @@ def centerline_edges(edges, px_per_mm=None):
 # le mode Marquage (styles, suivi de surface, préréglages, job combiné).
 
 def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
-                              line_spacing=1.6, z=0.0):
+                              line_spacing=1.6, z=0.0, x0=0.0, y0=0.0):
     """Texte -> arêtes Part en police mono-trait. `height` = hauteur de
     capitale (mm) ; `char_spacing` = espace ajouté entre lettres (mm) ;
     `line_spacing` = interligne en multiples de la hauteur. Origine : ligne
-    de base de la 1re ligne en y=0 (lettres au-dessus), lignes suivantes en
-    dessous. Renvoie [] si la police est absente ou le texte vide."""
+    de base de la 1re ligne en (x0, y0) (lettres au-dessus), lignes suivantes
+    en dessous. Renvoie [] si la police est absente ou le texte vide."""
     try:
         import hershey_font as hf
     except Exception:
@@ -1327,9 +1327,9 @@ def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
     scale = float(height) / float(hf.CAP_HEIGHT)
     line_pitch = line_spacing * height
     edges = []
-    y_line = 0.0
+    y_line = y0
     for line in text.replace("\r", "").split("\n"):
-        x = 0.0
+        x = x0
         for ch in line:
             g = hf.GLYPHES.get(ch)
             if g is None:
@@ -6491,6 +6491,67 @@ def generate_gcode_style_sampler(power, feed, z_focus, style_params=None,
                            z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM),
         })
 
+    return generate_gcode_combined(ops, pre_gcode=pre_gcode,
+                                   post_gcode=post_gcode, quiet=quiet)
+
+
+def generate_gcode_style_showcase(power, feed, z_focus, sample_text="Laser",
+                                  text_height=8.0, spot_widths=(1.0, 2.0, 3.0),
+                                  style_params=None, row_gap=7.0,
+                                  caption_height=3.0, pre_gcode="",
+                                  post_gcode="", quiet=False):
+    """PLANCHE DES STYLES : grave un même MOT exemple dans chaque style de
+    trait du Marquage -- plein, tirets, pointillé, vague, défocus point élargi
+    (à plusieurs largeurs), dégradé -- chaque exemple NUMÉROTÉ et légendé au
+    foyer (style + réglage). Une planche de référence à garder après
+    calibration : on voit le rendu réel de chaque style sur de vraies lettres,
+    pas sur un simple trait. Assemblée en un seul job (un seul armement)."""
+    sample = (sample_text or "Laser").strip() or "Laser"
+    sp = dict(style_params or {})
+    sp["deg_angle"] = 0.0                      # dégradé le long de la ligne
+    half = calibrated_half_angle()
+
+    cells = [                                  # (légende, style, défocus Z)
+        ("plein (foyer)", "plein", 0.0),
+        ("tirets", "tirets", 0.0),
+        ("pointille", "pointille", 0.0),
+        ("vague defocus", "vague", 0.0),
+    ]
+    for w in spot_widths:
+        dz = defocus_for_spot_diameter(w, SPOT_FOCUS_MM, half) or 0.0
+        cells.append(("point elargi {:g} mm".format(w), "plein", dz))
+    cells.append(("degrade Z", "degrade", 0.0))
+
+    ops = []
+    caption_edges = []
+    gap_cap = 2.0
+    descender = text_height * 0.35
+    y = 0.0
+    for i, (label, style, dz) in enumerate(cells):
+        caption_edges.extend(single_line_text_to_edges(
+            "{}. {}".format(i + 1, label), height=caption_height, x0=0.0, y0=y))
+        samp_y = y - caption_height - gap_cap - text_height
+        ex = single_line_text_to_edges(sample, height=text_height, x0=0.0, y0=samp_y)
+        if ex:
+            ops.append({
+                "type": "curved",
+                "label": "Planche styles {} ({})".format(i + 1, style),
+                "params": dict(edges=ex, power=power, feed=feed,
+                               z_focus=z_focus + dz,
+                               marge_survol=TRANSIT_MARGIN_MM,
+                               style=style, style_params=dict(sp)),
+            })
+        y = samp_y - descender - row_gap
+
+    if caption_edges:
+        ops.append({
+            "type": "curved",
+            "label": "Planche styles : legendes",
+            "params": dict(edges=caption_edges, power=power, feed=feed,
+                           z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM),
+        })
+    if not ops:
+        return None
     return generate_gcode_combined(ops, pre_gcode=pre_gcode,
                                    post_gcode=post_gcode, quiet=quiet)
 

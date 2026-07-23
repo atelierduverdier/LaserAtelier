@@ -6256,6 +6256,18 @@ class TaskPanelCurved:
         self.btn_style_sampler.clicked.connect(self._on_style_sampler)
         form.addRow(self.btn_style_sampler)
 
+        self.btn_style_showcase = QtWidgets.QPushButton(
+            "Planche des styles (exemples numérotés)")
+        self.btn_style_showcase.setToolTip(
+            "Grave un MOT exemple dans chaque style (plein, tirets, pointillé,\n"
+            "vague, défocus point élargi à 1/2/3 mm, dégradé), chaque exemple\n"
+            "NUMÉROTÉ et légendé au foyer -- une planche de référence à garder\n"
+            "après calibration : on voit le rendu réel sur de vraies lettres,\n"
+            "pas sur un simple trait. Puissance/vitesse et réglages de style\n"
+            "courants du panneau.")
+        self.btn_style_showcase.clicked.connect(self._on_style_showcase)
+        form.addRow(self.btn_style_showcase)
+
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
         self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
@@ -6348,6 +6360,24 @@ class TaskPanelCurved:
                 self.form, "Erreur", "Aucun G-code généré pour la mire des styles.")
             return
         _write_gcode_with_dialog(self.form, gcode, "/tmp/mire_styles.ngc")
+
+    def _on_style_showcase(self):
+        text, ok = QtWidgets.QInputDialog.getText(
+            self.form, "Planche des styles",
+            "Mot exemple à graver dans chaque style :", text="Laser")
+        if not ok:
+            return
+        sk = self._style_kwargs()["style_params"]
+        gcode = core.generate_gcode_style_showcase(
+            power=self.spn_power.value(), feed=self.spn_feed.value(),
+            z_focus=core.Z_WORK_MM, sample_text=text or "Laser",
+            style_params=sk)
+        if not gcode:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur",
+                "Aucun G-code généré pour la planche des styles.")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/planche_styles.ngc")
 
     def _on_recapture_selection(self):
         """Reprend la sélection courante (vue 3D / arbre) : le panneau ne la
