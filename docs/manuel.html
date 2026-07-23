@@ -332,9 +332,10 @@
 
   <div class="mode"><img class="ic" src="../resources/icons/curved.svg" alt=""><div class="body">
     <h4>Marquage de motif <span class="meta">(plat ou courbe)</span></h4>
-    <p class="quoi">Graver le tracé d'un motif — le cœur de l'atelier.</p>
-    <p>Suit au besoin une surface de référence pour graver sur une pièce courbe, à hauteur focale constante. Propose plusieurs styles de trait (plein, tirets, pointillé, ondulé, point élargi par défocus, dégradé de Z) et sait graver l'<strong>axe médian</strong> d'une forme pleine — un « T » gravé par son squelette plutôt que par son contour rempli.</p>
-    <p class="meta"><b>Réglages clés :</b> puissance · vitesse · style de trait · suivi de surface. <b>Fichier :</b> <code>marquage.ngc</code></p>
+    <p class="quoi">Graver le tracé d'un motif filaire — le cœur de l'atelier.</p>
+    <p>Sur une pièce <strong>plate</strong> : on sélectionne le motif 2D, la gravure se fait à plat. Sur une pièce <strong>courbe</strong> : le motif doit d'abord être posé sur la surface avec le mode <em>Projeter sur surface 3D</em> (§ 6.2) ; on sélectionne ensuite le motif projeté (<code>Hachures_3D</code>) <strong>et</strong> le modèle 3D d'origine <em>ensemble</em>, pour que le relief soit sondé exactement pendant le marquage et que la distance focale reste constante. Sans le modèle 3D, le Z n'est qu'interpolé entre les points projetés.</p>
+    <p>Propose cinq styles de trait (plein, tirets, pointillé, vague défocus, point élargi par défocus) — tous suivent le relief — et sait graver l'<strong>axe médian</strong> d'une forme pleine : un « T » gravé par son squelette plutôt que par son contour rempli.</p>
+    <p class="meta"><b>Réglages clés :</b> puissance · vitesse · style de trait · suivi de surface (motif projeté + modèle 3D). <b>Fichier :</b> <code>marquage.ngc</code></p>
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/filled.svg" alt=""><div class="body">
@@ -393,8 +394,8 @@
   <div class="mode"><img class="ic" src="../resources/icons/project.svg" alt=""><div class="body">
     <h4>Projeter sur surface 3D</h4>
     <p class="quoi">Coller un motif 2D sur une surface courbe.</p>
-    <p>Projette un texte ou des hachures sur une sphère, une vague… par projection verticale sur le solide. Étape de préparation : produit un objet à graver ou découper ensuite.</p>
-    <p class="meta"><b>Sortie :</b> objet « Hachures_3D »</p>
+    <p>Projette un texte ou des hachures sur une sphère, une vague… par projection verticale sur le solide. Étape de <strong>préparation</strong> : produit l'objet <code>Hachures_3D</code> que le Marquage grave ensuite en suivant le relief. C'est le <strong>préalable à toute gravure sur pièce courbe</strong> (§ 6.1).</p>
+    <p class="meta"><b>Sortie :</b> objet « Hachures_3D » (motif + modèle 3D à sélectionner ensemble au marquage)</p>
   </div></div>
 
   <!-- 6.3 -->
