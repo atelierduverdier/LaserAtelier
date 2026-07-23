@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.16.1"
+VERSION = "1.17.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1300,6 +1300,92 @@ def centerline_edges(edges, px_per_mm=None):
             if vs[i].distanceToPoint(vs[i + 1]) > 1e-6:
                 out.append(Part.LineSegment(vs[i], vs[i + 1]).toShape())
     return out, stroke
+
+
+# ==========================================================================
+# TEXTE MONO-TRAIT (police Hershey Sans 1-stroke)
+# ==========================================================================
+# Un vrai « trait simple » pour graver du texte : chaque lettre est dessinée
+# d'un seul trait par branche (comme un traceur à plume), pas en contour
+# rempli. Les glyphes vivent dans hershey_font.py (données Hershey, domaine
+# public). On produit des arêtes Part que l'utilisateur grave ensuite avec
+# le mode Marquage (styles, suivi de surface, préréglages, job combiné).
+
+def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
+                              line_spacing=1.6, z=0.0):
+    """Texte -> arêtes Part en police mono-trait. `height` = hauteur de
+    capitale (mm) ; `char_spacing` = espace ajouté entre lettres (mm) ;
+    `line_spacing` = interligne en multiples de la hauteur. Origine : ligne
+    de base de la 1re ligne en y=0 (lettres au-dessus), lignes suivantes en
+    dessous. Renvoie [] si la police est absente ou le texte vide."""
+    try:
+        import hershey_font as hf
+    except Exception:
+        FreeCAD.Console.PrintError(
+            "Police mono-trait indisponible (hershey_font.py manquant).\n")
+        return []
+    scale = float(height) / float(hf.CAP_HEIGHT)
+    line_pitch = line_spacing * height
+    edges = []
+    y_line = 0.0
+    for line in text.replace("\r", "").split("\n"):
+        x = 0.0
+        for ch in line:
+            g = hf.GLYPHES.get(ch)
+            if g is None:
+                x += hf.ADV_DEFAULT * scale + char_spacing
+                continue
+            adv, strokes = g
+            for st in strokes:
+                pts = [FreeCAD.Vector(x + px * scale, y_line + py * scale, z)
+                       for px, py in st]
+                for i in range(len(pts) - 1):
+                    if pts[i].distanceToPoint(pts[i + 1]) > 1e-7:
+                        edges.append(Part.LineSegment(pts[i], pts[i + 1]).toShape())
+            x += adv * scale + char_spacing
+        y_line -= line_pitch
+    return edges
+
+
+def single_line_text_extent(text, height=10.0, char_spacing=0.0, line_spacing=1.6):
+    """(largeur_mm, hauteur_mm) approximative du texte mono-trait, sans
+    construire d'arêtes -- pour l'aperçu d'encombrement du panneau."""
+    try:
+        import hershey_font as hf
+    except Exception:
+        return 0.0, 0.0
+    scale = float(height) / float(hf.CAP_HEIGHT)
+    lines = text.replace("\r", "").split("\n") or [""]
+    maxw = 0.0
+    for line in lines:
+        x = 0.0
+        for ch in line:
+            g = hf.GLYPHES.get(ch)
+            x += (g[0] if g else hf.ADV_DEFAULT) * scale + char_spacing
+        maxw = max(maxw, x - char_spacing if line else 0.0)
+    h = height + (len(lines) - 1) * line_spacing * height
+    return maxw, h
+
+
+def create_single_line_text_object(text, height=10.0, char_spacing=0.0,
+                                   line_spacing=1.6):
+    """Crée dans le document un objet fil « TexteTraitSimple » (texte en
+    police mono-trait), à sélectionner puis graver avec Marquage. Renvoie
+    (objet, erreur)."""
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        return None, "Ouvre (ou crée) un document d'abord."
+    if not (text or "").strip():
+        return None, "Saisis un texte."
+    edges = single_line_text_to_edges(text, height, char_spacing, line_spacing)
+    if not edges:
+        return None, "Aucun caractère traçable dans ce texte."
+    obj = doc.addObject("Part::Feature", "TexteTraitSimple")
+    obj.Shape = Part.Compound(edges)
+    premiere = next((l for l in text.splitlines() if l.strip()), "texte")
+    obj.Label = "Texte « {} »".format(premiere.strip()[:24])
+    doc.recompute()
+    return obj, None
 
 
 # ==========================================================================

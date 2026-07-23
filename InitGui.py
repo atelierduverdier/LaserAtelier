@@ -51,6 +51,7 @@ class LaserAtelierWorkbench(Workbench):
             # ===== BOUTONS DE TRAVAIL (à gauche) =====
             # -- Gravure à plat --
             "LaserAtelier_Hatch",
+            "LaserAtelier_Text",
             "LaserAtelier_FilledEngraving",
             "LaserAtelier_Halftone",
             "Separator",

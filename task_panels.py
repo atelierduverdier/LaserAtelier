@@ -1561,6 +1561,115 @@ def _make_shade_picker(form, on_apply):
 
 
 # ==========================================================================
+# MODE : TEXTE TRAIT SIMPLE (police mono-trait Hershey)
+# ==========================================================================
+class TaskPanelText:
+    """Crée un texte en police MONO-TRAIT (trait simple) comme objet fil, à
+    graver ensuite avec Marquage. Chaque lettre est dessinée d'un seul trait
+    par branche (vrai « bâton », comme un traceur à plume) -- contrairement à
+    ShapeString qui donne des contours pleins à remplir."""
+
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        _panel_header(form, "text.svg", "Texte (trait simple)")
+        _intro(form,
+               "Grave du texte en TRAIT SIMPLE : chaque lettre est dessinée "
+               "d'un seul trait par branche (comme un traceur à plume), pas "
+               "en contour rempli.",
+               "OK crée un objet fil dans l'arbre ; place-le en X/Y, projette-le "
+               "sur une surface courbe si besoin, puis grave-le avec Marquage "
+               "(tous les styles, préréglages, job combiné). Police Hershey "
+               "Sans 1-stroke (domaine public).")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Tape le <b>texte</b> (Entrée = nouvelle ligne).",
+            "<b>2.</b> Règle la <b>hauteur</b> (des capitales) et les espacements.",
+            "<b>3. OK</b> crée un objet «&nbsp;Texte…&nbsp;» dans l'arbre (coin "
+            "bas-gauche à l'origine).",
+            "<b>4.</b> Sélectionne-le et ouvre <b>Marquage</b> pour le graver "
+            "(place-le d'abord, ou projette-le sur une surface courbe).",
+        ])
+
+        _section(form, "Texte", "sect_labels.svg")
+        self.txt = QtWidgets.QPlainTextEdit()
+        self.txt.setPlaceholderText("Texte à graver (Entrée = nouvelle ligne)")
+        self.txt.setMaximumHeight(90)
+        self.txt.setPlainText("Atelier")
+        form.addRow(self.txt)
+
+        _section(form, "Dimensions", "sect_zheight.svg")
+        self.spn_height = QtWidgets.QDoubleSpinBox()
+        self.spn_height.setRange(1.0, 500.0)
+        self.spn_height.setValue(10.0)
+        self.spn_height.setDecimals(1)
+        self.spn_height.setSuffix(" mm")
+        self.spn_height.setToolTip(
+            "Hauteur des CAPITALES (mm) ; minuscules et accents suivent.")
+        form.addRow("Hauteur (capitale) :", self.spn_height)
+
+        self.spn_cspace = QtWidgets.QDoubleSpinBox()
+        self.spn_cspace.setRange(-10.0, 50.0)
+        self.spn_cspace.setValue(0.0)
+        self.spn_cspace.setDecimals(1)
+        self.spn_cspace.setSuffix(" mm")
+        self.spn_cspace.setToolTip(
+            "Espace AJOUTÉ entre les lettres (négatif = resserrer).")
+        form.addRow("Espacement lettres :", self.spn_cspace)
+
+        self.spn_lspace = QtWidgets.QDoubleSpinBox()
+        self.spn_lspace.setRange(1.0, 5.0)
+        self.spn_lspace.setValue(1.6)
+        self.spn_lspace.setDecimals(2)
+        self.spn_lspace.setSingleStep(0.1)
+        self.spn_lspace.setToolTip("Interligne, en multiples de la hauteur.")
+        form.addRow("Interligne (× hauteur) :", self.spn_lspace)
+
+        self.lbl_info = _WrapLabel("")
+        form.addRow(self.lbl_info)
+        for w in (self.spn_height, self.spn_cspace, self.spn_lspace):
+            w.valueChanged.connect(self._update_info)
+        self.txt.textChanged.connect(self._update_info)
+
+        self._last_fields = {"text": self.txt, "height": self.spn_height,
+                             "cspace": self.spn_cspace, "lspace": self.spn_lspace}
+        _restore_last_values("text", self._last_fields)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Texte (trait simple)")
+        self.form.setWindowIcon(_icon("text.svg"))
+        self._update_info()
+
+    def _update_info(self):
+        w, h = core.single_line_text_extent(
+            self.txt.toPlainText(), self.spn_height.value(),
+            self.spn_cspace.value(), self.spn_lspace.value())
+        self.lbl_info.setText(
+            "Encombrement : {:.1f} × {:.1f} mm.".format(w, h) if w > 0
+            else "Saisis un texte.")
+
+    def accept(self):
+        _save_last_values("text", self._last_fields)
+        obj, err = core.create_single_line_text_object(
+            self.txt.toPlainText(), self.spn_height.value(),
+            self.spn_cspace.value(), self.spn_lspace.value())
+        if err:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
+            return False
+        FreeCAD.Console.PrintMessage(
+            "Texte créé : « {} ». Sélectionne-le puis ouvre Marquage pour le "
+            "graver.\n".format(obj.Label))
+        return True
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
 # MODE : HACHURES 2D
 # ==========================================================================
 class TaskPanelHatch:

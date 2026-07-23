@@ -53,6 +53,23 @@ class GuideCommand:
         _show(task_panels.TaskPanelGuide())
 
 
+class TextCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("text.svg"),
+            "MenuText": "Texte (trait simple)",
+            "ToolTip": "Crée du texte en police MONO-TRAIT (un seul trait par branche, "
+                       "comme un traceur à plume) comme objet fil, à graver ensuite avec "
+                       "Marquage -- idéal au gros point / défocus",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        _show(task_panels.TaskPanelText())
+
+
 class HatchCommand:
     def GetResources(self):
         return {
@@ -365,6 +382,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Guide", GuideCommand())
     Gui.addCommand("LaserAtelier_Settings", SettingsCommand())
     Gui.addCommand("LaserAtelier_Hatch", HatchCommand())
+    Gui.addCommand("LaserAtelier_Text", TextCommand())
     Gui.addCommand("LaserAtelier_FilledEngraving", FilledEngravingCommand())
     Gui.addCommand("LaserAtelier_Halftone", HalftoneCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
