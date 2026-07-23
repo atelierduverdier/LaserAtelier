@@ -76,6 +76,28 @@ class _WrapLabel(QtWidgets.QLabel):
             return  # widget C++ déjà détruit (timer différé)
         if h > 0 and h != self.minimumHeight():
             self.setMinimumHeight(h)
+            self.updateGeometry()
+
+    def _hauteur_repliee(self, hint):
+        # Hauteur du paragraphe replié à la largeur COURANTE. QFormLayout
+        # dimensionne la rangée d'après sizeHint()/minimumSizeHint() (et
+        # IGNORE heightForWidth) : si on laisse le sizeHint d'origine (calculé
+        # pour une seule ligne), la rangée est trop basse et le widget suivant
+        # se superpose. On corrige donc la hauteur annoncée.
+        w = self.width()
+        if w <= 0:
+            return hint
+        try:
+            h = self.heightForWidth(w)
+        except RuntimeError:
+            return hint
+        return QtCore.QSize(hint.width(), h) if h > 0 else hint
+
+    def sizeHint(self):
+        return self._hauteur_repliee(super().sizeHint())
+
+    def minimumSizeHint(self):
+        return self._hauteur_repliee(super().minimumSizeHint())
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -972,8 +994,12 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
     puissance à la génération. La référence (matériau) est sauvegardée
     dans le préréglage matériau et la dernière session."""
     box = QtWidgets.QGroupBox("Puissance vs défocus")
-    inner = QtWidgets.QFormLayout(box)
-    inner.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+    # QFormLayout n'honore pas le heightForWidth des paragraphes repliés
+    # (rangée trop basse d'une ligne -> le widget suivant chevauche le bas
+    # du texte). On met donc les paragraphes pleine largeur dans un
+    # QVBoxLayout (qui, lui, respecte la hauteur repliée), et on réserve un
+    # QFormLayout imbriqué aux seules paires libellé:champ (son usage prévu).
+    outer = QtWidgets.QVBoxLayout(box)
 
     lbl = _WrapLabel(
         "À utiliser quand le matériau n'a PAS de nuancier. Défocaliser\n"
@@ -987,7 +1013,7 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
         "case DÉCOCHÉE -- l'interpolation fait déjà ce travail, en mieux\n"
         "(courbe mesurée). Le % ci-dessous compare à TA référence : il\n"
         "peut être élevé sans danger si tu vises un ton foncé.")
-    inner.addRow(lbl)
+    outer.addWidget(lbl)
 
     chk = QtWidgets.QCheckBox("Compenser la puissance automatiquement (matériau sans nuancier)")
     chk.setToolTip(
@@ -997,20 +1023,23 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
         "puissance saisie est utilisée telle quelle, et l'atelier indique\n"
         "seulement la fluence obtenue par rapport à la référence (à toi\n"
         "d'ajuster). Utile pour comparer les deux approches sur une chute.")
-    inner.addRow(chk)
+    outer.addWidget(chk)
+
+    refs = QtWidgets.QFormLayout()
+    refs.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
     ref_power_w = QtWidgets.QDoubleSpinBox()
     ref_power_w.setRange(0, core.S_MAX)
     ref_power_w.setValue(ref_power)
     ref_power_w.setToolTip("Puissance (S) du réglage de référence connu bon.")
-    inner.addRow("Réf. puissance (S) :", ref_power_w)
+    refs.addRow("Réf. puissance (S) :", ref_power_w)
 
     ref_feed_w = QtWidgets.QDoubleSpinBox()
     ref_feed_w.setRange(1, 20000)
     ref_feed_w.setValue(ref_feed)
     ref_feed_w.setSuffix(" mm/min")
     ref_feed_w.setToolTip("Vitesse d'avance du réglage de référence.")
-    inner.addRow("Réf. vitesse :", ref_feed_w)
+    refs.addRow("Réf. vitesse :", ref_feed_w)
 
     ref_spot_w = QtWidgets.QDoubleSpinBox()
     ref_spot_w.setRange(0.02, 30.0)
@@ -1022,10 +1051,11 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
         "foyer, c'est le « point au foyer » des Préférences ; défocalisée,\n"
         "c'est la largeur du trait de la gravure de référence, mesurable\n"
         "au pied à coulisse ou lue sur la bande de calibration défocus).")
-    inner.addRow("Réf. largeur du point :", ref_spot_w)
+    refs.addRow("Réf. largeur du point :", ref_spot_w)
+    outer.addLayout(refs)
 
     info = _WrapLabel("")
-    inner.addRow(info)
+    outer.addWidget(info)
 
     form.addRow(box)
     return {"container": box, "chk": chk, "ref_power": ref_power_w,
