@@ -174,7 +174,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.15.0"
+VERSION = "1.15.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -256,12 +256,12 @@ def save_config(data):
 # --------------------------------------------------------------------------
 # Photos de résultats (test / calibration)
 # --------------------------------------------------------------------------
-# On garde UNE photo de référence par « clé » (mode + éventuel matériau, ex.
+# On garde une LISTE de photos par « clé » (mode + éventuel matériau, ex.
 # « testgrid:MDF ») pour comparer le rendu au réel plus tard. Les fichiers
-# vivent dans un sous-dossier de l'app-data ; la config ne stocke que le nom
-# de fichier relatif, sous le bloc « photos ». Pas de Qt ici : la vignette
-# est peinte dans le panneau -- core se contente de copier/retrouver/oublier
-# le fichier.
+# vivent dans un sous-dossier de l'app-data ; la config ne stocke que les noms
+# de fichiers relatifs, sous le bloc « photos » (une liste par clé ; un ancien
+# enregistrement mono-photo, simple chaîne, est migré à la volée). Pas de Qt
+# ici : la vignette est peinte dans le panneau -- core copie/retrouve/oublie.
 PHOTOS_DIRNAME = "laser_atelier_photos"
 
 
@@ -275,62 +275,86 @@ def photos_dir():
     return d
 
 
-def _photo_filename(cle, ext):
-    """Nom de fichier stable et sûr dérivé de la clé (ex. « testgrid:MDF »
-    -> « testgrid_MDF.jpg ») : tout caractère non alphanumérique devient _."""
-    safe = "".join(c if (c.isalnum() or c in "-_") else "_" for c in cle) or "photo"
-    return safe + (ext if ext.startswith(".") else "." + ext)
+def _photo_safe(cle):
+    """Base de nom de fichier sûre dérivée de la clé (tout caractère non
+    alphanumérique devient « _ », ex. « testgrid:MDF » -> « testgrid_MDF »)."""
+    return "".join(c if (c.isalnum() or c in "-_") else "_" for c in cle) or "photo"
 
 
-def result_photo_path(cle):
-    """Chemin absolu de la photo mémorisée pour `cle`, ou None si aucune."""
-    rel = (load_config().get("photos") or {}).get(cle)
-    if not rel:
-        return None
-    p = os.path.join(photos_dir(), rel)
-    return p if os.path.isfile(p) else None
+def _photo_list(cle):
+    """Noms de fichiers relatifs mémorisés pour `cle` (migre une éventuelle
+    ancienne valeur mono-photo en liste)."""
+    rec = (load_config().get("photos") or {}).get(cle)
+    if not rec:
+        return []
+    return [rec] if isinstance(rec, str) else list(rec)
 
 
-def save_result_photo(cle, source_path):
-    """Copie `source_path` dans le dossier photos et l'associe à `cle`
-    (remplace toute photo précédente de cette clé). Renvoie le chemin absolu
-    stocké, ou None en cas d'échec."""
+def result_photos(cle):
+    """Liste des chemins absolus des photos mémorisées pour `cle` (dans
+    l'ordre d'ajout), en ne gardant que les fichiers réellement présents."""
+    d = photos_dir()
+    return [os.path.join(d, n) for n in _photo_list(cle)
+            if os.path.isfile(os.path.join(d, n))]
+
+
+def add_result_photo(cle, source_path):
+    """Copie `source_path` dans le dossier photos et l'AJOUTE à la liste de
+    `cle`. Renvoie le chemin absolu stocké, ou None en cas d'échec."""
     ext = os.path.splitext(source_path)[1].lower() or ".jpg"
-    dest_rel = _photo_filename(cle, ext)
-    dest_abs = os.path.join(photos_dir(), dest_rel)
+    base = _photo_safe(cle)
+    d = photos_dir()
+    # numéro libre GLOBAL (toutes extensions confondues) : Photo 1, 2, 3…
+    stems = {os.path.splitext(fn)[0] for fn in os.listdir(d)} if os.path.isdir(d) else set()
+    n = 1
+    while "{}_{}".format(base, n) in stems:
+        n += 1
+    dest_rel = "{}_{}{}".format(base, n, ext)
+    dest_abs = os.path.join(d, dest_rel)
     try:
         with open(source_path, "rb") as src:
             data = src.read()
-        # oublie un éventuel ancien fichier d'extension différente
-        old = (load_config().get("photos") or {}).get(cle)
-        if old and old != dest_rel:
-            try:
-                os.remove(os.path.join(photos_dir(), old))
-            except OSError:
-                pass
         with open(dest_abs, "wb") as dst:
             dst.write(data)
     except Exception as exc:
         FreeCAD.Console.PrintWarning("Photo non enregistrée ({}).\n".format(exc))
         return None
     cfg = load_config()
-    cfg.setdefault("photos", {})[cle] = dest_rel
+    photos = cfg.setdefault("photos", {})
+    lst = _photo_list(cle)
+    lst.append(dest_rel)
+    photos[cle] = lst
     save_config(cfg)
     return dest_abs
 
 
-def delete_result_photo(cle):
-    """Oublie la photo de `cle` (supprime le fichier + l'entrée config)."""
+def delete_result_photo(cle, filename=None):
+    """Oublie une photo de `cle` : `filename` (nom OU chemin) désigne la photo
+    à retirer ; None les retire toutes. Supprime le fichier + met à jour la
+    config."""
     cfg = load_config()
     photos = cfg.get("photos") or {}
-    rel = photos.pop(cle, None)
-    if rel:
+    lst = _photo_list(cle)
+    if not lst:
+        return
+    d = photos_dir()
+    if filename is None:
+        remove, keep = lst, []
+    else:
+        target = os.path.basename(filename)
+        remove = [n for n in lst if os.path.basename(n) == target]
+        keep = [n for n in lst if os.path.basename(n) != target]
+    for n in remove:
         try:
-            os.remove(os.path.join(photos_dir(), rel))
+            os.remove(os.path.join(d, n))
         except OSError:
             pass
-        cfg["photos"] = photos
-        save_config(cfg)
+    if keep:
+        photos[cle] = keep
+    else:
+        photos.pop(cle, None)
+    cfg["photos"] = photos
+    save_config(cfg)
 
 
 # ==========================================================================

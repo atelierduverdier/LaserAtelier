@@ -5,7 +5,7 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>LaserAtelier</name>
   <description>Atelier Laser : génération de G-code de marquage et de découpe laser depuis FreeCAD (LinuxCNC, GRBL, grblHAL) — gravure noir plein, photo tramée, suivi de surfaces 3D courbes, découpe multi-passes, tests et calibration guidés.</description>
-  <version>1.15.0</version>
+  <version>1.15.1</version>
   <date>2026-07-23</date>
   <maintainer email="leverdier@ik.me">Atelier du Verdier</maintainer>
   <license file="LICENSE">LGPL-2.1-or-later</license>
