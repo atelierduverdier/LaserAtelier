@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.16.0"
+VERSION = "1.16.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1073,8 +1073,11 @@ def _cl_thin(mask):
 
 
 def _cl_trace(skel, prune_len):
-    """Squelette (bool) -> polylignes en pixels (x, y) ; barbes et amas de
-    jonction courts (< prune_len) élagués."""
+    """Squelette (bool) -> polylignes en pixels (x, y). Classe les pixels par
+    NOMBRE DE CROISEMENTS (transitions 0->1 du voisinage) et non par nombre
+    de voisins : un pixel de ligne vaut 2 même en diagonale (le comptage brut
+    voit de fausses jonctions sur les diagonales, ce qui émiettait les jambes
+    obliques d'un « A »). Barbes courtes (< prune_len) élaguées."""
     import numpy as np
     pts = set(map(tuple, np.argwhere(skel)))              # (r, c)
 
@@ -1083,38 +1086,58 @@ def _cl_trace(skel, prune_len):
         return [(r + dr, c + dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1)
                 if (dr or dc) and (r + dr, c + dc) in pts]
 
-    deg = {p: len(nbrs(p)) for p in pts}
-    nodes = {p for p in pts if deg[p] != 2}
-    visited = set()
+    def crossing(p):
+        r, c = p
+        seq = [(r - 1, c), (r - 1, c + 1), (r, c + 1), (r + 1, c + 1),
+               (r + 1, c), (r + 1, c - 1), (r, c - 1), (r - 1, c - 1)]
+        v = [1 if q in pts else 0 for q in seq]
+        return sum(1 for i in range(8) if v[i] == 0 and v[(i + 1) % 8] == 1)
+
+    cnv = {p: crossing(p) for p in pts}
+    nodes = {p for p in pts if cnv[p] != 2}               # extrémités + jonctions
+    visited = set()                                        # arêtes parcourues
     polylines = []
 
+    def step(prev, cur):
+        cand = [n for n in nbrs(cur) if (cur, n) not in visited and n != prev]
+        if not cand:
+            return None
+        # continue la ligne : voisin PAS adjacent à prev (évite les raccourcis
+        # diagonaux d'un escalier de pixels)
+        far = [n for n in cand if prev is None
+               or max(abs(n[0] - prev[0]), abs(n[1] - prev[1])) > 1]
+        return (far or cand)[0]
+
     def walk(a, b):
-        path = [a, b]; prev, cur = a, b
-        while deg[cur] == 2 and cur not in nodes:
-            nxt = [n for n in nbrs(cur) if n != prev]
-            if not nxt:
+        path = [a]; prev, cur = a, b
+        while True:
+            path.append(cur)
+            visited.add((prev, cur)); visited.add((cur, prev))
+            if cur in nodes:
                 break
-            prev, cur = cur, nxt[0]; path.append(cur)
+            nxt = step(prev, cur)
+            if nxt is None:
+                break
+            prev, cur = cur, nxt
         return path
 
     for node in nodes:
         for n in nbrs(node):
             if (node, n) in visited:
                 continue
-            path = walk(node, n)
-            for a, b in zip(path, path[1:]):
-                visited.add((a, b)); visited.add((b, a))
-            polylines.append(path)
+            polylines.append(walk(node, n))
 
     remaining = pts - {p for pl in polylines for p in pl}   # boucles pures
-    while remaining:
+    guard = 0
+    while remaining and guard < len(pts) + 5:
+        guard += 1
         start = next(iter(remaining)); nb = nbrs(start)
         if not nb:
             remaining.discard(start); continue
-        path = walk(start, nb[0])
-        for p in path:
+        pl = walk(start, nb[0])
+        for p in pl:
             remaining.discard(p)
-        polylines.append(path)
+        polylines.append(pl)
 
     def plen(pl):
         return sum(math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1])
@@ -1124,8 +1147,9 @@ def _cl_trace(skel, prune_len):
     for pl in polylines:
         if len(pl) < 2:
             continue
-        at_junction = deg.get(pl[0], 0) >= 3 or deg.get(pl[-1], 0) >= 3
-        if plen(pl) < prune_len and at_junction:
+        # barbe : courte ET terminée par une extrémité libre (cn == 1).
+        spur = cnv.get(pl[0], 2) == 1 or cnv.get(pl[-1], 2) == 1
+        if plen(pl) < prune_len and spur:
             continue
         out.append([(c, r) for (r, c) in pl])              # -> (x, y)
     return out
