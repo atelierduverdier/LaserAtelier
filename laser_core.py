@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.19.0"
+VERSION = "1.19.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -6500,6 +6500,16 @@ def _style_showcase_ops(power, feed, z_focus, sample, sp, spot_widths,
     """Ops de marquage d'un bloc « styles » : un MOT exemple gravé dans chaque
     style, numéroté et légendé. Renvoie (ops, caption_edges, y_bas)."""
     half = calibrated_half_angle()
+    # Sans amplitude, les cellules « vague » et « dégradé » seraient plates
+    # (identiques au plein) : on injecte des valeurs parlantes si l'appelant
+    # n'en fournit pas (ex. le catalogue).
+    sp = dict(sp)
+    sp.setdefault("wave_period", 5.0)
+    if not sp.get("wave_amplitude"):
+        sp["wave_amplitude"] = defocus_for_spot_diameter(2.0, SPOT_FOCUS_MM, half) or 0.0
+    if not sp.get("deg_z_max"):
+        sp.setdefault("deg_z_min", 0.0)
+        sp["deg_z_max"] = defocus_for_spot_diameter(3.0, SPOT_FOCUS_MM, half) or 0.0
     cells = [
         ("plein (foyer)", "plein", 0.0),
         ("tirets", "tirets", 0.0),

@@ -14,6 +14,7 @@ renvoient False laissent le panneau ouvert (utilisé ici pour les erreurs
 de validation, afin de ne pas perdre la saisie de l'utilisateur)."""
 
 import json
+import math
 import os
 import FreeCAD
 import FreeCADGui as Gui
@@ -716,18 +717,63 @@ def _strokes_from_operation(op):
                 if pts:
                     strokes.append((pts, cw, ct))
     elif typ == "curved":
-        # Marquage : largeur du trait selon le défocus effectif (z_focus au-
-        # dessus du foyer de travail -> point élargi), sinon fin au foyer.
+        # Marquage : largeur selon le défocus effectif (z_focus au-dessus du
+        # foyer -> point élargi) ET selon le STYLE (tirets, pointillé, vague,
+        # dégradé) -- sinon tous les styles se ressembleraient dans l'aperçu.
         pw, fd = p.get("power", 0.0), p.get("feed", 1.0)
         defocus = max(0.0, p.get("z_focus", core.Z_WORK_MM) - core.Z_WORK_MM)
-        w = (core.burn_width_defocus_scaled(pw, defocus)
-             or core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half)
-             or core.SPOT_FOCUS_MM)
+        style = p.get("style", "plein")
+        spar = dict(p.get("style_params") or {})
+        edges = p.get("edges") or []
+
+        def _wid(dz):
+            dz = max(0.0, dz)
+            return (core.burn_width_defocus_scaled(pw, dz)
+                    or core.spot_diameter_at_defocus(dz, core.SPOT_FOCUS_MM, half)
+                    or core.SPOT_FOCUS_MM)
+
+        w = _wid(defocus)
         t = _tone_burn(pw, fd, w)
-        for e in (p.get("edges") or []):
-            pts = _discretize_edge(e)
-            if pts:
-                strokes.append((pts, w, t))
+        if style in ("tirets", "pointille", "vague", "degrade"):
+            chains = core.chain_edges(edges)
+            if style == "tirets":
+                for ch in chains:
+                    for piece, on in core.dash_chain(ch, spar.get("dash_len", 3.0),
+                                                      spar.get("gap_len", 2.0)):
+                        if on and len(piece) >= 2:
+                            strokes.append(([(q.x, q.y) for q in piece], w, t))
+            elif style == "pointille":
+                for ch in chains:
+                    for d in core.dot_positions(ch, spar.get("dot_spacing", 1.5)):
+                        strokes.append(([(d.x, d.y)], max(w, core.SPOT_FOCUS_MM), t))
+            elif style == "vague":
+                amp = spar.get("wave_amplitude", 0.0)
+                for ch in chains:
+                    s = core.wave_resample(ch, spar.get("wave_period", 5.0), amp)
+                    for (pa, dza), (pb, dzb) in zip(s, s[1:]):
+                        ww = _wid((dza + dzb) / 2.0)
+                        strokes.append(([(pa.x, pa.y), (pb.x, pb.y)], ww,
+                                        _tone_burn(pw, fd, ww)))
+            else:                                   # degrade : largeur le long d'une direction
+                ang = math.radians(spar.get("deg_angle", 0.0))
+                ux, uy = math.cos(ang), math.sin(ang)
+                allp = [q for ch in chains for q in ch]
+                projs = [q.x * ux + q.y * uy for q in allp] or [0.0]
+                pmin = min(projs)
+                span = max(max(projs) - pmin, 1e-9)
+                z0 = spar.get("deg_z_min", 0.0)
+                z1 = spar.get("deg_z_max", 0.0)
+                for ch in chains:
+                    for qa, qb in zip(ch, ch[1:]):
+                        frac = ((qa.x * ux + qa.y * uy) - pmin) / span
+                        ww = _wid(z0 + (z1 - z0) * frac)
+                        strokes.append(([(qa.x, qa.y), (qb.x, qb.y)], ww,
+                                        _tone_burn(pw, fd, ww)))
+        else:                                       # plein / défocus (point élargi)
+            for e in edges:
+                pts = _discretize_edge(e)
+                if pts:
+                    strokes.append((pts, w, t))
     elif typ in ("flat", "curved_cut"):
         # Découpe traversante : fin trait très sombre (le trait de coupe).
         for e in (p.get("edges") or []):
