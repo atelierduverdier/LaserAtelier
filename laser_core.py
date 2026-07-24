@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.30.0"
+VERSION = "1.31.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3724,13 +3724,38 @@ def shade_materials():
 # au lieu d'extrapoler depuis un seul point. Couvre du remplissage fin
 # (~15) au très défocalisé (~50). Partagé par la planche, le dialogue de
 # saisie et l'interpolation.
-DEFOCUS_LEVELS_MM = (15.0, 36.0, 50.0)
+# Niveaux de défocus de la planche de calibration (section 2). DEUX niveaux
+# suffisent : sur cette plage la largeur brûlée varie quasi linéairement avec
+# le défocus (cône du point) -- une droite définie par 2 points. Hors [15, 36]
+# le modèle extrapole optiquement. (On a retiré le 3e niveau, 50 mm : une
+# brûlure économisée sans perte réelle.)
+DEFOCUS_LEVELS_MM = (15.0, 36.0)
+
+
+def _snap_defocus_level(z):
+    """Ramène un z_offset mesuré au niveau standard le plus proche
+    (DEFOCUS_LEVELS_MM) s'il en est à moins de 5 mm -- absorbe l'imprécision de
+    mesure (ex. 15,34 -> 15) et aligne les données sur les colonnes de la grille
+    de saisie. Laisse tel quel un z volontairement hors niveaux."""
+    z = float(z or 0.0)
+    if not DEFOCUS_LEVELS_MM:
+        return z
+    proche = min(DEFOCUS_LEVELS_MM, key=lambda lv: abs(lv - z))
+    return float(proche) if abs(proche - z) <= 5.0 else z
 
 
 def load_burn_widths(material):
     """Table des largeurs brûlées du matériau ({"focus": [...],
-    "defocus": [...]}), ou {} si aucune mesure."""
-    return load_config().get("burn_widths", {}).get(material, {})
+    "defocus": [...]}), ou {} si aucune mesure. Les niveaux de défocus mesurés
+    sont ramenés au niveau standard le plus proche (cf. _snap_defocus_level) --
+    migration transparente des anciennes mesures (ex. 15,34 -> 15)."""
+    data = load_config().get("burn_widths", {}).get(material, {})
+    dfc = data.get("defocus")
+    if dfc:
+        data = dict(data)
+        data["defocus"] = [dict(p, z_offset=_snap_defocus_level(p.get("z_offset", 0.0)))
+                           for p in dfc]
+    return data
 
 
 def save_burn_widths(material, data):
@@ -3760,15 +3785,12 @@ def _burn_width_material(material):
     return mats[0] if len(mats) == 1 else None
 
 
-def burn_width_at(power, feed, material=None):
-    """Largeur brûlée (mm) d'un trait au FOYER pour (S, F), interpolée
-    BILINÉAIREMENT sur la grille mesurée (S linéaire, F logarithmique --
-    c'est le temps de chauffe qui pilote), bornée aux mesures. None si
-    aucune table."""
-    mat = _burn_width_material(material)
-    if not mat:
-        return None
-    pts = load_burn_widths(mat).get("focus") or []
+def _bilinear_burn(pts, power, feed):
+    """Largeur brûlée (mm) interpolée BILINÉAIREMENT sur un nuage de points
+    {power, feed, width} : S linéaire, F logarithmique (c'est le temps de
+    chauffe qui pilote), bornée aux mesures. Dégénère proprement si un seul S
+    ou un seul F mesuré (l'axe non couvert retombe sur la valeur mesurée). None
+    si `pts` est vide."""
     if not pts:
         return None
     svals = sorted({float(p["power"]) for p in pts})
@@ -3801,6 +3823,16 @@ def burn_width_at(power, feed, material=None):
     return w1 * (1 - tf) + w2 * tf
 
 
+def burn_width_at(power, feed, material=None):
+    """Largeur brûlée (mm) d'un trait au FOYER pour (S, F), interpolée
+    bilinéairement sur la grille mesurée (bornée aux mesures). None si aucune
+    table."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return None
+    return _bilinear_burn(load_burn_widths(mat).get("focus") or [], power, feed)
+
+
 def burn_width_defocus_at(power, material=None):
     """Largeur brûlée (mm) au DÉFOCUS standard du remplissage, interpolée
     LINÉAIREMENT en S sur les mesures (bornée). None si aucune table."""
@@ -3821,12 +3853,15 @@ def burn_width_defocus_at(power, material=None):
     return float(pts[-1]["width"])
 
 
-def burn_width_defocus_scaled(power, defocus, material=None):
-    """Largeur brûlée (mm) attendue au défocus `defocus` pour la puissance
-    `power`, INTERPOLÉE entre les niveaux de défocus mesurés (section 2 de
-    la planche, cf. DEFOCUS_LEVELS_MM) :
+def burn_width_defocus_scaled(power, feed, defocus, material=None):
+    """Largeur brûlée (mm) attendue au défocus `defocus` pour (S, F), INTERPOLÉE
+    entre les niveaux de défocus mesurés (section 2 de la planche, cf.
+    DEFOCUS_LEVELS_MM) :
 
-    - à chaque niveau mesuré, la largeur est interpolée linéairement en S ;
+    - à chaque niveau mesuré, la largeur est interpolée BILINÉAIREMENT en (S, F)
+      -- comme burn_width_at au foyer (S linéaire, F logarithmique). Tant que la
+      planche ne mesure qu'un feed au défocus (F fixe), le résultat ne dépend pas
+      encore du feed ; il en dépendra dès qu'une planche multi-feed sera saisie ;
     - entre deux niveaux encadrants, interpolation linéaire en défocus ;
     - hors de la plage mesurée (ou un seul niveau connu), extrapolation
       PROPORTIONNELLE au diamètre optique du point (modèle conique) depuis
@@ -3854,16 +3889,8 @@ def burn_width_defocus_scaled(power, defocus, material=None):
         return None
 
     def _w_at(z):
-        """Largeur au niveau z pour `power`, interpolée linéairement en S."""
-        lv = sorted(levels[z], key=lambda q: float(q["power"]))
-        s = min(max(float(power), float(lv[0]["power"])),
-                float(lv[-1]["power"]))
-        for a, b in zip(lv, lv[1:]):
-            pa, pb = float(a["power"]), float(b["power"])
-            if pa <= s <= pb:
-                t = 0.0 if pb == pa else (s - pa) / (pb - pa)
-                return float(a["width"]) * (1 - t) + float(b["width"]) * t
-        return float(lv[-1]["width"])
+        """Largeur au niveau z pour (S, F), interpolée bilinéairement (S, F)."""
+        return _bilinear_burn(levels[z], power, feed)
 
     ha = calibrated_half_angle()
 

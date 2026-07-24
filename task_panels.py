@@ -1073,7 +1073,7 @@ def _strokes_from_operation(op):
         defocus = p.get("defocus", 0.0)
         spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half)
         fp, ff = p.get("fill_power", 0.0), p.get("fill_feed", 1.0)
-        fw = core.burn_width_defocus_scaled(fp, defocus) or spot_fill
+        fw = core.burn_width_defocus_scaled(fp, ff, defocus) or spot_fill
         ft = _tone_burn(fp, ff, fw)
         for e in (p.get("fill_edges") or []):
             pts = _discretize_edge(e)
@@ -1083,7 +1083,7 @@ def _strokes_from_operation(op):
             coff = p.get("contour_z_offset", 0.0)
             spot_c = core.spot_diameter_at_defocus(coff, core.SPOT_FOCUS_MM, half)
             cp, cf = p.get("contour_power", 0.0), p.get("contour_feed", 1.0)
-            cw = core.burn_width_defocus_scaled(cp, coff) or spot_c
+            cw = core.burn_width_defocus_scaled(cp, cf, coff) or spot_c
             ct = _tone_burn(cp, cf, cw)
             for e in p["contour_edges"]:
                 pts = _discretize_edge(e)
@@ -1101,7 +1101,7 @@ def _strokes_from_operation(op):
 
         def _wid(dz):
             dz = max(0.0, dz)
-            return (core.burn_width_defocus_scaled(pw, dz)
+            return (core.burn_width_defocus_scaled(pw, fd, dz)
                     or core.spot_diameter_at_defocus(dz, core.SPOT_FOCUS_MM, half)
                     or core.SPOT_FOCUS_MM)
 
@@ -3120,7 +3120,7 @@ class TaskPanelFilledEngraving:
                 extra = ""
                 if self.combo_fill_style.currentIndex() == 0:
                     power = self._effective_fill_power(defocus, half_angle)
-                    burn = core.burn_width_defocus_scaled(power, defocus)
+                    burn = core.burn_width_defocus_scaled(power, self.spn_fill_feed.value(), defocus)
                     if burn:
                         fill_width = min(spot, burn)
                         if burn < spacing - 1e-6:
@@ -3420,7 +3420,7 @@ class TaskPanelFilledEngraving:
             c_off = self._contour_offset(half_angle)
             c_spot = core.spot_diameter_at_defocus(c_off, core.SPOT_FOCUS_MM, half_angle)
             c_burn = core.burn_width_defocus_scaled(
-                self.spn_contour_power.value(), c_off) or c_spot
+                self.spn_contour_power.value(), self.spn_contour_feed.value(), c_off) or c_spot
             inset = max(0.0, inset - c_burn / 2.0)
         return inset
 
@@ -3476,7 +3476,7 @@ class TaskPanelFilledEngraving:
             if self.chk_fill_grad.isChecked():
                 s0 = max(self.spn_fill_power.value(), 1e-9)
                 power = power * min(1.0, self.spn_grad_power_fin.value() / s0)
-            burn = core.burn_width_defocus_scaled(power, defocus)
+            burn = core.burn_width_defocus_scaled(power, self.spn_fill_feed.value(), defocus)
             if burn:
                 hatch_spacing = min(spacing, burn)
                 fill_width = min(spot, burn)
@@ -3603,7 +3603,7 @@ class TaskPanelFilledEngraving:
         # teinte selon l'irradiance de crête au défocus retenu.
         fill_power = self._effective_fill_power(defocus, half_angle)
         spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
-        fill_width = core.burn_width_defocus_scaled(fill_power, defocus) or spot_fill
+        fill_width = core.burn_width_defocus_scaled(fill_power, self.spn_fill_feed.value(), defocus) or spot_fill
         fill_tone = _tone_burn(fill_power, self.spn_fill_feed.value(), fill_width)
         for e in (fill_edges or []):
             pts = _discretize_edge(e)
@@ -3613,7 +3613,7 @@ class TaskPanelFilledEngraving:
         if self.chk_contour.isChecked() and contour_edges:
             c_power = self.spn_contour_power.value()
             spot_c = core.spot_diameter_at_defocus(contour_z_offset, core.SPOT_FOCUS_MM, half_angle)
-            c_width = core.burn_width_defocus_scaled(c_power, contour_z_offset) or spot_c
+            c_width = core.burn_width_defocus_scaled(c_power, self.spn_contour_feed.value(), contour_z_offset) or spot_c
             c_tone = _tone_burn(c_power, self.spn_contour_feed.value(), c_width)
             for e in contour_edges:
                 pts = _discretize_edge(e)
@@ -7325,11 +7325,11 @@ class TaskPanelCurved:
         # à la largeur au foyer quoi qu'on règle.
         idx = self.combo_style.currentIndex()
         half = core.calibrated_half_angle()
-        w_focus = core.burn_width_defocus_scaled(pw, 0.0) or core.SPOT_FOCUS_MM
+        w_focus = core.burn_width_defocus_scaled(pw, fd, 0.0) or core.SPOT_FOCUS_MM
         if idx == 4:                                   # Défocus (point élargi)
             defocus = core.defocus_for_spot_diameter(
                 self.spn_spot_width.value(), core.SPOT_FOCUS_MM, half) or 0.0
-            width = core.burn_width_defocus_scaled(pw, defocus) or self.spn_spot_width.value()
+            width = core.burn_width_defocus_scaled(pw, fd, defocus) or self.spn_spot_width.value()
         elif idx == 3:                                 # Vague : moyenne foyer/max
             width = (w_focus + self.spn_wave_width.value()) / 2.0
         elif idx == 5:                                 # Dégradé : moyenne des deux
