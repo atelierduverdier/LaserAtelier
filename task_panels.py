@@ -8058,6 +8058,28 @@ class TaskPanelCombined:
         form.addRow(info)
         _diagram(form, "diag_combined.svg")
 
+        # Mode d'emploi en tête, replié par défaut. La liste des opérations a
+        # SA PROPRE section (ouverte) juste après : sinon, « Mode d'emploi »
+        # étant l'unique section du panneau, toutes les rangées suivantes
+        # seraient aspirées dans son repli (il fallait la déplier pour voir
+        # ses propres jobs).
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Dans chaque mode combinable (Découpe plat/courbe, "
+            "Marquage, Grille de test…), règle l'opération comme d'habitude "
+            "puis clique «&nbsp;➕ Ajouter au job combiné&nbsp;».",
+            "<b>2.</b> Reviens ici&nbsp;: la <b>liste</b> empile les opérations "
+            "dans l'ordre d'exécution. Monte / descends / supprime pour les "
+            "ordonner.",
+            "<b>3. Vérifie</b>&nbsp;: «&nbsp;Aperçu cadrage&nbsp;» (fichier "
+            "séparé), «&nbsp;Aperçu du trajet&nbsp;» et «&nbsp;Aperçu "
+            "photo&nbsp;» (rendu de tout le job d'un coup).",
+            "<b>4.</b> Clique <b>OK</b>&nbsp;: le job part en <b>un seul "
+            "fichier</b>&nbsp;— un seul armement (<code>M3</code>) au début, un "
+            "seul désarmement (<code>M5</code>)/<code>M2</code> à la fin.",
+        ])
+
+        _section(form, "Opérations à graver", "sect_options.svg", ouvert=True)
         self.list_ops = QtWidgets.QListWidget()
         self.list_ops.setToolTip("Opérations empilées, exécutées dans cet ordre.")
         form.addRow(self.list_ops)
@@ -8131,26 +8153,6 @@ class TaskPanelCombined:
         cfg = core.load_config()
         self.txt_pre.setPlainText(cfg.get("pre_j", ""))
         self.txt_post.setPlainText(cfg.get("post_j", ""))
-
-        # Mode d'emploi en BAS et replié : la liste des opérations et ses
-        # boutons restent visibles d'emblée. (Avant, cette section était en
-        # tête et, comme unique section du panneau, elle aspirait toute la
-        # suite -- il fallait la déplier pour voir ses propres jobs.)
-        _section(form, "Mode d'emploi", "sect_guide.svg")
-        _bullet_list(form, [
-            "<b>1.</b> Dans chaque mode combinable (Découpe plat/courbe, "
-            "Marquage, Grille de test…), règle l'opération comme d'habitude "
-            "puis clique «&nbsp;➕ Ajouter au job combiné&nbsp;».",
-            "<b>2.</b> Reviens ici&nbsp;: la <b>liste</b> empile les opérations "
-            "dans l'ordre d'exécution. Monte / descends / supprime pour les "
-            "ordonner.",
-            "<b>3. Vérifie</b>&nbsp;: «&nbsp;Aperçu cadrage&nbsp;» (fichier "
-            "séparé), «&nbsp;Aperçu du trajet&nbsp;» et «&nbsp;Aperçu "
-            "photo&nbsp;» (rendu de tout le job d'un coup).",
-            "<b>4.</b> Clique <b>OK</b>&nbsp;: le job part en <b>un seul "
-            "fichier</b>&nbsp;— un seul armement (<code>M3</code>) au début, un "
-            "seul désarmement (<code>M5</code>)/<code>M2</code> à la fin.",
-        ])
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Job combiné (plusieurs opérations)")
