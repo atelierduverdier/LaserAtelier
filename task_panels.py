@@ -115,6 +115,26 @@ def _auto_icon_buttons(root):
             continue
 
 
+def _preview_row(form, boutons_icones, taille=24):
+    """Range des boutons d'APERÇU VISUEL en icônes seules, sur une même ligne
+    pleine largeur et sans libellé de ligne. `boutons_icones` : liste de
+    (bouton, nom_icone) ; chaque bouton s'étire pour occuper sa part de la
+    largeur (deux aperçus -> 50/50, un seul -> pleine largeur). Le libellé
+    passe en info-bulle (déjà posée par l'appelant)."""
+    ligne = QtWidgets.QWidget()
+    h = QtWidgets.QHBoxLayout(ligne)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(6)
+    for btn, nom in boutons_icones:
+        btn.setText("")
+        _btn_icon(btn, nom, taille)
+        btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        btn.setMinimumHeight(30)
+        h.addWidget(btn)
+    form.addRow(ligne)
+    return ligne
+
+
 class _WrapLabel(QtWidgets.QLabel):
     """QLabel de paragraphe : word-wrap activé, et retours à la ligne
     manuels (\\n) transformés en espaces à chaque setText. Le panneau des
@@ -1868,12 +1888,12 @@ class TaskPanelCatalogue:
         form.addRow("Vitesse :", self.spn_feed)
 
         _section(form, "Aperçu & génération", "sect_gcode.svg", ouvert=True)
-        self.btn_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
+        self.btn_preview = QtWidgets.QPushButton()
         self.btn_preview.setToolTip(
             "Peint le rendu de la planche avant de graver -- chaque style\n"
             "distinct (tirets, pointillé, vague, point élargi, dégradé).")
         self.btn_preview.clicked.connect(self._on_preview)
-        form.addRow(self.btn_preview)
+        _preview_row(form, [(self.btn_preview, "sect_photo.svg")])
         form.addRow(_WrapLabel("OK grave la planche dans un seul fichier."))
 
         self._last_fields = {"sample": self.edt_sample, "power": self.spn_power,
@@ -2687,22 +2707,20 @@ class TaskPanelFilledEngraving:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.setToolTip(
-            "Affiche le trajet dans la vue 3D : gris fin = transit éteint,\n"
-            "rouge = gravure. Vérifie que le remplissage tient dans le\n"
-            "contour. Purement visuel.")
+            "Aperçu du trajet (vue 3D) : gris fin = transit éteint, rouge =\n"
+            "gravure. Vérifie que le remplissage tient dans le contour.\n"
+            "Purement visuel.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
-
-        self.btn_photo_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
+        self.btn_photo_preview = QtWidgets.QPushButton()
         self.btn_photo_preview.setToolTip(
-            "Génère une IMAGE de ce que devrait donner la gravure : chaque\n"
-            "trait à sa largeur brûlée et à sa teinte (défocus large = pâle,\n"
-            "net au foyer = foncé), superpositions plus foncées. Rendu\n"
-            "théorique pour juger le résultat final avant de graver.")
+            "Aperçu photo (rendu réaliste) : chaque trait à sa largeur brûlée\n"
+            "et à sa teinte (défocus large = pâle, net au foyer = foncé),\n"
+            "superpositions plus foncées. Rendu théorique avant de graver.")
         self.btn_photo_preview.clicked.connect(self._on_photo_preview)
-        form.addRow(self.btn_photo_preview)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg"),
+                            (self.btn_photo_preview, "sect_photo.svg")])
 
         self._last_fields = {
             "spacing": self.spn_spacing, "surface_offset": self.spn_surface_offset, "angle": self.spn_angle,
@@ -3696,9 +3714,9 @@ class TaskPanelDefocusCalibration:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
 
         self._last_fields = {
             "zstart": self.spn_zstart, "zstep": self.spn_zstep,
@@ -4057,9 +4075,9 @@ class TaskPanelPowerRamp:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
 
         self._last_fields = {
             "length": self.spn_length, "nlines": self.spn_nlines, "gap": self.spn_gap,
@@ -4319,12 +4337,12 @@ class TaskPanelOffsetTest:
             "Hors changements d'outil et palpages (durée machine réelle\n"
             "nettement plus longue).")
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.setToolTip(
             "Trace les deux croix dans la vue 3D (superposées par\n"
             "construction : c'est la machine qui révèle l'écart réel).")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
 
         self._last_fields = {
             "half": self.spn_half, "surface_z": self.spn_surface_z,
@@ -4735,13 +4753,13 @@ class TaskPanelHalftone:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_dots_preview = QtWidgets.QPushButton("Aperçu des points (vue 3D)")
+        self.btn_dots_preview = QtWidgets.QPushButton()
         self.btn_dots_preview.setToolTip(
             "Dessine chaque point de la trame (petite croix) dans la vue 3D,\n"
             "à sa position réelle -- pour vérifier l'emprise et la densité\n"
             "sur le modèle. Purement visuel.")
         self.btn_dots_preview.clicked.connect(self._on_dots_preview)
-        form.addRow(self.btn_dots_preview)
+        _preview_row(form, [(self.btn_dots_preview, "btn_view3d.svg")])
 
         self._last_fields = {
             "image": self.edt_image, "width": self.spn_width,
@@ -5531,13 +5549,13 @@ class TaskPanelTestGrid:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.setToolTip(
             "Affiche le trajet réel dans la vue 3D de FreeCAD : gris fin =\n"
             "transit laser éteint (G0), rouge épais = gravure/découpe\n"
             "laser allumé (G1). Purement visuel, ne génère aucun fichier.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
         self.txt_pre = QtWidgets.QPlainTextEdit()
@@ -6487,26 +6505,17 @@ class TaskPanelCurved:
         form.addRow(self.btn_frame_preview)
 
         self.btn_toolpath_preview = QtWidgets.QPushButton()
-        _btn_icon(self.btn_toolpath_preview, "btn_view3d.svg", 22)
         self.btn_toolpath_preview.setToolTip(
             "Aperçu du trajet (vue 3D) : gris fin = transit laser éteint (G0),\n"
             "rouge épais = gravure laser allumé (G1). Purement visuel.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-
         self.btn_photo_preview = QtWidgets.QPushButton()
-        _btn_icon(self.btn_photo_preview, "sect_photo.svg", 22)
         self.btn_photo_preview.setToolTip(
             "Aperçu photo (rendu réaliste) : chaque trait à sa largeur brûlée\n"
             "et à sa teinte. Rendu théorique pour juger le résultat.")
         self.btn_photo_preview.clicked.connect(self._on_photo_preview)
-
-        _prev_row = QtWidgets.QWidget()
-        _prev_h = QtWidgets.QHBoxLayout(_prev_row)
-        _prev_h.setContentsMargins(0, 0, 0, 0)
-        _prev_h.addWidget(self.btn_toolpath_preview)
-        _prev_h.addWidget(self.btn_photo_preview)
-        _prev_h.addStretch(1)
-        form.addRow("Aperçu :", _prev_row)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg"),
+                            (self.btn_photo_preview, "sect_photo.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
         self.btn_style_sampler = QtWidgets.QPushButton("Mire des styles (fichier séparé)")
@@ -7275,13 +7284,13 @@ class TaskPanelFlat:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.setToolTip(
             "Affiche le trajet réel dans la vue 3D de FreeCAD : gris fin =\n"
             "transit laser éteint (G0), rouge épais = découpe laser allumé\n"
             "(G1). Purement visuel, ne génère aucun fichier.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
         self.txt_pre = QtWidgets.QPlainTextEdit()
@@ -7734,14 +7743,14 @@ class TaskPanelCurvedCut:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.setToolTip(
             "Affiche le trajet réel (TOUTES les passes) dans la vue 3D :\n"
             "gris fin = transit laser éteint (G0), rouge épais = découpe\n"
             "laser allumé (G1) -- les passes profondes apparaissent sous la\n"
             "surface du modèle, comme la vraie profondeur de coupe.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
         self.txt_pre = QtWidgets.QPlainTextEdit()
@@ -8065,23 +8074,20 @@ class TaskPanelCombined:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.setToolTip(
-            "Affiche le trajet réel de TOUT le job combiné dans la vue 3D :\n"
-            "gris fin = transit laser éteint (G0), rouge épais =\n"
-            "marquage/découpe laser allumé (G1). Purement visuel, ne\n"
-            "génère aucun fichier.")
+            "Aperçu du trajet (vue 3D) de TOUT le job combiné : gris fin =\n"
+            "transit laser éteint (G0), rouge épais = laser allumé (G1).\n"
+            "Purement visuel, ne génère aucun fichier.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
-
-        self.btn_photo_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
+        self.btn_photo_preview = QtWidgets.QPushButton()
         self.btn_photo_preview.setToolTip(
-            "Génère une IMAGE de TOUT le job combiné : gravures peintes à\n"
-            "leur largeur/teinte réelles (superpositions plus foncées),\n"
-            "découpes en fins traits sombres. Rendu théorique du résultat\n"
-            "final avant de graver.")
+            "Aperçu photo (rendu réaliste) de TOUT le job combiné : gravures\n"
+            "à leur largeur/teinte réelles, découpes en fins traits sombres.\n"
+            "Rendu théorique du résultat final avant de graver.")
         self.btn_photo_preview.clicked.connect(self._on_photo_preview)
-        form.addRow(self.btn_photo_preview)
+        _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg"),
+                            (self.btn_photo_preview, "sect_photo.svg")])
 
         self.txt_pre = QtWidgets.QPlainTextEdit()
         self.txt_pre.setMaximumHeight(50)
