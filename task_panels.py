@@ -40,6 +40,81 @@ def _icon_pixmap(name, size):
         return None
 
 
+def _btn_icon(btn, name, size=18):
+    """Pose une icône SVG carrée sur un bouton (silencieux si le rendu
+    échoue -- le bouton garde alors juste son texte). Renvoie le bouton."""
+    try:
+        ic = _icon(name)
+        if ic is not None and not ic.isNull():
+            btn.setIcon(ic)
+            btn.setIconSize(QtCore.QSize(size, size))
+    except Exception:
+        pass
+    return btn
+
+
+# Correspondance libellé -> icône, testée dans l'ordre (première clé trouvée
+# dans le texte du bouton = gagne). Sert à l'assigneur automatique ci-dessous :
+# tous les boutons d'un panneau reçoivent une icône, sans avoir à la poser à
+# la main sur chacun.
+_BTN_ICON_MAP = [
+    (("aperçu du trajet", "aperçu des points"), "btn_view3d.svg"),
+    (("aperçu photo",), "sect_photo.svg"),
+    (("aperçu cadrage", "cadrage"), "btn_frame.svg"),
+    (("supprimer", "vider"), "btn_delete.svg"),
+    (("générer et sauvegarder", "g-code"), "sect_gcode.svg"),
+    (("reprendre la sélection",), "btn_reselect.svg"),
+    (("exporter",), "btn_export.svg"),
+    (("importer",), "btn_import.svg"),
+    (("actualiser",), "btn_refresh.svg"),
+    (("monter",), "btn_up.svg"),
+    (("descendre",), "btn_down.svg"),
+    (("renommer",), "btn_edit.svg"),
+    (("calculer",), "btn_calc.svg"),
+    (("appliquer",), "btn_apply.svg"),
+    (("mesures", "calibration"), "sect_measure.svg"),
+    (("mire", "planche"), "sect_labels.svg"),
+    (("png",), "sect_photo.svg"),
+    (("nouveau", "cloner"), "btn_add.svg"),
+    (("ajouter",), "btn_add.svg"),
+    (("photo",), "sect_photo.svg"),
+    (("sauvegarder", "préréglage"), "sect_preset.svg"),
+    (("parcourir", "depuis la face"), "btn_folder.svg"),
+    (("auto",), "sect_options.svg"),
+]
+
+
+def _auto_icon_buttons(root):
+    """Pose une icône adaptée sur CHAQUE bouton d'un panneau, d'après son
+    libellé (table `_BTN_ICON_MAP`). Saute les boutons déjà iconés (aperçus
+    icône seule, boutons réglés à la main) et ceux sans texte. Idempotent ;
+    appelé à l'ouverture de chaque panneau (voir commands._show)."""
+    try:
+        boutons = root.findChildren(QtWidgets.QPushButton)
+    except Exception:
+        return
+    for btn in boutons:
+        try:
+            if not btn.icon().isNull():
+                continue
+            txt = (btn.text() or "").strip().lower()
+            if not txt:
+                continue
+            for cles, nom in _BTN_ICON_MAP:
+                if any(c in txt for c in cles):
+                    _btn_icon(btn, nom)
+                    if nom == "btn_add.svg":
+                        # le « + » / « ➕ » de tête fait doublon avec l'icône
+                        t = btn.text()
+                        for p in ("➕ ", "➕", "+ ", "+"):
+                            if t.startswith(p):
+                                btn.setText(t[len(p):].lstrip())
+                                break
+                    break
+        except Exception:
+            continue
+
+
 class _WrapLabel(QtWidgets.QLabel):
     """QLabel de paragraphe : word-wrap activé, et retours à la ligne
     manuels (\\n) transformés en espaces à chaque setText. Le panneau des
@@ -1094,14 +1169,19 @@ class _PresetController:
             "ajuste, puis « Sauvegarder » sous un nom pour créer le tien.")
         form.addRow("Préréglage :", self.combo)
 
-        btn_save = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        btn_save = QtWidgets.QPushButton("Sauvegarder")
         btn_save.setToolTip("Enregistre toutes les valeurs du panneau sous un nom.")
+        _btn_icon(btn_save, "sect_preset.svg")
         btn_save.clicked.connect(self._on_save)
-        form.addRow(btn_save)
-
-        btn_del = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        btn_del = QtWidgets.QPushButton("Supprimer")
+        btn_del.setToolTip("Supprime le préréglage sélectionné (les ★ d'usine sont protégés).")
         btn_del.clicked.connect(self._on_delete)
-        form.addRow(btn_del)
+        _presets_row = QtWidgets.QWidget()
+        _presets_h = QtWidgets.QHBoxLayout(_presets_row)
+        _presets_h.setContentsMargins(0, 0, 0, 0)
+        _presets_h.addWidget(btn_save)
+        _presets_h.addWidget(btn_del)
+        form.addRow(_presets_row)
 
         self.combo.currentIndexChanged.connect(self._on_selected)
         self._populate()
@@ -2219,14 +2299,19 @@ class TaskPanelFilledEngraving:
         self.lbl_preset_summary.setVisible(False)
         form.addRow(self.lbl_preset_summary)
 
-        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder")
+        _btn_icon(self.btn_save_preset, "sect_preset.svg")
         self.btn_save_preset.setToolTip("Sauvegarde toutes les valeurs du panneau sous un nom.")
         self.btn_save_preset.clicked.connect(self._on_save_preset)
-        form.addRow(self.btn_save_preset)
-
-        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer")
+        self.btn_delete_preset.setToolTip("Supprime le préréglage sélectionné (les ★ d'usine sont protégés).")
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
-        form.addRow(self.btn_delete_preset)
+        _mat_row = QtWidgets.QWidget()
+        _mat_h = QtWidgets.QHBoxLayout(_mat_row)
+        _mat_h.setContentsMargins(0, 0, 0, 0)
+        _mat_h.addWidget(self.btn_save_preset)
+        _mat_h.addWidget(self.btn_delete_preset)
+        form.addRow(_mat_row)
 
         def _apply_shade(s):
             # Ton mesuré du nuancier -> puissance/vitesse du REMPLISSAGE
@@ -2585,6 +2670,7 @@ class TaskPanelFilledEngraving:
             "(transit) à la vitesse rapide des Préférences.")
 
         self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        _btn_icon(self.btn_save_gcode, "sect_gcode.svg")
         self.btn_save_gcode.setToolTip(
             "Génère le G-code avec les réglages actuels et propose le\n"
             "fichier de sauvegarde. Le bouton OK, lui, se contente de\n"
@@ -5111,16 +5197,21 @@ class TaskPanelTestGrid:
         self.lbl_preset_summary.setVisible(False)
         form.addRow(self.lbl_preset_summary)
 
-        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder")
+        _btn_icon(self.btn_save_preset, "sect_preset.svg")
         self.btn_save_preset.setToolTip(
             "Sauvegarde les valeurs actuelles de TOUT le panneau sous un\n"
             "nom de préréglage (un nom déjà existant est remplacé).")
         self.btn_save_preset.clicked.connect(self._on_save_preset)
-        form.addRow(self.btn_save_preset)
-
-        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer")
+        self.btn_delete_preset.setToolTip("Supprime le préréglage sélectionné (les ★ d'usine sont protégés).")
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
-        form.addRow(self.btn_delete_preset)
+        _mat_row = QtWidgets.QWidget()
+        _mat_h = QtWidgets.QHBoxLayout(_mat_row)
+        _mat_h.setContentsMargins(0, 0, 0, 0)
+        _mat_h.addWidget(self.btn_save_preset)
+        _mat_h.addWidget(self.btn_delete_preset)
+        form.addRow(_mat_row)
 
         _section(form, "Mode & plages puissance/vitesse", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
@@ -6101,14 +6192,19 @@ class TaskPanelCurved:
         form.addRow("Préréglage matériau :", self.combo_preset)
         self.combo_preset.currentIndexChanged.connect(self._on_preset_selected)
 
-        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder")
+        _btn_icon(self.btn_save_preset, "sect_preset.svg")
         self.btn_save_preset.setToolTip("Sauvegarde les valeurs actuelles sous un nom de préréglage.")
         self.btn_save_preset.clicked.connect(self._on_save_preset)
-        form.addRow(self.btn_save_preset)
-
-        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer")
+        self.btn_delete_preset.setToolTip("Supprime le préréglage sélectionné (les ★ d'usine sont protégés).")
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
-        form.addRow(self.btn_delete_preset)
+        _mat_row = QtWidgets.QWidget()
+        _mat_h = QtWidgets.QHBoxLayout(_mat_row)
+        _mat_h.setContentsMargins(0, 0, 0, 0)
+        _mat_h.addWidget(self.btn_save_preset)
+        _mat_h.addWidget(self.btn_delete_preset)
+        form.addRow(_mat_row)
 
         def _apply_shade(s):
             # Applique un ton MESURÉ du nuancier : puissance, vitesse, et
@@ -6126,6 +6222,7 @@ class TaskPanelCurved:
             self._update_style_ui()
             self._update_duration_preview()
         self.btn_resel = QtWidgets.QPushButton("Reprendre la sélection de la vue")
+        _btn_icon(self.btn_resel, "btn_reselect.svg")
         self.btn_resel.setToolTip(
             "Le panneau capture la sélection au moment de son OUVERTURE.\n"
             "Si tu as sélectionné le motif (ex. l'objet Hachures) APRÈS,\n"
@@ -6367,6 +6464,7 @@ class TaskPanelCurved:
             "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
 
         self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        _btn_icon(self.btn_save_gcode, "sect_gcode.svg")
         self.btn_save_gcode.setToolTip(
             "Génère le G-code avec les réglages actuels et propose le\n"
             "fichier de sauvegarde. Le bouton OK, lui, se contente de\n"
@@ -6388,21 +6486,27 @@ class TaskPanelCurved:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
-        self.btn_toolpath_preview = QtWidgets.QPushButton("Aperçu du trajet (vue 3D)")
+        self.btn_toolpath_preview = QtWidgets.QPushButton()
+        _btn_icon(self.btn_toolpath_preview, "btn_view3d.svg", 22)
         self.btn_toolpath_preview.setToolTip(
-            "Affiche le trajet réel dans la vue 3D de FreeCAD : gris fin =\n"
-            "transit laser éteint (G0), rouge épais = gravure laser allumé\n"
-            "(G1). Purement visuel, ne génère aucun fichier.")
+            "Aperçu du trajet (vue 3D) : gris fin = transit laser éteint (G0),\n"
+            "rouge épais = gravure laser allumé (G1). Purement visuel.")
         self.btn_toolpath_preview.clicked.connect(self._on_toolpath_preview)
-        form.addRow(self.btn_toolpath_preview)
 
-        self.btn_photo_preview = QtWidgets.QPushButton("Aperçu photo (rendu réaliste)")
+        self.btn_photo_preview = QtWidgets.QPushButton()
+        _btn_icon(self.btn_photo_preview, "sect_photo.svg", 22)
         self.btn_photo_preview.setToolTip(
-            "Génère une IMAGE du marquage : chaque trait à sa largeur brûlée\n"
-            "et à sa teinte (selon puissance/vitesse). Rendu théorique pour\n"
-            "juger le résultat final avant de graver.")
+            "Aperçu photo (rendu réaliste) : chaque trait à sa largeur brûlée\n"
+            "et à sa teinte. Rendu théorique pour juger le résultat.")
         self.btn_photo_preview.clicked.connect(self._on_photo_preview)
-        form.addRow(self.btn_photo_preview)
+
+        _prev_row = QtWidgets.QWidget()
+        _prev_h = QtWidgets.QHBoxLayout(_prev_row)
+        _prev_h.setContentsMargins(0, 0, 0, 0)
+        _prev_h.addWidget(self.btn_toolpath_preview)
+        _prev_h.addWidget(self.btn_photo_preview)
+        _prev_h.addStretch(1)
+        form.addRow("Aperçu :", _prev_row)
         _combined_add_button(form, self._on_add_to_combined)
 
         self.btn_style_sampler = QtWidgets.QPushButton("Mire des styles (fichier séparé)")
@@ -6901,14 +7005,19 @@ class TaskPanelFlat:
         form.addRow("Préréglage matériau :", self.combo_preset)
         self.combo_preset.currentIndexChanged.connect(self._on_preset_selected)
 
-        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder")
+        _btn_icon(self.btn_save_preset, "sect_preset.svg")
         self.btn_save_preset.setToolTip("Sauvegarde les valeurs actuelles sous un nom de préréglage.")
         self.btn_save_preset.clicked.connect(self._on_save_preset)
-        form.addRow(self.btn_save_preset)
-
-        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer")
+        self.btn_delete_preset.setToolTip("Supprime le préréglage sélectionné (les ★ d'usine sont protégés).")
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
-        form.addRow(self.btn_delete_preset)
+        _mat_row = QtWidgets.QWidget()
+        _mat_h = QtWidgets.QHBoxLayout(_mat_row)
+        _mat_h.setContentsMargins(0, 0, 0, 0)
+        _mat_h.addWidget(self.btn_save_preset)
+        _mat_h.addWidget(self.btn_delete_preset)
+        form.addRow(_mat_row)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
         self.spn_power.setRange(0, core.S_MAX)
@@ -7144,6 +7253,7 @@ class TaskPanelFlat:
             "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
 
         self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        _btn_icon(self.btn_save_gcode, "sect_gcode.svg")
         self.btn_save_gcode.setToolTip(
             "Génère le G-code avec les réglages actuels et propose le\n"
             "fichier de sauvegarde. Le bouton OK, lui, se contente de\n"
@@ -7474,14 +7584,19 @@ class TaskPanelCurvedCut:
         form.addRow("Préréglage matériau :", self.combo_preset)
         self.combo_preset.currentIndexChanged.connect(self._on_preset_selected)
 
-        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder comme préréglage...")
+        self.btn_save_preset = QtWidgets.QPushButton("Sauvegarder")
+        _btn_icon(self.btn_save_preset, "sect_preset.svg")
         self.btn_save_preset.setToolTip("Sauvegarde les valeurs actuelles sous un nom de préréglage.")
         self.btn_save_preset.clicked.connect(self._on_save_preset)
-        form.addRow(self.btn_save_preset)
-
-        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer le préréglage sélectionné")
+        self.btn_delete_preset = QtWidgets.QPushButton("Supprimer")
+        self.btn_delete_preset.setToolTip("Supprime le préréglage sélectionné (les ★ d'usine sont protégés).")
         self.btn_delete_preset.clicked.connect(self._on_delete_preset)
-        form.addRow(self.btn_delete_preset)
+        _mat_row = QtWidgets.QWidget()
+        _mat_h = QtWidgets.QHBoxLayout(_mat_row)
+        _mat_h.setContentsMargins(0, 0, 0, 0)
+        _mat_h.addWidget(self.btn_save_preset)
+        _mat_h.addWidget(self.btn_delete_preset)
+        form.addRow(_mat_row)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
         self.spn_power.setRange(0, core.S_MAX)
@@ -7599,6 +7714,7 @@ class TaskPanelCurvedCut:
             "(réglable dans Préférences).".format(core.RAPID_FEED_MM_MIN))
 
         self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        _btn_icon(self.btn_save_gcode, "sect_gcode.svg")
         self.btn_save_gcode.setToolTip(
             "Génère le G-code avec les réglages actuels et propose le\n"
             "fichier de sauvegarde. Le bouton OK, lui, se contente de\n"

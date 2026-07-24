@@ -33,6 +33,12 @@ def _show(panel):
     found ») quand on lance une commande alors qu'un panneau est ouvert."""
     if Gui.Control.activeDialog():
         Gui.Control.closeDialog()
+    # Icône sur chaque bouton du panneau (cohérence visuelle) -- fait ici,
+    # au point de passage commun à tous les modes.
+    formulaire = getattr(panel, "form", None)
+    if formulaire is not None:
+        for f in (formulaire if isinstance(formulaire, (list, tuple)) else [formulaire]):
+            task_panels._auto_icon_buttons(f)
     Gui.Control.showDialog(panel)
 
 

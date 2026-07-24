@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Fleche circulaire (reprise) autour d'un objet selectionne -->
+  <path d="M47 20a18 18 0 1 0 4 17" fill="none" stroke="#ff8a00" stroke-width="6" stroke-linecap="round"/>
+  <path d="M39 11l11 3-4 11z" fill="#ff8a00"/>
+  <rect x="25" y="25" width="14" height="14" rx="3" fill="#2f3540"/>
+</svg>
