@@ -1806,7 +1806,7 @@ class TaskPanelNuancier:
             form, lambda: "nuancier:" + self.combo_mat.currentText().strip(),
             titre="Photo du résultat")
 
-        _section(form, "Graver un nuancier de préréglages", "sect_preset.svg")
+        _section(form, "Graver un nuancier de préréglages", "sect_preset.svg", ouvert=True)
         _bullet_list(form, [
             "Grave une planche de référence&nbsp;: <b>un cercle Ø20 par "
             "préréglage matériau enregistré</b> (section «&nbsp;Préréglage "
