@@ -615,6 +615,44 @@ def _hline(form):
     form.addRow(line)
 
 
+class _WheelGuard(QtCore.QObject):
+    """Neutralise la molette sur les QSpinBox/QDoubleSpinBox/QComboBox tant
+    qu'ils n'ont PAS le focus clavier : au lieu d'ajuster la valeur par
+    inadvertance quand on fait défiler le panneau, l'événement est renvoyé à
+    la zone défilante (le panneau défile). Un clic dans le champ lui donne le
+    focus -> la molette l'ajuste alors normalement. Réglé une fois, appliqué à
+    tous les panneaux via _neutraliser_molette (dans _scrollable)."""
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.Wheel and not obj.hasFocus():
+            sa = obj.parentWidget()
+            while sa is not None and not isinstance(sa, QtWidgets.QAbstractScrollArea):
+                sa = sa.parentWidget()
+            try:
+                if sa is not None and sa.viewport() is not None:
+                    QtCore.QCoreApplication.sendEvent(sa.viewport(), event)
+            except RuntimeError:
+                pass
+            return True   # le champ ne touche pas à sa valeur
+        return False
+
+
+_WHEEL_GUARD = None
+
+
+def _neutraliser_molette(inner):
+    """Pose le garde-molette (_WheelGuard) sur tous les spinbox/combos de
+    `inner` et retire la prise de focus à la molette (StrongFocus). Corrige la
+    modification accidentelle des valeurs quand on fait défiler un panneau."""
+    global _WHEEL_GUARD
+    if _WHEEL_GUARD is None:
+        _WHEEL_GUARD = _WheelGuard()
+    for w in inner.findChildren(QtWidgets.QWidget):
+        if isinstance(w, (QtWidgets.QAbstractSpinBox, QtWidgets.QComboBox)):
+            w.setFocusPolicy(QtCore.Qt.StrongFocus)
+            w.installEventFilter(_WHEEL_GUARD)
+
+
 class _ScrollArea(QtWidgets.QScrollArea):
     """QScrollArea des panneaux, avec un « tassement » différé au premier
     affichage. Problème corrigé : à la 1re peinture, les _WrapLabel calculent
@@ -664,6 +702,7 @@ def _scrollable(inner):
     # toute dernière ligne absorbe cet espace à lui seul, ce qui laisse
     # le reste du contenu compact et ancré en haut.
     _activer_sections(inner)
+    _neutraliser_molette(inner)
     # Boutons assortis aux barres de section : coins arrondis, bord qui
     # passe au orange de la maison au survol, léger retour au clic. Ciblé
     # sur les QPushButton DE `inner` -> n'affecte pas OK/Annuler du panneau
