@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Solide dont la face du dessus (selectionnee) est en orange -->
+  <path d="M32 10 L52 21 L32 32 L12 21 Z" fill="#ff8a00" stroke="#ff8a00" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12 21 L12 42 L32 53 L32 32 Z" fill="none" stroke="#2f3540" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M52 21 L52 42 L32 53 L32 32 Z" fill="none" stroke="#2f3540" stroke-width="4" stroke-linejoin="round"/>
+</svg>

@@ -79,7 +79,8 @@ _BTN_ICON_MAP = [
     (("ajouter",), "btn_add.svg"),
     (("photo",), "sect_photo.svg"),
     (("sauvegarder", "préréglage"), "sect_preset.svg"),
-    (("parcourir", "depuis la face"), "btn_folder.svg"),
+    (("depuis la face",), "btn_face.svg"),
+    (("parcourir",), "btn_folder.svg"),
     (("auto",), "sect_options.svg"),
 ]
 
@@ -133,6 +134,41 @@ def _preview_row(form, boutons_icones, taille=24):
         h.addWidget(btn)
     form.addRow(ligne)
     return ligne
+
+
+def _gcode_editor(placeholder="", hauteur=76):
+    """Éditeur de G-code personnalisé (avant / après le job) : police à chasse
+    fixe (le code s'aligne), pas de retour à la ligne automatique (une ligne
+    G-code = une ligne), et un peu plus haut qu'un simple champ pour voir
+    plusieurs lignes d'un coup."""
+    ed = QtWidgets.QPlainTextEdit()
+    ed.setPlaceholderText(placeholder)
+    ed.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+    police = QtGui.QFont("monospace")
+    police.setStyleHint(QtGui.QFont.Monospace)
+    ed.setFont(police)
+    ed.setMinimumHeight(hauteur)
+    ed.setMaximumHeight(hauteur + 70)
+    try:
+        ed.setTabStopDistance(4 * ed.fontMetrics().horizontalAdvance(" "))
+    except Exception:
+        pass
+    return ed
+
+
+def _reselect_button(form, on_reselect):
+    """Bouton « Reprendre la sélection de la vue » : un panneau ne capture la
+    sélection qu'à son OUVERTURE ; ce bouton relit la sélection courante.
+    `on_reselect` est le rappel propre au panneau (relit + rafraîchit)."""
+    btn = QtWidgets.QPushButton("Reprendre la sélection de la vue")
+    _btn_icon(btn, "btn_reselect.svg")
+    btn.setToolTip(
+        "Le panneau capture la sélection à son OUVERTURE. Si tu as\n"
+        "sélectionné le motif APRÈS, clique ici pour reprendre la\n"
+        "sélection courante de la vue / de l'arbre.")
+    btn.clicked.connect(on_reselect)
+    form.addRow(btn)
+    return btn
 
 
 class _WrapLabel(QtWidgets.QLabel):
@@ -2266,6 +2302,7 @@ class TaskPanelFilledEngraving:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "filled.svg", "Gravure remplie (noir)")
+        _reselect_button(form, self._on_recapture_selection)
         _intro(form,
                "Grave la forme/le texte 2D sélectionné (face, sketch, "
                "ShapeString) en NOIR PLEIN, en deux temps :",
@@ -2670,14 +2707,10 @@ class TaskPanelFilledEngraving:
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
         _combined_add_button(form, self._on_add_to_combined)
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         form.addRow("G-code après :", self.txt_post)
 
         cfg = core.load_config()
@@ -3011,6 +3044,19 @@ class TaskPanelFilledEngraving:
             "fill_style_params": fill_params,
             "contour_style_params": contour_params,
         }
+
+    def _on_recapture_selection(self):
+        """Reprend la sélection courante de la vue / de l'arbre (le panneau ne
+        la capture qu'à son ouverture)."""
+        self.selection = Gui.Selection.getSelectionEx()
+        self._update_duration_preview()
+        if not self.selection:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Sélection",
+                "Aucune sélection courante. Sélectionne la forme fermée (face, "
+                "sketch, ShapeString) dans la vue ou l'arbre, puis reclique.")
+        else:
+            FreeCAD.Console.PrintMessage("Sélection reprise.\n")
 
     def _update_duration_preview(self):
         fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges(silent=True)
@@ -3688,14 +3734,10 @@ class TaskPanelDefocusCalibration:
         self.spn_nmarks.valueChanged.connect(lambda _v: _update_range())
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         form.addRow("G-code après :", self.txt_post)
 
         cfg = core.load_config()
@@ -4049,14 +4091,10 @@ class TaskPanelPowerRamp:
         self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         form.addRow("G-code après :", self.txt_post)
 
         cfg = core.load_config()
@@ -4318,14 +4356,10 @@ class TaskPanelOffsetTest:
         form.addRow("Vitesse laser :", self.spn_laser_feed)
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         form.addRow("G-code après :", self.txt_post)
 
         cfg = core.load_config()
@@ -4728,14 +4762,10 @@ class TaskPanelHalftone:
         form.addRow("Largeur du point :", self.spn_spot_width)
 
         _section(form, "G-code & aperçus", "sect_gcode.svg")
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         form.addRow("G-code après :", self.txt_post)
 
         cfg = core.load_config()
@@ -5558,18 +5588,14 @@ class TaskPanelTestGrid:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         self.txt_pre.setToolTip(
             "Texte libre inséré tel quel juste avant le début du job (après\n"
             "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
             "l'armement du laser). Sauvegardé d'une exécution à l'autre.")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         self.txt_post.setToolTip(
             "Texte libre inséré tel quel juste APRÈS le désarmement du\n"
             "laser (M5), avant la fin du programme (M2). Sauvegardé d'une\n"
@@ -6239,14 +6265,7 @@ class TaskPanelCurved:
                 self.combo_style.setCurrentIndex(0)
             self._update_style_ui()
             self._update_duration_preview()
-        self.btn_resel = QtWidgets.QPushButton("Reprendre la sélection de la vue")
-        _btn_icon(self.btn_resel, "btn_reselect.svg")
-        self.btn_resel.setToolTip(
-            "Le panneau capture la sélection au moment de son OUVERTURE.\n"
-            "Si tu as sélectionné le motif (ex. l'objet Hachures) APRÈS,\n"
-            "clique ici pour reprendre la sélection courante de la vue/arbre.")
-        self.btn_resel.clicked.connect(self._on_recapture_selection)
-        form.addRow(self.btn_resel)
+        self.btn_resel = _reselect_button(form, self._on_recapture_selection)
 
         self._shade_picker = _make_shade_picker(form, _apply_shade)
 
@@ -6540,9 +6559,7 @@ class TaskPanelCurved:
         self.btn_style_showcase.clicked.connect(self._on_style_showcase)
         form.addRow(self.btn_style_showcase)
 
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         self.txt_pre.setToolTip(
             "Texte libre inséré tel quel juste avant le début du job (après\n"
             "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
@@ -6551,9 +6568,7 @@ class TaskPanelCurved:
             "exécution à l'autre.")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         self.txt_post.setToolTip(
             "Texte libre inséré tel quel juste après la remontée finale,\n"
             "AVANT le désarmement du laser (M5). Sauvegardé d'une exécution\n"
@@ -6969,6 +6984,7 @@ class TaskPanelFlat:
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         _panel_header(form, "flat.svg", "Découpe multi-passes (plat)")
+        _reselect_button(form, self._on_recapture_selection)
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -7293,18 +7309,14 @@ class TaskPanelFlat:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         self.txt_pre.setToolTip(
             "Texte libre inséré tel quel juste avant le début du job (après\n"
             "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
             "l'armement du laser). Sauvegardé d'une exécution à l'autre.")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         self.txt_post.setToolTip(
             "Texte libre inséré tel quel juste APRÈS le désarmement du\n"
             "laser (M5), avant la fin du programme (M2). Sauvegardé d'une\n"
@@ -7442,6 +7454,21 @@ class TaskPanelFlat:
             self._edges, self.spn_copies_x.value(), self.spn_copies_y.value(),
             self.spn_copy_dx.value(), self.spn_copy_dy.value())
 
+    def _on_recapture_selection(self):
+        """Reprend la sélection courante de la vue / de l'arbre (le panneau ne
+        la capture qu'à son ouverture)."""
+        self.selection = Gui.Selection.getSelectionEx()
+        self._edges = core.get_all_edges_from_selection(self.selection)
+        self._update_duration_preview()
+        if not self._edges:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Sélection",
+                "Aucun segment dans la sélection courante. Sélectionne le "
+                "tracé à découper, puis reclique ce bouton.")
+        else:
+            FreeCAD.Console.PrintMessage(
+                "Sélection reprise : {} segment(s).\n".format(len(self._edges)))
+
     def _update_duration_preview(self):
         if not self._edges:
             self.lbl_duration.setText("Durée estimée : -- (aucun segment dans la sélection)")
@@ -7549,6 +7576,7 @@ class TaskPanelCurvedCut:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "curved_cut.svg", "Découpe multi-passes (courbe)")
+        _reselect_button(form, self._on_recapture_selection)
         _intro(form,
                "Découpe en plusieurs passes EN SUIVANT LE RELIEF d'une "
                "surface courbe. Sélectionne le motif projeté (Hachures_3D) "
@@ -7753,14 +7781,10 @@ class TaskPanelCurvedCut:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         form.addRow("G-code après :", self.txt_post)
 
         cfg = core.load_config()
@@ -7862,6 +7886,23 @@ class TaskPanelCurvedCut:
             return
         core.delete_preset("curved_cut", name)
         self._populate_preset_combo()
+
+    def _on_recapture_selection(self):
+        """Reprend la sélection courante de la vue / de l'arbre (le panneau ne
+        la capture qu'à son ouverture)."""
+        self.selection = Gui.Selection.getSelectionEx()
+        self._edges, self._reference_shape = self._get_edges()
+        self._probe = (core.make_ray_probe(self._reference_shape)
+                       if self._reference_shape is not None else None)
+        self._update_duration_preview()
+        if not self._edges:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Sélection",
+                "Aucun segment dans la sélection courante. Sélectionne le "
+                "tracé (et le modèle 3D) puis reclique ce bouton.")
+        else:
+            FreeCAD.Console.PrintMessage(
+                "Sélection reprise : {} segment(s).\n".format(len(self._edges)))
 
     def _update_duration_preview(self):
         if not self._edges:
@@ -8089,18 +8130,14 @@ class TaskPanelCombined:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg"),
                             (self.btn_photo_preview, "sect_photo.svg")])
 
-        self.txt_pre = QtWidgets.QPlainTextEdit()
-        self.txt_pre.setMaximumHeight(50)
-        self.txt_pre.setPlaceholderText("G-code personnalisé inséré avant le job (optionnel)")
+        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
         self.txt_pre.setToolTip(
             "Texte libre inséré tel quel juste avant l'armement (une seule\n"
             "fois pour tout le job combiné). Sauvegardé d'une exécution à\n"
             "l'autre.")
         form.addRow("G-code avant :", self.txt_pre)
 
-        self.txt_post = QtWidgets.QPlainTextEdit()
-        self.txt_post.setMaximumHeight(50)
-        self.txt_post.setPlaceholderText("G-code personnalisé inséré après le job (optionnel)")
+        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
         self.txt_post.setToolTip(
             "Texte libre inséré tel quel juste après la dernière opération,\n"
             "avant le désarmement final (une seule fois pour tout le job\n"
