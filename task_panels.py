@@ -244,6 +244,9 @@ class _WrapLabel(QtWidgets.QLabel):
         super().showEvent(event)
         self._ajuster_hauteur()
         QtCore.QTimer.singleShot(0, self._ajuster_hauteur)
+        # 2e passe après stabilisation (apparition/disparition de la barre de
+        # défilement quand une section se déplie) -> largeur définitive.
+        QtCore.QTimer.singleShot(120, self._ajuster_hauteur)
 
 
 def _calibration_banner(form, mode_titre):
@@ -612,6 +615,43 @@ def _hline(form):
     form.addRow(line)
 
 
+class _ScrollArea(QtWidgets.QScrollArea):
+    """QScrollArea des panneaux, avec un « tassement » différé au premier
+    affichage. Problème corrigé : à la 1re peinture, les _WrapLabel calculent
+    leur hauteur pour la largeur SANS barre de défilement ; puis le contenu
+    déborde, la barre verticale apparaît et rétrécit la largeur utile -> les
+    paragraphes auraient besoin de plus de hauteur, mais aucun re-layout n'est
+    déclenché -> chevauchement de texte, jusqu'à ce qu'un événement externe
+    (redimensionnement, capture d'écran...) force une nouvelle mise en page.
+    On force donc une ou deux passes différées APRÈS l'apparition de la barre,
+    qui recalculent la hauteur de tous les _WrapLabel à la largeur définitive
+    puis ré-activent la mise en page."""
+
+    def __init__(self):
+        super().__init__()
+        self._tasse = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._tasse:
+            self._tasse = True
+            QtCore.QTimer.singleShot(0, self._tasser)
+            QtCore.QTimer.singleShot(120, self._tasser)  # après apparition de la barre
+
+    def _tasser(self):
+        w = self.widget()
+        if w is None:
+            return
+        try:
+            for lbl in w.findChildren(_WrapLabel):
+                lbl._ajuster_hauteur()
+            lay = w.layout()
+            if lay is not None:
+                lay.activate()
+        except RuntimeError:
+            pass  # widget C++ déjà détruit
+
+
 def _scrollable(inner):
     # setWidgetResizable(True) + une hauteur minimale forcée sur le
     # QScrollArea (voir plus bas) étirent "inner" pour remplir tout
@@ -645,7 +685,7 @@ def _scrollable(inner):
         spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         layout.addRow(spacer)
 
-    scroll = QtWidgets.QScrollArea()
+    scroll = _ScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
     scroll.setWidget(inner)
