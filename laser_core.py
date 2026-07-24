@@ -165,6 +165,7 @@ import heapq
 import math
 import json
 import os
+import re
 import unicodedata
 import zipfile
 import FreeCAD
@@ -175,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.26.1"
+VERSION = "1.27.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -219,6 +220,53 @@ def sanitize_gcode_for_linuxcnc(text):
     # Espaces de fin de ligne : sans effet pour LinuxCNC, mais le dialecte
     # GRBL (sélecteur de broche vide) en laisserait après S/M3/M5.
     return "\n".join(l.rstrip() for l in out)
+
+
+def translate_gcode_origin(gcode):
+    """Recadre le G-code pour que le coin BAS-GAUCHE du parcours (min X,
+    min Y) tombe sur (0,0). Le job démarre alors au zéro pièce quel que
+    soit l'endroit où le dessin est posé dans le document FreeCAD --
+    on n'a plus à placer la géométrie pile sur l'origine.
+
+    Ne translate que les mots X/Y de la PARTIE CODE de chaque ligne ; Z,
+    I/J (relatifs), F, S, P et les commentaires sont laissés intacts. Sûr
+    tel quel : les générateurs discrétisent tout en G1 (aucun arc G2/G3
+    dont les I/J absolus devraient suivre). Idempotent une fois recadré
+    (min = 0 -> décalage nul). Renvoie le texte inchangé s'il n'y a aucune
+    coordonnée."""
+    if not gcode:
+        return gcode
+    rx = re.compile(r'([XY])(-?\d+\.?\d*)')
+
+    def _code(line):  # partie avant un éventuel commentaire
+        c = line.find("(")
+        return line if c == -1 else line[:c]
+
+    xs, ys = [], []
+    for line in gcode.split("\n"):
+        for m in rx.finditer(_code(line)):
+            (xs if m.group(1) == "X" else ys).append(float(m.group(2)))
+    if not xs and not ys:
+        return gcode
+    dx = -min(xs) if xs else 0.0
+    dy = -min(ys) if ys else 0.0
+    if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+        return gcode
+
+    def _shift(line):
+        c = line.find("(")
+        code = line if c == -1 else line[:c]
+        rest = "" if c == -1 else line[c:]
+
+        def _repl(m):
+            val = float(m.group(2)) + (dx if m.group(1) == "X" else dy)
+            if abs(val) < 5e-5:
+                val = 0.0
+            return "%s%.4f" % (m.group(1), val)
+        return rx.sub(_repl, code) + rest
+
+    return "\n".join(_shift(line) for line in gcode.split("\n"))
+
 
 # Persistance des champs G-code avant/après entre deux exécutions de la
 # macro (un run de macro FreeCAD repart de zéro à chaque fois, rien ne
@@ -509,6 +557,11 @@ CMD_BEAM_OFF = "S0 {sel}"
 # Les valeurs ci-dessous (et SPINDLE_SELECT/ARM_DWELL_S plus haut,
 # SAFE_MIN_NOZZLE_HEIGHT_MM etc. plus bas) ne sont que les défauts.
 GCODE_DIR = "/mnt/srv-partage/Gcode"  # dossier proposé par défaut à la sauvegarde G-code
+GCODE_ORIGIN_BBOX = True              # recadrer chaque G-code écrit pour que le coin bas-
+                                      # gauche du parcours (min X, min Y) tombe sur (0,0) :
+                                      # le job démarre au zéro pièce quel que soit l'endroit
+                                      # du dessin dans le document (Projection et Test
+                                      # d'offsets exclus, cf. _write_gcode_with_dialog)
 RAPID_FEED_MM_MIN = 6000.0            # vitesse rapide supposée (G0) pour l'estimation de durée
 TRAVEL_CLEARANCE_MM = 10.0            # marge de survol ajoutée au Z de travail pour les
                                       # transits/début/fin de job (modes grille et découpe à
@@ -542,6 +595,7 @@ _USER_SETTINGS = (
     ("gcode_dialect", "GCODE_DIALECT", lambda v: str(v).strip().lower(),
      lambda v: v in ("linuxcnc", "grbl", "grblhal")),
     ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
+    ("gcode_origin_bbox", "GCODE_ORIGIN_BBOX", bool, lambda v: isinstance(v, bool)),
     ("spindle_select", "SPINDLE_SELECT", str, lambda v: bool(v.strip())),
     ("laser_tool", "LASER_TOOL", int, lambda v: 1 <= v <= 999),
     ("s_max", "S_MAX", float, lambda v: v > 0),

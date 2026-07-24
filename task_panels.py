@@ -998,7 +998,7 @@ def _duration_row(form, callback, tooltip_extra=""):
     return lbl
 
 
-def _write_gcode_with_dialog(parent_widget, gcode, default_path):
+def _write_gcode_with_dialog(parent_widget, gcode, default_path, recadrer_origine=True):
     """Estime la durée, propose un fichier de sauvegarde, écrit le G-code
     si un chemin est choisi. Retourne True si le fichier a été écrit,
     False si l'utilisateur a renoncé. Un clic sur Annuler dans le dialogue
@@ -1009,6 +1009,13 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path):
     une boîte de dialogue -- la vue Rapport n'est pas toujours
     ouverte/visible (panneau optionnel de FreeCAD), donc s'y fier seule
     rendait l'info invisible en pratique pour qui ne l'a pas ouverte."""
+    # Recadrage au zéro pièce (Préférences « Origine G-code ») : amène le
+    # coin bas-gauche du parcours (min X, min Y) sur (0,0), pour que le job
+    # démarre au zéro machine quel que soit l'emplacement du dessin dans le
+    # document. Les modes où la position est INTENTIONNELLE (Projection sur
+    # pièce 3D, Test d'offsets fraise/laser) passent recadrer_origine=False.
+    if recadrer_origine and getattr(core, "GCODE_ORIGIN_BBOX", True):
+        gcode = core.translate_gcode_origin(gcode)
     # Dossier par défaut : GCODE_DIR (Préférences) ; repli sur le chemin
     # d'origine si le dossier (partage réseau...) n'est pas accessible.
     if os.path.isdir(core.GCODE_DIR):
@@ -4749,7 +4756,9 @@ class TaskPanelOffsetTest:
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
-        return _write_gcode_with_dialog(self.form, gcode, "/tmp/test_offsets_laser.ngc")
+        # Position intentionnelle (calage fraise/laser) : pas de recadrage.
+        return _write_gcode_with_dialog(
+            self.form, gcode, "/tmp/test_offsets_laser.ngc", recadrer_origine=False)
 
     def reject(self):
         return True
@@ -8797,6 +8806,19 @@ class TaskPanelSettings:
             "ton LinuxCNC. N'affecte jamais le G-code.")
         form.addRow("Accélération (estimation) :", self.spn_accel)
 
+        self.chk_origin_bbox = QtWidgets.QCheckBox(
+            "Recadrer au zéro pièce (coin bas-gauche à 0,0)")
+        self.chk_origin_bbox.setChecked(bool(settings.get("gcode_origin_bbox", True)))
+        self.chk_origin_bbox.setToolTip(
+            "À l'écriture, décale chaque G-code pour que le coin BAS-GAUCHE\n"
+            "du parcours (min X, min Y) tombe sur (0,0) : le job démarre à\n"
+            "ton zéro machine quel que soit l'endroit où le dessin est posé\n"
+            "dans le document. Recommandé pour la gravure/découpe à plat.\n"
+            "Décoche pour un marquage sur une pièce 3D placée à un endroit\n"
+            "précis (la position du dessin est alors respectée). Sans effet\n"
+            "sur le Test d'offsets (jamais recadré).")
+        form.addRow(self.chk_origin_bbox)
+
         _section(form, "Calibration du point (défocus)", "sect_focus.svg")
         lbl_calib = _WrapLabel(
             "Propriété machine, mesurée UNE FOIS avec la Bande de\n"
@@ -9076,6 +9098,7 @@ class TaskPanelSettings:
         core.save_settings({
             "gcode_dialect": self.combo_dialect.currentData(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
+            "gcode_origin_bbox": self.chk_origin_bbox.isChecked(),
             "spindle_select": self.edt_spindle.text().strip(),
             "arm_dwell_s": self.spn_dwell.value(),
             "laser_tool": self.spn_laser_tool.value(),
