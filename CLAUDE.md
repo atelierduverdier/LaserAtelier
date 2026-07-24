@@ -82,7 +82,10 @@ Five modules, cleanly layered — keep the layering:
   module) whose diagram of the boundary segments IS the exact medial axis, keep the interior PRIMARY
   edges via the FreeCAD Vcarve colour recipe (`colorColinear`/`colorExterior`/`colorTwins`), then
   prune short leaf branches (`_voronoi_polylines`) to keep only the SPINE — the fans to convex
-  vertices (wanted by a V-bit, not by the laser's fat point) are removed. Vector, resolution-
+  vertices (wanted by a V-bit, not by the laser's fat point) are removed — and finally EXTEND each
+  free spine end straight (along the local axis) to the boundary (`_extend_leaves_to_boundary`,
+  `_ray_hit`) so the centerline reaches the CENTRE of the stroke's end cap instead of stopping short
+  or veering to a corner. Vector, resolution-
   independent, holes handled; `import Path` is lazy & guarded with graceful **fallback to the old
   raster method** `_centerline_raster` (even-odd rasterise → Zhang-Suen thinning → trace → spur
   prune → merge; numpy) if the CAM module is absent. Marquage's "Graver l'axe médian" checkbox uses

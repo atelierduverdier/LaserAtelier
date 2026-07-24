@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.23.0"
+VERSION = "1.23.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1407,6 +1407,7 @@ def _medial_segments_voronoi(face, distance, colinear_deg=12.0):
         return not face.isPartOfDomain(u, w)
 
     vd = Path.Voronoi.Diagram()
+    bsegs = []                                         # segments du bord (pour prolonger)
     for wire in face.Wires:
         pts = [FreeCAD.Vector(p.x, p.y) for p in wire.discretize(Distance=distance)]
         if len(pts) < 2:
@@ -1416,6 +1417,7 @@ def _medial_segments_voronoi(face, distance, colinear_deg=12.0):
         pts.append(pts[0])
         for i in range(len(pts) - 1):
             vd.addSegment(pts[i], pts[i + 1])
+            bsegs.append(((pts[i].x, pts[i].y), (pts[i + 1].x, pts[i + 1].y)))
     vd.construct()
     for e in vd.Edges:
         if e.isPrimary():
@@ -1434,7 +1436,7 @@ def _medial_segments_voronoi(face, distance, colinear_deg=12.0):
         if len(vs) < 2 or vs[0] is None or vs[1] is None:
             continue
         segs.append(((vs[0].X, vs[0].Y), (vs[1].X, vs[1].Y)))
-    return segs
+    return segs, bsegs
 
 
 def _voronoi_polylines(segs, prune_len, snap):
@@ -1522,6 +1524,74 @@ def _voronoi_polylines(segs, prune_len, snap):
     return [pl for pl in polys if len(pl) >= 2]
 
 
+def _ray_hit(P, u, bsegs):
+    """Premier point où le rayon (origine P, direction unitaire u) sort par le
+    bord (liste de segments bsegs). Renvoie (distance, point) ou (None, None)."""
+    px, py = P
+    ux, uy = u
+    best_t, best = None, None
+    for (ax, ay), (bx, by) in bsegs:
+        ex, ey = bx - ax, by - ay
+        det = ex * uy - ey * ux
+        if abs(det) < 1e-12:
+            continue
+        dx, dy = ax - px, ay - py
+        t = (ex * dy - ey * dx) / det                  # le long du rayon
+        s = (ux * dy - uy * dx) / det                  # le long du segment
+        if t > 1e-6 and -1e-9 <= s <= 1 + 1e-9:
+            if best_t is None or t < best_t:
+                best_t, best = t, (px + t * ux, py + t * uy)
+    return best_t, best
+
+
+def _extend_leaves_to_boundary(polys, bsegs, stroke, snap):
+    """Prolonge chaque EXTRÉMITÉ libre (feuille) de l'épine jusqu'au bord, dans
+    l'axe du trait -> l'épine atteint le CENTRE du bout du trait au lieu de
+    s'arrêter court / bifurquer vers un coin. Les extrémités partagées
+    (jonctions) ne sont pas touchées. `back` : recul pour estimer la direction
+    de l'axe (ignore un éventuel petit crochet terminal)."""
+    import math
+    from collections import Counter
+
+    def cle(p):
+        return (round(p[0] / snap), round(p[1] / snap))
+
+    incid = Counter()
+    for pl in polys:
+        incid[cle(pl[0])] += 1
+        incid[cle(pl[-1])] += 1
+    back = max(0.6 * stroke, 4 * snap)
+    tmax = 1.4 * stroke                                # garde-fou anti-débordement
+
+    def prolonger(pts):
+        p_end = pts[-1]
+        acc, ia = 0.0, 0
+        for i in range(len(pts) - 1, 0, -1):
+            acc += math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
+            if acc >= back:
+                ia = i - 1
+                break
+        a = pts[ia]
+        ux, uy = p_end[0] - a[0], p_end[1] - a[1]
+        norm = math.hypot(ux, uy)
+        if norm < 1e-9:
+            return pts
+        t, q = _ray_hit(p_end, (ux / norm, uy / norm), bsegs)
+        if q is None or t > tmax:
+            return pts
+        return pts[:ia + 1] + [q]                       # remplace le bout par a->q (droit)
+
+    out = []
+    for pl in polys:
+        pts = list(pl)
+        if incid[cle(pl[-1])] == 1:
+            pts = prolonger(pts)
+        if incid[cle(pl[0])] == 1:
+            pts = prolonger(pts[::-1])[::-1]
+        out.append(pts)
+    return out
+
+
 def _centerline_voronoi(edges):
     """Axe médian par Voronoï. Renvoie (arêtes Part, largeur_mm) ou None si le
     module CAM (Path.Voronoi) est indisponible / rien à tracer."""
@@ -1540,12 +1610,13 @@ def _centerline_voronoi(edges):
     for f in faces:
         perim = sum(w.Length for w in f.Wires) or 1.0
         stroke = max(1e-3, 2.0 * f.Area / perim)      # ~largeur du trait
-        segs = _medial_segments_voronoi(f, distance=max(0.25, stroke * 0.20))
+        snap = max(1e-4, stroke * 0.03)
+        segs, bsegs = _medial_segments_voronoi(f, distance=max(0.25, stroke * 0.20))
         if not segs:
             continue
-        polys = _voronoi_polylines(segs, prune_len=0.9 * stroke,
-                                   snap=max(1e-4, stroke * 0.03))
+        polys = _voronoi_polylines(segs, prune_len=0.9 * stroke, snap=snap)
         if polys:
+            polys = _extend_leaves_to_boundary(polys, bsegs, stroke, snap)
             polys_all += polys
             strokes.append(stroke)
     if not polys_all:
