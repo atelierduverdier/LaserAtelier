@@ -203,7 +203,17 @@ def ajouter_jobs_au_combine(jobs):
             ignores.append("{} (opération invalide)".format(job.Label))
             continue
         op["label"] = job.Label
-        task_panels._COMBINED_OPS.append(op)
+        # Idempotent : si une opération portant le Label de ce Job est déjà
+        # dans le job combiné, on la REMPLACE (rafraîchit ses réglages) au
+        # lieu d'empiler un doublon. Re-cliquer « Jobs -> combiné » ne gonfle
+        # donc plus la liste -- sinon le G-code doublait de taille et l'aperçu
+        # photo peignait chaque forme 2-3x (multiply) jusqu'au noir.
+        existant = next((i for i, o in enumerate(task_panels._COMBINED_OPS)
+                         if o.get("label") == job.Label), None)
+        if existant is None:
+            task_panels._COMBINED_OPS.append(op)
+        else:
+            task_panels._COMBINED_OPS[existant] = op
         ajoutes.append(job.Label)
     Gui.Selection.clearSelection()
     return ajoutes, ignores
