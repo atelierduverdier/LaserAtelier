@@ -156,6 +156,30 @@ def _gcode_editor(placeholder="", hauteur=76):
     return ed
 
 
+def _section_gcode_avance(form, cle, astuce_avant="", astuce_apres=""):
+    """Section repliée « G-code personnalisé (avancé) », à placer EN BAS d'un
+    panneau : éditeurs G-code avant / après le job (optionnels), séparés des
+    boutons d'aperçu et de génération. Charge et restaure le contenu depuis la
+    config (clés pre_<cle> / post_<cle>). `astuce_avant` / `astuce_apres` sont
+    des infobulles sur mesure (l'ordre M5/M2 diffère selon le mode). Renvoie
+    (txt_pre, txt_post) pour que le panneau les relise à la génération."""
+    _section(form, "G-code personnalisé (avancé)", "sect_gcode.svg")
+    txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
+    if astuce_avant:
+        txt_pre.setToolTip(astuce_avant)
+    form.addRow("G-code avant :", txt_pre)
+
+    txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
+    if astuce_apres:
+        txt_post.setToolTip(astuce_apres)
+    form.addRow("G-code après :", txt_post)
+
+    cfg = core.load_config()
+    txt_pre.setPlainText(cfg.get("pre_" + cle, ""))
+    txt_post.setPlainText(cfg.get("post_" + cle, ""))
+    return txt_pre, txt_post
+
+
 def _reselect_button(form, on_reselect):
     """Bouton « Reprendre la sélection de la vue » : un panneau ne capture la
     sélection qu'à son OUVERTURE ; ce bouton relit la sélection courante.
@@ -3106,18 +3130,8 @@ class TaskPanelFilledEngraving:
                   self.spn_contour_feed, self.spn_contour_width):
             w.valueChanged.connect(lambda _v: _update_style_preview())
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         _combined_add_button(form, self._on_add_to_combined)
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_fe", ""))
-        self.txt_post.setPlainText(cfg.get("post_fe", ""))
-
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -3172,6 +3186,8 @@ class TaskPanelFilledEngraving:
             "ref_feed": self._fluence["ref_feed"], "ref_spot": self._fluence["ref_spot"],
         }
         _restore_last_values("filled", self._last_fields, selection=self.selection)
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(form, "fe")
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Gravure remplie (noir)")
@@ -4134,17 +4150,7 @@ class TaskPanelDefocusCalibration:
         self.spn_zstep.valueChanged.connect(lambda _v: _update_range())
         self.spn_nmarks.valueChanged.connect(lambda _v: _update_range())
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_dc", ""))
-        self.txt_post.setPlainText(cfg.get("post_dc", ""))
-
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance, G0 (transit) à la\n"
@@ -4179,6 +4185,8 @@ class TaskPanelDefocusCalibration:
         self._build_spot_measures(form)
         self._photo = _make_photo_section(form, lambda: "defocus",
                                           titre="③ Photo du résultat")
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(form, "dc")
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Bande de calibration défocus")
@@ -4491,17 +4499,7 @@ class TaskPanelPowerRamp:
         self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
         self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_pr", ""))
-        self.txt_post.setPlainText(cfg.get("post_pr", ""))
-
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance, G0 (transit) à la\n"
@@ -4532,6 +4530,8 @@ class TaskPanelPowerRamp:
         self._build_ramp_next(form)
         self._photo = _make_photo_section(form, lambda: "powerramp",
                                           titre="③ Photo du résultat")
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(form, "pr")
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test rampe puissance / vitesse (lignes)")
@@ -4756,17 +4756,7 @@ class TaskPanelOffsetTest:
         self.spn_laser_feed.setToolTip("Vitesse de gravure de la croix laser.")
         form.addRow("Vitesse laser :", self.spn_laser_feed)
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_ot", ""))
-        self.txt_post.setPlainText(cfg.get("post_ot", ""))
-
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Hors changements d'outil et palpages (durée machine réelle\n"
@@ -4792,6 +4782,8 @@ class TaskPanelOffsetTest:
         self._build_offset_measures(form)
         self._photo = _make_photo_section(form, lambda: "offset",
                                           titre="③ Photo du résultat")
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(form, "ot")
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test des offsets X/Y du laser")
@@ -5164,17 +5156,7 @@ class TaskPanelHalftone:
             "proche du pas de trame pour des points qui se touchent presque.")
         form.addRow("Largeur du point :", self.spn_spot_width)
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_ht", ""))
-        self.txt_post.setPlainText(cfg.get("post_ht", ""))
-
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Dominée par les pulses (G4) et les arrêts à chaque point.")
@@ -5204,6 +5186,8 @@ class TaskPanelHalftone:
             "line_feed": self.spn_line_feed, "gamma": self.spn_gamma,
         }
         _restore_last_values("halftone", self._last_fields)
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(form, "ht")
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Gravure photo (trame de points)")
@@ -5961,7 +5945,7 @@ class TaskPanelTestGrid:
         self.chk_border.toggled.connect(self.spn_border_power.setEnabled)
         self.chk_border.toggled.connect(self.spn_border_feed.setEnabled)
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -5991,24 +5975,6 @@ class TaskPanelTestGrid:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        self.txt_pre.setToolTip(
-            "Texte libre inséré tel quel juste avant le début du job (après\n"
-            "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
-            "l'armement du laser). Sauvegardé d'une exécution à l'autre.")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        self.txt_post.setToolTip(
-            "Texte libre inséré tel quel juste APRÈS le désarmement du\n"
-            "laser (M5), avant la fin du programme (M2). Sauvegardé d'une\n"
-            "exécution à l'autre.")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_t", ""))
-        self.txt_post.setPlainText(cfg.get("post_t", ""))
-
         # ② Entrer les mesures (inline) + ③ Photo du résultat : le flux d'un
         # mode de test = graver (au-dessus) puis mesurer/saisir juste en
         # dessous, avec une photo du réel gardée à côté.
@@ -6036,6 +6002,17 @@ class TaskPanelTestGrid:
             "border_feed": self.spn_border_feed,
         }
         _restore_last_values("testgrid", self._last_fields)
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(
+            form, "t",
+            astuce_avant=(
+                "Texte libre inséré tel quel juste avant le début du job (après\n"
+                "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
+                "l'armement du laser). Sauvegardé d'une exécution à l'autre."),
+            astuce_apres=(
+                "Texte libre inséré tel quel juste APRÈS le désarmement du\n"
+                "laser (M5), avant la fin du programme (M2). Sauvegardé d'une\n"
+                "exécution à l'autre."))
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Grille de test puissance/vitesse")
@@ -6895,7 +6872,7 @@ class TaskPanelCurved:
             w.valueChanged.connect(lambda _v: _update_style_ui())
         self._fluence["chk"].toggled.connect(lambda _v: _update_style_ui())
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -6962,26 +6939,6 @@ class TaskPanelCurved:
         self.btn_style_showcase.clicked.connect(self._on_style_showcase)
         form.addRow(self.btn_style_showcase)
 
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        self.txt_pre.setToolTip(
-            "Texte libre inséré tel quel juste avant le début du job (après\n"
-            "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
-            "l'armement du laser) -- pour une instruction particulière\n"
-            "(attente, message, M-code spécifique). Sauvegardé d'une\n"
-            "exécution à l'autre.")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        self.txt_post.setToolTip(
-            "Texte libre inséré tel quel juste après la remontée finale,\n"
-            "AVANT le désarmement du laser (M5). Sauvegardé d'une exécution\n"
-            "à l'autre.")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_c", ""))
-        self.txt_post.setPlainText(cfg.get("post_c", ""))
-
         self._last_fields = {
             "power": self.spn_power, "feed": self.spn_feed, "surface_offset": self.spn_surface_offset,
             "style": self.combo_style, "dash_len": self.spn_dash_len,
@@ -6992,6 +6949,19 @@ class TaskPanelCurved:
             "ref_feed": self._fluence["ref_feed"], "ref_spot": self._fluence["ref_spot"],
         }
         _restore_last_values("curved", self._last_fields, selection=self.selection)
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(
+            form, "c",
+            astuce_avant=(
+                "Texte libre inséré tel quel juste avant le début du job (après\n"
+                "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
+                "l'armement du laser) -- pour une instruction particulière\n"
+                "(attente, message, M-code spécifique). Sauvegardé d'une\n"
+                "exécution à l'autre."),
+            astuce_apres=(
+                "Texte libre inséré tel quel juste après la remontée finale,\n"
+                "AVANT le désarmement du laser (M5). Sauvegardé d'une exécution\n"
+                "à l'autre."))
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Marquage de motif (plat ou courbe)")
@@ -7672,7 +7642,7 @@ class TaskPanelFlat:
         self.spn_copy_dy.setToolTip("Pas entre deux copies en Y.")
         form.addRow("Pas Y :", self.spn_copy_dy)
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -7712,24 +7682,6 @@ class TaskPanelFlat:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        self.txt_pre.setToolTip(
-            "Texte libre inséré tel quel juste avant le début du job (après\n"
-            "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
-            "l'armement du laser). Sauvegardé d'une exécution à l'autre.")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        self.txt_post.setToolTip(
-            "Texte libre inséré tel quel juste APRÈS le désarmement du\n"
-            "laser (M5), avant la fin du programme (M2). Sauvegardé d'une\n"
-            "exécution à l'autre.")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_f", ""))
-        self.txt_post.setPlainText(cfg.get("post_f", ""))
-
         self._last_fields = {
             "power": self.spn_power, "feed": self.spn_feed,
             "thickness": self.spn_thickness, "n_passes": self.spn_passes,
@@ -7744,6 +7696,17 @@ class TaskPanelFlat:
             "copy_dx": self.spn_copy_dx, "copy_dy": self.spn_copy_dy,
         }
         _restore_last_values("flat", self._last_fields, selection=self.selection)
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(
+            form, "f",
+            astuce_avant=(
+                "Texte libre inséré tel quel juste avant le début du job (après\n"
+                "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
+                "l'armement du laser). Sauvegardé d'une exécution à l'autre."),
+            astuce_apres=(
+                "Texte libre inséré tel quel juste APRÈS le désarmement du\n"
+                "laser (M5), avant la fin du programme (M2). Sauvegardé d'une\n"
+                "exécution à l'autre."))
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Découpe multi-passes (matériau plat)")
@@ -8146,7 +8109,7 @@ class TaskPanelCurvedCut:
         self.chk_proximity.setChecked(True)
         form.addRow(self.chk_proximity)
 
-        _section(form, "G-code & aperçus", "sect_gcode.svg")
+        _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
             "Approximative : G1 selon distance/avance programmée, G0\n"
@@ -8184,16 +8147,6 @@ class TaskPanelCurvedCut:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_cc", ""))
-        self.txt_post.setPlainText(cfg.get("post_cc", ""))
-
         self._last_fields = {
             "power": self.spn_power, "feed": self.spn_feed,
             "z_focus": self.spn_zfocus, "marge": self.spn_marge,
@@ -8204,6 +8157,8 @@ class TaskPanelCurvedCut:
             "proximity": self.chk_proximity,
         }
         _restore_last_values("curved_cut", self._last_fields, selection=self.selection)
+
+        self.txt_pre, self.txt_post = _section_gcode_avance(form, "cc")
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Découpe multi-passes sur surface courbée")
@@ -8539,23 +8494,16 @@ class TaskPanelCombined:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg"),
                             (self.btn_photo_preview, "sect_photo.svg")])
 
-        self.txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-        self.txt_pre.setToolTip(
-            "Texte libre inséré tel quel juste avant l'armement (une seule\n"
-            "fois pour tout le job combiné). Sauvegardé d'une exécution à\n"
-            "l'autre.")
-        form.addRow("G-code avant :", self.txt_pre)
-
-        self.txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-        self.txt_post.setToolTip(
-            "Texte libre inséré tel quel juste après la dernière opération,\n"
-            "avant le désarmement final (une seule fois pour tout le job\n"
-            "combiné). Sauvegardé d'une exécution à l'autre.")
-        form.addRow("G-code après :", self.txt_post)
-
-        cfg = core.load_config()
-        self.txt_pre.setPlainText(cfg.get("pre_j", ""))
-        self.txt_post.setPlainText(cfg.get("post_j", ""))
+        self.txt_pre, self.txt_post = _section_gcode_avance(
+            form, "j",
+            astuce_avant=(
+                "Texte libre inséré tel quel juste avant l'armement (une seule\n"
+                "fois pour tout le job combiné). Sauvegardé d'une exécution à\n"
+                "l'autre."),
+            astuce_apres=(
+                "Texte libre inséré tel quel juste après la dernière opération,\n"
+                "avant le désarmement final (une seule fois pour tout le job\n"
+                "combiné). Sauvegardé d'une exécution à l'autre."))
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Job combiné (plusieurs opérations)")
