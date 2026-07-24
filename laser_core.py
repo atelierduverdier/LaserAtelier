@@ -175,7 +175,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.22.2"
+VERSION = "1.23.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1316,10 +1316,11 @@ def _centerline_polylines(loops_xy, px_per_mm):
     return out, stroke
 
 
-def centerline_edges(edges, px_per_mm=None):
-    """Axe médian d'une/des forme(s) FERMÉE(s) décrite(s) par `edges` (le
-    contour d'un glyphe). Renvoie (arêtes Part de l'axe, largeur_trait_mm) ;
-    ([], 0.0) si impossible (numpy absent, aucune boucle fermée...)."""
+def _centerline_raster(edges, px_per_mm=None):
+    """Axe médian par RASTER (repli) : rasterisation even-odd -> amincissement
+    Zhang-Suen -> tracé. Renvoie (arêtes Part de l'axe, largeur_trait_mm).
+    Utilisé si le Voronoï natif de FreeCAD (méthode préférée) est indisponible.
+    Nécessite numpy."""
     try:
         import numpy  # noqa: F401  (dépendance vérifiée avant de calculer)
     except ImportError:
@@ -1345,6 +1346,239 @@ def centerline_edges(edges, px_per_mm=None):
             if vs[i].distanceToPoint(vs[i + 1]) > 1e-6:
                 out.append(Part.LineSegment(vs[i], vs[i + 1]).toShape())
     return out, stroke
+
+
+# --- Méthode préférée : axe médian EXACT par diagramme de Voronoï ----------
+# On réutilise le Voronoï natif de FreeCAD (module CAM, `Path.Voronoi`, celui
+# de l'opération V-carve) : le diagramme de Voronoï des segments du contour
+# EST l'axe médian, en géométrie vectorielle (pas de pixels) -> bien plus
+# propre et précis que la rasterisation, et les trous (A, O, R...) sont gérés
+# correctement. Import paresseux + protégé : repli sur _centerline_raster si
+# le module CAM manque. Pour le laser (gros point au centre) on n'élague que
+# l'ÉPINE : les « éventails » de branches vers chaque sommet convexe (utiles à
+# la fraise en V, pas au laser) sont retirés.
+
+def _faces_from_edges(edges):
+    """Reconstruit la/les face(s) pleine(s) (trous compris) à partir des arêtes
+    de contour. Renvoie une liste de Part.Face (vide si échec)."""
+    wires = []
+    try:
+        for chaine in Part.sortEdges(list(edges)):
+            w = Part.Wire(chaine)
+            if w.isClosed():
+                wires.append(w)
+    except Exception:
+        wires = []
+    if not wires:                                    # repli : polygones chaînés
+        for c in chain_edges(edges):
+            if len(c) < 3:
+                continue
+            pts = list(c)
+            if pts[0].distanceToPoint(pts[-1]) > 1e-7:
+                pts.append(pts[0])
+            try:
+                wires.append(Part.makePolygon(pts))
+            except Exception:
+                pass
+    if not wires:
+        return []
+    try:                                              # Bullseye gère les trous
+        return list(Part.makeFace(wires, "Part::FaceMakerBullseye").Faces)
+    except Exception:
+        out = []
+        for w in wires:
+            try:
+                out.append(Part.Face(w))
+            except Exception:
+                pass
+        return out
+
+
+def _medial_segments_voronoi(face, distance, colinear_deg=12.0):
+    """Segments (mm) de l'axe médian INTÉRIEUR d'une face, via Path.Voronoi.
+    Recette identique à l'opération V-carve de FreeCAD (couleurs des arêtes)."""
+    import Path
+    PRIMARY, SECONDARY, EXTERIOR1, EXTERIOR2, COLINEAR, TWIN, BORDERLINE = \
+        0, 1, 2, 3, 4, 5, 6
+
+    def est_exterieur(v):
+        vec = FreeCAD.Vector(v.toPoint(face.BoundBox.ZMin))
+        u, w = face.Surface.parameter(vec)
+        return not face.isPartOfDomain(u, w)
+
+    vd = Path.Voronoi.Diagram()
+    for wire in face.Wires:
+        pts = [FreeCAD.Vector(p.x, p.y) for p in wire.discretize(Distance=distance)]
+        if len(pts) < 2:
+            continue
+        if pts[-1].distanceToPoint(pts[0]) < 1e-7:
+            del pts[-1]
+        pts.append(pts[0])
+        for i in range(len(pts) - 1):
+            vd.addSegment(pts[i], pts[i + 1])
+    vd.construct()
+    for e in vd.Edges:
+        if e.isPrimary():
+            e.Color = BORDERLINE if e.isBorderline() else PRIMARY
+        else:
+            e.Color = SECONDARY
+    vd.colorColinear(COLINEAR, colinear_deg)          # fusionne les quasi-alignés
+    vd.colorExterior(EXTERIOR1)                        # arêtes hors matière
+    vd.colorExterior(EXTERIOR2, lambda v: est_exterieur(v))
+    vd.colorTwins(TWIN)                                # dédoublonne les jumelles
+    segs = []
+    for e in vd.Edges:
+        if e.Color != PRIMARY:
+            continue
+        vs = e.Vertices
+        if len(vs) < 2 or vs[0] is None or vs[1] is None:
+            continue
+        segs.append(((vs[0].X, vs[0].Y), (vs[1].X, vs[1].Y)))
+    return segs
+
+
+def _voronoi_polylines(segs, prune_len, snap):
+    """Graphe des segments d'axe médian -> polylignes de l'ÉPINE. Élague
+    itérativement les branches feuilles plus courtes que `prune_len` (les
+    « éventails » vers les sommets convexes), puis chaîne le reste."""
+    import math
+    from collections import defaultdict
+
+    def cle(p):
+        return (round(p[0] / snap), round(p[1] / snap))
+
+    coord = {}
+    E = []                                            # [na, nb, longueur, vivant]
+    for a, b in segs:
+        na, nb = cle(a), cle(b)
+        if na == nb:
+            continue
+        coord.setdefault(na, a)
+        coord.setdefault(nb, b)
+        E.append([na, nb, math.hypot(b[0] - a[0], b[1] - a[1]), True])
+    if not E:
+        return []
+
+    def adjacence():
+        adj = defaultdict(list)
+        for i, e in enumerate(E):
+            if e[3]:
+                adj[e[0]].append(i)
+                adj[e[1]].append(i)
+        return adj
+
+    # --- élagage des branches feuilles courtes ---
+    change = True
+    while change:
+        change = False
+        adj = adjacence()
+        for depart in list(adj.keys()):
+            if len([i for i in adj[depart] if E[i][3]]) != 1:
+                continue                              # pas une feuille
+            branche, longueur, cur, prec = [], 0.0, depart, -1
+            while True:
+                inc = [i for i in adj[cur] if E[i][3] and i != prec]
+                if len(inc) != 1:
+                    break
+                ei = inc[0]
+                branche.append(ei)
+                longueur += E[ei][2]
+                cur = E[ei][1] if E[ei][0] == cur else E[ei][0]
+                prec = ei
+                if len([i for i in adj[cur] if E[i][3]]) != 2:
+                    break                             # jonction ou autre feuille
+            if branche and longueur < prune_len:
+                for ei in branche:
+                    E[ei][3] = False
+                change = True
+
+    # --- chaînage en polylignes ---
+    adj = adjacence()
+    used = [False] * len(E)
+
+    def marcher(depart, e0):
+        pl = [coord[depart]]
+        cur, ei = depart, e0
+        while True:
+            used[ei] = True
+            suiv = E[ei][1] if E[ei][0] == cur else E[ei][0]
+            pl.append(coord[suiv])
+            cur = suiv
+            libres = [i for i in adj[cur] if E[i][3] and not used[i]]
+            if len([i for i in adj[cur] if E[i][3]]) != 2 or len(libres) != 1:
+                break
+            ei = libres[0]
+        return pl
+
+    polys = []
+    departs = [n for n in adj if len([i for i in adj[n] if E[i][3]]) != 2]
+    for depart in departs:
+        for ei in adj[depart]:
+            if E[ei][3] and not used[ei]:
+                polys.append(marcher(depart, ei))
+    for ei in range(len(E)):                          # boucles pures (ex. « O »)
+        if E[ei][3] and not used[ei]:
+            polys.append(marcher(E[ei][0], ei))
+    return [pl for pl in polys if len(pl) >= 2]
+
+
+def _centerline_voronoi(edges):
+    """Axe médian par Voronoï. Renvoie (arêtes Part, largeur_mm) ou None si le
+    module CAM (Path.Voronoi) est indisponible / rien à tracer."""
+    try:
+        import Path
+    except Exception:
+        return None
+    if not hasattr(Path, "Voronoi"):
+        return None
+    faces = _faces_from_edges(edges)
+    if not faces:
+        return None
+    zs = [v.Point.z for e in edges for v in e.Vertexes]
+    z0 = sum(zs) / len(zs) if zs else 0.0
+    polys_all, strokes = [], []
+    for f in faces:
+        perim = sum(w.Length for w in f.Wires) or 1.0
+        stroke = max(1e-3, 2.0 * f.Area / perim)      # ~largeur du trait
+        segs = _medial_segments_voronoi(f, distance=max(0.25, stroke * 0.20))
+        if not segs:
+            continue
+        polys = _voronoi_polylines(segs, prune_len=0.9 * stroke,
+                                   snap=max(1e-4, stroke * 0.03))
+        if polys:
+            polys_all += polys
+            strokes.append(stroke)
+    if not polys_all:
+        return None
+    stroke = sum(strokes) / len(strokes)
+    tol = min(0.25, max(0.05, stroke / 30.0))
+    out = []
+    for pl in polys_all:
+        try:
+            pl = _cl_rdp(pl, tol)
+        except RecursionError:
+            pass
+        vs = [FreeCAD.Vector(x, y, z0) for x, y in pl]
+        for i in range(len(vs) - 1):
+            if vs[i].distanceToPoint(vs[i + 1]) > 1e-6:
+                out.append(Part.LineSegment(vs[i], vs[i + 1]).toShape())
+    return (out, stroke) if out else None
+
+
+def centerline_edges(edges, px_per_mm=None):
+    """Axe médian d'une/des forme(s) FERMÉE(s) décrite(s) par `edges` (le
+    contour d'un glyphe). Renvoie (arêtes Part de l'axe, largeur_trait_mm) ;
+    ([], 0.0) si impossible. Tente d'abord le Voronoï natif de FreeCAD
+    (exact, courbes lisses, trous gérés) ; repli sur le raster (Zhang-Suen)
+    si le module CAM manque ou échoue."""
+    try:
+        res = _centerline_voronoi(edges)
+        if res is not None:
+            return res
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning(
+            "Axe médian : Voronoï indisponible, repli raster ({}).\n".format(exc))
+    return _centerline_raster(edges, px_per_mm)
 
 
 # ==========================================================================
