@@ -296,6 +296,16 @@ def _panel_header(form, icon_name, title):
     lbl = QtWidgets.QLabel(title)
     lbl.setStyleSheet("font-weight: bold; font-size: 14px;")
     lay.addWidget(lbl, 1)
+    # Petit bouton « tout replier / déplier » des sections du panneau.
+    # Masqué ici (les sections n'existent pas encore) ; _activer_sections
+    # le rend opérant et visible s'il y a au moins une section.
+    btn_sections = QtWidgets.QToolButton()
+    btn_sections.setObjectName("laserToggleSections")
+    btn_sections.setAutoRaise(True)
+    btn_sections.setArrowType(QtCore.Qt.DownArrow)
+    btn_sections.setToolTip("Replier / déplier toutes les sections")
+    btn_sections.setVisible(False)
+    lay.addWidget(btn_sections, 0)
     ver = QtWidgets.QLabel("v" + core.VERSION)
     ver.setStyleSheet("color: #8a9199; font-size: 10px;")
     ver.setToolTip("Atelier Laser v" + core.VERSION)
@@ -420,6 +430,13 @@ class _SectionHeader(QtWidgets.QFrame):
         self._maj_picto()
         self.toggled.emit(self._open)
 
+    def set_open(self, on):
+        """Force l'état ouvert/fermé DEPUIS L'EXTÉRIEUR (bouton « tout
+        replier / déplier ») en émettant `toggled` comme un clic, pour que
+        le conteneur suive et que l'état soit mémorisé."""
+        if bool(on) != self._open:
+            self._basculer()
+
     def mousePressEvent(self, event):
         self._basculer()
         super().mousePressEvent(event)
@@ -435,6 +452,31 @@ def _section(form, title, icon_name=None, ouvert=False):
     gardent leurs `form.addRow(...)` tels quels. L'état ouvert/fermé est
     mémorisé dans la config d'une session à l'autre."""
     form.addRow(_SectionHeader(title, icon_name=icon_name, ouvert=ouvert))
+
+
+def _maj_bouton_sections(bouton, entetes):
+    """Met à jour le petit bouton « tout replier / déplier » de l'en-tête :
+    visible seulement s'il y a des sections ; chevron vers le haut + « Tout
+    replier » si au moins une section est ouverte, sinon chevron vers le bas
+    + « Tout déplier »."""
+    if not entetes:
+        bouton.setVisible(False)
+        return
+    bouton.setVisible(True)
+    qqch_ouvert = any(h.isChecked() for h in entetes)
+    bouton.setArrowType(QtCore.Qt.UpArrow if qqch_ouvert else QtCore.Qt.DownArrow)
+    bouton.setToolTip("Tout replier" if qqch_ouvert else "Tout déplier")
+
+
+def _basculer_toutes_sections(bouton, entetes):
+    """Replie toutes les sections si au moins une est ouverte, sinon les
+    déplie toutes."""
+    if not entetes:
+        return
+    ouvrir = not any(h.isChecked() for h in entetes)
+    for h in entetes:
+        h.set_open(ouvrir)
+    _maj_bouton_sections(bouton, entetes)
 
 
 def _activer_sections(inner):
@@ -489,6 +531,23 @@ def _activer_sections(inner):
             w.toggled.connect(_toggle)
             continue
         _remettre(cible, label_item, field_item)
+
+    # Bouton « tout replier / déplier » de l'en-tête (_panel_header) : le
+    # rendre opérant s'il y a des sections dans ce panneau, et garder son
+    # chevron/info-bulle synchronisé quand on plie/déplie à la main.
+    bouton = inner.findChild(QtWidgets.QToolButton, "laserToggleSections")
+    if bouton is not None:
+        entetes = inner.findChildren(_SectionHeader)
+        if not entetes:
+            bouton.setVisible(False)
+        else:
+            bouton.clicked.connect(
+                lambda _checked=False, b=bouton, es=entetes:
+                _basculer_toutes_sections(b, es))
+            for h in entetes:
+                h.toggled.connect(
+                    lambda _on, b=bouton, es=entetes: _maj_bouton_sections(b, es))
+            _maj_bouton_sections(bouton, entetes)
 
 
 def _intro(form, resume, details=None):
