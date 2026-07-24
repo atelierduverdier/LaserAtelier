@@ -306,6 +306,86 @@ def _calibration_banner(form, mode_titre):
     _hline(form)
 
 
+def _verrou(form, champs, titre="Verrouiller les résultats"):
+    """Case « 🔒 <titre> » COCHÉE PAR DÉFAUT, à placer dans une section de
+    saisie de mesures : tant qu'elle est cochée, les `champs` (les valeurs
+    mesurées) sont en LECTURE SEULE, pour ne pas les modifier par accident
+    (la molette est déjà neutralisée globalement par _neutraliser_molette ;
+    ceci bloque en plus le clic et la frappe). Décocher pour corriger.
+    La restauration/les préréglages (setValue/setCurrentText programmatiques)
+    restent possibles. Renvoie la case, pour la relire au besoin."""
+    chk = QtWidgets.QCheckBox("🔒 " + titre)
+    chk.setChecked(True)
+    chk.setToolTip(
+        "Coché (par défaut) : les valeurs mesurées sont protégées en\n"
+        "lecture seule. Décoche pour corriger une saisie.")
+
+    def _appliquer(verrouille):
+        for w in champs:
+            if isinstance(w, (QtWidgets.QAbstractSpinBox, QtWidgets.QLineEdit)):
+                w.setReadOnly(verrouille)
+            elif isinstance(w, QtWidgets.QComboBox):
+                w.setEnabled(not verrouille)
+
+    chk.toggled.connect(_appliquer)
+    _appliquer(True)
+    form.addRow(chk)
+    return chk
+
+
+def _etapes(form, etapes):
+    """En-tête compact « ① Graver → ② Mesurer → ③ … » : puces numérotées
+    cliquables placées en tête d'un panneau de test/calibration. Un clic déplie
+    la section visée et y fait défiler — le fil ①②③ reste visible même sections
+    repliées (répond à la « confusion UI »). `etapes` : liste de
+    (libellé_court, titre_section_exact) ; la section est résolue par son titre
+    (_SectionHeader._titre) dans la zone défilante, sans effet si introuvable."""
+    cercles = "①②③④⑤⑥⑦⑧⑨"
+    bande = QtWidgets.QWidget()
+    lay = QtWidgets.QHBoxLayout(bande)
+    lay.setContentsMargins(0, 0, 0, 4)
+    lay.setSpacing(6)
+
+    def _sauter(titre):
+        def _f():
+            sa = bande.parentWidget()
+            while sa is not None and not isinstance(sa, QtWidgets.QAbstractScrollArea):
+                sa = sa.parentWidget()
+            if sa is None or sa.widget() is None:
+                return
+            for h in sa.widget().findChildren(QtWidgets.QFrame):
+                if getattr(h, "_titre", None) == titre:
+                    try:
+                        h.set_open(True)
+                    except Exception:
+                        pass
+                    try:
+                        sa.ensureWidgetVisible(h)
+                    except Exception:
+                        pass
+                    break
+        return _f
+
+    for i, (libelle, titre) in enumerate(etapes, start=1):
+        num = cercles[i - 1] if i <= len(cercles) else str(i)
+        b = QtWidgets.QToolButton()
+        b.setText("{}  {}".format(num, libelle))
+        b.setToolTip("Aller à « {} »".format(titre))
+        b.setCursor(QtCore.Qt.PointingHandCursor)
+        b.setAutoRaise(True)
+        b.setStyleSheet(
+            "QToolButton{border:1px solid palette(mid);border-radius:11px;"
+            "padding:2px 10px;} QToolButton:hover{border-color:#ff8a00;}")
+        b.clicked.connect(_sauter(titre))
+        lay.addWidget(b)
+        if i < len(etapes):
+            fleche = QtWidgets.QLabel("→")
+            fleche.setStyleSheet("color:palette(mid);")
+            lay.addWidget(fleche)
+    lay.addStretch(1)
+    form.addRow(bande)
+
+
 def _panel_header(form, icon_name, title):
     """Bandeau en tête de panneau : icône du mode + nom en gras/agrandi,
     suivi d'un trait. Repère visuel immédiat du mode ouvert. À droite,
@@ -3719,6 +3799,9 @@ class TaskPanelKerf:
 
         _panel_header(form, "kerf.svg", "Calibration kerf")
         _calibration_banner(form, "Calibration kerf")
+        _etapes(form, [("Graver", "① Graver le test"),
+                       ("Mesurer", "② Entrer les mesures (kerf)"),
+                       ("Photo", "③ Photo du résultat")])
         _intro(form,
                "Deux tests, à découper ensuite en mode Découpe multi-passes : "
                "le CARRÉ pour MESURER le kerf, le TENON + MORTAISE pour VALIDER "
@@ -3870,6 +3953,7 @@ class TaskPanelKerf:
         self.spn_measured.setToolTip(
             "Côté du carré RÉELLEMENT obtenu, mesuré au pied à coulisse.")
         form.addRow("Taille mesurée :", self.spn_measured)
+        self.chk_verrou_kerf = _verrou(form, [self.spn_measured])
         self.lbl_kerf = _WrapLabel("Kerf = — (saisis la taille mesurée)")
         form.addRow(self.lbl_kerf)
         self.spn_measured.valueChanged.connect(self._update_kerf)
@@ -3932,6 +4016,9 @@ class TaskPanelDefocusCalibration:
 
         _panel_header(form, "defocus.svg", "Bande de calibration défocus")
         _calibration_banner(form, "Bande de calibration défocus")
+        _etapes(form, [("Graver", "① Graver — balayage en hauteur (Z)"),
+                       ("Mesurer", "② Entrer les mesures (calibration du point)"),
+                       ("Photo", "③ Photo du résultat")])
         _intro(form,
                "Grave une rangée de traits, chacun à une hauteur de bec "
                "croissante (étiquetée) : le trait LE PLUS FIN te donne le "
@@ -4254,6 +4341,9 @@ class TaskPanelDefocusCalibration:
         self.spn_spot_dtest.setToolTip("Ø (largeur) du trait mesuré à cette hauteur de test.")
         form.addRow("Ø mesuré à cette hauteur :", self.spn_spot_dtest)
 
+        self.chk_verrou_spot = _verrou(
+            form, [self.spn_spot_focus, self.spn_spot_ztest, self.spn_spot_dtest])
+
         self.btn_save_spot = QtWidgets.QPushButton("Enregistrer la calibration du point")
         self.btn_save_spot.setToolTip(
             "Range ces trois valeurs dans les réglages du laser actif "
@@ -4333,6 +4423,9 @@ class TaskPanelPowerRamp:
 
         _panel_header(form, "powerramp.svg", "Test rampe puissance / vitesse (lignes)")
         _calibration_banner(form, "Test rampe puissance / vitesse (lignes)")
+        _etapes(form, [("Graver", "① Graver — lignes (vitesses)"),
+                       ("Reporter", "② Reporter les tons retenus"),
+                       ("Photo", "③ Photo du résultat")])
         _intro(form,
                "Grave de longues lignes, UNE PAR VITESSE, avec la puissance "
                "qui MONTE le long de chaque ligne : on repère d'un coup où le "
@@ -4640,6 +4733,9 @@ class TaskPanelOffsetTest:
 
         _panel_header(form, "offset_test.svg", "Test des offsets X/Y du laser")
         _calibration_banner(form, "Test des offsets X/Y du laser")
+        _etapes(form, [("Graver", "① Graver — croix (géométrie)"),
+                       ("Mesurer", "② Entrer les mesures (écart des croix)"),
+                       ("Photo", "③ Photo du résultat")])
         _intro(form,
                "Job MIXTE fraise + laser : fraise une croix sur X0 Y0, puis "
                "grave une croix laser au même X0 Y0 programmé. L'écart mesuré "
@@ -4816,6 +4912,7 @@ class TaskPanelOffsetTest:
         self.spn_dy.setSuffix(" mm")
         self.spn_dy.setToolTip("Écart en Y entre croix laser et croix fraisée (signé).")
         form.addRow("Écart dY :", self.spn_dy)
+        self.chk_verrou_offset = _verrou(form, [self.spn_dx, self.spn_dy])
         self.lbl_offset = _WrapLabel("Saisis l'écart mesuré (dX, dY).")
         form.addRow(self.lbl_offset)
         self.spn_dx.valueChanged.connect(self._update_offset)
@@ -5521,6 +5618,9 @@ class TaskPanelTestGrid:
 
         _panel_header(form, "testgrid.svg", "Grille de test puissance / vitesse")
         _calibration_banner(form, "Grille de test puissance / vitesse")
+        _etapes(form, [("Graver", "① Graver — préréglage recommandé"),
+                       ("Mesurer", "② Entrer les mesures (largeurs brûlées)"),
+                       ("Photo", "③ Photo du résultat")])
 
         self.btn_material_board = QtWidgets.QPushButton(
             "Planche de calibration matériau (fichier séparé)")
@@ -6404,6 +6504,9 @@ class TaskPanelTestGrid:
                 g2.addWidget(sp, i + 1, k + 1)
                 self._defocus_cells[(p, zk)] = sp
         form.addRow(grp2)
+
+        self.chk_verrou_measures = _verrou(
+            form, list(self._focus_cells.values()) + list(self._defocus_cells.values()))
 
         self.btn_save_measures = QtWidgets.QPushButton("Enregistrer les mesures")
         self.btn_save_measures.setToolTip(
