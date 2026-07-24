@@ -484,7 +484,7 @@
     <h4>Marquage de motif <span class="meta">(plat ou courbe)</span></h4>
     <p class="quoi">Graver le tracé d'un motif filaire — le cœur de l'atelier.</p>
     <p>Sur une pièce <strong>plate</strong> : on sélectionne le motif 2D, la gravure se fait à plat. Sur une pièce <strong>courbe</strong> : le motif doit d'abord être posé sur la surface avec le mode <em>Projeter sur surface 3D</em> (§ 7.2) ; on sélectionne ensuite le motif projeté (<code>Hachures_3D</code>) <strong>et</strong> le modèle 3D d'origine <em>ensemble</em>, pour que le relief soit sondé exactement pendant le marquage et que la distance focale reste constante. Sans le modèle 3D, le Z n'est qu'interpolé entre les points projetés.</p>
-    <p>Propose cinq styles de trait (plein, tirets, pointillé, vague défocus, point élargi par défocus) — tous suivent le relief — et sait graver l'<strong>axe médian</strong> d'une forme pleine : un « T » gravé par son squelette plutôt que par son contour rempli.</p>
+    <p>Propose cinq styles de trait (plein, tirets, pointillé, vague défocus, point élargi par défocus), tous suivant le relief.</p>
     <p class="meta"><b>Réglages clés :</b> puissance · vitesse · style de trait · suivi de surface (motif projeté + modèle 3D). <b>Fichier :</b> <code>marquage.ngc</code></p>
   </div></div>
 
@@ -725,9 +725,6 @@
   <h4>Un point/pointillé ne marque rien.</h4>
   <p>Rappel du chapitre 9 : pas de tir à l'arrêt. Les points doivent être des micro-traits — c'est le cas partout dans l'atelier ; si vous bricolez un G-code à la main, ne posez jamais de <code>G4</code> faisceau allumé.</p>
 
-  <h4>Le tracé d'axe médian d'une lettre à trou est bizarre.</h4>
-  <p>C'est attendu : l'axe médian d'un « O » ou d'un « A » longe le trou. Pour ces lettres, préférez le mode <strong>Texte (trait simple)</strong>.</p>
-
   <h4>Où sont passés mes réglages après réinstallation ?</h4>
   <p>Ils sont hors dépôt (fichier de config + <code>photos_resultats/</code>). Restaurez votre <code>.zip</code> d'export via « Importer une sauvegarde ».</p>
 </section>
@@ -743,7 +740,6 @@
     <tr><td>Kerf</td><td>Largeur du trait enlevé par la découpe (le « trait de scie ») ; à compenser pour des cotes justes.</td></tr>
     <tr><td>Nuancier</td><td>Table reliant une teinte de gris mesurée à une dose (puissance/vitesse) sur un matériau.</td></tr>
     <tr><td>Fluence</td><td>Énergie déposée par unité de surface (∝ puissance / (largeur × vitesse)) ; gouverne la teinte brûlée.</td></tr>
-    <tr><td>Axe médian</td><td>Squelette d'une forme pleine ; permet de graver un trait central au lieu du contour + remplissage.</td></tr>
     <tr><td>Cadrage</td><td>Parcours du seul rectangle englobant, laser éteint, pour vérifier le positionnement.</td></tr>
     <tr><td>Armement</td><td>Mise en route unique du laser (relais) en début de travail ; la puissance réelle reste pilotée par S.</td></tr>
     <tr><td>Job combiné</td><td>Plusieurs opérations réunies en un fichier, un seul armement/désarmement.</td></tr>

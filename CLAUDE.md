@@ -76,20 +76,7 @@ Five modules, cleanly layered — keep the layering:
   Organized into banner-commented sections, one per mode. This is the layer you unit-test headless.
   Notable shared sections beyond the per-mode generators: STYLES DE TRAIT (curvilinear helpers
   `_chain_cumlen`/`slice_chain`/`dash_chain`/`dot_positions`/`wave_resample`, used by stroke styles
-  AND cutting tabs), the AXE MÉDIAN / centerline extractor (`centerline_edges(edges)` → skeleton
-  edges + stroke width: **Voronoi-first** (`_centerline_voronoi`) — rebuild the filled face(s) from
-  the contour (`Part.makeFace` Bullseye, holes included), run FreeCAD's native `Path.Voronoi` (CAM
-  module) whose diagram of the boundary segments IS the exact medial axis, keep the interior PRIMARY
-  edges via the FreeCAD Vcarve colour recipe (`colorColinear`/`colorExterior`/`colorTwins`), then
-  prune short leaf branches (`_voronoi_polylines`) to keep only the SPINE — the fans to convex
-  vertices (wanted by a V-bit, not by the laser's fat point) are removed — and finally EXTEND each
-  free spine end straight (along the local axis) to the boundary (`_extend_leaves_to_boundary`,
-  `_ray_hit`) so the centerline reaches the CENTRE of the stroke's end cap instead of stopping short
-  or veering to a corner. Vector, resolution-
-  independent, holes handled; `import Path` is lazy & guarded with graceful **fallback to the old
-  raster method** `_centerline_raster` (even-odd rasterise → Zhang-Suen thinning → trace → spur
-  prune → merge; numpy) if the CAM module is absent. Marquage's "Graver l'axe médian" checkbox uses
-  it to engrave a filled glyph's skeleton with the defocused fat spot instead of contour+fill), fluence (`line_fluence`/`power_for_line_fluence`), the measured-tones nuancier
+  AND cutting tabs), fluence (`line_fluence`/`power_for_line_fluence`), the measured-tones nuancier
   (`load_shades`/`shade_for_darkness`), factory presets (`_FACTORY_PRESETS`/`all_presets`), and
   centralized machine settings (`Z_WORK_MM`, `TRANSIT_MARGIN_MM`, `SPOT_FOCUS_MM`… via
   `_USER_SETTINGS`; panels read these instead of exposing their own Z fields — cutting modes keep
