@@ -1254,6 +1254,131 @@ def _combined_add_button(form, handler):
     return btn
 
 
+def _construire_nuancier_preregles(label_power=500.0, label_feed=1200.0):
+    """Construit un document « nuancier physique » depuis les préréglages
+    matériau enregistrés (catégorie « filled ») : un cercle Ø20 (face) par
+    préréglage, portant SA recette (LaserAtelierReglages) + un Job ; une
+    étiquette gravée sous chaque cercle, un cadre et un titre daté regroupés
+    en un seul objet Marquage + Job. Les cercles sont ordonnés du plus clair
+    au plus foncé (proxy S/F) pour un rendu en dégradé. Le G-code sort
+    ensuite du job combiné (chaque préréglage rejoué avec ses propres
+    réglages -- pas de piège fluence, chacun porte le sien).
+
+    Renvoie (document, [Jobs], avertissement) ; jobs=None si aucun
+    préréglage n'est enregistré."""
+    import Part
+    import datetime
+    import laser_jobs
+
+    presets = core.load_presets("filled")
+    if not presets:
+        return None, None, "aucun préréglage « filled » enregistré"
+
+    def _proxy_noirceur(v):
+        # Plus de puissance / moins de vitesse = plus foncé (ordre du dégradé).
+        return v.get("fill_power", 0.0) / max(v.get("fill_feed", 1.0), 1e-6)
+    noms = sorted(presets, key=lambda n: (_proxy_noirceur(presets[n]), n))
+
+    DIAM = 20.0
+    R = DIAM / 2.0
+    GAP_X = 8.0            # espace horizontal entre cercles
+    LABEL_GAP = 2.5        # cercle -> étiquette
+    LABEL_H = 4.0          # hauteur nominale des étiquettes
+    GAP_Y = 10.0           # espace vertical entre cellules
+    MARGIN = 10.0          # marge intérieure au cadre
+    TITLE_H = 5.0
+    TITLE_GAP = 5.0
+    COLS = min(5, len(noms))
+
+    cell_w = DIAM + GAP_X
+    cell_h = DIAM + LABEL_GAP + LABEL_H + GAP_Y
+    nrows = (len(noms) + COLS - 1) // COLS
+    content_h = nrows * cell_h - GAP_Y
+    board_w = 2 * MARGIN + COLS * DIAM + (COLS - 1) * GAP_X
+    board_h = content_h + 2 * MARGIN + TITLE_H + TITLE_GAP
+    y_sommet = board_h - MARGIN - TITLE_H - TITLE_GAP  # haut du 1er cercle
+
+    doc = FreeCAD.newDocument("Nuancier_preregles")
+    jobs, ignores = [], []
+
+    def _centre(i):
+        col, row = i % COLS, i // COLS
+        return (MARGIN + col * cell_w + R, y_sommet - row * cell_h - R)
+
+    # 1) Un cercle-face par préréglage, avec sa recette + un Job « filled ».
+    for i, nom in enumerate(noms):
+        cx, cy = _centre(i)
+        try:
+            face = Part.Face(Part.Wire(Part.makeCircle(R, FreeCAD.Vector(cx, cy, 0))))
+        except Exception as exc:
+            ignores.append("{} (cercle : {})".format(nom, exc))
+            continue
+        obj = doc.addObject("Part::Feature", "Ton")
+        obj.Shape = face
+        obj.Label = nom
+        try:
+            obj.addProperty("App::PropertyString", _OBJ_PROP, "LaserAtelier",
+                            "Réglages de l'atelier laser, par mode (JSON)")
+            obj.setEditorMode(_OBJ_PROP, 1)
+            setattr(obj, _OBJ_PROP,
+                    json.dumps({"filled": presets[nom]}, ensure_ascii=False))
+        except Exception as exc:
+            ignores.append("{} (recette : {})".format(nom, exc))
+            continue
+        job = laser_jobs.creer_ou_maj_job("filled", [obj])
+        if job is not None:
+            jobs.append(job)
+
+    # 2) Étiquettes + cadre + titre daté : un seul objet Marquage + Job.
+    deco = []
+    coins = [FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(board_w, 0, 0),
+             FreeCAD.Vector(board_w, board_h, 0), FreeCAD.Vector(0, board_h, 0),
+             FreeCAD.Vector(0, 0, 0)]
+    for a, b in zip(coins[:-1], coins[1:]):
+        deco.append(Part.LineSegment(a, b).toShape())
+    titre = "Nuancier prereglages  {}  ({} tons)".format(
+        datetime.date.today().isoformat(), len(noms))
+    deco += core.single_line_text_to_edges(
+        titre, TITLE_H, x0=MARGIN, y0=board_h - MARGIN - TITLE_H)
+    maxw = cell_w - 1.0
+    for i, nom in enumerate(noms):
+        cx, cy = _centre(i)
+        txt = nom[:16]
+        h = LABEL_H
+        w, _h = core.single_line_text_extent(txt, h)
+        if w > maxw and w > 0:                     # trop long : on réduit
+            h = max(2.2, h * maxw / w)
+            w, _h = core.single_line_text_extent(txt, h)
+        deco += core.single_line_text_to_edges(
+            txt, h, x0=cx - w / 2.0, y0=cy - R - LABEL_GAP - h)
+    if deco:
+        obj = doc.addObject("Part::Feature", "EtiquettesNuancier")
+        obj.Shape = Part.Compound(deco)
+        obj.Label = "Étiquettes + cadre"
+        try:
+            obj.addProperty("App::PropertyString", _OBJ_PROP, "LaserAtelier",
+                            "Réglages de l'atelier laser, par mode (JSON)")
+            obj.setEditorMode(_OBJ_PROP, 1)
+            setattr(obj, _OBJ_PROP, json.dumps(
+                {"curved": {"power": float(label_power), "feed": float(label_feed),
+                            "style": 0, "fluence_on": False}}, ensure_ascii=False))
+        except Exception:
+            pass
+        job = laser_jobs.creer_ou_maj_job("curved", [obj])
+        if job is not None:
+            jobs.append(job)
+
+    doc.recompute()
+    if getattr(FreeCAD, "GuiUp", False):
+        try:
+            Gui.activeDocument().activeView().viewTop()
+            Gui.SendMsgToActiveView("ViewFit")
+        except Exception:
+            pass
+    warn = ("préréglages ignorés :\n- " + "\n- ".join(ignores)) if ignores else None
+    return doc, jobs, warn
+
+
 class _PresetController:
     """Bloc de préréglages (sélecteur + Sauvegarder + Supprimer) réutilisable,
     adossé aux préréglages d'USINE + UTILISATEUR d'une catégorie. Un
@@ -1681,6 +1806,40 @@ class TaskPanelNuancier:
             form, lambda: "nuancier:" + self.combo_mat.currentText().strip(),
             titre="Photo du résultat")
 
+        _section(form, "Graver un nuancier de préréglages", "sect_preset.svg")
+        _bullet_list(form, [
+            "Grave une planche de référence&nbsp;: <b>un cercle Ø20 par "
+            "préréglage matériau enregistré</b> (section «&nbsp;Préréglage "
+            "matériau&nbsp;» de <b>Gravure remplie</b>), chacun avec sa propre "
+            "recette, ordonnés du plus clair au plus foncé.",
+            "Chaque cercle reçoit un <b>Job</b>&nbsp;; une <b>étiquette "
+            "gravée</b> (nom du préréglage) est posée sous chacun, avec un "
+            "cadre et la date.",
+            "Le bouton crée le document, empile le tout dans le <b>Job "
+            "combiné</b> et l'ouvre&nbsp;: tu revois l'aperçu, puis tu génères "
+            "le fichier unique.",
+        ])
+        self.spn_lbl_power = QtWidgets.QDoubleSpinBox()
+        self.spn_lbl_power.setRange(0, core.S_MAX)
+        self.spn_lbl_power.setValue(500)
+        self.spn_lbl_power.setToolTip(
+            "Puissance (S) de gravure des étiquettes, du cadre et du titre\n"
+            "(les cercles, eux, gardent la puissance de leur préréglage).")
+        form.addRow("Puissance étiquettes :", self.spn_lbl_power)
+        self.spn_lbl_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_lbl_feed.setRange(1, 20000)
+        self.spn_lbl_feed.setValue(1200)
+        self.spn_lbl_feed.setSuffix(" mm/min")
+        self.spn_lbl_feed.setToolTip("Vitesse d'avance de gravure des étiquettes.")
+        form.addRow("Vitesse étiquettes :", self.spn_lbl_feed)
+        btn_nuancier = QtWidgets.QPushButton("Créer le nuancier des préréglages…")
+        _btn_icon(btn_nuancier, "filled.svg")
+        btn_nuancier.setToolTip(
+            "Crée un document nuancier : un cercle gravé par préréglage\n"
+            "matériau enregistré, empilés dans le Job combiné, prêt à générer.")
+        btn_nuancier.clicked.connect(self._on_graver_preregles)
+        form.addRow(btn_nuancier)
+
         self._reload_materials()
         self.combo_mat.activated.connect(
             lambda _i: (self._load_material(), self._photo["reload"]()))
@@ -1750,6 +1909,54 @@ class TaskPanelNuancier:
                 FreeCAD.Console.PrintWarning(
                     "Nuancier : ligne {} illisible, ignorée.\n".format(r + 1))
         return shades
+
+    def _on_graver_preregles(self):
+        """Nuancier physique depuis les préréglages « filled » : cercles +
+        recettes + Jobs + étiquettes, empilés dans le job combiné, prêt à
+        générer."""
+        if not core.load_presets("filled"):
+            QtWidgets.QMessageBox.information(
+                self.form, "Nuancier de préréglages",
+                "Aucun préréglage matériau enregistré.\n\n"
+                "Ouvre « Gravure remplie », règle un remplissage puis clique "
+                "« Sauvegarder » sous un nom (section « Préréglage "
+                "matériau »). Recommence pour chaque recette à comparer, "
+                "puis reviens ici.")
+            return
+        if _COMBINED_OPS:
+            rep = QtWidgets.QMessageBox.question(
+                self.form, "Job combiné",
+                "Le job combiné contient déjà {} opération(s).\n\n"
+                "Vider et repartir d'un nuancier propre ?\n"
+                "(Non = ajouter le nuancier à la suite)".format(len(_COMBINED_OPS)),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+                | QtWidgets.QMessageBox.Cancel)
+            if rep == QtWidgets.QMessageBox.Cancel:
+                return
+            if rep == QtWidgets.QMessageBox.Yes:
+                _COMBINED_OPS[:] = []
+        doc, jobs, warn = _construire_nuancier_preregles(
+            self.spn_lbl_power.value(), self.spn_lbl_feed.value())
+        if not jobs:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Nuancier de préréglages",
+                "Construction impossible.\n" + (warn or ""))
+            return
+        import laser_jobs
+        ajoutes, ignores = laser_jobs.ajouter_jobs_au_combine(jobs)
+        msgs = [m for m in (warn,
+                            ("Jobs ignorés :\n- " + "\n- ".join(ignores))
+                            if ignores else None) if m]
+        if not ajoutes:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Nuancier de préréglages",
+                "Aucune opération valide.\n" + "\n\n".join(msgs))
+            return
+        if msgs:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Nuancier de préréglages", "\n\n".join(msgs))
+        import commands
+        commands._show(TaskPanelCombined())
 
     def accept(self):
         material = self.combo_mat.currentText().strip()
