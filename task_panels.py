@@ -641,18 +641,33 @@ class _SectionHeader(QtWidgets.QFrame):
         self.setProperty("laser_section", True)
         self.setObjectName("laserSection")
         self.setCursor(QtCore.Qt.PointingHandCursor)
+        # Les sections d'ÉTAPE (titre commençant par ①②③...) sont mises en
+        # avant : fond teinté orange, liseré épais -- c'est la PROCÉDURE, à
+        # suivre dans l'ordre ; les autres sections (réglages manuels) restent
+        # sobres. Demande terrain : le novice doit voir le fil d'un coup d'œil.
+        self._etape = bool(titre) and titre.lstrip()[:1] in "①②③④⑤⑥⑦⑧⑨"
         # Barre « carte » : coins arrondis, liseré orange de la maison à
         # gauche, fond neutre du thème qui s'éclaircit au survol. Tout est
         # peint par la feuille de style, ciblée par objectName pour
         # fonctionner malgré le sous-classement Python.
-        self.setStyleSheet(
-            "QFrame#laserSection {"
-            "  background-color: palette(button);"
-            "  border: 1px solid palette(mid);"
-            "  border-left: 3px solid #ff8a00;"
-            "  border-radius: 6px;"
-            "}"
-            "QFrame#laserSection:hover { background-color: palette(midlight); }")
+        if self._etape:
+            self.setStyleSheet(
+                "QFrame#laserSection {"
+                "  background-color: rgba(255, 138, 0, 0.16);"
+                "  border: 1px solid #ff8a00;"
+                "  border-left: 6px solid #ff8a00;"
+                "  border-radius: 6px;"
+                "}"
+                "QFrame#laserSection:hover { background-color: rgba(255, 138, 0, 0.28); }")
+        else:
+            self.setStyleSheet(
+                "QFrame#laserSection {"
+                "  background-color: palette(button);"
+                "  border: 1px solid palette(mid);"
+                "  border-left: 3px solid #ff8a00;"
+                "  border-radius: 6px;"
+                "}"
+                "QFrame#laserSection:hover { background-color: palette(midlight); }")
 
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(9, 6, 11, 6)
@@ -667,7 +682,9 @@ class _SectionHeader(QtWidgets.QFrame):
                 ico.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
                 lay.addWidget(ico)
         self._lbl = QtWidgets.QLabel(titre)
-        self._lbl.setStyleSheet("font-weight: bold; background: transparent; border: none;")
+        self._lbl.setStyleSheet(
+            "font-weight: bold; background: transparent; border: none;"
+            + (" font-size: 13px;" if self._etape else ""))
         self._lbl.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
         self._picto = QtWidgets.QLabel()  # chevron d'état, orange, à droite
         self._picto.setStyleSheet(
@@ -4093,7 +4110,6 @@ class TaskPanelKerf:
                              "clr_step": self.spn_clr_step}
         self._presets = _PresetController(form, inner, "kerf", lambda: self._last_fields)
 
-        self._build_kerf_measures(form)
         self.btn_creer_test = QtWidgets.QPushButton("Créer le test dans le document")
         _btn_icon(self.btn_creer_test, "sect_contour.svg")
         self.btn_creer_test.setToolTip(
@@ -4103,6 +4119,7 @@ class TaskPanelKerf:
         self.btn_creer_test.clicked.connect(self._on_creer_test)
         form.addRow(self.btn_creer_test)
 
+        self._build_kerf_measures(form)
         self._photo = _make_photo_section(form, lambda: "kerf",
                                           titre="③ Photo du résultat")
 
@@ -4277,6 +4294,12 @@ class TaskPanelDefocusCalibration:
         self.btn_generer.clicked.connect(self._on_generer)
         form.addRow(self.btn_generer)
 
+        # PROCÉDURE D'ABORD : ② mesures et ③ photo suivent directement ①
+        # (le novice suit les étapes) ; les réglages manuels viennent après.
+        self._build_spot_measures(form)
+        self._photo = _make_photo_section(form, lambda: "defocus",
+                                          titre="③ Photo du résultat")
+
         _section(form, "Traits (puissance / vitesse)", "sect_power.svg")
         self.spn_length = QtWidgets.QDoubleSpinBox()
         self.spn_length.setRange(2.0, 200.0)
@@ -4441,10 +4464,6 @@ class TaskPanelDefocusCalibration:
         _restore_last_values("defocus_calib", self._last_fields)
         # Un préréglage chargé rafraîchit la plage affichée et la durée.
         self._presets.on_loaded = lambda: (_update_range(), self._update_duration_preview())
-
-        self._build_spot_measures(form)
-        self._photo = _make_photo_section(form, lambda: "defocus",
-                                          titre="③ Photo du résultat")
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Bande de calibration défocus")
@@ -4675,6 +4694,11 @@ class TaskPanelPowerRamp:
         self.btn_generer.clicked.connect(self._on_generer)
         form.addRow(self.btn_generer)
 
+        # Procédure d'abord : ② et ③ suivent ① ; réglages manuels après.
+        self._build_ramp_next(form)
+        self._photo = _make_photo_section(form, lambda: "powerramp",
+                                          titre="③ Photo du résultat")
+
         _section(form, "Rampe de puissance", "sect_power.svg")
         self.spn_power_min = QtWidgets.QDoubleSpinBox()
         self.spn_power_min.setRange(0, core.S_MAX)
@@ -4772,10 +4796,6 @@ class TaskPanelPowerRamp:
             }
         _restore_last_values("powerramp", self._last_fields)
         self._presets.on_loaded = self._update_duration_preview
-
-        self._build_ramp_next(form)
-        self._photo = _make_photo_section(form, lambda: "powerramp",
-                                          titre="③ Photo du résultat")
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test rampe puissance / vitesse (lignes)")
@@ -5878,6 +5898,13 @@ class TaskPanelTestGrid:
         self.btn_generer.clicked.connect(self._on_generer)
         form.addRow(self.btn_generer)
 
+        # Procédure d'abord : ② mesures et ③ photo suivent directement ① ;
+        # les réglages manuels de la grille viennent après.
+        self._build_measures_section(form)
+        self._photo = _make_photo_section(
+            form, lambda: "testgrid:" + self.edt_measure_mat.currentText().strip(),
+            titre="③ Photo du résultat")
+
         _section(form, "Mode & plages puissance/vitesse", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
         self.combo_mode.addItems(["Gravure (remplissage)", "Découpe (contour)"])
@@ -6185,13 +6212,6 @@ class TaskPanelTestGrid:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg")])
         _combined_add_button(form, self._on_add_to_combined)
 
-        # ② Entrer les mesures (inline) + ③ Photo du résultat : le flux d'un
-        # mode de test = graver (au-dessus) puis mesurer/saisir juste en
-        # dessous, avec une photo du réel gardée à côté.
-        self._build_measures_section(form)
-        self._photo = _make_photo_section(
-            form, lambda: "testgrid:" + self.edt_measure_mat.currentText().strip(),
-            titre="③ Photo du résultat")
         self.edt_measure_mat.currentIndexChanged.connect(
             lambda _i: self._reload_measures_and_photo())
         self.edt_measure_mat.lineEdit().editingFinished.connect(
