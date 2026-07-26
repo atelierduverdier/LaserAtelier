@@ -125,8 +125,12 @@ Five modules, cleanly layered — keep the layering:
     as **① Graver** (burn params; Test grid adds an "Objectif" recommended-recipe combo via
     `self._recipes`) → **② Entrer les mesures** (data typed INLINE — no separate dialog, no trip to
     Preferences; writes to `save_burn_widths`/`save_shades`/`save_settings` or computes a value to
-    copy out for kerf/offset) → **③ Photo du résultat** (`_make_photo_section`). Nuancier is the
-    shared ledger (no burn step → no ①). Follow this for any new test mode.
+    copy out for kerf/offset) → **③ Photo du résultat** (`_make_photo_section`). Each such panel
+    also carries an `_etapes(form, [...])` clickable stepper at the top (jump-to-section) and a
+    `_verrou(...)` lock-by-default on its measured fields (also accepts a QTableWidget + buttons).
+    Nuancier is the shared ledger (no burn step), so its ①②③ is its own flow: ① Saisir les tons
+    (table, lock-by-default) → ② Photo → ③ Graver ce nuancier (planche physique). Follow this for
+    any new test mode.
   - **Job combiné**: operations are NOT added via bespoke mini-dialogs anymore. Each combinable mode
     (Flat cut, Curved cut, Curved marking, Test grid) has a `_build_combined_operation()` returning
     `{type,label,params}` (params = the exact kwargs its own generator uses, full-featured) and a

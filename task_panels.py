@@ -312,19 +312,29 @@ def _verrou(form, champs, titre="Verrouiller les résultats"):
     mesurées) sont en LECTURE SEULE, pour ne pas les modifier par accident
     (la molette est déjà neutralisée globalement par _neutraliser_molette ;
     ceci bloque en plus le clic et la frappe). Décocher pour corriger.
-    La restauration/les préréglages (setValue/setCurrentText programmatiques)
-    restent possibles. Renvoie la case, pour la relire au besoin."""
+    Accepte aussi un TABLEAU (édition UI bloquée, les déclencheurs d'origine
+    sont restaurés au déverrouillage) et des BOUTONS (désactivés) -- le
+    remplissage programmatique (setValue/setItem...) reste possible.
+    Renvoie la case, pour la relire au besoin."""
     chk = QtWidgets.QCheckBox("🔒 " + titre)
     chk.setChecked(True)
     chk.setToolTip(
         "Coché (par défaut) : les valeurs mesurées sont protégées en\n"
         "lecture seule. Décoche pour corriger une saisie.")
+    declencheurs0 = {id(w): w.editTriggers() for w in champs
+                     if isinstance(w, QtWidgets.QAbstractItemView)}
 
     def _appliquer(verrouille):
         for w in champs:
             if isinstance(w, (QtWidgets.QAbstractSpinBox, QtWidgets.QLineEdit)):
                 w.setReadOnly(verrouille)
             elif isinstance(w, QtWidgets.QComboBox):
+                w.setEnabled(not verrouille)
+            elif isinstance(w, QtWidgets.QAbstractItemView):
+                w.setEditTriggers(
+                    QtWidgets.QAbstractItemView.NoEditTriggers if verrouille
+                    else declencheurs0[id(w)])
+            elif isinstance(w, QtWidgets.QAbstractButton):
                 w.setEnabled(not verrouille)
 
     chk.toggled.connect(_appliquer)
@@ -2211,6 +2221,10 @@ class TaskPanelNuancier:
 
         _diagram(form, "diag_nuancier.svg")
 
+        _etapes(form, [("Saisir", "① Saisir les tons mesurés"),
+                       ("Photo", "② Photo du résultat"),
+                       ("Graver", "③ Graver ce nuancier (planche physique)")])
+
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Grave d'abord une <b>Grille de test</b>, une <b>Rampe</b> "
@@ -2218,17 +2232,17 @@ class TaskPanelNuancier:
             "qui te plaisent.",
             "<b>2.</b> Choisis un <b>matériau</b> existant, ou tape un nouveau "
             "nom (ex.&nbsp;«&nbsp;MDF&nbsp;6mm&nbsp;»).",
-            "<b>3.</b> Pour chaque ton retenu, «&nbsp;+ Ajouter un ton&nbsp;» et "
-            "renseigne le <b>réglage</b> (S, F, défocus) <b>et ce qu'il "
-            "produit</b>&nbsp;: noirceur 0-100&nbsp;% à l'œil (0 = matériau "
-            "intact, 100 = noir max), largeur du trait au pied à coulisse, "
-            "libellé libre.",
+            "<b>3.</b> Décoche le <b>verrou</b>, puis pour chaque ton retenu, "
+            "«&nbsp;+ Ajouter un ton&nbsp;» et renseigne le <b>réglage</b> (S, F, "
+            "défocus) <b>et ce qu'il produit</b>&nbsp;: noirceur 0-100&nbsp;% à "
+            "l'œil (0 = matériau intact, 100 = noir max), largeur du trait au "
+            "pied à coulisse, libellé libre.",
             "<b>4.</b> Clique <b>OK</b> pour enregistrer le tableau. Il "
             "alimente ensuite les <b>dégradés</b>, les <b>photos calibrées</b> "
             "et le «&nbsp;ton sur mesure&nbsp;» (ton mesuré le plus proche).",
         ])
 
-        _section(form, "Tons mesurés (saisie)", "sect_measure.svg", ouvert=True)
+        _section(form, "① Saisir les tons mesurés", "sect_measure.svg", ouvert=True)
         self.combo_mat = QtWidgets.QComboBox()
         self.combo_mat.setEditable(True)
         self.combo_mat.setToolTip(
@@ -2253,12 +2267,16 @@ class TaskPanelNuancier:
         btn_del = QtWidgets.QPushButton("Supprimer le ton sélectionné")
         btn_del.clicked.connect(self._on_del_row)
         form.addRow(btn_del)
+        # Le tableau des tons est LE registre du matériau : verrouillé par
+        # défaut (édition et boutons), comme les grilles de mesures.
+        self.chk_verrou_tons = _verrou(form, [self.table, btn_add, btn_del],
+                                       titre="Verrouiller les tons")
 
         self._photo = _make_photo_section(
             form, lambda: "nuancier:" + self.combo_mat.currentText().strip(),
-            titre="Photo du résultat")
+            titre="② Photo du résultat")
 
-        _section(form, "Graver ce nuancier (planche physique)", "sect_preset.svg", ouvert=True)
+        _section(form, "③ Graver ce nuancier (planche physique)", "sect_preset.svg", ouvert=True)
         _bullet_list(form, [
             "Grave une <b>planche de référence</b>&nbsp;: un cercle Ø20 par "
             "entrée, chacun avec sa recette et un <b>Job</b>, plus une "
