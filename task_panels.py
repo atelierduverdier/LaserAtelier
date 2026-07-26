@@ -2999,7 +2999,11 @@ def _make_surface_offset_row(form):
         "le fond d'une poche fraisée de 1 mm sans re-palper. Tout le job\n"
         "(Z de travail, survols) est décalé d'autant.\n"
         "En Marquage, surtout pour le mode À PLAT : laisser 0 en suivi\n"
-        "de relief.")
+        "de relief.\n"
+        "Poche déjà modélisée en 3D ? La Projection sur surface 3D est\n"
+        "plus sûre : elle projette le motif sur la vraie géométrie et\n"
+        "montre en direct qu'il tombe bien dans la poche, alors que ce\n"
+        "décalage est une valeur tapée à l'aveugle.")
     btn = QtWidgets.QPushButton("Depuis la face sélectionnée")
     btn.setToolTip(
         "Mesure le décalage depuis la vue 3D :\n"
