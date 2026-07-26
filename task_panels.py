@@ -755,14 +755,24 @@ def _maj_bouton_sections(bouton, entetes):
     bouton.setToolTip("Tout replier" if qqch_ouvert else "Tout déplier")
 
 
+# Drapeau : suspend l'accordéon pendant un pliage/dépliage GROUPÉ (bouton
+# « tout déplier ») -- sinon chaque ouverture replierait la précédente et il
+# ne resterait que la dernière section ouverte.
+_ACCORDEON_SUSPENDU = [False]
+
+
 def _basculer_toutes_sections(bouton, entetes):
     """Replie toutes les sections si au moins une est ouverte, sinon les
     déplie toutes."""
     if not entetes:
         return
     ouvrir = not any(h.isChecked() for h in entetes)
-    for h in entetes:
-        h.set_open(ouvrir)
+    _ACCORDEON_SUSPENDU[0] = True
+    try:
+        for h in entetes:
+            h.set_open(ouvrir)
+    finally:
+        _ACCORDEON_SUSPENDU[0] = False
     _maj_bouton_sections(bouton, entetes)
 
 
@@ -781,6 +791,9 @@ def _activer_sections(inner):
     while form.rowCount():
         res = form.takeRow(0)
         rangees.append((res.labelItem, res.fieldItem))
+    # Paires (en-tête, conteneur) du panneau -- pour le mode ACCORDÉON
+    # (ouvrir une section replie les autres, préférence sections_accordeon).
+    paires = []
 
     def _remettre(cible, label_item, field_item):
         label = label_item.widget() if label_item is not None else None
@@ -811,10 +824,27 @@ def _activer_sections(inner):
             etat = _section_state_get(cle, w.isChecked())
             w.setChecked(etat)
             conteneur.setVisible(etat)
+            paires.append((w, conteneur))
 
-            def _toggle(on, c=conteneur, k=cle):
+            def _toggle(on, c=conteneur, k=cle, entete=w):
                 c.setVisible(on)
                 _section_state_set(k, on)
+                # ACCORDÉON (préférence, activé par défaut) : ouvrir une
+                # section replie les autres -- moins de défilement, le
+                # panneau reste court. Suspendu pendant « tout déplier ».
+                if (on and getattr(core, "SECTIONS_ACCORDEON", True)
+                        and not _ACCORDEON_SUSPENDU[0]):
+                    for h2, c2 in paires:
+                        if h2 is not entete and h2.isChecked():
+                            h2.setChecked(False)   # sans ré-émettre toggled
+                            c2.setVisible(False)
+                            _section_state_set(h2.text(), False)
+                # Re-calage du layout : sans lui, le DERNIER rang d'une
+                # section rouverte peut rester rogné (hauteur du conteneur
+                # figée avant que le rang soit mesuré).
+                inner.layout().activate()
+                inner.adjustSize()
+                QtCore.QTimer.singleShot(0, inner.adjustSize)
             w.toggled.connect(_toggle)
             continue
         _remettre(cible, label_item, field_item)
@@ -4956,6 +4986,15 @@ class TaskPanelOffsetTest:
             "martyre, 0 si le zéro Z est fait sur la chute elle-même.")
         form.addRow("Z du dessus de la chute :", self.spn_surface_z)
 
+        self.btn_generer = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        _btn_icon(self.btn_generer, "sect_gcode.svg")
+        self.btn_generer.setToolTip(
+            "Génère le G-code du test (croix fraisée + croix laser, réglages\n"
+            "des sections ci-dessous) et propose l'enregistrement. Le panneau\n"
+            "reste ouvert pour saisir l'écart (②). OK, lui, ferme le panneau.")
+        self.btn_generer.clicked.connect(self._on_generer)
+        form.addRow(self.btn_generer)
+
         _section(form, "Croix fraisée", "sect_contour.svg")
         self.spn_mill_tool = QtWidgets.QSpinBox()
         self.spn_mill_tool.setRange(1, 99)
@@ -5124,17 +5163,23 @@ class TaskPanelOffsetTest:
         rapid, mark = core.parse_gcode_toolpath(gcode)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
 
-    def accept(self):
+    def _on_generer(self):
+        """Génère le G-code du test (croix fraisée + croix laser) et propose
+        l'enregistrement -- le panneau RESTE ouvert (saisie de l'écart ②)."""
         _save_last_values("offset_test", self._last_fields)
         gcode = core.generate_gcode_offset_test(
             **self._gen_kwargs())
-
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
-            return False
+            return
         # Position intentionnelle (calage fraise/laser) : pas de recadrage.
-        return _write_gcode_with_dialog(
+        _write_gcode_with_dialog(
             self.form, gcode, "/tmp/test_offsets_laser.ngc", recadrer_origine=False)
+
+    def accept(self):
+        # OK = mémoriser les réglages et fermer (génération : bouton de ①).
+        _save_last_values("offset_test", self._last_fields)
+        return True
 
     def reject(self):
         return True
@@ -9057,6 +9102,17 @@ class TaskPanelSettings:
         self.btn_import.clicked.connect(self._on_import_all)
         form.addRow(self.btn_import)
 
+        _section(form, "Interface", "sect_options.svg")
+        self.chk_accordeon = QtWidgets.QCheckBox(
+            "Sections en accordéon (en ouvrir une replie les autres)")
+        self.chk_accordeon.setChecked(bool(settings.get("sections_accordeon", True)))
+        self.chk_accordeon.setToolTip(
+            "Coché : dans les panneaux, ouvrir une section replie les autres\n"
+            "-- moins de défilement. Décoché : les sections restent ouvertes\n"
+            "indépendamment (comportement libre). Le bouton « tout déplier »\n"
+            "de l'en-tête ouvre tout dans les deux cas.")
+        form.addRow(self.chk_accordeon)
+
         _section(form, "Machine / G-code", "sect_options.svg")
         self.edt_spindle = QtWidgets.QLineEdit(settings["spindle_select"])
         self.edt_spindle.setToolTip(
@@ -9459,6 +9515,7 @@ class TaskPanelSettings:
             "gcode_dialect": self.combo_dialect.currentData(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
             "gcode_origin_bbox": self.chk_origin_bbox.isChecked(),
+            "sections_accordeon": self.chk_accordeon.isChecked(),
             "gcode_pre_global": self.txt_gcode_pre.toPlainText(),
             "gcode_post_global": self.txt_gcode_post.toPlainText(),
             "spindle_select": self.edt_spindle.text().strip(),

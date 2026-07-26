@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.39.0"
+VERSION = "1.40.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -557,6 +557,8 @@ CMD_BEAM_OFF = "S0 {sel}"
 # Les valeurs ci-dessous (et SPINDLE_SELECT/ARM_DWELL_S plus haut,
 # SAFE_MIN_NOZZLE_HEIGHT_MM etc. plus bas) ne sont que les défauts.
 GCODE_DIR = "/mnt/srv-partage/Gcode"  # dossier proposé par défaut à la sauvegarde G-code
+SECTIONS_ACCORDEON = True             # panneaux : ouvrir une section replie les autres
+                                      # (décochable dans Préférences > Interface)
 GCODE_PRE_GLOBAL = ""                 # G-code personnalisé GLOBAL inséré avant chaque job
 GCODE_POST_GLOBAL = ""                # ... et après chaque job (Préférences ; un seul couple
                                       # pour tous les modes, inséré une fois par job)
@@ -633,6 +635,7 @@ _USER_SETTINGS = (
      lambda v: v in ("linuxcnc", "grbl", "grblhal")),
     ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
     ("gcode_origin_bbox", "GCODE_ORIGIN_BBOX", bool, lambda v: isinstance(v, bool)),
+    ("sections_accordeon", "SECTIONS_ACCORDEON", bool, lambda v: isinstance(v, bool)),
     ("gcode_pre_global", "GCODE_PRE_GLOBAL", str, lambda v: isinstance(v, str)),
     ("gcode_post_global", "GCODE_POST_GLOBAL", str, lambda v: isinstance(v, str)),
     ("spindle_select", "SPINDLE_SELECT", str, lambda v: bool(v.strip())),
