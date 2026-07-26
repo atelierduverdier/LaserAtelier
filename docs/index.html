@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>1.32.0</b></span>
+        <span class="badge">Version <b>1.33.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -732,7 +732,7 @@
 
   <div class="callout note">
     <span class="ci">Par où commencer&nbsp;? — première calibration</span>
-    <p>Vous venez d'installer l'atelier et rien n'est réglé&nbsp;? Faites ces gravures <b>dans l'ordre</b> — les étapes ★1 et ★2 une seule fois pour la machine, l'étape ★3 pour chaque nouveau matériau. Chaque panneau de calibration rappelle son numéro d'étape en tête et suit le même fil&nbsp;: <b>① graver</b>, <b>② entrer les mesures</b> (juste en dessous, plus besoin d'aller les chercher ailleurs) et garder une <b>③ photo du résultat</b>.</p>
+    <p>Vous venez d'installer l'atelier et rien n'est réglé&nbsp;? Faites ces gravures <b>dans l'ordre</b> — les étapes ★1 et ★2 une seule fois pour la machine, l'étape ★3 pour chaque nouveau matériau. Chaque panneau de calibration rappelle son numéro d'étape en tête et suit le même fil&nbsp;: <b>① graver</b>, <b>② entrer les mesures</b> (juste en dessous, plus besoin d'aller les chercher ailleurs) et garder une <b>③ photo du résultat</b>. Pour un nouveau matériau, l'<b>Assistant matériau</b> regroupe tout le fil — planches, saisie, déductions — dans un seul panneau.</p>
     <ol>
       <li><b>★1 — Bande de calibration défocus.</b> Pour trouver le foyer et la divergence&nbsp;: charge le préréglage ★ «&nbsp;Recherche du foyer (fin)&nbsp;», grave, mesure → saisis dans la section <b>② Entrer les mesures (calibration du point)</b> du panneau.</li>
       <li><b>★2 — Test des offsets X/Y.</b> Pour aligner l'axe du laser&nbsp;: charge le préréglage ★ «&nbsp;Croix standard (10&nbsp;mm)&nbsp;», grave, saisis l'écart en section <b>②</b>&nbsp;: la correction à reporter dans <code>tool.tbl</code> est calculée (LinuxCNC&nbsp;; à sauter en GRBL ou laser seul).</li>
@@ -746,7 +746,7 @@
   <p>Chaque test alimente le suivant. Les étapes machine se font <b>une seule fois par laser</b> ; pour un nouveau matériau, trois planches séparées&nbsp;:</p>
   <ol>
     <li><b>Une fois par laser</b> — la <b>Bande de calibration défocus</b> (deux mesures du point, saisies dans le panneau) puis le <b>Test offsets fraise + laser</b> (X/Y du laser dans <code>tool.tbl</code>). Sans le point calibré, les planches au défocus seraient fausses.</li>
-    <li><b>Nouveau matériau</b> — trois boutons «&nbsp;<b>Planche 1 / 2 / 3</b>&nbsp;» (panneau Grille de test)&nbsp;: trois G-codes séparés, chacun recadré au zéro pièce (coin bas-gauche, sur le dessus)&nbsp;:
+    <li><b>Nouveau matériau</b> — trois boutons «&nbsp;<b>Planche 1 / 2 / 3</b>&nbsp;» (panneau Grille de test, ou l'<b>Assistant matériau</b> qui regroupe planches, saisie et déductions)&nbsp;: trois G-codes séparés, chacun recadré au zéro pièce (coin bas-gauche, sur le dessus)&nbsp;:
       <ul class="clean" style="margin:.55em 0 .7em">
         <li><b>Planche 1 — Foyer (S&nbsp;×&nbsp;F).</b> Grille de traits au foyer (puissances jusqu'à <code>s_max</code>&nbsp;×&nbsp;vitesses jusqu'au maxi machine). Mesurer la largeur brûlée de chaque trait, et <b>noter ceux qui restent vierges</b>&nbsp;: un trait vierge est une donnée — c'est le seuil du matériau.</li>
         <li><b>Planche 2 — Défocus (S&nbsp;×&nbsp;F).</b> Une grille par niveau de défocus (~15 et 36&nbsp;mm), en <b>balayant la vitesse</b> (jusqu'à ~F2000). Mesurer les largeurs&nbsp;: le modèle de largeur au défocus devient sensible au feed.</li>

@@ -1,7 +1,7 @@
 # Atelier Laser
 
 <p align="center"><img src="resources/logo.svg" alt="Atelier Laser — PrintNC" width="360"></p>
-<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v1.32.0</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
+<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v1.33.0</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
 <p align="center"><a href="https://ko-fi.com/atelierduverdier"><b>☕ L'atelier vous est utile ? Soutenez-le sur Ko-fi</b></a></p>
 
 Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de marquage/découpe laser : gravure noir plein de textes/formes, suivi de surfaces 3D courbes, découpe multi-passes, grilles de test et de calibration, et jobs combinant plusieurs opérations en une seule passe.
@@ -48,7 +48,7 @@ Communs à tous les modes : estimation de durée **tenant compte des accélérat
 Chaque test alimente le suivant — dans l'ordre :
 
 1. **Une fois par laser** (pas par matériau) : **Bande de calibration défocus** (deux mesures du point → Préférences), puis **Test offsets fraise + laser** (X/Y du laser dans `tool.tbl`).
-2. **Nouveau matériau** : trois boutons **« Planche 1 / 2 / 3 »** (panneau Grille de test) → trois G-codes séparés, chacun recadré au zéro pièce (coin bas-gauche, sur le dessus) :
+2. **Nouveau matériau** : trois boutons **« Planche 1 / 2 / 3 »** (panneau Grille de test, ou l'**Assistant matériau** qui regroupe planches, saisie et déductions dans un seul panneau) → trois G-codes séparés, chacun recadré au zéro pièce (coin bas-gauche, sur le dessus) :
    - **Planche 1 — Foyer (S × F)** : grille de traits au foyer (puissances jusqu'à `s_max` × vitesses jusqu'au maxi machine) : mesurer la **largeur brûlée** de chaque trait, noter ceux qui restent vierges (un trait vierge est une donnée : c'est le seuil du matériau) ;
    - **Planche 2 — Défocus (S × F, niveaux 15/36 mm)** : une grille par niveau de défocus, en **balayant la vitesse** (jusqu'à ~F2000) : mesurer les largeurs → le modèle de largeur au défocus devient sensible au feed ;
    - **Planche 3 — Largeur du point** : la bande de calibration du point (Ø au foyer + Ø à une hauteur connue), gravée avec des valeurs par défaut — les réglages fins restent dans le mode « Bande de calibration défocus ».

@@ -182,6 +182,25 @@ class KerfCommand:
         _show(task_panels.TaskPanelKerf())
 
 
+class AssistantCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("assistant.svg"),
+            "MenuText": "Assistant matériau",
+            "ToolTip": "Caractériser un matériau du début à la fin : graver les "
+                       "trois planches, saisir les mesures, déduire (largeurs, "
+                       "espacements, nuancier)",
+        }
+
+    def IsActive(self):
+        # Les planches s'écrivent en fichier et le nuancier crée son propre
+        # document : utilisable sans document ouvert.
+        return True
+
+    def Activated(self):
+        _show(task_panels.TaskPanelAssistant())
+
+
 class TestGridCommand:
     def GetResources(self):
         return {
@@ -410,6 +429,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Halftone", HalftoneCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
+    Gui.addCommand("LaserAtelier_Assistant", AssistantCommand())
     Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())
     Gui.addCommand("LaserAtelier_PowerRamp", PowerRampCommand())
     Gui.addCommand("LaserAtelier_DefocusCalibration", DefocusCalibrationCommand())

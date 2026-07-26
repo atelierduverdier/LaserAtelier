@@ -446,6 +446,123 @@ class _GrilleResultats(QtWidgets.QGroupBox):
                 sp.setValue(float(v))
 
 
+def _boutons_planches(form, ecrire):
+    """Les trois boutons « Planche 1/2/3 » (partagés entre la Grille de test
+    et l'Assistant matériau) : chacun génère son G-code et le remet à
+    `ecrire(gcode, chemin_defaut)` -- le recadrage au zéro pièce se fait à
+    l'écriture. Renvoie (btn1, btn2, btn3)."""
+    b1 = QtWidgets.QPushButton("Planche 1 — Foyer (S × F)")
+    b1.setToolTip(
+        "Grille de traits AU FOYER : S (bornée à s_max) × F jusqu'au maxi\n"
+        "machine. Mesure la largeur brûlée de chaque trait (un trait vierge\n"
+        "= seuil du matériau) -> largeur au foyer (feed-aware).\n"
+        "Fichier séparé, recadré au zéro pièce (coin bas-gauche).")
+    b1.clicked.connect(lambda: ecrire(core.generate_gcode_planche_focus(),
+                                      "/tmp/planche1_foyer.ngc"))
+    form.addRow(b1)
+
+    b2 = QtWidgets.QPushButton("Planche 2 — Défocus (S × F, niveaux 15/36)")
+    b2.setToolTip(
+        "Traits AU DÉFOCUS : une grille S × F par niveau (~15 et 36 mm), en\n"
+        "BALAYANT le feed (jusqu'à ~2000). Mesure les largeurs -> alimente\n"
+        "le modèle feed-aware du remplissage (burn_width_defocus_scaled).\n"
+        "Fichier séparé, recadré au zéro pièce.")
+    b2.clicked.connect(lambda: ecrire(core.generate_gcode_planche_defocus(),
+                                      "/tmp/planche2_defocus.ngc"))
+    form.addRow(b2)
+
+    b3 = QtWidgets.QPushButton("Planche 3 — Largeur du point (défocus)")
+    b3.setToolTip(
+        "Bande de calibration du POINT : Ø net au foyer + Ø à une hauteur\n"
+        "connue -> le modèle d'élargissement du point. Réglages fins dans le\n"
+        "mode « Bande de calibration défocus » (Préférences > Calibration du\n"
+        "point) ; ce bouton grave la bande par défaut, recadrée au zéro pièce.")
+    b3.clicked.connect(lambda: ecrire(core.generate_gcode_planche_spot(),
+                                      "/tmp/planche3_point.ngc"))
+    form.addRow(b3)
+    return b1, b2, b3
+
+
+class _MesuresPlanchesControleur:
+    """Bloc partagé « saisie des mesures des planches » (Grille de test,
+    Assistant matériau) : une _GrilleResultats pour la Planche 1 (foyer) +
+    une par niveau de défocus (Planche 2) + le bouton « Enregistrer les
+    mesures ». `get_material()` fournit le matériau courant ; reload()
+    recharge depuis la config (anciennes mesures mono-feed -> colonne F800
+    du bon niveau, z_offset déjà ramené au niveau standard par
+    load_burn_widths) ; l'enregistrement passe par save_burn_widths puis
+    rappelle `on_saved` (rafraîchir liste des matériaux, déductions...).
+    `parent` = le panneau hôte (boîtes de message via parent.form)."""
+
+    POWERS = (1000, 800, 600, 400, 200)
+    FEEDS_FOCUS = (200, 400, 800, 1500, 3000, 6000)
+    FEEDS_DEFOCUS = (400, 800, 1500, 2000)
+
+    def __init__(self, form, parent, get_material, on_saved=None):
+        self._parent = parent
+        self._get_material = get_material
+        self._on_saved = on_saved
+        self._levels = [round(float(dz), 3) for dz in core.DEFOCUS_LEVELS_MM]
+        self.grille_focus = _GrilleResultats(
+            "Planche 1 — traits au FOYER : largeur (mm)",
+            rows=self.POWERS, cols=self.FEEDS_FOCUS)
+        form.addRow(self.grille_focus)
+        self.grilles_defocus = {}
+        for dz in self._levels:
+            gr = _GrilleResultats(
+                "Planche 2 — défocus {:.0f} mm : largeur (mm)".format(dz),
+                rows=self.POWERS, cols=self.FEEDS_DEFOCUS)
+            self.grilles_defocus[dz] = gr
+            form.addRow(gr)
+        self.btn_save = QtWidgets.QPushButton("Enregistrer les mesures")
+        self.btn_save.setToolTip(
+            "Range ces largeurs pour le matériau indiqué. Indépendant de "
+            "l'OK du panneau.")
+        self.btn_save.clicked.connect(self._on_save)
+        form.addRow(self.btn_save)
+
+    def _boite(self):
+        return getattr(self._parent, "form", None)
+
+    def reload(self):
+        """Pré-remplit les grilles depuis les mesures déjà enregistrées pour
+        le matériau courant (0 / « — » = non mesuré)."""
+        mat = (self._get_material() or "").strip()
+        data = core.load_burn_widths(mat) if mat else {}
+        self.grille_focus.set_values(
+            {(float(pt.get("power", 0)), float(pt.get("feed", 0))):
+             float(pt.get("width", 0.0)) for pt in data.get("focus", [])})
+        par_niveau = {dz: {} for dz in self._levels}
+        for pt in data.get("defocus", []):
+            z = float(pt.get("z_offset", 0.0) or 0.0)
+            if not self._levels:
+                continue
+            zk = min(self._levels, key=lambda L: abs(L - z))
+            par_niveau[zk][(float(pt.get("power", 0)),
+                            float(pt.get("feed", 800)))] = float(pt.get("width", 0.0))
+        for dz, gr in self.grilles_defocus.items():
+            gr.set_values(par_niveau.get(dz, {}))
+
+    def _on_save(self):
+        mat = (self._get_material() or "").strip()
+        if not mat:
+            QtWidgets.QMessageBox.warning(
+                self._boite(), "Mesures", "Indiquer un nom de matériau.")
+            return
+        focus = [{"power": p, "feed": f, "width": round(w, 2)}
+                 for (p, f), w in self.grille_focus.values().items()]
+        defocus = [{"power": p, "feed": f, "width": round(w, 2), "z_offset": dz}
+                   for dz, gr in self.grilles_defocus.items()
+                   for (p, f), w in gr.values().items()]
+        core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
+        QtWidgets.QMessageBox.information(
+            self._boite(), "Mesures",
+            "{} mesure(s) foyer + {} défocus enregistrées pour « {} ».".format(
+                len(focus), len(defocus), mat))
+        if self._on_saved:
+            self._on_saved()
+
+
 def _panel_header(form, icon_name, title):
     """Bandeau en tête de panneau : icône du mode + nom en gras/agrandi,
     suivi d'un trait. Repère visuel immédiat du mode ouvert. À droite,
@@ -2014,6 +2131,51 @@ class TaskPanelGuide:
         return True
 
 
+def _lancer_nuancier_physique(parent_form, source, material, label_power, label_feed):
+    """Construit le nuancier physique (un cercle par ton mesuré ou par
+    préréglage, recette + Job chacun + étiquettes), l'empile dans le job
+    combiné et ouvre le panneau Job combiné, prêt à générer. Partagé entre
+    le mode Nuancier et l'Assistant matériau. Confirme si le job combiné
+    n'est pas vide."""
+    items, err = _nuancier_items(source, material)
+    if not items:
+        QtWidgets.QMessageBox.information(parent_form, "Nuancier", err)
+        return
+    if _COMBINED_OPS:
+        rep = QtWidgets.QMessageBox.question(
+            parent_form, "Job combiné",
+            "Le job combiné contient déjà {} opération(s).\n\n"
+            "Vider et repartir d'un nuancier propre ?\n"
+            "(Non = ajouter le nuancier à la suite)".format(len(_COMBINED_OPS)),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+            | QtWidgets.QMessageBox.Cancel)
+        if rep == QtWidgets.QMessageBox.Cancel:
+            return
+        if rep == QtWidgets.QMessageBox.Yes:
+            _COMBINED_OPS[:] = []
+    doc, jobs, warn = _construire_nuancier_preregles(
+        label_power, label_feed, source=source, material=material)
+    if not jobs:
+        QtWidgets.QMessageBox.critical(
+            parent_form, "Nuancier",
+            "Construction impossible.\n" + (warn or ""))
+        return
+    import laser_jobs
+    ajoutes, ignores = laser_jobs.ajouter_jobs_au_combine(jobs)
+    msgs = [m for m in (warn,
+                        ("Jobs ignorés :\n- " + "\n- ".join(ignores))
+                        if ignores else None) if m]
+    if not ajoutes:
+        QtWidgets.QMessageBox.critical(
+            parent_form, "Nuancier",
+            "Aucune opération valide.\n" + "\n\n".join(msgs))
+        return
+    if msgs:
+        QtWidgets.QMessageBox.warning(parent_form, "Nuancier", "\n\n".join(msgs))
+    import commands
+    commands._show(TaskPanelCombined())
+
+
 # ==========================================================================
 # NUANCIER MATÉRIAU (tons de gris mesurés)
 # ==========================================================================
@@ -2215,47 +2377,11 @@ class TaskPanelNuancier:
         """Grave ce nuancier en planche physique : un cercle par ton mesuré
         (ou par préréglage, selon la source), recette + Job chacun +
         étiquettes, empilés dans le job combiné, prêt à générer."""
-        source = self.combo_nuancier_source.currentData() or "tons"
-        material = self.combo_mat.currentText().strip()
-        items, err = _nuancier_items(source, material)
-        if not items:
-            QtWidgets.QMessageBox.information(self.form, "Nuancier", err)
-            return
-        if _COMBINED_OPS:
-            rep = QtWidgets.QMessageBox.question(
-                self.form, "Job combiné",
-                "Le job combiné contient déjà {} opération(s).\n\n"
-                "Vider et repartir d'un nuancier propre ?\n"
-                "(Non = ajouter le nuancier à la suite)".format(len(_COMBINED_OPS)),
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
-                | QtWidgets.QMessageBox.Cancel)
-            if rep == QtWidgets.QMessageBox.Cancel:
-                return
-            if rep == QtWidgets.QMessageBox.Yes:
-                _COMBINED_OPS[:] = []
-        doc, jobs, warn = _construire_nuancier_preregles(
-            self.spn_lbl_power.value(), self.spn_lbl_feed.value(),
-            source=source, material=material)
-        if not jobs:
-            QtWidgets.QMessageBox.critical(
-                self.form, "Nuancier",
-                "Construction impossible.\n" + (warn or ""))
-            return
-        import laser_jobs
-        ajoutes, ignores = laser_jobs.ajouter_jobs_au_combine(jobs)
-        msgs = [m for m in (warn,
-                            ("Jobs ignorés :\n- " + "\n- ".join(ignores))
-                            if ignores else None) if m]
-        if not ajoutes:
-            QtWidgets.QMessageBox.critical(
-                self.form, "Nuancier",
-                "Aucune opération valide.\n" + "\n\n".join(msgs))
-            return
-        if msgs:
-            QtWidgets.QMessageBox.warning(
-                self.form, "Nuancier", "\n\n".join(msgs))
-        import commands
-        commands._show(TaskPanelCombined())
+        _lancer_nuancier_physique(
+            self.form,
+            self.combo_nuancier_source.currentData() or "tons",
+            self.combo_mat.currentText().strip(),
+            self.spn_lbl_power.value(), self.spn_lbl_feed.value())
 
     def accept(self):
         material = self.combo_mat.currentText().strip()
@@ -5683,37 +5809,11 @@ class TaskPanelTestGrid:
                        ("Photo", "③ Photo du résultat")])
 
         # Trois planches de calibration séparées (fichiers distincts, recadrés
-        # au zéro pièce). On mesure ensuite leurs largeurs dans « ② Entrer les
-        # mesures » ci-dessous. Prérequis : calibration du point (Planche 3 /
-        # Préférences).
-        self.btn_planche1 = QtWidgets.QPushButton("Planche 1 — Foyer (S × F)")
-        self.btn_planche1.setToolTip(
-            "Grille de traits AU FOYER : S (bornée à s_max) × F jusqu'au maxi\n"
-            "machine. Mesure la largeur brûlée de chaque trait (un trait vierge\n"
-            "= seuil du matériau) -> largeur au foyer (feed-aware).\n"
-            "Fichier séparé, recadré au zéro pièce (coin bas-gauche).")
-        self.btn_planche1.clicked.connect(self._on_planche_focus)
-        form.addRow(self.btn_planche1)
-
-        self.btn_planche2 = QtWidgets.QPushButton(
-            "Planche 2 — Défocus (S × F, niveaux 15/36)")
-        self.btn_planche2.setToolTip(
-            "Traits AU DÉFOCUS : une grille S × F par niveau (~15 et 36 mm), en\n"
-            "BALAYANT le feed (jusqu'à ~2000). Mesure les largeurs -> alimente\n"
-            "le modèle feed-aware du remplissage (burn_width_defocus_scaled).\n"
-            "Fichier séparé, recadré au zéro pièce.")
-        self.btn_planche2.clicked.connect(self._on_planche_defocus)
-        form.addRow(self.btn_planche2)
-
-        self.btn_planche3 = QtWidgets.QPushButton(
-            "Planche 3 — Largeur du point (défocus)")
-        self.btn_planche3.setToolTip(
-            "Bande de calibration du POINT : Ø net au foyer + Ø à une hauteur\n"
-            "connue -> le modèle d'élargissement du point. Réglages fins dans le\n"
-            "mode « Bande de calibration défocus » (Préférences > Calibration du\n"
-            "point) ; ce bouton grave la bande par défaut, recadrée au zéro pièce.")
-        self.btn_planche3.clicked.connect(self._on_planche_spot)
-        form.addRow(self.btn_planche3)
+        # au zéro pièce), boutons partagés avec l'Assistant matériau. On mesure
+        # ensuite leurs largeurs dans « ② Entrer les mesures » ci-dessous.
+        # Prérequis : calibration du point (Planche 3 / Préférences).
+        (self.btn_planche1, self.btn_planche2,
+         self.btn_planche3) = _boutons_planches(form, self._ecrire_planche)
         # La saisie des mesures n'est plus un dialogue séparé : elle est
         # désormais inline, dans la section « ② Entrer les mesures » plus bas.
         _intro(form,
@@ -6542,80 +6642,25 @@ class TaskPanelTestGrid:
             "résultat ci-dessous). Choisis-en un ou tape un nouveau nom.")
         form.addRow("Matériau mesuré :", self.edt_measure_mat)
 
-        # Grilles de saisie alignées sur les planches : mêmes S, mêmes F.
-        # Chaque _GrilleResultats intègre son verrou (coché par défaut) et la
-        # neutralisation de la molette.
-        self._m_powers = [1000, 800, 600, 400, 200]
-        self._m_feeds_focus = [200, 400, 800, 1500, 3000, 6000]
-        self._m_feeds_defocus = [400, 800, 1500, 2000]
-        self._m_levels = [round(float(dz), 3) for dz in core.DEFOCUS_LEVELS_MM]
-
-        self._grille_focus = _GrilleResultats(
-            "Planche 1 — traits au FOYER : largeur (mm)",
-            rows=self._m_powers, cols=self._m_feeds_focus)
-        form.addRow(self._grille_focus)
-
-        self._grilles_defocus = {}
-        for dz in self._m_levels:
-            gr = _GrilleResultats(
-                "Planche 2 — défocus {:.0f} mm : largeur (mm)".format(dz),
-                rows=self._m_powers, cols=self._m_feeds_defocus)
-            self._grilles_defocus[dz] = gr
-            form.addRow(gr)
-
-        self.btn_save_measures = QtWidgets.QPushButton("Enregistrer les mesures")
-        self.btn_save_measures.setToolTip(
-            "Range ces largeurs pour le matériau indiqué. Indépendant de "
-            "l'OK du panneau, qui lui génère la gravure.")
-        self.btn_save_measures.clicked.connect(self._on_save_measures)
-        form.addRow(self.btn_save_measures)
-
-        self._reload_measures()
+        # Grilles de saisie alignées sur les planches (bloc partagé avec
+        # l'Assistant matériau) : chaque grille intègre son verrou (coché par
+        # défaut) et la neutralisation de la molette.
+        self._mesures = _MesuresPlanchesControleur(
+            form, self, lambda: self.edt_measure_mat.currentText(),
+            on_saved=self._maj_liste_materiaux)
+        self._mesures.reload()
 
     def _reload_measures(self):
-        """Pré-remplit les grilles depuis les mesures déjà enregistrées pour
-        le matériau courant (0 / « — » = non mesuré). Au défocus, chaque point
-        va dans la grille de son niveau (z_offset, déjà ramené au niveau
-        standard par load_burn_widths) à sa colonne de feed (anciennes mesures
-        mono-feed -> colonne F800)."""
-        mat = self.edt_measure_mat.currentText().strip()
-        data = core.load_burn_widths(mat) if mat else {}
-        self._grille_focus.set_values(
-            {(float(pt.get("power", 0)), float(pt.get("feed", 0))):
-             float(pt.get("width", 0.0)) for pt in data.get("focus", [])})
-        par_niveau = {dz: {} for dz in self._m_levels}
-        for pt in data.get("defocus", []):
-            z = float(pt.get("z_offset", 0.0) or 0.0)
-            if not self._m_levels:
-                continue
-            zk = min(self._m_levels, key=lambda L: abs(L - z))
-            par_niveau[zk][(float(pt.get("power", 0)),
-                            float(pt.get("feed", 800)))] = float(pt.get("width", 0.0))
-        for dz, gr in self._grilles_defocus.items():
-            gr.set_values(par_niveau.get(dz, {}))
+        self._mesures.reload()
 
     def _reload_measures_and_photo(self):
         self._reload_measures()
         if getattr(self, "_photo", None):
             self._photo["reload"]()
 
-    def _on_save_measures(self):
-        mat = self.edt_measure_mat.currentText().strip()
-        if not mat:
-            QtWidgets.QMessageBox.warning(
-                self.form, "Mesures", "Indiquer un nom de matériau.")
-            return
-        focus = [{"power": p, "feed": f, "width": round(w, 2)}
-                 for (p, f), w in self._grille_focus.values().items()]
-        defocus = [{"power": p, "feed": f, "width": round(w, 2), "z_offset": dz}
-                   for dz, gr in self._grilles_defocus.items()
-                   for (p, f), w in gr.values().items()]
-        core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
-        QtWidgets.QMessageBox.information(
-            self.form, "Mesures",
-            "{} mesure(s) foyer + {} défocus enregistrées pour « {} ».".format(
-                len(focus), len(defocus), mat))
-        # rafraîchit la liste des matériaux du sélecteur (nouveau nom éventuel)
+    def _maj_liste_materiaux(self):
+        """Après un enregistrement : rafraîchit la liste des matériaux du
+        sélecteur (un nouveau nom vient peut-être d'apparaître)."""
         cur = self.edt_measure_mat.currentText()
         self.edt_measure_mat.blockSignals(True)
         self.edt_measure_mat.clear()
@@ -6629,18 +6674,6 @@ class TaskPanelTestGrid:
                 self.form, "Erreur", "Génération vide (calibration invalide ?).")
             return
         _write_gcode_with_dialog(self.form, gcode, chemin)
-
-    def _on_planche_focus(self):
-        self._ecrire_planche(core.generate_gcode_planche_focus(),
-                             "/tmp/planche1_foyer.ngc")
-
-    def _on_planche_defocus(self):
-        self._ecrire_planche(core.generate_gcode_planche_defocus(),
-                             "/tmp/planche2_defocus.ngc")
-
-    def _on_planche_spot(self):
-        self._ecrire_planche(core.generate_gcode_planche_spot(),
-                             "/tmp/planche3_point.ngc")
 
     def accept(self):
         if self.spn_power_max.value() < self.spn_power_min.value():
@@ -8552,6 +8585,191 @@ class TaskPanelCurvedCut:
 
 # ==========================================================================
 # MODE : JOB COMBINÉ (PLUSIEURS OPÉRATIONS, UN SEUL ARMEMENT)
+# ==========================================================================
+# ASSISTANT MATÉRIAU (le fil de calibration en un panneau)
+# ==========================================================================
+class TaskPanelAssistant:
+    """ASSISTANT MATÉRIAU : caractériser un matériau du début à la fin, dans
+    un seul panneau -- ① graver les trois planches, ② mesurer (mêmes grilles
+    que la Grille de test), ③ déduire (état du modèle, sonde d'interpolation,
+    nuancier physique). Pure orchestration : générateurs et saisie sont ceux
+    des modes autonomes (Grille, Rampe, Bande défocus, Nuancier), qui restent
+    utilisables séparément."""
+
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        _panel_header(form, "assistant.svg", "Assistant matériau")
+        _intro(form,
+               "Caractérise un matériau du début à la fin : grave les trois "
+               "planches, mesure au pied à coulisse, saisis — l'atelier en "
+               "déduit largeurs et espacements pour tous les modes.",
+               "Les modes autonomes (Grille, Rampe, Bande défocus, Nuancier) "
+               "restent : l'Assistant les orchestre sans les remplacer. "
+               "Prérequis, une fois par laser : la calibration du point "
+               "(Planche 3, saisie dans le mode « Bande de calibration "
+               "défocus » ou les Préférences).")
+
+        self.combo_mat = QtWidgets.QComboBox()
+        self.combo_mat.setEditable(True)
+        self.combo_mat.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_mat.setMinimumContentsLength(14)
+        mats = core.burn_width_materials() or core.shade_materials() or ["MDF"]
+        self.combo_mat.addItems(mats)
+        self.combo_mat.setCurrentText(mats[0])
+        self.combo_mat.setToolTip(
+            "Matériau caractérisé : les mesures et les tons y sont rangés.\n"
+            "Choisis-en un ou tape un nouveau nom (ex. « Hêtre »).")
+        form.addRow("Matériau :", self.combo_mat)
+
+        _etapes(form, [("Graver", "① Graver les trois planches"),
+                       ("Mesurer", "② Entrer les mesures (largeurs)"),
+                       ("Déduire", "③ Déduire (modèle & nuancier)")])
+
+        _section(form, "① Graver les trois planches", "sect_power.svg", ouvert=True)
+        form.addRow(_WrapLabel(
+            "Trois fichiers séparés, chacun recadré au zéro pièce (coin "
+            "bas-gauche de la chute, sur le dessus). Grave-les sur le même "
+            "matériau et dans les mêmes conditions (filet d'air, propreté de "
+            "la lentille) que tes futurs jobs."))
+        _boutons_planches(form, self._ecrire_planche)
+
+        _section(form, "② Entrer les mesures (largeurs)", "sect_measure.svg",
+                 ouvert=True)
+        form.addRow(_WrapLabel(
+            "Mesure la LARGEUR brûlée de chaque trait au pied à coulisse "
+            "(1/10 mm). « — » = non mesuré ; un trait vierge est une donnée "
+            "(seuil du matériau), laisse-le à « — ». Décoche le verrou d'une "
+            "grille pour saisir, puis « Enregistrer les mesures »."))
+        self._mesures = _MesuresPlanchesControleur(
+            form, self, lambda: self.combo_mat.currentText(),
+            on_saved=self._maj_deductions)
+
+        _section(form, "③ Déduire (modèle & nuancier)", "sect_preset.svg",
+                 ouvert=True)
+        self.lbl_etat = _WrapLabel("")
+        form.addRow(self.lbl_etat)
+        # Sonde d'interpolation : montre en direct la largeur que le modèle
+        # prédit pour un réglage donné -- la preuve que les mesures servent.
+        self.spn_sonde_s = QtWidgets.QDoubleSpinBox()
+        self.spn_sonde_s.setRange(0.0, core.S_MAX)
+        self.spn_sonde_s.setDecimals(0)
+        self.spn_sonde_s.setValue(min(600.0, core.S_MAX))
+        form.addRow("Sonde — puissance S :", self.spn_sonde_s)
+        self.spn_sonde_f = QtWidgets.QDoubleSpinBox()
+        self.spn_sonde_f.setRange(1.0, 20000.0)
+        self.spn_sonde_f.setDecimals(0)
+        self.spn_sonde_f.setValue(800.0)
+        self.spn_sonde_f.setSuffix(" mm/min")
+        form.addRow("Sonde — vitesse F :", self.spn_sonde_f)
+        self.spn_sonde_dz = QtWidgets.QDoubleSpinBox()
+        self.spn_sonde_dz.setRange(0.0, 60.0)
+        self.spn_sonde_dz.setDecimals(1)
+        self.spn_sonde_dz.setValue(12.0)
+        self.spn_sonde_dz.setSuffix(" mm")
+        self.spn_sonde_dz.setToolTip(
+            "Hauteur du bec AU-DESSUS du foyer (0 = au foyer).")
+        form.addRow("Sonde — défocus :", self.spn_sonde_dz)
+        self.lbl_sonde = _WrapLabel("")
+        form.addRow(self.lbl_sonde)
+        for w in (self.spn_sonde_s, self.spn_sonde_f, self.spn_sonde_dz):
+            w.valueChanged.connect(self._maj_sonde)
+
+        self.btn_nuancier = QtWidgets.QPushButton(
+            "Construire le nuancier physique (tons mesurés)…")
+        self.btn_nuancier.setToolTip(
+            "Un cercle gravé par TON MESURÉ du matériau (mode Nuancier),\n"
+            "recette + Job chacun + étiquettes, empilés dans le job combiné\n"
+            "(ouvre le panneau Job combiné, prêt à générer).")
+        self.btn_nuancier.clicked.connect(self._on_nuancier)
+        form.addRow(self.btn_nuancier)
+        form.addRow(_WrapLabel(
+            "Les TONS (noirceur 0-100 %) se découvrent avec la Rampe ou la "
+            "Grille de test et se consignent dans le mode Nuancier — "
+            "l'Assistant grave ensuite leur planche physique ci-dessus."))
+
+        self.combo_mat.currentIndexChanged.connect(self._on_mat_change)
+        self.combo_mat.lineEdit().editingFinished.connect(self._on_mat_change)
+
+        self._mesures.reload()
+        self._maj_deductions()
+
+        self.form = _scrollable(inner)
+
+    def _ecrire_planche(self, gcode, chemin):
+        if not gcode:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Erreur", "Génération vide (calibration invalide ?).")
+            return
+        _write_gcode_with_dialog(self.form, gcode, chemin)
+
+    def _on_mat_change(self, *_):
+        self._mesures.reload()
+        self._maj_deductions()
+
+    def _maj_deductions(self):
+        self._maj_etat()
+        self._maj_sonde()
+
+    def _maj_etat(self):
+        """Résumé de ce que le modèle sait du matériau : mesures au foyer,
+        couverture par niveau de défocus (le feed est-il balayé ?), tons."""
+        mat = self.combo_mat.currentText().strip()
+        data = core.load_burn_widths(mat) if mat else {}
+        focus = data.get("focus") or []
+        dfc = data.get("defocus") or []
+        shades = core.load_shades(mat) if mat else []
+        if not (focus or dfc or shades):
+            self.lbl_etat.setText(
+                "<b>« {} » : aucune mesure.</b> Grave les planches (①), "
+                "mesure, saisis (②) — le modèle s'active tout seul.".format(
+                    mat or "?"))
+            return
+        par_niveau = {}
+        for pt in dfc:
+            z = round(float(pt.get("z_offset", 0) or 0), 3)
+            par_niveau.setdefault(z, set()).add(float(pt.get("feed", 800)))
+        morceaux = ["<b>« {} »</b> : {} mesure(s) au foyer".format(
+            mat, len(focus))]
+        for z in sorted(par_niveau):
+            feeds = sorted(par_niveau[z])
+            morceaux.append("défocus {:.0f} mm : {} vitesse(s) ({})".format(
+                z, len(feeds), ", ".join("F{:.0f}".format(f) for f in feeds)))
+        feed_aware = any(len(v) >= 2 for v in par_niveau.values())
+        morceaux.append("largeur au défocus sensible au feed : {}".format(
+            "<b>oui</b>" if feed_aware
+            else "non (une seule vitesse mesurée — grave la Planche 2)"))
+        morceaux.append("{} ton(s) au nuancier".format(len(shades)))
+        self.lbl_etat.setText(" · ".join(morceaux) + ".")
+
+    def _maj_sonde(self, *_):
+        mat = self.combo_mat.currentText().strip()
+        w = core.burn_width_defocus_scaled(
+            self.spn_sonde_s.value(), self.spn_sonde_f.value(),
+            self.spn_sonde_dz.value(), mat) if mat else None
+        if not w:
+            self.lbl_sonde.setText(
+                "Sonde : aucune mesure exploitable pour ce matériau "
+                "(grave et saisis d'abord la Planche 2).")
+            return
+        self.lbl_sonde.setText(
+            "<b>Largeur brûlée prédite : {:.2f} mm</b> → espacement plein "
+            "conseillé : <b>{:.2f} mm</b> (largeur × 0,9 : 10 % de "
+            "recouvrement).".format(w, w * 0.9))
+
+    def _on_nuancier(self):
+        _lancer_nuancier_physique(self.form, "tons",
+                                  self.combo_mat.currentText().strip(),
+                                  600.0, 800.0)
+
+    def accept(self):
+        return True
+
+    def reject(self):
+        return True
+
+
 # ==========================================================================
 # Les 3 sous-dialogues ci-dessous (un par type d'opération) sont des
 # QDialog MODALES classiques -- pas des Gui::TaskView comme les panneaux

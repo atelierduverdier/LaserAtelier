@@ -68,6 +68,7 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_JobsToCombined",
             "Separator",
             # ===== CALIBRATION (après le travail, dans l'ordre du parcours ★1->★4) =====
+            "LaserAtelier_Assistant",           # le fil complet (planches -> mesures -> déductions)
             "LaserAtelier_DefocusCalibration",  # ★1 foyer + défocus
             "LaserAtelier_OffsetTest",          # ★2 offsets X/Y
             "LaserAtelier_TestGrid",            # ★3 planche matériau
