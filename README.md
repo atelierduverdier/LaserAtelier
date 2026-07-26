@@ -1,7 +1,7 @@
 # Atelier Laser
 
 <p align="center"><img src="resources/logo.svg" alt="Atelier Laser — PrintNC" width="360"></p>
-<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v1.31.0</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
+<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v1.32.0</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
 <p align="center"><a href="https://ko-fi.com/atelierduverdier"><b>☕ L'atelier vous est utile ? Soutenez-le sur Ko-fi</b></a></p>
 
 Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de marquage/découpe laser : gravure noir plein de textes/formes, suivi de surfaces 3D courbes, découpe multi-passes, grilles de test et de calibration, et jobs combinant plusieurs opérations en une seule passe.
@@ -43,20 +43,18 @@ Tous les modes de **test & calibration** (Grille, Rampe, Bande de calibration d�
 
 Communs à tous les modes : estimation de durée **tenant compte des accélérations** (profil trapézoïdal par course, accélération réglable dans les Préférences — décisif sur les remplissages faits de milliers de traits courts), aperçu de trajet dans la vue 3D, aperçu de cadrage en fichier séparé (avec faisceau de visée à très faible puissance optionnel) pour vérifier le positionnement avant de lancer, préréglages matériau, préférences globales, et **mémorisation des derniers réglages** de chaque panneau (rouvrir un mode retrouve les valeurs de la dernière fois). Mieux : les **réglages sont attachés à la forme** — à la génération, les réglages du panneau sont écrits dans une propriété de l'objet sélectionné, sauvegardée **avec le document** (.FCStd). Rouvrir plus tard le même mode avec cette forme sélectionnée re-propose *ses* réglages (prioritaires sur les derniers réglages globaux) : chaque forme du document garde sa recette de gravure. Et chaque génération crée un objet **Job** dans l'arborescence (« Job Marquage - Logo »…) qui référence la ou les formes sources : **double-clic dessus** = re-sélection des sources et réouverture du panneau pré-rempli, prêt à modifier et régénérer. Un Job par couple mode/forme — et même **par sous-sélection** : deux faces d'un même sketch ou d'un SVG importé peuvent porter deux recettes et deux Jobs distincts (« Job Gravure remplie - Sketch [Face2] »), sans rien séparer à la main. Régénérer met à jour le Job existant, votre renommage est conservé. Jobs et formes sources sont rangés automatiquement dans un dossier **« Atelier Laser »** de l'arborescence, et un bouton dédié empile les **Jobs sélectionnés dans le job combiné** (chacun avec sa recette) pour générer un fichier unique sans rouvrir les panneaux.
 
-## La hiérarchie des tests (nouveau matériau = une planche)
+## La hiérarchie des tests (nouveau matériau = trois planches)
 
 Chaque test alimente le suivant — dans l'ordre :
 
 1. **Une fois par laser** (pas par matériau) : **Bande de calibration défocus** (deux mesures du point → Préférences), puis **Test offsets fraise + laser** (X/Y du laser dans `tool.tbl`).
-2. **Nouveau matériau** : bouton **« Planche de calibration matériau »** (panneau Grille de test) → un seul G-code à graver sur une chute ~130 × 125 mm (zéro au coin bas-gauche, sur le dessus). Trois sections numérotées, de bas en haut :
-   - **1 — traits au foyer** (5 puissances × 5 vitesses, F400 → F6000 : jusqu'au maxi machine) : mesurer la **largeur brûlée** de chaque trait, noter ceux qui restent vierges (un trait vierge est une donnée : c'est le seuil du matériau) ;
-   - **2 — traits au défocus** (5 puissances à F800, point élargi du remplissage) : mesurer les largeurs ;
-   - **3 — bandes nuancier** (rectangles remplis au défocus, 2 puissances × 5 vitesses) : estimer la **noirceur** (0–100 %) et mesurer la largeur → saisir chaque bande dans le mode **Nuancier**.
+2. **Nouveau matériau** : trois boutons **« Planche 1 / 2 / 3 »** (panneau Grille de test) → trois G-codes séparés, chacun recadré au zéro pièce (coin bas-gauche, sur le dessus) :
+   - **Planche 1 — Foyer (S × F)** : grille de traits au foyer (puissances jusqu'à `s_max` × vitesses jusqu'au maxi machine) : mesurer la **largeur brûlée** de chaque trait, noter ceux qui restent vierges (un trait vierge est une donnée : c'est le seuil du matériau) ;
+   - **Planche 2 — Défocus (S × F, niveaux 15/36 mm)** : une grille par niveau de défocus, en **balayant la vitesse** (jusqu'à ~F2000) : mesurer les largeurs → le modèle de largeur au défocus devient sensible au feed ;
+   - **Planche 3 — Largeur du point** : la bande de calibration du point (Ø au foyer + Ø à une hauteur connue), gravée avec des valeurs par défaut — les réglages fins restent dans le mode « Bande de calibration défocus ».
 
-   Les largeurs des sections 1–2 se saisissent dans la section **« ② Entrer les mesures »** du panneau Grille de test : elles alimentent l'interpolation largeur(S, F) utilisée par le bouton « Auto (½ point) » des Hachures, et la **Gravure remplie** (style plein) resserre automatiquement l'espacement de ses hachures à la largeur réellement brûlée quand elle est plus étroite que le point optique — c'est ce qui supprime les lignes visibles sur les tons clairs (faibles puissances). Toutes ces données restent dans la config locale (`laser_atelier_config.json`, dossier utilisateur FreeCAD) — rien de spécifique à votre machine ne part avec l'atelier.
+   Les largeurs des planches 1–2 se saisissent dans la section **« ② Entrer les mesures »** du panneau Grille de test (une grille de saisie par planche/niveau, verrouillée par défaut contre les modifications accidentelles) : elles alimentent l'interpolation largeur(S, F) utilisée par le bouton « Auto (½ point) » des Hachures, et la **Gravure remplie** (style plein) resserre automatiquement l'espacement de ses hachures à la largeur réellement brûlée quand elle est plus étroite que le point optique — c'est ce qui supprime les lignes visibles sur les tons clairs (faibles puissances). Les **noirceurs** (tons) se découvrent avec la **Rampe** ou la **Grille de test** puis se consignent dans le mode **Nuancier**. Toutes ces données restent dans la config locale (`laser_atelier_config.json`, dossier utilisateur FreeCAD) — rien de spécifique à votre machine ne part avec l'atelier.
 3. **Après le nuancier** (facultatif, pour choisir à l'œil) : **Mire des styles** (Marquage) et **Mire des tramages** (Gravure photo).
-
-![Planche de calibration matériau](docs/assets/diag_planche_calibration.svg)
 
 ## Modèle de défocus (remplissage noir)
 

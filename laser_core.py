@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.31.0"
+VERSION = "1.32.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3615,7 +3615,7 @@ CALIBRATION_JOURNEY = [
         "n": 3,
         "mode": "Grille de test puissance / vitesse",
         "but": "caractériser un matériau (largeurs brûlées + noirceurs)",
-        "action": "clique « Planche de calibration matériau », puis « Saisir les mesures… »",
+        "action": "grave les « Planches 1-2-3 », puis saisis les largeurs dans « ② Entrer les mesures »",
         "reporter": "table de largeurs + Préférences → Nuancier",
     },
     {
@@ -6553,130 +6553,128 @@ def generate_gcode_catalogue(power, feed, z_focus, sample_text="Laser",
                                    post_gcode=post_gcode, quiet=quiet)
 
 
-def generate_gcode_material_board(z_focus=None,
-                                   powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
-                                   feeds_focus=(400.0, 800.0, 1500.0, 3000.0, 6000.0),
-                                   feeds_bands=(200.0, 400.0, 600.0, 800.0, 1000.0),
-                                   band_powers=(600.0, 1000.0),
-                                   trait_len=20.0, row_gap=6.0,
-                                   band_w=15.0, band_h=8.0, band_spacing=1.0,
-                                   defocus_levels_mm=DEFOCUS_LEVELS_MM,
-                                   label_height=3.0,
-                                   pre_gcode="", post_gcode="", quiet=False):
-    """PLANCHE DE CALIBRATION MATÉRIAU : un seul job qui grave, sur une
-    chute (~130 x 125 mm), tout ce qu'il faut mesurer pour caler un
-    NOUVEAU matériau. Trois sections numérotées, de bas en haut :
+# ---------------------------------------------------------------------------
+# PLANCHES DE CALIBRATION SÉPARÉES (refonte : on scinde la planche unique en
+# trois). Chacune est un seul job (un armement) et sort recadrée au zéro pièce
+# à l'écriture (_write_gcode_with_dialog). Helpers communs ci-dessous.
+# ---------------------------------------------------------------------------
+def _powers_capped(powers):
+    """Puissances bornées à S_MAX (plafond du laser actif), dédupliquées et
+    triées croissant -- le balayage de puissance ne dépasse jamais l'échelle."""
+    return tuple(sorted({min(float(p), float(S_MAX)) for p in powers}))
 
-      1  TRAITS AU FOYER -- grille S x F (5 puissances x 5 vitesses,
-         F400 -> F6000 : jusqu'au maxi machine, un trait vierge est une
-         donnée -- c'est le seuil du matériau). À mesurer : la LARGEUR
-         brûlée de chaque trait (et noter ceux qui ne marquent pas).
-      2  TRAITS AU DÉFOCUS -- 5 puissances à F800, à PLUSIEURS niveaux de
-         défocus (une colonne par niveau, cf. defocus_levels_mm : ~15 / 36
-         / 50 mm). À mesurer : la largeur brûlée de chaque trait -> le
-         remplissage interpole entre ces niveaux selon son défocus réel
-         (fin comme très défocalisé, sans extrapolation hasardeuse).
-      3  BANDES NUANCIER -- rectangles remplis au défocus,
-         2 puissances x 5 vitesses. À mesurer : NOIRCEUR (0-100 %%) et
-         largeur de trait -> à saisir dans Préférences > Nuancier.
 
-    Prérequis (une fois par laser, PAS par matériau) : la calibration du
-    point dans les Préférences (Bande de calibration défocus).
-    Étiquettes gravées à S600/F800. Assemblé via
-    generate_gcode_combined : un seul armement pour toute la planche."""
+def _trait_op(x, y, power, feed, z_focus, nom, trait_len):
+    """Op « curved » d'un trait horizontal de longueur trait_len à (x, y),
+    gravé à z_focus (foyer + défocus éventuel)."""
+    p1 = FreeCAD.Vector(x, y, 0.0)
+    p2 = FreeCAD.Vector(x + trait_len, y, 0.0)
+    return {"type": "curved", "label": nom,
+            "params": dict(edges=[Part.LineSegment(p1, p2).toShape()],
+                           power=power, feed=feed, z_focus=z_focus,
+                           marge_survol=TRANSIT_MARGIN_MM)}
+
+
+def _op_etiquettes(label_edges, z_focus, nom):
+    """Op « curved » regroupant toutes les étiquettes d'une planche (gravées au
+    foyer à S600/F800, réglage médian lisible)."""
+    return {"type": "curved", "label": nom,
+            "params": dict(edges=label_edges, power=600.0, feed=800.0,
+                           z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM)}
+
+
+def generate_gcode_planche_focus(z_focus=None,
+                                 powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
+                                 feeds=(200.0, 400.0, 800.0, 1500.0, 3000.0, 6000.0),
+                                 trait_len=20.0, row_gap=6.0, label_height=3.0,
+                                 pre_gcode="", post_gcode="", quiet=False):
+    """PLANCHE 1 -- FOYER (Vitesse x Puissance). Grille de traits gravés AU
+    FOYER : une ligne par puissance S (bornée à S_MAX), une colonne par vitesse
+    F (jusqu'au maxi machine). À mesurer : la LARGEUR brûlée de chaque trait
+    (un trait vierge est une donnée : seuil du matériau) -> alimente
+    burn_width_at (foyer, feed-aware). Un seul armement."""
     if z_focus is None:
         z_focus = Z_WORK_MM
-    half_angle = calibrated_half_angle()
-    defocus = defocus_for_fill_spacing(
-        band_spacing, SPOT_FOCUS_MM, half_angle) or 0.0
-
-    lab_pw, lab_fd = 600.0, 800.0   # étiquettes : réglage médian lisible
-    sec_h = 5.0                     # hauteur des chiffres de section
-    x0 = 16.0                       # début des traits/bandes (étiquettes à gauche)
-    ops = []
-    label_edges = []
+    powers = _powers_capped(powers)
+    x0, col_pitch = 16.0, trait_len + 12.0
+    ops, label_edges = [], []
 
     def _lab(txt, x, y, h=None):
         label_edges.extend(text_to_edges(txt, x, y, h or label_height))
 
-    def _trait(x, y, power, feed, z, name):
-        p1 = FreeCAD.Vector(x, y, 0.0)
-        p2 = FreeCAD.Vector(x + trait_len, y, 0.0)
-        ops.append({
-            "type": "curved",
-            "label": name,
-            "params": dict(edges=[Part.LineSegment(p1, p2).toShape()],
-                           power=power, feed=feed, z_focus=z,
-                           marge_survol=TRANSIT_MARGIN_MM),
-        })
-
-    # ---- Section 1 : traits au foyer, grille S x F --------------------
-    col_pitch = trait_len + 12.0
-    for i, s_pw in enumerate(powers):
+    for i, s in enumerate(powers):
         y = 4.0 + i * row_gap
-        _lab("S{:.0f}".format(s_pw), 2.0, y - label_height / 2.0)
-        for j, f in enumerate(feeds_focus):
-            _trait(x0 + j * col_pitch, y, s_pw, f, z_focus,
-                   "Planche 1 : foyer S{:.0f} F{:.0f}".format(s_pw, f))
-    y_head1 = 4.0 + len(powers) * row_gap + 1.0
-    for j, f in enumerate(feeds_focus):
-        _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head1)
-    _lab("1", 0.0, y_head1, sec_h)
-
-    # ---- Section 2 : traits au défocus, F800, à plusieurs niveaux ------
-    # Une colonne par niveau de défocus (mm au-dessus du foyer) : la largeur
-    # brûlée mesurée à chaque niveau alimente l'interpolation du remplissage
-    # (burn_width_defocus_scaled). En-tête colonne = « d<mm> ».
-    y2 = y_head1 + sec_h + 6.0
-    col_pitch2 = trait_len + 12.0
-    for i, s_pw in enumerate(powers):
-        y = y2 + i * row_gap
-        _lab("S{:.0f}".format(s_pw), 2.0, y - label_height / 2.0)
-        for k, dz in enumerate(defocus_levels_mm):
-            _trait(x0 + k * col_pitch2, y, s_pw, 800.0, z_focus + dz,
-                   "Planche 2 : defocus {:.0f}mm S{:.0f} F800".format(dz, s_pw))
-    y_head2 = y2 + len(powers) * row_gap + 1.0
-    for k, dz in enumerate(defocus_levels_mm):
-        _lab("d{:.0f}".format(dz), x0 + k * col_pitch2, y_head2)
-    _lab("2", 0.0, y_head2, sec_h)
-
-    # ---- Section 3 : bandes nuancier au défocus -----------------------
-    y3 = y_head2 + sec_h + 6.0
-    band_pitch = band_w + 8.0
-    n_lines = max(2, int(band_h / band_spacing) + 1)
-    for k, f in enumerate(feeds_bands):
-        _lab("F{:.0f}".format(f), x0 + k * band_pitch, y3 - label_height - 1.0)
-    for j, s_pw in enumerate(band_powers):
-        yb = y3 + j * (band_h + 6.0)
-        _lab("S{:.0f}".format(s_pw), 2.0, yb + band_h / 2.0 - label_height / 2.0)
-        for k, f in enumerate(feeds_bands):
-            xb = x0 + k * band_pitch
-            edges = []
-            for n in range(n_lines):
-                yy = yb + n * band_h / float(n_lines - 1)
-                edges.append(Part.LineSegment(
-                    FreeCAD.Vector(xb, yy, 0.0),
-                    FreeCAD.Vector(xb + band_w, yy, 0.0)).toShape())
-            ops.append({
-                "type": "curved",
-                "label": "Planche 3 : bande S{:.0f} F{:.0f}".format(s_pw, f),
-                "params": dict(edges=edges, power=s_pw, feed=f,
-                               z_focus=z_focus + defocus,
-                               marge_survol=TRANSIT_MARGIN_MM),
-            })
-    y_head3 = y3 + len(band_powers) * (band_h + 6.0) + 1.0
-    _lab("3", 0.0, y_head3, sec_h)
-
+        _lab("S{:.0f}".format(s), 2.0, y - label_height / 2.0)
+        for j, f in enumerate(feeds):
+            ops.append(_trait_op(x0 + j * col_pitch, y, s, f, z_focus,
+                                 "Planche 1 : foyer S{:.0f} F{:.0f}".format(s, f),
+                                 trait_len))
+    y_head = 4.0 + len(powers) * row_gap + 1.0
+    for j, f in enumerate(feeds):
+        _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
+    _lab("1", 0.0, y_head + 6.0, 5.0)
     if label_edges:
-        ops.append({
-            "type": "curved",
-            "label": "Planche calibration : etiquettes",
-            "params": dict(edges=label_edges, power=lab_pw, feed=lab_fd,
-                           z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM),
-        })
-
+        ops.append(_op_etiquettes(label_edges, z_focus, "Planche 1 : etiquettes"))
     return generate_gcode_combined(ops, pre_gcode=pre_gcode,
                                    post_gcode=post_gcode, quiet=quiet)
+
+
+def generate_gcode_planche_defocus(z_focus=None,
+                                   powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
+                                   feeds=(400.0, 800.0, 1500.0, 2000.0),
+                                   defocus_levels_mm=DEFOCUS_LEVELS_MM,
+                                   trait_len=20.0, row_gap=6.0, block_gap=10.0,
+                                   label_height=3.0,
+                                   pre_gcode="", post_gcode="", quiet=False):
+    """PLANCHE 2 -- DÉFOCUS (balayage du feed). Pour CHAQUE niveau de défocus
+    (defocus_levels_mm, ~15 et 36 mm), une grille de traits S x F gravés à
+    z_focus + dz (le feed monte jusqu'à ~2000, au-delà ça ne marque plus au
+    défocus). À mesurer : la largeur brûlée de chaque trait -> alimente le
+    modèle feed-aware burn_width_defocus_scaled(S, F, défocus). Un bloc étiqueté
+    « d<mm> » par niveau, empilés. Un seul armement."""
+    if z_focus is None:
+        z_focus = Z_WORK_MM
+    powers = _powers_capped(powers)
+    x0, col_pitch = 16.0, trait_len + 12.0
+    ops, label_edges = [], []
+
+    def _lab(txt, x, y, h=None):
+        label_edges.extend(text_to_edges(txt, x, y, h or label_height))
+
+    y = 4.0
+    for dz in defocus_levels_mm:
+        for i, s in enumerate(powers):
+            yy = y + i * row_gap
+            _lab("S{:.0f}".format(s), 6.0, yy - label_height / 2.0)
+            for j, f in enumerate(feeds):
+                ops.append(_trait_op(x0 + j * col_pitch, yy, s, f, z_focus + dz,
+                                     "Planche 2 : d{:.0f} S{:.0f} F{:.0f}".format(dz, s, f),
+                                     trait_len))
+        y_head = y + len(powers) * row_gap + 1.0
+        for j, f in enumerate(feeds):
+            _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
+        _lab("d{:.0f}".format(dz), 0.0, y_head, 5.0)
+        y = y_head + block_gap
+    if label_edges:
+        ops.append(_op_etiquettes(label_edges, z_focus, "Planche 2 : etiquettes"))
+    return generate_gcode_combined(ops, pre_gcode=pre_gcode,
+                                   post_gcode=post_gcode, quiet=quiet)
+
+
+def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet=False):
+    """PLANCHE 3 -- LARGEUR DU POINT. Reprend le noyau « Bande de calibration
+    défocus » : une série de traits à hauteurs de bec croissantes (Z, du foyer
+    jusqu'à ~36 mm), pour mesurer le Ø net au foyer et le Ø à une hauteur connue
+    -> le modèle d'élargissement du point (spot_diameter_at_defocus). Le mode
+    autonome « Bande de calibration défocus » (Préférences > Calibration du
+    point) reste pour les réglages fins ; ce raccourci grave la bande avec des
+    valeurs par défaut, recadré au zéro pièce comme les autres planches."""
+    if z_focus is None:
+        z_focus = Z_WORK_MM
+    return generate_gcode_defocus_calibration(
+        z_start=z_focus, z_step=3.0, n_marks=13, mark_length=15.0, row_gap=6.0,
+        power=600.0, feed=1500.0, pre_gcode=pre_gcode, post_gcode=post_gcode,
+        quiet=quiet)
 
 
 def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,

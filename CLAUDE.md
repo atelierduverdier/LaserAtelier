@@ -204,15 +204,19 @@ optical spot over-estimates the real burn width. Outward overspill is bounded by
 it stays hidden; a wider contour closes more of the gap.
 
 The **measured** burn width (which drives fill spacing/inset, not the optical spot) is
-`burn_width_defocus_scaled(power, defocus)`. The calibration plank (`generate_gcode_material_board`,
-section 2) burns the defocus test at **several levels** — `DEFOCUS_LEVELS_MM` (≈15/36/50 mm), one
-column each — and `burn_width_defocus_scaled` **interpolates** the width between the two bracketing
-levels (linear in defocus, linear in S within a level); outside the measured range, or with a single
-level, it falls back to the old proportional-to-optical-spot extrapolation. Measurements are entered
-per level in the "Saisir les mesures de la planche…" dialog (one defocus column per level, stored with
-each point's `z_offset`; old single-level data maps to the nearest level). This replaces the earlier
-single-point average that over-estimated the burn at a working defocus (e.g. 36 mm) far from the one
-measured point (~15 mm) — the root cause of the liseré that v1.11.2 could only mask with the contour.
+`burn_width_defocus_scaled(power, feed, defocus)` — **feed-aware** since v1.31.0. Calibration is
+burned via three separate planks (`generate_gcode_planche_focus` / `_defocus` / `_spot`, all
+translated to piece zero on write): Planche 2 burns an S×F grid at **each** `DEFOCUS_LEVELS_MM`
+level (15 and 36 mm), and `burn_width_defocus_scaled` interpolates **bilinearly in (S, F)** at each
+level (shared `_bilinear_burn` helper, same as `burn_width_at` at focus: S linear, F log) then
+linearly between the two bracketing levels; outside the measured range, or with a single level, it
+falls back to the proportional-to-optical-spot extrapolation. Measurements are entered inline in the
+Test-grid panel's "② Entrer les mesures" section (`_GrilleResultats` per plank/level, lock-by-default;
+stored with each point's `z_offset`, snapped to the nearest standard level by `_snap_defocus_level`
+on read — e.g. legacy 15.34 → 15; legacy single-feed data lands in the F800 column). This replaces
+the earlier single-point average that over-estimated the burn at a working defocus (e.g. 36 mm) far
+from the one measured point (~15 mm) — the root cause of the liseré that v1.11.2 could only mask
+with the contour.
 
 ### Persistence & user settings
 

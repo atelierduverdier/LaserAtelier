@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>1.31.0</b></span>
+        <span class="badge">Version <b>1.32.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -616,9 +616,9 @@
         <div class="when"><b>Quand&nbsp;?</b> Trouver le couple puissance/vitesse d'un nouveau matériau, par paliers discrets.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>
-          <img src="assets/diag_planche_calibration.svg" alt="Planche de calibration : traits au foyer, traits au défocus (3 niveaux) et bandes nuancier">
+          <img src="assets/diag_planche_calibration.svg" alt="Planches de calibration : traits au foyer, traits au défocus et largeur du point">
           <ol>
-            <li>Aucune sélection. Pour un nouveau matériau, préférer la <b>Planche de calibration</b> (tout en un job).</li>
+            <li>Aucune sélection. Pour un nouveau matériau, préférer les <b>Planches 1-2-3</b> (foyer, défocus, largeur du point — un fichier chacune).</li>
             <li>Choisir gravure/découpe, les plages de <b>puissance</b> (colonnes) et <b>vitesse</b> (lignes), le nombre de cellules.</li>
             <li>Régler taille des cellules, plein/contour, étiquettes S/F.</li>
             <li><b>Hauteur (Z) de test</b>&nbsp;: rejouer la grille à une autre hauteur (bec défocalisé).</li>
@@ -743,22 +743,22 @@
   </div>
 
   <h3>La hiérarchie des tests — dans l'ordre</h3>
-  <p>Chaque test alimente le suivant. Les étapes machine se font <b>une seule fois par laser</b> ; pour un nouveau matériau, une seule planche suffit&nbsp;:</p>
+  <p>Chaque test alimente le suivant. Les étapes machine se font <b>une seule fois par laser</b> ; pour un nouveau matériau, trois planches séparées&nbsp;:</p>
   <ol>
-    <li><b>Une fois par laser</b> — la <b>Bande de calibration défocus</b> (deux mesures du point, saisies dans le panneau) puis le <b>Test offsets fraise + laser</b> (X/Y du laser dans <code>tool.tbl</code>). Sans le point calibré, les sections défocus de la planche seraient fausses.</li>
-    <li><b>Nouveau matériau</b> — bouton «&nbsp;<b>Planche de calibration matériau</b>&nbsp;» (panneau Grille de test)&nbsp;: UN SEUL G-code, gravé sur une chute ~130&nbsp;×&nbsp;125&nbsp;mm (zéro machine au coin bas-gauche, sur le dessus). Trois sections numérotées, de bas en haut&nbsp;:
+    <li><b>Une fois par laser</b> — la <b>Bande de calibration défocus</b> (deux mesures du point, saisies dans le panneau) puis le <b>Test offsets fraise + laser</b> (X/Y du laser dans <code>tool.tbl</code>). Sans le point calibré, les planches au défocus seraient fausses.</li>
+    <li><b>Nouveau matériau</b> — trois boutons «&nbsp;<b>Planche 1 / 2 / 3</b>&nbsp;» (panneau Grille de test)&nbsp;: trois G-codes séparés, chacun recadré au zéro pièce (coin bas-gauche, sur le dessus)&nbsp;:
       <ul class="clean" style="margin:.55em 0 .7em">
-        <li><b>1 — traits au foyer.</b> Grille 5&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses (F400&nbsp;→&nbsp;F6000, jusqu'au maxi machine). Mesurer la largeur brûlée de chaque trait, et <b>noter ceux qui restent vierges</b>&nbsp;: un trait vierge est une donnée — c'est le seuil du matériau.</li>
-        <li><b>2 — traits au défocus.</b> 5&nbsp;puissances à F800, à <b>trois niveaux de défocus</b> (~15&nbsp;/&nbsp;36&nbsp;/&nbsp;50&nbsp;mm, une colonne par niveau). Mesurer la largeur brûlée de chaque trait.</li>
-        <li><b>3 — bandes nuancier.</b> Rectangles remplis au défocus (2&nbsp;puissances&nbsp;×&nbsp;5&nbsp;vitesses). Estimer la noirceur (0–100&nbsp;%) et mesurer la largeur, puis saisir chaque bande dans le mode <b>Nuancier</b>.</li>
+        <li><b>Planche 1 — Foyer (S&nbsp;×&nbsp;F).</b> Grille de traits au foyer (puissances jusqu'à <code>s_max</code>&nbsp;×&nbsp;vitesses jusqu'au maxi machine). Mesurer la largeur brûlée de chaque trait, et <b>noter ceux qui restent vierges</b>&nbsp;: un trait vierge est une donnée — c'est le seuil du matériau.</li>
+        <li><b>Planche 2 — Défocus (S&nbsp;×&nbsp;F).</b> Une grille par niveau de défocus (~15 et 36&nbsp;mm), en <b>balayant la vitesse</b> (jusqu'à ~F2000). Mesurer les largeurs&nbsp;: le modèle de largeur au défocus devient sensible au feed.</li>
+        <li><b>Planche 3 — Largeur du point.</b> La bande de calibration du point (Ø au foyer + Ø à une hauteur connue), gravée avec des valeurs par défaut — les réglages fins restent dans le mode «&nbsp;Bande de calibration défocus&nbsp;».</li>
       </ul>
-      Les largeurs des sections&nbsp;1–2 se saisissent dans la section «&nbsp;<b>② Entrer les mesures</b>&nbsp;» du panneau Grille de test (une colonne par niveau de défocus). La <b>Gravure remplie</b> resserre alors l'espacement de ses hachures à la largeur <b>réellement brûlée</b> — interpolée entre les niveaux mesurés selon le défocus du job — dès qu'elle est plus étroite que le point optique&nbsp;: fini les lignes visibles sur les tons clairs.
+      Les largeurs des planches&nbsp;1–2 se saisissent dans la section «&nbsp;<b>② Entrer les mesures</b>&nbsp;» du panneau Grille de test (une grille de saisie par planche/niveau, verrouillée par défaut). La <b>Gravure remplie</b> resserre alors l'espacement de ses hachures à la largeur <b>réellement brûlée</b> — interpolée en (S,&nbsp;F) puis entre les niveaux selon le défocus du job — dès qu'elle est plus étroite que le point optique&nbsp;: fini les lignes visibles sur les tons clairs. Les <b>noirceurs</b> (tons) se découvrent avec la <b>Rampe</b> ou la <b>Grille</b> puis se consignent au <b>Nuancier</b>.
       <br><small>Toutes ces mesures restent dans la config locale — rien de spécifique à votre machine ne part avec l'atelier.</small></li>
     <li><b>Après le nuancier</b> (facultatif, pour choisir à l'œil) — la <b>Mire des styles</b> (Marquage) et la <b>Mire des tramages</b> (Gravure photo).</li>
   </ol>
   <figure class="diagram" style="margin:0">
-    <img src="assets/diag_planche_calibration.svg" alt="Plan de la planche de calibration matériau : trois sections numérotées">
-    <figcaption>La planche de calibration matériau&nbsp;: sections 1 (traits au foyer), 2 (traits au défocus, 3 niveaux 15/36/50&nbsp;mm), 3 (bandes nuancier), avec ce qu'il faut mesurer sur chacune.</figcaption>
+    <img src="assets/diag_planche_calibration.svg" alt="Plan des planches de calibration matériau : foyer, défocus, largeur du point">
+    <figcaption>Les planches de calibration matériau&nbsp;: 1 (traits au foyer, S&nbsp;×&nbsp;F), 2 (traits au défocus, S&nbsp;×&nbsp;F aux niveaux 15/36&nbsp;mm), 3 (largeur du point), avec ce qu'il faut mesurer sur chacune.</figcaption>
   </figure>
 
   <h3>Le point &amp; le modèle de défocus</h3>

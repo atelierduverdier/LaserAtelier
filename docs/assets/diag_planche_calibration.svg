@@ -1,73 +1,64 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 250">
-  <!-- Planche de calibration matériau : 3 sections, de bas en haut -->
-  <rect x="10" y="10" width="240" height="230" rx="6" fill="none" stroke="#2f3540" stroke-width="2"/>
+  <!-- Planches de calibration matériau : trois G-codes séparés -->
 
-  <!-- Section 3 (haut) : bandes nuancier -->
-  <text x="18" y="34" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">3</text>
-  <g fill="#ff8a00" opacity="0.75">
-    <rect x="34" y="24" width="30" height="14"/>
-    <rect x="70" y="24" width="30" height="14"/>
-    <rect x="106" y="24" width="30" height="14"/>
-    <rect x="142" y="24" width="30" height="14"/>
-    <rect x="178" y="24" width="30" height="14"/>
-    <rect x="34" y="46" width="30" height="14"/>
-    <rect x="70" y="46" width="30" height="14"/>
-    <rect x="106" y="46" width="30" height="14"/>
-    <rect x="142" y="46" width="30" height="14"/>
-    <rect x="178" y="46" width="30" height="14"/>
+  <!-- Planche 1 : traits au foyer, grille S x F -->
+  <rect x="10" y="10" width="240" height="64" rx="6" fill="none" stroke="#2f3540" stroke-width="2"/>
+  <text x="18" y="28" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">1</text>
+  <g stroke="#2f3540" stroke-width="1.6" stroke-linecap="round">
+    <line x1="34" y1="24" x2="58" y2="24"/><line x1="66" y1="24" x2="90" y2="24"/><line x1="98" y1="24" x2="122" y2="24"/><line x1="130" y1="24" x2="154" y2="24"/><line x1="162" y1="24" x2="186" y2="24"/><line x1="194" y1="24" x2="218" y2="24"/>
+    <line x1="34" y1="36" x2="58" y2="36"/><line x1="66" y1="36" x2="90" y2="36"/><line x1="98" y1="36" x2="122" y2="36"/><line x1="130" y1="36" x2="154" y2="36"/><line x1="162" y1="36" x2="186" y2="36"/><line x1="194" y1="36" x2="218" y2="36"/>
+    <line x1="34" y1="48" x2="58" y2="48"/><line x1="66" y1="48" x2="90" y2="48"/><line x1="98" y1="48" x2="122" y2="48"/><line x1="130" y1="48" x2="154" y2="48"/><line x1="162" y1="48" x2="186" y2="48"/><line x1="194" y1="48" x2="218" y2="48"/>
   </g>
-  <text x="216" y="35" font-family="sans-serif" font-size="9" fill="#2f3540">S1000</text>
-  <text x="216" y="57" font-family="sans-serif" font-size="9" fill="#2f3540">S600</text>
-  <text x="34" y="72" font-family="sans-serif" font-size="9" fill="#2f3540">F200  F400  F600  F800  F1000</text>
+  <text x="34" y="66" font-family="sans-serif" font-size="8" fill="#2f3540">F200 → F6000</text>
+  <text x="176" y="66" font-family="sans-serif" font-size="8" fill="#2f3540">S200 → S1000</text>
 
-  <!-- Section 2 (milieu) : traits au défocus, 3 niveaux (colonne = défocus,
-       épaisseur croissante = point plus large quand on remonte le bec) -->
-  <text x="18" y="116" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">2</text>
-  <g font-family="sans-serif" font-size="8.5" fill="#2f3540" text-anchor="middle" font-weight="bold">
-    <text x="53" y="87">d15</text>
-    <text x="105" y="87">d36</text>
-    <text x="157" y="87">d50</text>
+  <!-- Planche 2 : traits au défocus, une grille S x F par niveau (15 / 36) -->
+  <rect x="10" y="84" width="240" height="82" rx="6" fill="none" stroke="#2f3540" stroke-width="2"/>
+  <text x="18" y="102" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">2</text>
+  <g font-family="sans-serif" font-size="8.5" fill="#2f3540" font-weight="bold">
+    <text x="34" y="99">d15</text>
+    <text x="34" y="137">d36</text>
   </g>
   <g stroke="#ff8a00" stroke-linecap="round" opacity="0.75">
     <g stroke-width="2.6">
-      <line x1="34" y1="94" x2="72" y2="94"/><line x1="34" y1="104" x2="72" y2="104"/><line x1="34" y1="114" x2="72" y2="114"/><line x1="34" y1="124" x2="72" y2="124"/><line x1="34" y1="134" x2="72" y2="134"/>
+      <line x1="58" y1="96" x2="88" y2="96"/><line x1="96" y1="96" x2="126" y2="96"/><line x1="134" y1="96" x2="164" y2="96"/><line x1="172" y1="96" x2="202" y2="96"/>
+      <line x1="58" y1="108" x2="88" y2="108"/><line x1="96" y1="108" x2="126" y2="108"/><line x1="134" y1="108" x2="164" y2="108"/><line x1="172" y1="108" x2="202" y2="108"/>
     </g>
-    <g stroke-width="3.6">
-      <line x1="86" y1="94" x2="124" y2="94"/><line x1="86" y1="104" x2="124" y2="104"/><line x1="86" y1="114" x2="124" y2="114"/><line x1="86" y1="124" x2="124" y2="124"/><line x1="86" y1="134" x2="124" y2="134"/>
-    </g>
-    <g stroke-width="4.8">
-      <line x1="138" y1="94" x2="176" y2="94"/><line x1="138" y1="104" x2="176" y2="104"/><line x1="138" y1="114" x2="176" y2="114"/><line x1="138" y1="124" x2="176" y2="124"/><line x1="138" y1="134" x2="176" y2="134"/>
+    <g stroke-width="4.4">
+      <line x1="58" y1="134" x2="88" y2="134"/><line x1="96" y1="134" x2="126" y2="134"/><line x1="134" y1="134" x2="164" y2="134"/><line x1="172" y1="134" x2="202" y2="134"/>
+      <line x1="58" y1="148" x2="88" y2="148"/><line x1="96" y1="148" x2="126" y2="148"/><line x1="134" y1="148" x2="164" y2="148"/><line x1="172" y1="148" x2="202" y2="148"/>
     </g>
   </g>
-  <text x="182" y="97" font-family="sans-serif" font-size="8.5" fill="#2f3540">S1000</text>
-  <text x="182" y="137" font-family="sans-serif" font-size="8.5" fill="#2f3540">S200</text>
+  <text x="58" y="162" font-family="sans-serif" font-size="8" fill="#2f3540">F400 → F2000</text>
+  <text x="164" y="162" font-family="sans-serif" font-size="8" fill="#2f3540">S200 → S1000</text>
 
-  <!-- Section 1 (bas) : grille de traits au foyer -->
-  <text x="18" y="170" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">1</text>
-  <g stroke="#2f3540" stroke-width="1.6" stroke-linecap="round">
-    <line x1="34" y1="158" x2="60" y2="158"/><line x1="69" y1="158" x2="95" y2="158"/><line x1="104" y1="158" x2="130" y2="158"/><line x1="139" y1="158" x2="165" y2="158"/><line x1="174" y1="158" x2="200" y2="158"/>
-    <line x1="34" y1="170" x2="60" y2="170"/><line x1="69" y1="170" x2="95" y2="170"/><line x1="104" y1="170" x2="130" y2="170"/><line x1="139" y1="170" x2="165" y2="170"/><line x1="174" y1="170" x2="200" y2="170"/>
-    <line x1="34" y1="182" x2="60" y2="182"/><line x1="69" y1="182" x2="95" y2="182"/><line x1="104" y1="182" x2="130" y2="182"/><line x1="139" y1="182" x2="165" y2="182"/><line x1="174" y1="182" x2="200" y2="182"/>
-    <line x1="34" y1="194" x2="60" y2="194"/><line x1="69" y1="194" x2="95" y2="194"/><line x1="104" y1="194" x2="130" y2="194"/><line x1="139" y1="194" x2="165" y2="194"/><line x1="174" y1="194" x2="200" y2="194"/>
-    <line x1="34" y1="206" x2="60" y2="206"/><line x1="69" y1="206" x2="95" y2="206"/><line x1="104" y1="206" x2="130" y2="206"/><line x1="139" y1="206" x2="165" y2="206"/><line x1="174" y1="206" x2="200" y2="206"/>
+  <!-- Planche 3 : largeur du point (bande de calibration, Z croissant) -->
+  <rect x="10" y="176" width="240" height="64" rx="6" fill="none" stroke="#2f3540" stroke-width="2"/>
+  <text x="18" y="194" font-family="sans-serif" font-size="13" fill="#2f3540" font-weight="bold">3</text>
+  <g stroke="#ff8a00" stroke-linecap="round" opacity="0.85">
+    <line x1="38" y1="208" x2="58" y2="208" stroke-width="1.4"/>
+    <line x1="66" y1="208" x2="86" y2="208" stroke-width="2.2"/>
+    <line x1="94" y1="208" x2="114" y2="208" stroke-width="3.0"/>
+    <line x1="122" y1="208" x2="142" y2="208" stroke-width="3.8"/>
+    <line x1="150" y1="208" x2="170" y2="208" stroke-width="4.6"/>
+    <line x1="178" y1="208" x2="198" y2="208" stroke-width="5.4"/>
+    <line x1="206" y1="208" x2="226" y2="208" stroke-width="6.2"/>
   </g>
-  <text x="34" y="226" font-family="sans-serif" font-size="8" fill="#2f3540">F400   F800   F1500   F3000   F6000</text>
-  <text x="206" y="185" font-family="sans-serif" font-size="9" fill="#2f3540">S200→</text>
-  <text x="206" y="196" font-family="sans-serif" font-size="9" fill="#2f3540">S1000</text>
+  <text x="38" y="230" font-family="sans-serif" font-size="8" fill="#2f3540">Z croissant (bec remonté) → le point s'élargit</text>
 
   <!-- Légende à droite -->
   <g font-family="sans-serif" font-size="11">
-    <text x="268" y="34" fill="#ff8a00" font-weight="bold">3. Bandes nuancier</text>
-    <text x="268" y="48" fill="#2f3540">mesurer : noirceur (%)</text>
-    <text x="268" y="61" fill="#2f3540">+ largeur → Préférences</text>
-    <text x="268" y="74" fill="#2f3540">&gt; Nuancier</text>
-    <text x="268" y="100" fill="#ff8a00" font-weight="bold">2. Traits au défocus</text>
-    <text x="268" y="114" fill="#2f3540">3 niveaux : 15 / 36 / 50 mm</text>
-    <text x="268" y="127" fill="#2f3540">mesurer : largeur brûlée</text>
-    <text x="268" y="140" fill="#2f3540">→ interpolée selon le défocus</text>
-    <text x="268" y="166" fill="#ff8a00" font-weight="bold">1. Traits au foyer</text>
-    <text x="268" y="180" fill="#2f3540">mesurer : largeur brûlée,</text>
-    <text x="268" y="193" fill="#2f3540">noter les traits absents</text>
-    <text x="268" y="206" fill="#2f3540">(seuil du matériau)</text>
+    <text x="268" y="28" fill="#ff8a00" font-weight="bold">1. Foyer (S × F)</text>
+    <text x="268" y="42" fill="#2f3540">mesurer : largeur brûlée,</text>
+    <text x="268" y="55" fill="#2f3540">noter les traits absents</text>
+    <text x="268" y="68" fill="#2f3540">(seuil du matériau)</text>
+    <text x="268" y="102" fill="#ff8a00" font-weight="bold">2. Défocus (S × F)</text>
+    <text x="268" y="116" fill="#2f3540">une grille par niveau</text>
+    <text x="268" y="129" fill="#2f3540">(15 et 36 mm), F balayé</text>
+    <text x="268" y="142" fill="#2f3540">→ largeur sensible au feed</text>
+    <text x="268" y="194" fill="#ff8a00" font-weight="bold">3. Largeur du point</text>
+    <text x="268" y="208" fill="#2f3540">Ø au foyer + Ø à une</text>
+    <text x="268" y="221" fill="#2f3540">hauteur connue → modèle</text>
+    <text x="268" y="234" fill="#2f3540">d'élargissement du point</text>
   </g>
 </svg>
