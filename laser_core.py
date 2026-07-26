@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.34.0"
+VERSION = "1.35.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -557,6 +557,40 @@ CMD_BEAM_OFF = "S0 {sel}"
 # Les valeurs ci-dessous (et SPINDLE_SELECT/ARM_DWELL_S plus haut,
 # SAFE_MIN_NOZZLE_HEIGHT_MM etc. plus bas) ne sont que les défauts.
 GCODE_DIR = "/mnt/srv-partage/Gcode"  # dossier proposé par défaut à la sauvegarde G-code
+GCODE_PRE_GLOBAL = ""                 # G-code personnalisé GLOBAL inséré avant chaque job
+GCODE_POST_GLOBAL = ""                # ... et après chaque job (Préférences ; un seul couple
+                                      # pour tous les modes, inséré une fois par job)
+def inserer_gcode_perso_global(gcode):
+    """Insère le G-code personnalisé GLOBAL (Préférences) dans un programme
+    COMPLET, au moment de l'écriture du fichier -- un seul point d'insertion
+    pour tous les modes, une seule fois par job (y compris job combiné) :
+
+    - le bloc « avant » juste AVANT l'armement du laser (première commande
+      d'armement, CMD_ARM) ; à défaut, après la première ligne ;
+    - le bloc « après » juste AVANT la fin de programme (dernier M2) ; à
+      défaut, à la fin.
+
+    Sans effet si les deux réglages sont vides. Le texte inséré est assaini
+    (accents, parenthèses imbriquées) comme le reste du programme."""
+    avant = (GCODE_PRE_GLOBAL or "").strip()
+    apres = (GCODE_POST_GLOBAL or "").strip()
+    if not gcode or not (avant or apres):
+        return gcode
+    lignes = gcode.split("\n")
+    if avant:
+        # CMD_ARM est un gabarit ("M3 S0 {sel}...") : on cible son préfixe
+        # littéral, avant le premier champ de format.
+        cible = (CMD_ARM or "").split("\n")[0].split("{")[0].strip()
+        idx = next((i for i, l in enumerate(lignes)
+                    if cible and l.strip().startswith(cible)), 1)
+        lignes[idx:idx] = ["(-- G-code personnalisé (avant) --)", avant]
+    if apres:
+        idx = next((i for i in range(len(lignes) - 1, -1, -1)
+                    if lignes[i].strip() == "M2"), len(lignes))
+        lignes[idx:idx] = ["(-- G-code personnalisé (après) --)", apres]
+    return sanitize_gcode_for_linuxcnc("\n".join(lignes))
+
+
 GCODE_ORIGIN_BBOX = True              # recadrer chaque G-code écrit pour que le coin bas-
                                       # gauche du parcours (min X, min Y) tombe sur (0,0) :
                                       # le job démarre au zéro pièce quel que soit l'endroit
@@ -596,6 +630,8 @@ _USER_SETTINGS = (
      lambda v: v in ("linuxcnc", "grbl", "grblhal")),
     ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
     ("gcode_origin_bbox", "GCODE_ORIGIN_BBOX", bool, lambda v: isinstance(v, bool)),
+    ("gcode_pre_global", "GCODE_PRE_GLOBAL", str, lambda v: isinstance(v, str)),
+    ("gcode_post_global", "GCODE_POST_GLOBAL", str, lambda v: isinstance(v, str)),
     ("spindle_select", "SPINDLE_SELECT", str, lambda v: bool(v.strip())),
     ("laser_tool", "LASER_TOOL", int, lambda v: 1 <= v <= 999),
     ("s_max", "S_MAX", float, lambda v: v > 0),

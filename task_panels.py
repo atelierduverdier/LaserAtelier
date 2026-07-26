@@ -156,30 +156,6 @@ def _gcode_editor(placeholder="", hauteur=76):
     return ed
 
 
-def _section_gcode_avance(form, cle, astuce_avant="", astuce_apres=""):
-    """Section repliée « G-code personnalisé (avancé) », à placer EN BAS d'un
-    panneau : éditeurs G-code avant / après le job (optionnels), séparés des
-    boutons d'aperçu et de génération. Charge et restaure le contenu depuis la
-    config (clés pre_<cle> / post_<cle>). `astuce_avant` / `astuce_apres` sont
-    des infobulles sur mesure (l'ordre M5/M2 diffère selon le mode). Renvoie
-    (txt_pre, txt_post) pour que le panneau les relise à la génération."""
-    _section(form, "G-code personnalisé (avancé)", "sect_gcode.svg")
-    txt_pre = _gcode_editor("G-code personnalisé inséré avant le job (optionnel)")
-    if astuce_avant:
-        txt_pre.setToolTip(astuce_avant)
-    form.addRow("G-code avant :", txt_pre)
-
-    txt_post = _gcode_editor("G-code personnalisé inséré après le job (optionnel)")
-    if astuce_apres:
-        txt_post.setToolTip(astuce_apres)
-    form.addRow("G-code après :", txt_post)
-
-    cfg = core.load_config()
-    txt_pre.setPlainText(cfg.get("pre_" + cle, ""))
-    txt_post.setPlainText(cfg.get("post_" + cle, ""))
-    return txt_pre, txt_post
-
-
 def _reselect_button(form, on_reselect):
     """Bouton « Reprendre la sélection de la vue » : un panneau ne capture la
     sélection qu'à son OUVERTURE ; ce bouton relit la sélection courante.
@@ -1384,6 +1360,10 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path, recadrer_origin
     # démarre au zéro machine quel que soit l'emplacement du dessin dans le
     # document. Les modes où la position est INTENTIONNELLE (Projection sur
     # pièce 3D, Test d'offsets fraise/laser) passent recadrer_origine=False.
+    # G-code personnalisé GLOBAL (Préférences) : inséré ici, au point de
+    # passage commun à tous les modes -- une seule fois par job, avant
+    # l'armement / avant le M2 final.
+    gcode = core.inserer_gcode_perso_global(gcode)
     if recadrer_origine and getattr(core, "GCODE_ORIGIN_BBOX", True):
         gcode = core.translate_gcode_origin(gcode)
     # Dossier par défaut : GCODE_DIR (Préférences) ; repli sur le chemin
@@ -3471,8 +3451,6 @@ class TaskPanelFilledEngraving:
         }
         _restore_last_values("filled", self._last_fields, selection=self.selection)
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(form, "fe")
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Gravure remplie (noir)")
         self.form.setWindowIcon(_icon("filled.svg"))
@@ -3873,16 +3851,9 @@ class TaskPanelFilledEngraving:
                 "le point défocalisé) et le contour est décoché.")
             return False
 
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_filled_engraving(
             fill_edges, contour_edges,
-            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs(defocus, contour_z_offset))
-
-        cfg = core.load_config()
-        cfg["pre_fe"] = pre_text
-        cfg["post_fe"] = post_text
-        core.save_config(cfg)
+            **self._gen_kwargs(defocus, contour_z_offset))
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
@@ -4477,8 +4448,6 @@ class TaskPanelDefocusCalibration:
         self._photo = _make_photo_section(form, lambda: "defocus",
                                           titre="③ Photo du résultat")
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(form, "dc")
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Bande de calibration défocus")
         self.form.setWindowIcon(_icon("defocus.svg"))
@@ -4596,15 +4565,8 @@ class TaskPanelDefocusCalibration:
 
     def accept(self):
         _save_last_values("defocus_calib", self._last_fields)
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_defocus_calibration(
-            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs())
-
-        cfg = core.load_config()
-        cfg["pre_dc"] = pre_text
-        cfg["post_dc"] = post_text
-        core.save_config(cfg)
+            **self._gen_kwargs())
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
@@ -4828,8 +4790,6 @@ class TaskPanelPowerRamp:
         self._photo = _make_photo_section(form, lambda: "powerramp",
                                           titre="③ Photo du résultat")
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(form, "pr")
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test rampe puissance / vitesse (lignes)")
         self.form.setWindowIcon(_icon("powerramp.svg"))
@@ -4906,15 +4866,8 @@ class TaskPanelPowerRamp:
         if not self._valid_ranges(warn=True):
             return False
         _save_last_values("powerramp", self._last_fields)
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_power_ramp_lines(
-            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs())
-
-        cfg = core.load_config()
-        cfg["pre_pr"] = pre_text
-        cfg["post_pr"] = post_text
-        core.save_config(cfg)
+            **self._gen_kwargs())
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
@@ -5083,8 +5036,6 @@ class TaskPanelOffsetTest:
         self._photo = _make_photo_section(form, lambda: "offset",
                                           titre="③ Photo du résultat")
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(form, "ot")
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Test des offsets X/Y du laser")
         self.form.setWindowIcon(_icon("offset_test.svg"))
@@ -5164,15 +5115,8 @@ class TaskPanelOffsetTest:
 
     def accept(self):
         _save_last_values("offset_test", self._last_fields)
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_offset_test(
-            pre_gcode=pre_text, post_gcode=post_text, **self._gen_kwargs())
-
-        cfg = core.load_config()
-        cfg["pre_ot"] = pre_text
-        cfg["post_ot"] = post_text
-        core.save_config(cfg)
+            **self._gen_kwargs())
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
@@ -5488,8 +5432,6 @@ class TaskPanelHalftone:
         }
         _restore_last_values("halftone", self._last_fields)
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(form, "ht")
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Gravure photo (trame de points)")
         self.form.setWindowIcon(_icon("halftone.svg"))
@@ -5781,14 +5723,7 @@ class TaskPanelHalftone:
         if rows is None:
             return False
 
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
-        gcode = self._generate(rows, pre_gcode=pre_text, post_gcode=post_text)
-
-        cfg = core.load_config()
-        cfg["pre_ht"] = pre_text
-        cfg["post_ht"] = post_text
-        core.save_config(cfg)
+        gcode = self._generate(rows, )
 
         if not gcode:
             QtWidgets.QMessageBox.critical(
@@ -6297,17 +6232,6 @@ class TaskPanelTestGrid:
         }
         _restore_last_values("testgrid", self._last_fields)
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(
-            form, "t",
-            astuce_avant=(
-                "Texte libre inséré tel quel juste avant le début du job (après\n"
-                "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
-                "l'armement du laser). Sauvegardé d'une exécution à l'autre."),
-            astuce_apres=(
-                "Texte libre inséré tel quel juste APRÈS le désarmement du\n"
-                "laser (M5), avant la fin du programme (M2). Sauvegardé d'une\n"
-                "exécution à l'autre."))
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Grille de test puissance/vitesse")
         self.form.setWindowIcon(_icon("testgrid.svg"))
@@ -6721,8 +6645,6 @@ class TaskPanelTestGrid:
 
         core.print_test_grid_legend(mode, cells, self.spn_power_steps.value(), self.spn_feed_steps.value())
 
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
@@ -6730,14 +6652,8 @@ class TaskPanelTestGrid:
             label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset,
             use_proximity=self.chk_proximity.isChecked(),
-            pre_gcode=pre_text, post_gcode=post_text,
             line_style=self._line_style(), **self._border_kwargs()
         )
-
-        cfg = core.load_config()
-        cfg["pre_t"] = pre_text
-        cfg["post_t"] = post_text
-        core.save_config(cfg)
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
@@ -7170,19 +7086,6 @@ class TaskPanelCurved:
         }
         _restore_last_values("curved", self._last_fields, selection=self.selection)
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(
-            form, "c",
-            astuce_avant=(
-                "Texte libre inséré tel quel juste avant le début du job (après\n"
-                "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
-                "l'armement du laser) -- pour une instruction particulière\n"
-                "(attente, message, M-code spécifique). Sauvegardé d'une\n"
-                "exécution à l'autre."),
-            astuce_apres=(
-                "Texte libre inséré tel quel juste après la remontée finale,\n"
-                "AVANT le désarmement du laser (M5). Sauvegardé d'une exécution\n"
-                "à l'autre."))
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Marquage de motif (plat ou courbe)")
         self.form.setWindowIcon(_icon("curved.svg"))
@@ -7534,8 +7437,6 @@ class TaskPanelCurved:
             "Chaînage des segments connectés... ({})\n".format(
                 "objet 3D de référence détecté" if self._reference_shape is not None else "pas d'objet 3D, interpolation"))
 
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
         gcode = core.generate_gcode_curved(
             self._edges,
             self._effective_power(),
@@ -7543,16 +7444,9 @@ class TaskPanelCurved:
             self._z_focus(),
             core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape,
-            pre_gcode=pre_text,
-            post_gcode=post_text,
             probe=self._probe,
             **self._style_kwargs()
         )
-
-        cfg = core.load_config()
-        cfg["pre_c"] = pre_text
-        cfg["post_c"] = post_text
-        core.save_config(cfg)
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
@@ -7917,17 +7811,6 @@ class TaskPanelFlat:
         }
         _restore_last_values("flat", self._last_fields, selection=self.selection)
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(
-            form, "f",
-            astuce_avant=(
-                "Texte libre inséré tel quel juste avant le début du job (après\n"
-                "G21/G90/G94 et la remontée de sécurité initiale, avant\n"
-                "l'armement du laser). Sauvegardé d'une exécution à l'autre."),
-            astuce_apres=(
-                "Texte libre inséré tel quel juste APRÈS le désarmement du\n"
-                "laser (M5), avant la fin du programme (M2). Sauvegardé d'une\n"
-                "exécution à l'autre."))
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Découpe multi-passes (matériau plat)")
         self.form.setWindowIcon(_icon("flat.svg"))
@@ -8114,8 +7997,6 @@ class TaskPanelFlat:
             return False
 
         _save_last_values("flat", self._last_fields, selection=self.selection)
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
 
         FreeCAD.Console.PrintMessage("Chaînage des segments connectés...\n")
         gcode = core.generate_gcode_flat_multipass(
@@ -8124,15 +8005,8 @@ class TaskPanelFlat:
             self.spn_feed.value(),
             self.spn_thickness.value(),
             self.spn_passes.value(),
-            pre_gcode=pre_text,
-            post_gcode=post_text,
             **self._build_gcode_kwargs(),
         )
-
-        cfg = core.load_config()
-        cfg["pre_f"] = pre_text
-        cfg["post_f"] = post_text
-        core.save_config(cfg)
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
@@ -8378,8 +8252,6 @@ class TaskPanelCurvedCut:
         }
         _restore_last_values("curved_cut", self._last_fields, selection=self.selection)
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(form, "cc")
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Découpe multi-passes sur surface courbée")
         self.form.setWindowIcon(_icon("curved_cut.svg"))
@@ -8569,8 +8441,6 @@ class TaskPanelCurvedCut:
             return False
 
         _save_last_values("curved_cut", self._last_fields, selection=self.selection)
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
 
         FreeCAD.Console.PrintMessage(
             "Chaînage des segments connectés... ({})\n".format(
@@ -8580,15 +8450,9 @@ class TaskPanelCurvedCut:
             self.spn_thickness.value(), self.spn_passes.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
             reference_shape=self._reference_shape,
-            pre_gcode=pre_text, post_gcode=post_text,
             probe=self._probe,
             **self._build_gcode_kwargs(),
         )
-
-        cfg = core.load_config()
-        cfg["pre_cc"] = pre_text
-        cfg["post_cc"] = post_text
-        core.save_config(cfg)
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
@@ -8899,17 +8763,6 @@ class TaskPanelCombined:
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg"),
                             (self.btn_photo_preview, "sect_photo.svg")])
 
-        self.txt_pre, self.txt_post = _section_gcode_avance(
-            form, "j",
-            astuce_avant=(
-                "Texte libre inséré tel quel juste avant l'armement (une seule\n"
-                "fois pour tout le job combiné). Sauvegardé d'une exécution à\n"
-                "l'autre."),
-            astuce_apres=(
-                "Texte libre inséré tel quel juste après la dernière opération,\n"
-                "avant le désarmement final (une seule fois pour tout le job\n"
-                "combiné). Sauvegardé d'une exécution à l'autre."))
-
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Job combiné (plusieurs opérations)")
         self.form.setWindowIcon(_icon("combined.svg"))
@@ -9034,14 +8887,7 @@ class TaskPanelCombined:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Ajoute au moins une opération avant de lancer le job.")
             return False
 
-        pre_text = self.txt_pre.toPlainText()
-        post_text = self.txt_post.toPlainText()
-        gcode = core.generate_gcode_combined(self.operations, pre_gcode=pre_text, post_gcode=post_text)
-
-        cfg = core.load_config()
-        cfg["pre_j"] = pre_text
-        cfg["post_j"] = post_text
-        core.save_config(cfg)
+        gcode = core.generate_gcode_combined(self.operations, )
 
         if not gcode:
             QtWidgets.QMessageBox.critical(
@@ -9299,6 +9145,25 @@ class TaskPanelSettings:
             "précis (la position du dessin est alors respectée). Sans effet\n"
             "sur le Test d'offsets (jamais recadré).")
         form.addRow(self.chk_origin_bbox)
+
+        # G-code personnalisé GLOBAL : un seul couple avant/après pour tous
+        # les modes (remplace les anciennes sections par panneau).
+        self.txt_gcode_pre = _gcode_editor("G-code inséré avant chaque job (optionnel)")
+        self.txt_gcode_pre.setToolTip(
+            "Texte libre inséré tel quel au début de CHAQUE job généré\n"
+            "(après l'en-tête et la remontée de sécurité, avant l'armement\n"
+            "du laser ; une seule fois par job combiné). Ex. : M-code\n"
+            "d'air assist, message, attente.")
+        self.txt_gcode_pre.setPlainText(settings.get("gcode_pre_global", ""))
+        form.addRow("G-code avant :", self.txt_gcode_pre)
+
+        self.txt_gcode_post = _gcode_editor("G-code inséré après chaque job (optionnel)")
+        self.txt_gcode_post.setToolTip(
+            "Texte libre inséré tel quel à la fin de CHAQUE job généré\n"
+            "(après le désarmement du laser, avant la fin de programme ;\n"
+            "une seule fois par job combiné).")
+        self.txt_gcode_post.setPlainText(settings.get("gcode_post_global", ""))
+        form.addRow("G-code après :", self.txt_gcode_post)
 
         _section(form, "Calibration du point (défocus)", "sect_focus.svg")
         lbl_calib = _WrapLabel(
@@ -9580,6 +9445,8 @@ class TaskPanelSettings:
             "gcode_dialect": self.combo_dialect.currentData(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
             "gcode_origin_bbox": self.chk_origin_bbox.isChecked(),
+            "gcode_pre_global": self.txt_gcode_pre.toPlainText(),
+            "gcode_post_global": self.txt_gcode_post.toPlainText(),
             "spindle_select": self.edt_spindle.text().strip(),
             "arm_dwell_s": self.spn_dwell.value(),
             "laser_tool": self.spn_laser_tool.value(),
