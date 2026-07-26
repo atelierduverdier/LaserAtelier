@@ -737,7 +737,9 @@ def _section(form, title, icon_name=None, ouvert=False):
     conteneur montré/caché par le clic -- regroupement fait a posteriori
     par _activer_sections (appelé par _scrollable), donc les panneaux
     gardent leurs `form.addRow(...)` tels quels. L'état ouvert/fermé est
-    mémorisé dans la config d'une session à l'autre."""
+    mémorisé dans la config d'une session à l'autre ; SANS état mémorisé
+    (installation fraîche), toute section démarre REPLIÉE -- `ouvert` ne
+    sert plus qu'à d'éventuels usages hors panneaux."""
     form.addRow(_SectionHeader(title, icon_name=icon_name, ouvert=ouvert))
 
 
@@ -819,9 +821,12 @@ def _activer_sections(inner):
             cible.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
             cible.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
             form.addRow(conteneur)
-            # État ouvert/fermé mémorisé (clé = titre), sinon défaut du panneau.
+            # État ouvert/fermé mémorisé (clé = titre). Sans état mémorisé
+            # (installation fraîche, section jamais touchée) : TOUT REPLIÉ --
+            # le panneau s'ouvre court, les étapes ①②③ surlignées guident,
+            # et l'accordéon (activé par défaut) fait le reste au clic.
             cle = w.text()
-            etat = _section_state_get(cle, w.isChecked())
+            etat = _section_state_get(cle, False)
             w.setChecked(etat)
             conteneur.setVisible(etat)
             paires.append((w, conteneur))
@@ -2095,7 +2100,7 @@ class TaskPanelGuide:
         _diagram(form, "diag_pipeline.svg", width=280, height=110)
 
         _section(form, "Par où commencer ? (première calibration)",
-                 "sect_guide.svg", ouvert=True)
+                 "sect_guide.svg")
         depart = _WrapLabel(
             "Tu viens d'installer l'atelier et rien n'est réglé ? Fais ces "
             "gravures de calibration DANS L'ORDRE : les étapes ★1 et ★2 une "
@@ -2273,7 +2278,7 @@ class TaskPanelNuancier:
             "et le «&nbsp;ton sur mesure&nbsp;» (ton mesuré le plus proche).",
         ])
 
-        _section(form, "① Saisir les tons mesurés", "sect_measure.svg", ouvert=True)
+        _section(form, "① Saisir les tons mesurés", "sect_measure.svg")
         self.combo_mat = QtWidgets.QComboBox()
         self.combo_mat.setEditable(True)
         self.combo_mat.setToolTip(
@@ -2303,7 +2308,7 @@ class TaskPanelNuancier:
         self.chk_verrou_tons = _verrou(form, [self.table, btn_add, btn_del],
                                        titre="Verrouiller les tons")
 
-        _section(form, "② Graver ce nuancier (planche physique)", "sect_preset.svg", ouvert=True)
+        _section(form, "② Graver ce nuancier (planche physique)", "sect_preset.svg")
         _bullet_list(form, [
             "Grave une <b>planche de référence</b>&nbsp;: un cercle Ø20 par "
             "entrée, chacun avec sa recette et un <b>Job</b>, plus une "
@@ -2626,7 +2631,7 @@ class TaskPanelCatalogue:
                "avant de graver. La gravure photo se teste dans son propre mode "
                "(Gravure photo), avec la mire des tramages et tous les réglages.")
 
-        _section(form, "Contenu", "sect_options.svg", ouvert=True)
+        _section(form, "Contenu", "sect_options.svg")
         self.edt_sample = QtWidgets.QLineEdit("Laser")
         self.edt_sample.setToolTip("Mot exemple gravé dans chaque style.")
         form.addRow("Mot exemple :", self.edt_sample)
@@ -2649,7 +2654,7 @@ class TaskPanelCatalogue:
         self.spn_feed.setSuffix(" mm/min")
         form.addRow("Vitesse :", self.spn_feed)
 
-        _section(form, "Aperçu & génération", "sect_gcode.svg", ouvert=True)
+        _section(form, "Aperçu & génération", "sect_gcode.svg")
         self.btn_preview = QtWidgets.QPushButton()
         self.btn_preview.setToolTip(
             "Peint le rendu de la planche avant de graver -- chaque style\n"
@@ -4041,7 +4046,7 @@ class TaskPanelKerf:
             "serré pour coller, glissant pour du démontable.",
         ])
 
-        _section(form, "① Graver le test", "sect_contour.svg", ouvert=True)
+        _section(form, "① Graver le test", "sect_contour.svg")
         self.combo_test = QtWidgets.QComboBox()
         self.combo_test.addItems(["Carré (mesure du kerf)",
                                   "Tenon + mortaise (ajustement)"])
@@ -4285,7 +4290,7 @@ class TaskPanelDefocusCalibration:
 
         self._presets = _PresetController(form, inner, "defocus_calib", lambda: self._last_fields)
 
-        _section(form, "① Graver — balayage en hauteur (Z)", "sect_zheight.svg", ouvert=True)
+        _section(form, "① Graver — balayage en hauteur (Z)", "sect_zheight.svg")
         self.spn_zstart = QtWidgets.QDoubleSpinBox()
         self.spn_zstart.setRange(-50, 200)
         self.spn_zstart.setDecimals(2)
@@ -4677,7 +4682,7 @@ class TaskPanelPowerRamp:
 
         self._presets = _PresetController(form, inner, "powerramp", lambda: self._last_fields)
 
-        _section(form, "① Graver — lignes (vitesses)", "sect_power.svg", ouvert=True)
+        _section(form, "① Graver — lignes (vitesses)", "sect_power.svg")
         self.spn_length = QtWidgets.QDoubleSpinBox()
         self.spn_length.setRange(10.0, 500.0)
         self.spn_length.setValue(80.0)
@@ -4965,7 +4970,7 @@ class TaskPanelOffsetTest:
 
         self._presets = _PresetController(form, inner, "offset_test", lambda: self._last_fields)
 
-        _section(form, "① Graver — croix (géométrie)", "sect_options.svg", ouvert=True)
+        _section(form, "① Graver — croix (géométrie)", "sect_options.svg")
         self.spn_half = QtWidgets.QDoubleSpinBox()
         self.spn_half.setRange(2.0, 100.0)
         self.spn_half.setValue(10.0)
@@ -5859,7 +5864,7 @@ class TaskPanelTestGrid:
         # ① GRAVER : d'abord un « objectif » (préréglage recommandé prêt à
         # graver selon ce qu'on veut mesurer), puis les préréglages nommés par
         # matériau (jeu complet de réglages sauvegardé sous un nom).
-        _section(form, "① Graver — préréglage recommandé", "sect_preset.svg", ouvert=True)
+        _section(form, "① Graver — préréglage recommandé", "sect_preset.svg")
 
         self._recipes = [
             ("nuancier_clair", {
@@ -8548,7 +8553,7 @@ class TaskPanelAssistant:
                        ("Mesurer", "② Entrer les mesures (largeurs)"),
                        ("Déduire", "③ Déduire (modèle & nuancier)")])
 
-        _section(form, "① Graver les trois planches", "sect_power.svg", ouvert=True)
+        _section(form, "① Graver les trois planches", "sect_power.svg")
         form.addRow(_WrapLabel(
             "Trois fichiers séparés, chacun recadré au zéro pièce (coin "
             "bas-gauche de la chute, sur le dessus). Grave-les sur le même "
@@ -8556,8 +8561,7 @@ class TaskPanelAssistant:
             "la lentille) que tes futurs jobs."))
         _boutons_planches(form, self._ecrire_planche)
 
-        _section(form, "② Entrer les mesures (largeurs)", "sect_measure.svg",
-                 ouvert=True)
+        _section(form, "② Entrer les mesures (largeurs)", "sect_measure.svg")
         form.addRow(_WrapLabel(
             "Mesure la LARGEUR brûlée de chaque trait au pied à coulisse "
             "(1/10 mm). « — » = non mesuré ; un trait vierge est une donnée "
@@ -8567,8 +8571,7 @@ class TaskPanelAssistant:
             form, self, lambda: self.combo_mat.currentText(),
             on_saved=self._maj_deductions)
 
-        _section(form, "③ Déduire (modèle & nuancier)", "sect_preset.svg",
-                 ouvert=True)
+        _section(form, "③ Déduire (modèle & nuancier)", "sect_preset.svg")
         self.lbl_etat = _WrapLabel("")
         form.addRow(self.lbl_etat)
         # Sonde d'interpolation : montre en direct la largeur que le modèle
@@ -8747,7 +8750,7 @@ class TaskPanelCombined:
             "seul désarmement (<code>M5</code>)/<code>M2</code> à la fin.",
         ])
 
-        _section(form, "Opérations à graver", "sect_options.svg", ouvert=True)
+        _section(form, "Opérations à graver", "sect_options.svg")
         self.list_ops = QtWidgets.QListWidget()
         self.list_ops.setToolTip("Opérations empilées, exécutées dans cet ordre.")
         form.addRow(self.list_ops)
