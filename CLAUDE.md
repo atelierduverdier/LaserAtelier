@@ -104,9 +104,12 @@ Five modules, cleanly layered — keep the layering:
     JSON into a dynamic `LaserAtelierReglages` property on the first selected object (saved with
     the .FCStd) and restored with priority over global last values when that object is selected.
     Priority: per-object settings > last values > Preferences defaults. Pass the selection kwarg
-    for any new shape-based panel. In the 4 G-code shape panels (filled/curved/flat/curved_cut),
-    **OK only saves settings and closes**; generation goes through the dedicated
-    "Générer et sauvegarder le G-code…" button (`_on_save_gcode`, which re-saves then generates).
+    for any new shape-based panel. In the 4 G-code shape panels (filled/curved/flat/curved_cut)
+    AND the test panels (defocus band, power ramp, test grid, kerf), **OK only saves settings and
+    closes**; generation goes through a dedicated button — "Générer et sauvegarder le G-code…"
+    (`_on_save_gcode` on shape panels, `_on_generer` in the ① section of test panels; kerf's is
+    "Créer le test dans le document", `_on_creer_test`). The panel stays open after generating so
+    ② measurements can be typed right after the burn.
     `_build_combined_operation` also saves on success, so the combined-job path feeds the
     per-shape settings and the tree Job too.
   - `_PresetController(form, parent, category, fields_getter)` — preset selector block backed by

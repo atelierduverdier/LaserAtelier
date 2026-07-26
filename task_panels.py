@@ -4094,6 +4094,15 @@ class TaskPanelKerf:
         self._presets = _PresetController(form, inner, "kerf", lambda: self._last_fields)
 
         self._build_kerf_measures(form)
+        self.btn_creer_test = QtWidgets.QPushButton("Créer le test dans le document")
+        _btn_icon(self.btn_creer_test, "sect_contour.svg")
+        self.btn_creer_test.setToolTip(
+            "Crée la géométrie du test (carré, ou tenons) dans le document :\n"
+            "découpe-la ensuite avec le mode Découpe. Le panneau reste ouvert\n"
+            "pour saisir la mesure (②). OK, lui, ferme le panneau.")
+        self.btn_creer_test.clicked.connect(self._on_creer_test)
+        form.addRow(self.btn_creer_test)
+
         self._photo = _make_photo_section(form, lambda: "kerf",
                                           titre="③ Photo du résultat")
 
@@ -4143,7 +4152,9 @@ class TaskPanelKerf:
         for w in self._fit_rows:
             _set_row_visible(self._formlayout, w, fit)
 
-    def accept(self):
+    def _on_creer_test(self):
+        """Crée la géométrie du test dans le document (carré, ou tenons) --
+        le panneau RESTE ouvert (mesure du kerf ② après la découpe)."""
         if self.combo_test.currentIndex() == 1:
             objs, err = core.create_fit_test_pattern(
                 self.spn_tenon_w.value(), self.spn_tenon_h.value(),
@@ -4151,18 +4162,21 @@ class TaskPanelKerf:
                 self.spn_clr_step.value())
             if err:
                 QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
-                return False
+                return
             noms = ", ".join(o.Name for o in objs)
             FreeCAD.Console.PrintMessage(
                 "Succès : {} créé(s). Graver « ...gravure » (jeux + cote du "
                 "tenon, faible puissance) et découper « ...decoupe » avec ta "
                 "Compensation de kerf.\n".format(noms))
-            return True
+            return
         obj, err = core.create_kerf_test_pattern(self.spn_size.value())
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
-            return False
+            return
         FreeCAD.Console.PrintMessage("Succès : objet '{}' créé.\n".format(obj.Name))
+
+    def accept(self):
+        # OK = fermer. La création du test passe par le bouton de ①.
         return True
 
     def reject(self):
@@ -4253,6 +4267,15 @@ class TaskPanelDefocusCalibration:
         self.spn_nmarks.setValue(20)
         self.spn_nmarks.setToolTip("Nombre de traits (donc de hauteurs testées).")
         form.addRow("Nombre de traits :", self.spn_nmarks)
+
+        self.btn_generer = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        _btn_icon(self.btn_generer, "sect_gcode.svg")
+        self.btn_generer.setToolTip(
+            "Génère le G-code de la bande avec les réglages ci-dessous et\n"
+            "propose l'enregistrement. Le panneau reste ouvert pour saisir\n"
+            "les mesures (②) après la gravure. OK, lui, ferme le panneau.")
+        self.btn_generer.clicked.connect(self._on_generer)
+        form.addRow(self.btn_generer)
 
         _section(form, "Traits (puissance / vitesse)", "sect_power.svg")
         self.spn_length = QtWidgets.QDoubleSpinBox()
@@ -4536,15 +4559,23 @@ class TaskPanelDefocusCalibration:
         rapid, mark = core.parse_gcode_toolpath(gcode)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
 
-    def accept(self):
+    def _on_generer(self):
+        """Génère le G-code du test et propose l'enregistrement -- le panneau
+        RESTE ouvert (les mesures ② se saisissent après la gravure)."""
         _save_last_values("defocus_calib", self._last_fields)
         gcode = core.generate_gcode_defocus_calibration(
             **self._gen_kwargs())
-
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
-            return False
-        return _write_gcode_with_dialog(self.form, gcode, "/tmp/calibration_defocus.ngc")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/calibration_defocus.ngc")
+
+    def accept(self):
+        # OK = mémoriser les réglages et fermer. La génération passe par le
+        # bouton « Générer... » de la section ① (même convention que les
+        # panneaux de forme).
+        _save_last_values("defocus_calib", self._last_fields)
+        return True
 
     def reject(self):
         return True
@@ -4634,6 +4665,15 @@ class TaskPanelPowerRamp:
         self.spn_feed_max.setSuffix(" mm/min")
         self.spn_feed_max.setToolTip("Vitesse de la dernière ligne (en haut) -- la plus rapide.")
         form.addRow("Vitesse max :", self.spn_feed_max)
+
+        self.btn_generer = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        _btn_icon(self.btn_generer, "sect_gcode.svg")
+        self.btn_generer.setToolTip(
+            "Génère le G-code de la rampe avec les réglages ci-dessous et\n"
+            "propose l'enregistrement. Le panneau reste ouvert pour reporter\n"
+            "les tons (②) après la gravure. OK, lui, ferme le panneau.")
+        self.btn_generer.clicked.connect(self._on_generer)
+        form.addRow(self.btn_generer)
 
         _section(form, "Rampe de puissance", "sect_power.svg")
         self.spn_power_min = QtWidgets.QDoubleSpinBox()
@@ -4807,17 +4847,23 @@ class TaskPanelPowerRamp:
         rapid, mark = core.parse_gcode_toolpath(gcode)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
 
-    def accept(self):
+    def _on_generer(self):
+        """Génère le G-code de la rampe et propose l'enregistrement -- le
+        panneau RESTE ouvert (report des tons ② après la gravure)."""
         if not self._valid_ranges(warn=True):
-            return False
+            return
         _save_last_values("powerramp", self._last_fields)
         gcode = core.generate_gcode_power_ramp_lines(
             **self._gen_kwargs())
-
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
-            return False
-        return _write_gcode_with_dialog(self.form, gcode, "/tmp/test_rampe_puissance.ngc")
+            return
+        _write_gcode_with_dialog(self.form, gcode, "/tmp/test_rampe_puissance.ngc")
+
+    def accept(self):
+        # OK = mémoriser les réglages et fermer (génération : bouton de ①).
+        _save_last_values("powerramp", self._last_fields)
+        return True
 
     def reject(self):
         return True
@@ -5822,6 +5868,16 @@ class TaskPanelTestGrid:
         _mat_h.addWidget(self.btn_delete_preset)
         form.addRow(_mat_row)
 
+        self.btn_generer = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
+        _btn_icon(self.btn_generer, "sect_gcode.svg")
+        self.btn_generer.setToolTip(
+            "Crée les cellules dans le document, génère le G-code de la\n"
+            "grille (réglages des sections ci-dessous) et propose\n"
+            "l'enregistrement. Le panneau reste ouvert pour saisir les\n"
+            "largeurs (②) après la gravure. OK, lui, ferme le panneau.")
+        self.btn_generer.clicked.connect(self._on_generer)
+        form.addRow(self.btn_generer)
+
         _section(form, "Mode & plages puissance/vitesse", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
         self.combo_mode.addItems(["Gravure (remplissage)", "Découpe (contour)"])
@@ -6532,31 +6588,34 @@ class TaskPanelTestGrid:
             return
         _write_gcode_with_dialog(self.form, gcode, chemin)
 
-    def accept(self):
+    def _on_generer(self):
+        """Crée les cellules dans le document, génère le G-code de la grille
+        et propose l'enregistrement -- le panneau RESTE ouvert (saisie des
+        largeurs ② après la gravure)."""
         if self.spn_power_max.value() < self.spn_power_min.value():
             QtWidgets.QMessageBox.critical(
                 self.form, "Erreur", "Puissance max doit être >= puissance min.")
-            return False
+            return
         if self.spn_feed_max.value() < self.spn_feed_min.value():
             QtWidgets.QMessageBox.critical(
                 self.form, "Erreur", "Vitesse max doit être >= vitesse min.")
-            return False
+            return
         _save_last_values("testgrid", self._last_fields)
 
         mode, fill_type, cells, cell_z_offset = self._build_cells()
         if cells is None:
-            return False
+            return
 
         objs, err = core.create_test_grid_object(mode, cells)
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
-            return False
+            return
 
         power_labels, feed_labels, label_edges = self._build_label_edges(cells)
         label_obj, lbl_err = core.create_test_grid_label_object(power_labels, feed_labels)
         if lbl_err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", lbl_err)
-            return False
+            return
 
         core.print_test_grid_legend(mode, cells, self.spn_power_steps.value(), self.spn_feed_steps.value())
 
@@ -6570,19 +6629,21 @@ class TaskPanelTestGrid:
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
-            return False
+            return
 
         FreeCAD.Console.PrintMessage("Succès : {} cellules créées.\n".format(len(objs)))
         if not _write_gcode_with_dialog(self.form, gcode, "/tmp/grille_test.ngc"):
-            # Sauvegarde abandonnée : accept() échoue pour que le panneau
-            # reste ouvert avec tous ses réglages. Les objets tout juste
-            # créés sont retirés du document -- re-cliquer OK regénère
-            # tout, les garder produirait des cellules en double.
+            # Sauvegarde abandonnée : les objets tout juste créés sont
+            # retirés du document -- re-cliquer « Générer » regénère tout,
+            # les garder produirait des cellules en double.
             doc = FreeCAD.ActiveDocument
             for obj in objs + ([label_obj] if label_obj is not None else []):
                 doc.removeObject(obj.Name)
             doc.recompute()
-            return False
+
+    def accept(self):
+        # OK = mémoriser les réglages et fermer (génération : bouton de ①).
+        _save_last_values("testgrid", self._last_fields)
         return True
 
     def reject(self):
