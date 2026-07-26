@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.42.0"
+VERSION = "1.43.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1706,14 +1706,18 @@ PROJECTION_SAMPLE_DISTANCE = 1.0  # mm : Distance, pas Deflection -- une
 def split_projection_selection(selection):
     """Classe la sélection en (motifs 2D, surface 3D de référence) pour le
     mode Projection. Un objet est "2D" si son épaisseur Z est quasi nulle
-    (<0.1mm, même heuristique qu'avant), "3D" sinon -- permet de
+    (<0.1mm, même heuristique qu'avant) ; sinon c'est un candidat "surface"
+    -- mais seulement s'il a au moins une Face. Un objet épais SANS face
+    (ex: un ancien résultat de projection, un pur nuage d'arêtes) n'est ni
+    un motif plat ni une vraie surface projetable : sa tessellation ne
+    donnerait aucun triangle, donc rien à sonder -- il rend la sélection
+    invalide plutôt que d'être accepté à tort comme référence. Permet de
     sélectionner PLUSIEURS motifs 2D en une seule fois (ex: un ShapeString
     + des hachures, chacun avec le même corps de référence sélectionné une
     seule fois puisque la sélection FreeCAD ne garde pas les doublons) et
     de les projeter tous ensemble sur la MÊME surface, au lieu de répéter
     l'opération motif par motif. Renvoie (liste d'objets 2D, objet 3D), ou
-    (None, None) si la classification est ambiguë (pas exactement une
-    surface 3D dans la sélection)."""
+    (None, None) si la classification est ambiguë ou invalide."""
     motifs = []
     reference = None
     for sel_obj in selection:
@@ -1724,10 +1728,12 @@ def split_projection_selection(selection):
         bb = shape.BoundBox
         if bb.ZMax - bb.ZMin < 0.1:
             motifs.append(obj)
-        else:
+        elif shape.Faces:
             if reference is not None:
                 return None, None
             reference = obj
+        else:
+            return None, None
     if reference is None or not motifs:
         return None, None
     return motifs, reference
@@ -1823,7 +1829,10 @@ def run_projection(selection):
     if hasattr(new_obj, 'ViewObject'):
         new_obj.ViewObject.LineColor = (1.0, 0.0, 0.0)
         new_obj.ViewObject.LineWidth = 2.0
-    doc.recompute()
+    # Recompute CIBLÉ sur le nouvel objet : un doc.recompute() global
+    # forcerait aussi le recalcul de tout le reste du document (ex: un
+    # Job CAM/Path avec Pocket_Shape), sans aucun rapport avec cet objet.
+    doc.recompute([new_obj])
     return new_obj, None
 
 
