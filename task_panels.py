@@ -1657,7 +1657,7 @@ def _nuancier_items(source, material):
             for nom in sorted(presets, key=lambda n: (_pn(presets[n]), n))], None
 
 
-def _construire_nuancier_preregles(label_power=500.0, label_feed=1200.0,
+def _construire_nuancier_preregles(label_power=None, label_feed=None,
                                    source="tons", material=""):
     """Construit un document « nuancier physique » : un cercle Ø20 (face) par
     entrée (ton mesuré ou préréglage, cf. _nuancier_items), portant SA recette
@@ -1669,6 +1669,10 @@ def _construire_nuancier_preregles(label_power=500.0, label_feed=1200.0,
     import Part
     import datetime
     import laser_jobs
+    if label_power is None:
+        label_power = core.LABEL_POWER
+    if label_feed is None:
+        label_feed = core.LABEL_FEED
 
     items, err = _nuancier_items(source, material)
     if not items:
@@ -2121,7 +2125,7 @@ class TaskPanelGuide:
         return True
 
 
-def _lancer_nuancier_physique(parent_form, source, material, label_power, label_feed):
+def _lancer_nuancier_physique(parent_form, source, material):
     """Construit le nuancier physique (un cercle par ton mesuré ou par
     préréglage, recette + Job chacun + étiquettes), l'empile dans le job
     combiné et ouvre le panneau Job combiné, prêt à générer. Partagé entre
@@ -2144,7 +2148,7 @@ def _lancer_nuancier_physique(parent_form, source, material, label_power, label_
         if rep == QtWidgets.QMessageBox.Yes:
             _COMBINED_OPS[:] = []
     doc, jobs, warn = _construire_nuancier_preregles(
-        label_power, label_feed, source=source, material=material)
+        source=source, material=material)
     if not jobs:
         QtWidgets.QMessageBox.critical(
             parent_form, "Nuancier",
@@ -2280,19 +2284,6 @@ class TaskPanelNuancier:
             "  nombreux) -- c'est le nuancier au sens propre.\n"
             "- Préréglages : les recettes nommées de Gravure remplie.")
         form.addRow("Source des cercles :", self.combo_nuancier_source)
-        self.spn_lbl_power = QtWidgets.QDoubleSpinBox()
-        self.spn_lbl_power.setRange(0, core.S_MAX)
-        self.spn_lbl_power.setValue(500)
-        self.spn_lbl_power.setToolTip(
-            "Puissance (S) de gravure des étiquettes, du cadre et du titre\n"
-            "(les cercles, eux, gardent la puissance de leur ton/préréglage).")
-        form.addRow("Puissance étiquettes :", self.spn_lbl_power)
-        self.spn_lbl_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_lbl_feed.setRange(1, 20000)
-        self.spn_lbl_feed.setValue(1200)
-        self.spn_lbl_feed.setSuffix(" mm/min")
-        self.spn_lbl_feed.setToolTip("Vitesse d'avance de gravure des étiquettes.")
-        form.addRow("Vitesse étiquettes :", self.spn_lbl_feed)
         btn_nuancier = QtWidgets.QPushButton("Créer la planche nuancier…")
         _btn_icon(btn_nuancier, "filled.svg")
         btn_nuancier.setToolTip(
@@ -2378,8 +2369,7 @@ class TaskPanelNuancier:
         _lancer_nuancier_physique(
             self.form,
             self.combo_nuancier_source.currentData() or "tons",
-            self.combo_mat.currentText().strip(),
-            self.spn_lbl_power.value(), self.spn_lbl_feed.value())
+            self.combo_mat.currentText().strip())
 
     def accept(self):
         material = self.combo_mat.currentText().strip()
@@ -4369,18 +4359,6 @@ class TaskPanelDefocusCalibration:
             "savoir quelle puissance a donné quel trait.")
         form.addRow(self.chk_power_labels)
 
-        self.spn_label_power = QtWidgets.QDoubleSpinBox()
-        self.spn_label_power.setRange(0, core.S_MAX)
-        self.spn_label_power.setValue(300)
-        self.spn_label_power.setToolTip("Puissance (S) des étiquettes.")
-        form.addRow("Puissance étiquettes :", self.spn_label_power)
-
-        self.spn_label_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_label_feed.setRange(1, 20000)
-        self.spn_label_feed.setValue(1500)
-        self.spn_label_feed.setSuffix(" mm/min")
-        self.spn_label_feed.setToolTip("Vitesse d'avance des étiquettes.")
-        form.addRow("Vitesse étiquettes :", self.spn_label_feed)
 
         self.spn_label_z = QtWidgets.QDoubleSpinBox()
         self.spn_label_z.setRange(-50, 200)
@@ -4395,8 +4373,6 @@ class TaskPanelDefocusCalibration:
 
         def _sync_label_fields():
             on = self.chk_labels.isChecked() or self.chk_power_labels.isChecked()
-            self.spn_label_power.setEnabled(on)
-            self.spn_label_feed.setEnabled(on)
             self.spn_label_z.setEnabled(on)
         self.chk_labels.toggled.connect(lambda _v: _sync_label_fields())
         self.chk_power_labels.toggled.connect(lambda _v: _sync_label_fields())
@@ -4437,7 +4413,6 @@ class TaskPanelDefocusCalibration:
             "nbands": self.spn_nbands, "feed_end": self.spn_feed_end,
             "band_gap": self.spn_band_gap,
             "labels": self.chk_labels, "power_labels": self.chk_power_labels,
-            "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
             "label_z": self.spn_label_z,
         }
         _restore_last_values("defocus_calib", self._last_fields)
@@ -4471,8 +4446,6 @@ class TaskPanelDefocusCalibration:
             "band_gap": self.spn_band_gap.value(),
             "draw_labels": self.chk_labels.isChecked(),
             "draw_power_labels": self.chk_power_labels.isChecked(),
-            "label_power": self.spn_label_power.value(),
-            "label_feed": self.spn_label_feed.value(),
             "label_z": self.spn_label_z.value(),
         }
 
@@ -4731,32 +4704,7 @@ class TaskPanelPowerRamp:
             "de puissance (Smin à gauche, Smax à droite) sous la 1re ligne.")
         form.addRow(self.chk_labels)
 
-        self.spn_label_power = QtWidgets.QDoubleSpinBox()
-        self.spn_label_power.setRange(0, core.S_MAX)
-        self.spn_label_power.setValue(300)
-        self.spn_label_power.setToolTip(
-            "Puissance (S) qui GRAVE les étiquettes elles-mêmes (les F à\n"
-            "gauche et les chiffres de puissance). FIXE, séparée de la rampe\n"
-            "testée, pour que les étiquettes restent lisibles même quand tu\n"
-            "testes des puissances très faibles (une étiquette à S0 serait\n"
-            "invisible). Effet visible sur la PIÈCE gravée, pas dans\n"
-            "l'aperçu de trajet 3D (qui dessine tout en rouge, sans tenir\n"
-            "compte de la puissance).")
-        form.addRow("Puissance étiquettes :", self.spn_label_power)
 
-        self.spn_label_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_label_feed.setRange(1, 20000)
-        self.spn_label_feed.setValue(1500)
-        self.spn_label_feed.setSuffix(" mm/min")
-        self.spn_label_feed.setToolTip(
-            "Vitesse d'avance qui GRAVE les étiquettes. FIXE, séparée de la\n"
-            "rampe testée. N'apparaît pas dans l'aperçu de trajet 3D, mais\n"
-            "change le rendu sur la pièce ET la durée estimée (plus lent =\n"
-            "étiquettes plus marquées mais job plus long).")
-        form.addRow("Vitesse étiquettes :", self.spn_label_feed)
-
-        self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
-        self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
 
         _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
@@ -4781,8 +4729,7 @@ class TaskPanelPowerRamp:
             "power_min": self.spn_power_min, "power_max": self.spn_power_max,
             "steps": self.spn_steps, "zramp": self.chk_zramp, "z_end": self.spn_z_end,
             "labels": self.chk_labels,
-            "label_power": self.spn_label_power, "label_feed": self.spn_label_feed,
-        }
+            }
         _restore_last_values("powerramp", self._last_fields)
         self._presets.on_loaded = self._update_duration_preview
 
@@ -4820,9 +4767,7 @@ class TaskPanelPowerRamp:
             "line_gap": self.spn_gap.value(),
             "n_steps": self.spn_steps.value(),
             "draw_labels": self.chk_labels.isChecked(),
-            "label_power": self.spn_label_power.value(),
-            "label_feed": self.spn_label_feed.value(),
-        }
+            }
 
     def _valid_ranges(self, warn=False):
         if self.spn_power_max.value() < self.spn_power_min.value() or self.spn_feed_max.value() < self.spn_feed_min.value():
@@ -6119,27 +6064,7 @@ class TaskPanelTestGrid:
             "de police externe requis).")
         form.addRow(self.chk_labels)
 
-        self.spn_label_power = QtWidgets.QDoubleSpinBox()
-        self.spn_label_power.setRange(0, core.S_MAX)
-        self.spn_label_power.setValue(300)
-        self.spn_label_power.setToolTip(
-            "Puissance (valeur S) FIXE pour graver les étiquettes --\n"
-            "séparée des puissances en cours de test, pour rester lisible\n"
-            "quelle que soit la plage testée (y compris si la puissance\n"
-            "min testée est 0).")
-        form.addRow("Puissance étiquettes :", self.spn_label_power)
 
-        self.spn_label_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_label_feed.setRange(1, 20000)
-        self.spn_label_feed.setValue(1500)
-        self.spn_label_feed.setSuffix(" mm/min")
-        self.spn_label_feed.setToolTip(
-            "Vitesse d'avance FIXE pour graver les étiquettes -- séparée\n"
-            "des vitesses en cours de test.")
-        form.addRow("Vitesse étiquettes :", self.spn_label_feed)
-
-        self.chk_labels.toggled.connect(self.spn_label_power.setEnabled)
-        self.chk_labels.toggled.connect(self.spn_label_feed.setEnabled)
 
         _section(form, "Cadre net (contour des carrés)", "sect_contour.svg")
         self.chk_border = QtWidgets.QCheckBox("Cadre net autour de chaque carré (au foyer)")
@@ -6225,8 +6150,7 @@ class TaskPanelTestGrid:
             "line_style": self.combo_line_style,
             "hatch_spacing": self.spn_hatch_spacing, "hatch_angle": self.spn_hatch_angle,
             "proximity": self.chk_proximity,
-            "labels": self.chk_labels, "label_power": self.spn_label_power,
-            "label_feed": self.spn_label_feed, "border": self.chk_border,
+            "labels": self.chk_labels, "border": self.chk_border,
             "border_power": self.spn_border_power,
             "border_feed": self.spn_border_feed,
         }
@@ -6263,8 +6187,8 @@ class TaskPanelTestGrid:
                 values.get("hatch_spacing", 0), values.get("hatch_angle", 0))
         lines.append(line2)
         if values.get("labels", True):
-            lines.append("Étiquettes S{:g} F{:g}".format(
-                values.get("label_power", 0), values.get("label_feed", 0)))
+            lines.append("Étiquettes S{:g} F{:g} (Préférences)".format(
+                core.LABEL_POWER, core.LABEL_FEED))
         if values.get("border_enabled", True):
             lines.append("Cadre au foyer S{:g} F{:g}".format(
                 values.get("border_power", 0), values.get("border_feed", 0)))
@@ -6323,8 +6247,6 @@ class TaskPanelTestGrid:
             "hatch_angle": self.spn_hatch_angle.value(),
             "proximity": self.chk_proximity.isChecked(),
             "labels": self.chk_labels.isChecked(),
-            "label_power": self.spn_label_power.value(),
-            "label_feed": self.spn_label_feed.value(),
             "border_enabled": self.chk_border.isChecked(),
             "border_power": self.spn_border_power.value(),
             "border_feed": self.spn_border_feed.value(),
@@ -6352,8 +6274,6 @@ class TaskPanelTestGrid:
         self.spn_hatch_angle.setValue(values.get("hatch_angle", self.spn_hatch_angle.value()))
         self.chk_proximity.setChecked(values.get("proximity", self.chk_proximity.isChecked()))
         self.chk_labels.setChecked(values.get("labels", self.chk_labels.isChecked()))
-        self.spn_label_power.setValue(values.get("label_power", self.spn_label_power.value()))
-        self.spn_label_feed.setValue(values.get("label_feed", self.spn_label_feed.value()))
         self.chk_border.setChecked(values.get("border_enabled", self.chk_border.isChecked()))
         self.spn_border_power.setValue(values.get("border_power", self.spn_border_power.value()))
         self.spn_border_feed.setValue(values.get("border_feed", self.spn_border_feed.value()))
@@ -6407,7 +6327,6 @@ class TaskPanelTestGrid:
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
-            label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
             quiet=True, line_style=self._line_style(), **self._border_kwargs()
         )
@@ -6488,7 +6407,6 @@ class TaskPanelTestGrid:
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
-            label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, frame_only=True, **self._border_kwargs()
         )
         if not gcode:
@@ -6507,7 +6425,6 @@ class TaskPanelTestGrid:
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
-            label_power=self.spn_label_power.value(), label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(), quiet=True,
             line_style=self._line_style(), **self._border_kwargs()
         )
@@ -6525,8 +6442,6 @@ class TaskPanelTestGrid:
         return {"type": "testgrid", "label": "Grille de test",
                 "params": dict(cells=cells, z_work=self.spn_zwork.value(),
                                label_edges=label_edges if self.chk_labels.isChecked() else None,
-                               label_power=self.spn_label_power.value(),
-                               label_feed=self.spn_label_feed.value(),
                                cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
                                **self._border_kwargs())}
 
@@ -6648,8 +6563,6 @@ class TaskPanelTestGrid:
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
-            label_power=self.spn_label_power.value(),
-            label_feed=self.spn_label_feed.value(),
             cell_z_offset=cell_z_offset,
             use_proximity=self.chk_proximity.isChecked(),
             line_style=self._line_style(), **self._border_kwargs()
@@ -8642,8 +8555,7 @@ class TaskPanelAssistant:
 
     def _on_nuancier(self):
         _lancer_nuancier_physique(self.form, "tons",
-                                  self.combo_mat.currentText().strip(),
-                                  600.0, 800.0)
+                                  self.combo_mat.currentText().strip())
 
     def accept(self):
         return True
@@ -9023,6 +8935,24 @@ class TaskPanelSettings:
             "tracé se fait alors en rapides G0). Plus lent = plus le\n"
             "rectangle est facile à suivre à l'œil.")
         form.addRow("Vitesse de cadrage :", self.spn_frame_feed)
+
+        # Étiquettes gravées des tests/planches : réglées UNE fois ici (par
+        # laser), plus de champs répétés dans chaque panneau de test.
+        self.spn_label_power = QtWidgets.QDoubleSpinBox()
+        self.spn_label_power.setRange(0, core.S_MAX)
+        self.spn_label_power.setDecimals(0)
+        self.spn_label_power.setValue(float(settings.get("label_power", 600.0)))
+        self.spn_label_power.setToolTip(
+            "Puissance (S) de gravure des étiquettes des tests, planches et\n"
+            "nuanciers (S600 : lisible sans carboniser sur la plupart des bois).")
+        form.addRow("Étiquettes — puissance :", self.spn_label_power)
+        self.spn_label_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_label_feed.setRange(1, 20000)
+        self.spn_label_feed.setDecimals(0)
+        self.spn_label_feed.setSuffix(" mm/min")
+        self.spn_label_feed.setValue(float(settings.get("label_feed", 800.0)))
+        self.spn_label_feed.setToolTip("Vitesse d'avance de gravure des étiquettes.")
+        form.addRow("Étiquettes — vitesse :", self.spn_label_feed)
 
         self.btn_export = QtWidgets.QPushButton("Exporter réglages + photos (.zip)…")
         self.btn_export.setToolTip(
@@ -9462,6 +9392,8 @@ class TaskPanelSettings:
             "travel_clearance_mm": self.spn_clearance.value(),
             "frame_power": self.spn_frame_power.value(),
             "frame_feed_mm_min": self.spn_frame_feed.value(),
+            "label_power": self.spn_label_power.value(),
+            "label_feed": self.spn_label_feed.value(),
             "safe_min_nozzle_height_mm": self.spn_safe_height.value(),
             "max_thickness_warning_mm": self.spn_max_thickness.value(),
             "recommended_max_step_mm": self.spn_max_step.value(),

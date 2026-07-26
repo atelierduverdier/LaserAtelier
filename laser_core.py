@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.35.0"
+VERSION = "1.36.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -623,6 +623,9 @@ TRANSIT_MARGIN_MM = 0.5               # marge de survol par défaut des modes ma
 SPOT_FOCUS_MM = 0.15                  # diamètre du point AU FOYER (mesuré)
 SPOT_TEST_DEFOCUS_MM = 3.0            # défocus de test de la 2e mesure (mm)
 SPOT_TEST_DIAMETER_MM = 1.0           # diamètre du point mesuré à ce défocus de test
+LABEL_POWER = 600.0                   # étiquettes gravées des tests/planches : puissance (S)
+LABEL_FEED = 800.0                    # ... et vitesse d'avance (mm/min) -- par laser, réglés
+                                      # une fois dans les Préférences
 
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
 _USER_SETTINGS = (
@@ -638,6 +641,8 @@ _USER_SETTINGS = (
     ("arm_dwell_s", "ARM_DWELL_S", float, lambda v: v >= 0),
     ("rapid_feed_mm_min", "RAPID_FEED_MM_MIN", float, lambda v: v > 0),
     ("travel_clearance_mm", "TRAVEL_CLEARANCE_MM", float, lambda v: v >= 0),
+    ("label_power", "LABEL_POWER", float, lambda v: 0 <= v),
+    ("label_feed", "LABEL_FEED", float, lambda v: v > 0),
     ("frame_power", "FRAME_POWER", float, lambda v: v >= 0),
     ("frame_feed_mm_min", "FRAME_FEED_MM_MIN", float, lambda v: v > 0),
     ("z_max_feed_mm_min", "Z_MAX_FEED_MM_MIN", float, lambda v: v > 0),
@@ -755,7 +760,7 @@ def save_nozzle(bottom_diameter_mm, top_diameter_mm, height_mm):
 # communs -- les rattacher au laser actif est le développement suivant.
 PER_LASER_KEYS = ("laser_tool", "s_max", "spot_focus_mm", "spot_test_defocus_mm",
                   "spot_test_diameter_mm", "z_work_mm", "frame_power",
-                  "gcode_dialect")
+                  "label_power", "label_feed", "gcode_dialect")
 
 
 def _laser_slug(name):
@@ -2303,7 +2308,7 @@ def _apply_grid_line_style(chains, style, sp):
     return chains
 
 
-def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0, label_feed=1500.0,
+def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, label_feed=None,
                               cell_z_offset=0.0, use_proximity=False,
                               line_style="plein", line_style_params=None,
                               draw_border=False, z_border=8.5, border_power=300.0, border_feed=1000.0,
@@ -2369,6 +2374,10 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=300.0,
     min_safe_z : plancher imposé à la hauteur de retrait -- cf.
     generate_gcode_curved pour l'explication complète (transit sûr entre
     opérations d'un job combiné)."""
+    if label_power is None:
+        label_power = LABEL_POWER
+    if label_feed is None:
+        label_feed = LABEL_FEED
     if not cells:
         return None
 
@@ -3545,33 +3554,33 @@ _FACTORY_PRESETS = {
         "Recherche du foyer (fin)": {
             "zstart": 0.0, "zstep": 0.5, "nmarks": 16, "length": 15.0,
             "rowgap": 6.0, "power": 300.0, "power_end": 300.0, "feed": 1000.0,
-            "labels": True, "power_labels": True, "label_power": 300.0, "label_feed": 1500.0},
+            "labels": True, "power_labels": True},
         "Divergence (large + rampe)": {
             "zstart": 0.0, "zstep": 2.0, "nmarks": 20, "length": 15.0,
             "rowgap": 8.0, "power": 250.0, "power_end": 800.0, "feed": 1000.0,
-            "labels": True, "power_labels": True, "label_power": 300.0, "label_feed": 1500.0},
+            "labels": True, "power_labels": True},
         "Balayage complet (0-45mm)": {
             "zstart": 0.0, "zstep": 3.0, "nmarks": 16, "length": 12.0,
             "rowgap": 9.0, "power": 300.0, "power_end": 1000.0, "feed": 1200.0,
-            "labels": True, "power_labels": True, "label_power": 300.0, "label_feed": 1500.0},
+            "labels": True, "power_labels": True},
     },
     "powerramp": {
         "Gravure MDF (puissance/vitesse)": {
             "length": 100.0, "nlines": 6, "gap": 8.0, "feed_min": 300.0, "feed_max": 1500.0,
             "power_min": 0.0, "power_max": 1000.0, "steps": 15, "zramp": False, "z_end": 14.0,
-            "labels": True, "label_power": 300.0, "label_feed": 1500.0},
+            "labels": True},
         "Marquage léger (rapide)": {
             "length": 100.0, "nlines": 6, "gap": 8.0, "feed_min": 1000.0, "feed_max": 6000.0,
             "power_min": 0.0, "power_max": 600.0, "steps": 15, "zramp": False, "z_end": 14.0,
-            "labels": True, "label_power": 300.0, "label_feed": 1500.0},
+            "labels": True},
         "Découpe fine (lent)": {
             "length": 100.0, "nlines": 5, "gap": 8.0, "feed_min": 100.0, "feed_max": 600.0,
             "power_min": 400.0, "power_max": 1000.0, "steps": 12, "zramp": False, "z_end": 14.0,
-            "labels": True, "label_power": 300.0, "label_feed": 1500.0},
+            "labels": True},
         "Défocus/largeur (rampe Z)": {
             "length": 120.0, "nlines": 5, "gap": 10.0, "feed_min": 300.0, "feed_max": 900.0,
             "power_min": 200.0, "power_max": 1000.0, "steps": 15, "zramp": True, "z_end": 40.0,
-            "labels": True, "label_power": 300.0, "label_feed": 1500.0},
+            "labels": True},
     },
     "offset_test": {
         "Croix standard (10 mm)": {
@@ -3612,13 +3621,13 @@ _FACTORY_PRESETS = {
             "mode": 0, "power_min": 200.0, "power_max": 1000.0, "power_steps": 5,
             "feed_min": 500.0, "feed_max": 3000.0, "feed_steps": 5, "cell_size": 10.0,
             "gap": 3.0, "zwork": 8.0, "filltype": 0, "hatch_spacing": 0.2, "hatch_angle": 45.0,
-            "proximity": True, "labels": True, "label_power": 300.0, "label_feed": 1500.0,
+            "proximity": True, "labels": True,
             "border_enabled": True, "border_power": 300.0, "border_feed": 1000.0},
         "Découpe (départ)": {
             "mode": 1, "power_min": 500.0, "power_max": 1000.0, "power_steps": 4,
             "feed_min": 150.0, "feed_max": 700.0, "feed_steps": 5, "cell_size": 10.0,
             "gap": 4.0, "zwork": 8.0, "proximity": True, "labels": True,
-            "label_power": 300.0, "label_feed": 1500.0, "border_enabled": False,
+            "border_enabled": False,
             "border_power": 300.0, "border_feed": 1000.0},
     },
 }
@@ -4684,7 +4693,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
 def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, row_gap,
                                        power, feed, power_end=None, draw_labels=True,
                                        draw_power_labels=True,
-                                       label_power=300.0, label_feed=1500.0, label_z=None,
+                                       label_power=None, label_feed=None, label_z=None,
                                        n_bands=1, feed_end=None, band_gap=5.0,
                                        pre_gcode="", post_gcode="", frame_only=False, quiet=False):
     """Grave une rangée de courts traits, chacun à une hauteur de bec
@@ -4719,6 +4728,10 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     entre chaque trait (inutile à plat, et lente).
 
     frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
+    if label_power is None:
+        label_power = LABEL_POWER
+    if label_feed is None:
+        label_feed = LABEL_FEED
     n_marks = max(1, int(n_marks))
     n_bands = max(1, int(n_bands))
     def _mark_power(k):
@@ -4871,7 +4884,7 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
 def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
                                     power_min, power_max, z_work, line_gap,
                                     z_end=None, n_steps=40, draw_labels=True,
-                                    label_power=300.0, label_feed=1500.0,
+                                    label_power=None, label_feed=None,
                                     pre_gcode="", post_gcode="",
                                     frame_only=False, quiet=False):
     """Grave N longues lignes horizontales, une par VITESSE (feed_min ->
@@ -4894,6 +4907,10 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
     Gravées à label_power/label_feed FIXES, au foyer (z_work).
 
     frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
+    if label_power is None:
+        label_power = LABEL_POWER
+    if label_feed is None:
+        label_feed = LABEL_FEED
     n_lines = max(1, int(n_lines))
     n_steps = max(2, int(n_steps))
     if line_length <= 0 or n_lines < 1:
@@ -6249,7 +6266,7 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
                                  feed, line_width, material,
                                  white_threshold=0.05, n_levels=10,
                                  patch_mm=8.0, band_h_mm=8.0, gap_mm=5.0,
-                                 label_power=300.0, label_feed=1500.0,
+                                 label_power=None, label_feed=None,
                                  pre_gcode="", post_gcode="", frame_only=False,
                                  quiet=False):
     """MIRE COMPARATIVE des tramages photo : le même dégradé en paliers
@@ -6260,6 +6277,10 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
     Un seul test pour comparer les styles et lire quels gris chaque
     tramage rend réellement sur le matériau. La bande 3 est sautée (avec
     avertissement) si le nuancier n'a pas 2 tons en défocus."""
+    if label_power is None:
+        label_power = LABEL_POWER
+    if label_feed is None:
+        label_feed = LABEL_FEED
     cols = max(2, int(round(n_levels * patch_mm / pitch)))
     rows_per = max(2, int(round(band_h_mm / pitch)))
     grid = [[(min(n_levels - 1, int(c * n_levels / cols)) + 1) / float(n_levels)
@@ -6613,9 +6634,9 @@ def _trait_op(x, y, power, feed, z_focus, nom, trait_len):
 
 def _op_etiquettes(label_edges, z_focus, nom):
     """Op « curved » regroupant toutes les étiquettes d'une planche (gravées au
-    foyer à S600/F800, réglage médian lisible)."""
+    foyer aux réglages Étiquettes des Préférences)."""
     return {"type": "curved", "label": nom,
-            "params": dict(edges=label_edges, power=600.0, feed=800.0,
+            "params": dict(edges=label_edges, power=LABEL_POWER, feed=LABEL_FEED,
                            z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM)}
 
 
