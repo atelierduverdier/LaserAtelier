@@ -2206,8 +2206,8 @@ class TaskPanelNuancier:
         _diagram(form, "diag_nuancier.svg")
 
         _etapes(form, [("Saisir", "① Saisir les tons mesurés"),
-                       ("Photo", "② Photo du résultat"),
-                       ("Graver", "③ Graver ce nuancier (planche physique)")])
+                       ("Graver", "② Graver ce nuancier (planche physique)"),
+                       ("Photo", "③ Photo du résultat")])
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
@@ -2256,11 +2256,7 @@ class TaskPanelNuancier:
         self.chk_verrou_tons = _verrou(form, [self.table, btn_add, btn_del],
                                        titre="Verrouiller les tons")
 
-        self._photo = _make_photo_section(
-            form, lambda: "nuancier:" + self.combo_mat.currentText().strip(),
-            titre="② Photo du résultat")
-
-        _section(form, "③ Graver ce nuancier (planche physique)", "sect_preset.svg", ouvert=True)
+        _section(form, "② Graver ce nuancier (planche physique)", "sect_preset.svg", ouvert=True)
         _bullet_list(form, [
             "Grave une <b>planche de référence</b>&nbsp;: un cercle Ø20 par "
             "entrée, chacun avec sa recette et un <b>Job</b>, plus une "
@@ -2291,6 +2287,10 @@ class TaskPanelNuancier:
             "par préréglage), empilés dans le Job combiné, prêt à générer.")
         btn_nuancier.clicked.connect(self._on_graver_preregles)
         form.addRow(btn_nuancier)
+
+        self._photo = _make_photo_section(
+            form, lambda: "nuancier:" + self.combo_mat.currentText().strip(),
+            titre="③ Photo du résultat")
 
         self._reload_materials()
         self.combo_mat.activated.connect(
@@ -8612,7 +8612,10 @@ class TaskPanelAssistant:
         self.lbl_sonde.setText(
             "<b>Largeur brûlée prédite : {:.2f} mm</b> → espacement plein "
             "conseillé : <b>{:.2f} mm</b> (largeur × 0,9 : 10 % de "
-            "recouvrement).".format(w, w * 0.9))
+            "recouvrement). <i>Informatif : la Gravure remplie resserre déjà "
+            "son espacement toute seule sur cette mesure ; pour forcer une "
+            "autre valeur, règle « Espacement remplissage » dans son "
+            "panneau.</i>".format(w, w * 0.9))
 
     def _on_nuancier(self):
         _lancer_nuancier_physique(self.form, "tons",
