@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.71.4"
+VERSION = "1.71.5"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5125,17 +5125,38 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
         # simple amorce sous la 1re ligne comme la graduation de
         # puissance ci-dessus) -- on lit le défocus à l'intersection avec
         # n'importe quelle ligne, sans avoir à viser une règle éloignée.
-        # Puissance ET hauteur montent ensemble le long de X (z_ramp),
-        # mais pas forcément sur des valeurs rondes en même temps, d'où
-        # des graduations Z séparées de celles de puissance.
+        # Sa position en X est retrouvée sur la VRAIE trajectoire par
+        # paliers du G-code (mêmes k/t que la boucle de gravure plus bas),
+        # PAS une interpolation linéaire sur toute la longueur : le 1er
+        # palier reste au foyer (t=0 en k=0), donc Z ne bouge pas du tout
+        # sur le premier line_length/n_steps -- une règle linéaire naïve
+        # plaçait la graduation en avance sur la hauteur réellement
+        # atteinte à cet endroit.
         if z_ramp:
+            points_z = [(0.0, z_work)]
+            for k in range(n_steps):
+                t = k / float(n_steps - 1)
+                points_z.append((line_length * (k + 1) / float(n_steps),
+                                 z_work + (z_end - z_work) * t))
+
+            def _x_pour_z(z_val, _pts=points_z):
+                if abs(z_val - z_work) < 1e-9:
+                    return 0.0
+                for (x0, z0), (x1, z1) in zip(_pts, _pts[1:]):
+                    lo, hi = sorted((z0, z1))
+                    if lo - 1e-9 <= z_val <= hi + 1e-9 and abs(z1 - z0) > 1e-9:
+                        return x0 + (x1 - x0) * (z_val - z0) / (z1 - z0)
+                return None
+
             max_digits = max((len(str(int(round(p)))) for p in uniq), default=1)
             z_row_bas = tick_top - tick_len - grad_h * (1.3 * max_digits + 1.0)
             y_haut_rampe = (n_lines - 1) * line_gap
             z_lo, z_hi = sorted((z_work, z_end))
             for cm in range(math.ceil(z_lo / 5.0), math.floor(z_hi / 5.0) + 1):
                 z_val = cm * 5.0
-                x_tick = line_length * (z_val - z_work) / (z_end - z_work)
+                x_tick = _x_pour_z(z_val)
+                if x_tick is None:
+                    continue
                 label_chains.append([FreeCAD.Vector(x_tick, y_haut_rampe, 0.0),
                                      FreeCAD.Vector(x_tick, z_row_bas - tick_len, 0.0)])
                 label_chains.extend(chain_edges(text_to_edges_vertical(
