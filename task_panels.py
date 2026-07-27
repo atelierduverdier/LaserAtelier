@@ -8710,7 +8710,8 @@ class TaskPanelCurvedCut:
 class TaskPanelAssistant:
     """ASSISTANT MATÉRIAU : caractériser un matériau du début à la fin, dans
     un seul panneau -- ① graver les trois planches, ② mesurer (mêmes grilles
-    que la Grille de test), ③ déduire (état du modèle, sonde d'interpolation,
+    que la Grille de test), ③ photo du résultat (rangée par matériau, clé
+    "assistant:<matériau>"), ④ déduire (état du modèle, sonde d'interpolation,
     nuancier physique). Pure orchestration : générateurs et saisie sont ceux
     des modes autonomes (Grille, Rampe, Bande défocus, Nuancier), qui restent
     utilisables séparément."""
@@ -8760,7 +8761,8 @@ class TaskPanelAssistant:
 
         _etapes(form, [("Graver", "① Graver les trois planches"),
                        ("Mesurer", "② Entrer les mesures (largeurs)"),
-                       ("Déduire", "③ Déduire (modèle & nuancier)")])
+                       ("Photo", "③ Photo du résultat"),
+                       ("Déduire", "④ Déduire (modèle & nuancier)")])
 
         _section(form, "① Graver les trois planches", "sect_power.svg")
         form.addRow(_WrapLabel(
@@ -8780,7 +8782,11 @@ class TaskPanelAssistant:
             form, self, lambda: self.combo_mat.currentText(),
             on_saved=self._on_mesures_enregistrees)
 
-        _section(form, "③ Déduire (modèle & nuancier)", "sect_preset.svg")
+        self._photo = _make_photo_section(
+            form, lambda: "assistant:" + self.combo_mat.currentText().strip(),
+            titre="③ Photo du résultat")
+
+        _section(form, "④ Déduire (modèle & nuancier)", "sect_preset.svg")
         self.lbl_etat = _WrapLabel("")
         form.addRow(self.lbl_etat)
         # Sonde d'interpolation : montre en direct la largeur que le modèle
@@ -8827,6 +8833,7 @@ class TaskPanelAssistant:
 
         self._reload_liste_materiaux()
         self._mesures.reload()
+        self._photo["reload"]()
         self._maj_deductions()
 
         self.form = _scrollable(inner)
@@ -8840,6 +8847,7 @@ class TaskPanelAssistant:
 
     def _on_mat_change(self, *_):
         self._mesures.reload()
+        self._photo["reload"]()
         self._maj_deductions()
 
     def _reload_liste_materiaux(self, garder=None):
