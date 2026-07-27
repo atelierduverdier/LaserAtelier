@@ -8714,13 +8714,29 @@ class TaskPanelAssistant:
         self.combo_mat.setSizeAdjustPolicy(
             QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_mat.setMinimumContentsLength(14)
-        mats = core.burn_width_materials() or core.shade_materials() or ["MDF"]
-        self.combo_mat.addItems(mats)
-        self.combo_mat.setCurrentText(mats[0])
         self.combo_mat.setToolTip(
-            "Matériau caractérisé : les mesures et les tons y sont rangés.\n"
-            "Choisis-en un ou tape un nouveau nom (ex. « Hêtre »).")
+            "Matériau caractérisé : les mesures (①②) et le nuancier y sont "
+            "rangés.\nChoisis-en un dans la liste, ou tape un nouveau nom -- "
+            "les mesures\nci-dessous repartent alors à zéro, jusqu'à ce que "
+            "tu enregistres\nles siennes. « Nouveau matériau » vide le champ "
+            "pour toi.")
         form.addRow("Matériau :", self.combo_mat)
+
+        self.btn_nouveau_mat = QtWidgets.QPushButton("Nouveau matériau…")
+        self.btn_nouveau_mat.setToolTip(
+            "Vide le champ ci-dessus pour caractériser un matériau qui "
+            "n'existe\npas encore -- tape son nom, grave/mesure (①②), "
+            "« Enregistrer les\nmesures » le crée réellement (rien n'est "
+            "créé avant ça).")
+        self.btn_nouveau_mat.clicked.connect(self._on_nouveau_materiau)
+        form.addRow(self.btn_nouveau_mat)
+
+        self.btn_supprimer_mat = QtWidgets.QPushButton("Supprimer ce matériau")
+        self.btn_supprimer_mat.setToolTip(
+            "Efface les mesures (①②) ET le nuancier de ce matériau. "
+            "Irréversible.")
+        self.btn_supprimer_mat.clicked.connect(self._on_supprimer_materiau)
+        form.addRow(self.btn_supprimer_mat)
 
         _etapes(form, [("Graver", "① Graver les trois planches"),
                        ("Mesurer", "② Entrer les mesures (largeurs)"),
@@ -8742,7 +8758,7 @@ class TaskPanelAssistant:
             "grille pour saisir, puis « Enregistrer les mesures »."))
         self._mesures = _MesuresPlanchesControleur(
             form, self, lambda: self.combo_mat.currentText(),
-            on_saved=self._maj_deductions)
+            on_saved=self._on_mesures_enregistrees)
 
         _section(form, "③ Déduire (modèle & nuancier)", "sect_preset.svg")
         self.lbl_etat = _WrapLabel("")
@@ -8789,6 +8805,7 @@ class TaskPanelAssistant:
         self.combo_mat.currentIndexChanged.connect(self._on_mat_change)
         self.combo_mat.lineEdit().editingFinished.connect(self._on_mat_change)
 
+        self._reload_liste_materiaux()
         self._mesures.reload()
         self._maj_deductions()
 
@@ -8803,6 +8820,59 @@ class TaskPanelAssistant:
 
     def _on_mat_change(self, *_):
         self._mesures.reload()
+        self._maj_deductions()
+
+    def _reload_liste_materiaux(self, garder=None):
+        """Recharge la liste déroulante depuis la config (union des
+        matériaux mesurés ET du nuancier -- un matériau qui n'a que l'un
+        des deux doit rester visible), en conservant la sélection/le texte
+        courant. Même pattern que TaskPanelNuancier._reload_materials.
+        Appelée après « Enregistrer les mesures » : sans ça, un matériau
+        tout juste créé disparaît de la liste dès qu'on choisit un autre
+        matériau, et il fallait fermer/rouvrir le panneau pour le
+        retrouver."""
+        actuel = (garder if garder is not None
+                  else self.combo_mat.currentText()).strip()
+        mats = sorted(set(core.burn_width_materials()) | set(core.shade_materials())) or ["MDF"]
+        self.combo_mat.blockSignals(True)
+        self.combo_mat.clear()
+        self.combo_mat.addItems(mats)
+        self.combo_mat.setCurrentText(actuel if actuel else mats[0])
+        self.combo_mat.blockSignals(False)
+
+    def _on_nouveau_materiau(self):
+        """Vide le champ pour caractériser un matériau qui n'existe pas
+        encore -- ne crée rien tout seul (« Enregistrer les mesures » s'en
+        charge) : juste l'équivalent explicite de taper un nom inédit."""
+        self.combo_mat.blockSignals(True)
+        self.combo_mat.setCurrentIndex(-1)
+        self.combo_mat.setEditText("")
+        self.combo_mat.blockSignals(False)
+        self.combo_mat.setFocus()
+        self._on_mat_change()
+
+    def _on_supprimer_materiau(self):
+        mat = self.combo_mat.currentText().strip()
+        if not mat:
+            return
+        reponse = QtWidgets.QMessageBox.question(
+            self.form, "Supprimer « {} »".format(mat),
+            "Effacer TOUTES les mesures (①②) et le nuancier de « {} » "
+            "?\n\nIrréversible.".format(mat),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No)
+        if reponse != QtWidgets.QMessageBox.Yes:
+            return
+        core.save_burn_widths(mat, {})
+        core.save_shades(mat, [])
+        self._reload_liste_materiaux(garder="")
+        self._on_mat_change()
+
+    def _on_mesures_enregistrees(self):
+        """Callback de _MesuresPlanchesControleur après « Enregistrer les
+        mesures » : un matériau tout juste créé doit rester sélectionnable
+        dans la liste, pas seulement tapé au clavier."""
+        self._reload_liste_materiaux()
         self._maj_deductions()
 
     def _maj_deductions(self):
