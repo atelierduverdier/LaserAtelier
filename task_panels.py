@@ -4482,25 +4482,19 @@ class TaskPanelDefocusCalibration:
         _panel_header(form, "defocus.svg", "Bande de calibration défocus")
         _calibration_banner(form, "Bande de calibration défocus")
         _intro(form,
-               "Grave une rangée de traits, chacun à une hauteur de bec "
-               "croissante (étiquetée) : le trait LE PLUS FIN te donne le "
-               "foyer, les traits larges la divergence du faisceau. Zéro Z "
-               "sur la surface, aucune sélection requise.",
-               "Calibre UNIQUEMENT la divergence du point (2 mesures, valables "
-               "pour tout le laser actif) -- pas les largeurs brûlées ni les "
-               "tons, qui se saisissent dans la Grille de test/Rampe et le "
-               "Nuancier. À mesurer au pied à coulisse : (1) la hauteur du "
-               "trait le plus fin = ton Z de foyer et sa largeur = « point au "
-               "foyer » ; (2) un trait bien plus large : sa hauteur moins "
-               "celle du foyer = « défocus de test », sa largeur = « point au "
-               "défocus de test ». « Enregistrer la calibration du point » "
-               "(② ci-dessous) range ces trois mesures pour le laser actif -- "
-               "inutile de repasser par les Préférences. La rampe de "
-               "puissance optionnelle garde les traits très défocalisés "
-               "visibles. Astuce : mets « Nombre de bandes » > 1 pour graver "
-               "plusieurs bandes côte à côte, une par vitesse (de la 1re à la "
-               "dernière) -- tous tes niveaux de gris/noir en un seul job, "
-               "chaque bande étiquetée de sa vitesse.")
+               "Grave une rangée de traits à hauteur de bec croissante "
+               "(étiquetée) : le trait le <b>plus fin</b> donne le foyer, "
+               "les traits larges la divergence du faisceau. Zéro Z sur la "
+               "surface, aucune sélection requise.",
+               "Calibre uniquement la divergence du point (2 mesures, "
+               "valables pour tout le laser actif) -- pas les largeurs "
+               "brûlées ni les tons, qui se saisissent dans la Grille de "
+               "test/Rampe et le Nuancier. Le détail des mesures à faire est "
+               "dans le Mode d'emploi ci-dessous. Deux réglages optionnels : "
+               "la <b>rampe de puissance</b> garde les traits très "
+               "défocalisés visibles ; « <b>Nombre de bandes</b> » > 1 grave "
+               "une bande par vitesse en un seul job, chaque bande étiquetée "
+               "de sa vitesse.")
         _diagram(form, "diag_defocus.svg")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
