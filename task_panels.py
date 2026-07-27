@@ -417,6 +417,20 @@ class _GrilleResultats(QtWidgets.QGroupBox):
     def __init__(self, titre, rows, cols, row_fmt="S{:.0f}", col_fmt="F{:.0f}",
                  decimals=2, maxi=10.0, pas=0.01, parent=None):
         super().__init__(titre, parent)
+        # Titre mis en évidence (même teinte orange que les sections d'étape
+        # _SectionHeader._etape) : dans « ② Entrer les mesures », plusieurs
+        # grilles se suivent (foyer, défocus 15/36 mm) et doivent se
+        # distinguer d'un coup d'œil, pas se fondre dans le reste du panneau.
+        self.setStyleSheet(
+            "QGroupBox {"
+            "  font-weight: bold; font-size: 13px;"
+            "  border: 1px solid #ff8a00; border-radius: 6px;"
+            "  margin-top: 22px; padding-top: 8px; }"
+            "QGroupBox::title {"
+            "  subcontrol-origin: margin; subcontrol-position: top left;"
+            "  left: 8px; top: -6px; padding: 2px 8px;"
+            "  color: #ff8a00; background-color: rgba(255, 138, 0, 0.16);"
+            "  border: 1px solid #ff8a00; border-radius: 4px; }")
         self._rows = [float(r) for r in rows]
         self._cols = [float(c) for c in cols]
         self._cells = {}
