@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.71.2"
+VERSION = "1.71.3"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5054,8 +5054,12 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
     foyer (rampe de puissance seule).
 
     Étiquettes : la vitesse (F) à gauche de chaque ligne, et les bornes de
-    puissance (Smin à gauche, Smax à droite) sous la première ligne.
-    Gravées à label_power/label_feed FIXES, au foyer (z_work).
+    puissance (Smin à gauche, Smax à droite) sous la première ligne. Si
+    z_ramp, une seconde règle de graduation sous celle de puissance donne
+    la hauteur Z tous les 10 mm pile le long de X (même convention que la
+    Bande de calibration défocus), pour situer le défocus à n'importe
+    quelle position de la rampe. Gravées à label_power/label_feed FIXES,
+    au foyer (z_work).
 
     frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
     if label_power is None:
@@ -5115,6 +5119,24 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
             # valeur en chiffres empilés sous le trait
             label_chains.extend(chain_edges(text_to_edges_vertical(
                 "{:.0f}".format(p), x_tick, tick_top - tick_len - grad_h * 0.4, grad_h)))
+
+        # Règle de graduation de hauteur (Z), sous celle de puissance :
+        # puissance ET hauteur montent ensemble le long de X (z_ramp), mais
+        # pas forcément sur des valeurs rondes en même temps -- amorces Z
+        # séparées, à des Z ronds tous les 10 mm pile (même convention que
+        # la Bande de calibration défocus), pour lire directement à quelle
+        # hauteur/défocus correspond une position le long de la rampe.
+        if z_ramp:
+            max_digits = max((len(str(int(round(p)))) for p in uniq), default=1)
+            z_row_top = tick_top - tick_len - grad_h * (1.3 * max_digits + 1.0)
+            z_lo, z_hi = sorted((z_work, z_end))
+            for cm in range(math.ceil(z_lo / 10.0), math.floor(z_hi / 10.0) + 1):
+                z_val = cm * 10.0
+                x_tick = line_length * (z_val - z_work) / (z_end - z_work)
+                label_chains.append([FreeCAD.Vector(x_tick, z_row_top, 0.0),
+                                     FreeCAD.Vector(x_tick, z_row_top - tick_len, 0.0)])
+                label_chains.extend(chain_edges(text_to_edges_vertical(
+                    "{:.0f}".format(z_val), x_tick, z_row_top - tick_len - grad_h * 0.4, grad_h)))
 
     all_pts = []
     for y, _ in lines_geo:
