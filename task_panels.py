@@ -206,9 +206,26 @@ class _WrapLabel(QtWidgets.QLabel):
             h = self.heightForWidth(w)
         except RuntimeError:
             return  # widget C++ déjà détruit (timer différé)
-        if h > 0 and h != self.minimumHeight():
-            self.setMinimumHeight(h)
-            self.updateGeometry()
+        if h <= 0 or h == self.minimumHeight():
+            return
+        self.setMinimumHeight(h)
+        # updateGeometry() se contente d'INVALIDER le layout parent -- Qt ne
+        # le recalcule qu'au tour de boucle suivant (LayoutRequest posté),
+        # d'où le flash de chevauchement vu à l'écran : la rangée reste à
+        # l'ancienne hauteur un instant avant de se corriger toute seule.
+        # On force la 2e passe ICI, tout de suite (le parent connaît déjà
+        # notre nouvelle hauteur minimale) : le chevauchement n'est alors
+        # jamais peint du tout, quelle que soit la cause du redimensionnement
+        # (dépliage de section, barre de défilement, redimensionnement de
+        # la fenêtre...).
+        self.updateGeometry()
+        parent = self.parentWidget()
+        lay = parent.layout() if parent is not None else None
+        if lay is not None:
+            try:
+                lay.activate()
+            except RuntimeError:
+                pass
 
     def _hauteur_repliee(self, hint):
         # Hauteur du paragraphe replié à la largeur COURANTE. QFormLayout
@@ -293,7 +310,9 @@ def _calibration_banner(form, mode_titre):
     # (_toggle) : un recalage différé une fois la largeur définitive connue.
     inner = form.parentWidget()
     if inner is not None:
-        QtCore.QTimer.singleShot(0, lambda w=inner: (w.layout().activate(), w.adjustSize()))
+        QtCore.QTimer.singleShot(
+            0, lambda w=inner: (w.layout().activate(), w.layout().activate(),
+                                 w.adjustSize()))
 
 
 def _verrou(form, champs, titre="Verrouiller les résultats"):
@@ -869,6 +888,10 @@ def _activer_sections(inner):
                 # section rouverte peut rester rogné (hauteur du conteneur
                 # figée avant que le rang soit mesuré).
                 inner.layout().activate()
+                inner.layout().activate()  # 2e passe : les WrapLabel viennent
+                # de fixer leur hauteur minimale (resizeEvent synchrone) au
+                # 1er passage, cette 2e passe l'applique -- sans elle un
+                # flash d'une frame reste visible avant l'auto-correction.
                 inner.adjustSize()
                 QtCore.QTimer.singleShot(0, inner.adjustSize)
             w.toggled.connect(_toggle)
@@ -1415,6 +1438,41 @@ def _duration_row(form, callback, tooltip_extra=""):
     row_layout.addWidget(btn, 0)
     form.addRow(row)
     return lbl
+
+
+def _avertir_relief_sans_reference(parent_widget, edges, reference_shape):
+    """Avant de générer un marquage/découpe courbe : si le motif varie
+    vraiment en Z mais qu'aucun solide 3D de référence n'est sélectionné
+    avec lui, le Z n'est qu'interpolé entre les points du motif ET le
+    contrôle anti-collision du bec (cône) est silencieusement désactivé
+    (pas de sonde exacte pour le nourrir, cf. generate_gcode_curved) -- un
+    motif qui plonge dans une poche sans le solide sélectionné ne
+    déclenche alors AUCUNE alerte, ni à l'écran ni même dans le G-code.
+    Renvoie False si l'utilisateur annule la génération."""
+    if reference_shape is not None:
+        return True
+    zs = []
+    for e in edges:
+        try:
+            pts = e.discretize(Distance=core.DISCRETIZE_DISTANCE)
+        except Exception:
+            pts = [v.Point for v in getattr(e, "Vertexes", [])]
+        zs.extend(p.z for p in pts)
+    if not zs or max(zs) - min(zs) <= 0.5:
+        return True
+    reponse = QtWidgets.QMessageBox.warning(
+        parent_widget, "Pas d'objet 3D de référence",
+        "Le motif varie de {:.1f} mm en Z, mais le solide 3D d'origine "
+        "n'est pas sélectionné avec lui.\n\n"
+        "Sans lui, le Z n'est qu'interpolé entre les points du motif et le "
+        "contrôle anti-collision du bec est DÉSACTIVÉ -- un plongeon dans "
+        "une poche ou un décroché ne déclenchera AUCUNE alerte.\n\n"
+        "Sélectionne le motif ET le solide 3D ensemble pour un suivi exact "
+        "et le contrôle anti-collision.\n\nGénérer quand même ?".format(
+            max(zs) - min(zs)),
+        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+        QtWidgets.QMessageBox.No)
+    return reponse == QtWidgets.QMessageBox.Yes
 
 
 def _write_gcode_with_dialog(parent_widget, gcode, default_path, recadrer_origine=True):
@@ -7070,6 +7128,20 @@ class TaskPanelCurved:
             "(réglable dans Préférences) -- la vraie vitesse rapide de\n"
             "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
 
+        self.chk_origin_bbox = QtWidgets.QCheckBox(
+            "Recadrer au zéro pièce (coin bas-gauche à 0,0)")
+        self.chk_origin_bbox.setChecked(bool(getattr(core, "GCODE_ORIGIN_BBOX", True)))
+        self.chk_origin_bbox.setToolTip(
+            "Même réglage que Préférences > Machine / G-code -- rappelé ici\n"
+            "juste avant de générer, pour ne pas l'oublier. Décoche pour un\n"
+            "marquage sur une pièce déjà positionnée précisément (fraisage\n"
+            "puis gravure sur la MÊME pièce sans reprendre le zéro) : sinon\n"
+            "ce job est recadré tout seul et se retrouve décalé par rapport\n"
+            "à ce qui a déjà été usiné.")
+        self.chk_origin_bbox.toggled.connect(
+            lambda on: core.save_settings({"gcode_origin_bbox": on}))
+        form.addRow(self.chk_origin_bbox)
+
         self.btn_save_gcode = QtWidgets.QPushButton("Générer et sauvegarder le G-code…")
         _btn_icon(self.btn_save_gcode, "sect_gcode.svg")
         self.btn_save_gcode.setToolTip(
@@ -7484,6 +7556,8 @@ class TaskPanelCurved:
     def _on_save_gcode(self):
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
+            return False
+        if not _avertir_relief_sans_reference(self.form, self._edges, self._reference_shape):
             return False
 
         _save_last_values("curved", self._last_fields, selection=self.selection)
@@ -8492,6 +8566,8 @@ class TaskPanelCurvedCut:
     def _on_save_gcode(self):
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
+            return False
+        if not _avertir_relief_sans_reference(self.form, self._edges, self._reference_shape):
             return False
 
         _save_last_values("curved_cut", self._last_fields, selection=self.selection)
