@@ -1824,7 +1824,7 @@ def _nuancier_items(source, material):
         shades = core.load_shades(material)
         if not shades:
             return None, ("aucun ton mesuré pour « {} » -- saisis d'abord des "
-                          "tons dans le tableau ci-dessus (ou choisis un autre "
+                          "tons dans le mode « Nuancier » (ou choisis un autre "
                           "matériau).".format(material or "?"))
         half = core.calibrated_half_angle()
         items = []
