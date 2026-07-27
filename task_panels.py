@@ -1441,14 +1441,17 @@ def _duration_row(form, callback, tooltip_extra=""):
 
 
 def _avertir_relief_sans_reference(parent_widget, edges, reference_shape):
-    """Avant de générer un marquage/découpe courbe : si le motif varie
-    vraiment en Z mais qu'aucun solide 3D de référence n'est sélectionné
-    avec lui, le Z n'est qu'interpolé entre les points du motif ET le
-    contrôle anti-collision du bec (cône) est silencieusement désactivé
-    (pas de sonde exacte pour le nourrir, cf. generate_gcode_curved) -- un
-    motif qui plonge dans une poche sans le solide sélectionné ne
-    déclenche alors AUCUNE alerte, ni à l'écran ni même dans le G-code.
-    Renvoie False si l'utilisateur annule la génération."""
+    """Avant de générer un marquage/découpe courbe (génération directe OU
+    ajout au job combiné) : si le motif varie vraiment en Z mais qu'aucun
+    solide 3D de référence n'est sélectionné avec lui, le Z n'est
+    qu'interpolé entre les points du motif ET le contrôle anti-collision
+    du bec (cône) est silencieusement désactivé (pas de sonde exacte pour
+    le nourrir, cf. generate_gcode_curved) -- un motif qui plonge dans une
+    poche sans le solide sélectionné ne déclenche alors AUCUNE alerte, ni
+    à l'écran ni même dans le G-code. À appeler à CHAQUE endroit où un tel
+    motif quitte le panneau (génération directe ET `_build_combined_operation`)
+    -- sinon le job combiné recontourne silencieusement l'alerte. Renvoie
+    False si l'utilisateur annule la génération."""
     if reference_shape is not None:
         return True
     zs = []
@@ -1470,6 +1473,27 @@ def _avertir_relief_sans_reference(parent_widget, edges, reference_shape):
         "Sélectionne le motif ET le solide 3D ensemble pour un suivi exact "
         "et le contrôle anti-collision.\n\nGénérer quand même ?".format(
             max(zs) - min(zs)),
+        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+        QtWidgets.QMessageBox.No)
+    return reponse == QtWidgets.QMessageBox.Yes
+
+
+def _avertir_collision_detectee(parent_widget, count, quoi="gravure"):
+    """Après génération (sonde exacte active) : à `count` endroits, le bec
+    (cône anti-collision) serait plus proche de la surface voisine que ne
+    le permet le focus imposé -- jusqu'ici seulement écrit dans la vue
+    Rapport de FreeCAD (pas toujours ouverte, facile à rater avant de
+    lancer le job sur la machine pour de vrai). Fenêtre bloquante à la
+    place. Renvoie False si l'utilisateur annule la génération."""
+    if not count:
+        return True
+    reponse = QtWidgets.QMessageBox.warning(
+        parent_widget, "Risque de collision détecté",
+        "À {} endroit(s), le bec (cône anti-collision) serait plus proche "
+        "de la surface voisine que ne le permet le focus de cette {}.\n\n"
+        "Le Z n'a PAS été modifié (le focus reste imposé) -- vérifie "
+        "visuellement ces zones avant de lancer le job sur la machine.\n\n"
+        "Générer quand même ?".format(count, quoi),
         QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
         QtWidgets.QMessageBox.No)
     return reponse == QtWidgets.QMessageBox.Yes
@@ -7533,6 +7557,8 @@ class TaskPanelCurved:
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return None
+        if not _avertir_relief_sans_reference(self.form, self._edges, self._reference_shape):
+            return None
         _save_last_values("curved", self._last_fields, selection=self.selection)
         return {"type": "curved",
                 "label": "Marquage (S{:.0f})".format(self._effective_power()),
@@ -7565,6 +7591,7 @@ class TaskPanelCurved:
             "Chaînage des segments connectés... ({})\n".format(
                 "objet 3D de référence détecté" if self._reference_shape is not None else "pas d'objet 3D, interpolation"))
 
+        warnings_out = {}
         gcode = core.generate_gcode_curved(
             self._edges,
             self._effective_power(),
@@ -7573,11 +7600,15 @@ class TaskPanelCurved:
             core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape,
             probe=self._probe,
+            warnings_out=warnings_out,
             **self._style_kwargs()
         )
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
+            return False
+        if not _avertir_collision_detectee(
+                self.form, warnings_out.get("nozzle_marking_warnings", 0), "gravure"):
             return False
 
         # Bouton : le panneau reste ouvert quoi qu'il arrive -- re-cliquer
@@ -8540,6 +8571,8 @@ class TaskPanelCurvedCut:
     def _build_combined_operation(self):
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
+            return None
+        if not _avertir_relief_sans_reference(self.form, self._edges, self._reference_shape):
             return None
         _save_last_values("curved_cut", self._last_fields, selection=self.selection)
         return {"type": "curved_cut",

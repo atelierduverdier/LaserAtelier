@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.53.0"
+VERSION = "1.54.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2723,7 +2723,7 @@ def split_selection(selection):
 def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_shape=None,
                            style="plein", style_params=None,
                            pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
-                           min_safe_z=None, probe=None, dose_spot_d=None):
+                           min_safe_z=None, probe=None, dose_spot_d=None, warnings_out=None):
     """style / style_params : style de trait ("plein" = trait continu
     historique, "tirets", "pointille", "vague" -- cf. la section STYLES DE
     TRAIT). Les styles suivent le RELIEF comme le trait plein : les tirets
@@ -3017,6 +3017,11 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
             "{} points de GRAVURE où le bec (cône) serait plus proche de la surface "
             "voisine que le point focal lui-même -- Z non modifié (focus imposé), "
             "à vérifier visuellement sur ces zones.\n".format(nozzle_marking_warnings))
+    # La vue Rapport n'est pas toujours ouverte : le panneau appelant a
+    # besoin de CE chiffre pour décider d'afficher une vraie fenêtre
+    # d'avertissement, pas seulement un message de console.
+    if warnings_out is not None:
+        warnings_out["nozzle_marking_warnings"] = nozzle_marking_warnings
 
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
@@ -4506,7 +4511,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
                                reference_shape=None, finish_feed=None, power_end=None,
                                kerf_width=0.0, use_hole_first=False, use_proximity=False,
                                pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
-                               min_safe_z=None, probe=None):
+                               min_safe_z=None, probe=None, warnings_out=None):
     """z_focus : même rôle que dans generate_gcode_curved -- Z natif du
     document qui met le laser au point (foyer) au niveau le plus bas du
     motif (1ère passe). Les passes suivantes reculent le foyer de
@@ -4705,6 +4710,8 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
             "voisine que ne le permet la profondeur de cette passe -- risque de collision "
             "à vérifier visuellement/physiquement sur ces zones (plus fréquent sur les "
             "dernières passes, le foyer reculant dans la matière).\n".format(nozzle_cut_warnings))
+    if warnings_out is not None:
+        warnings_out["nozzle_cut_warnings"] = nozzle_cut_warnings
 
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
