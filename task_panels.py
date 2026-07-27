@@ -5847,39 +5847,21 @@ class TaskPanelTestGrid:
                        ("Mesurer", "② Entrer les mesures (largeurs brûlées)"),
                        ("Photo", "③ Photo du résultat")])
 
-        # Les boutons "Planche 1-2-3" ont été retirés d'ici : les avoir à la
-        # fois ici ET dans l'Assistant matériau faisait double emploi avec
-        # l'objectif "Largeurs brûlées" ci-dessous, qui couvre le même besoin
-        # via cette grille personnalisable. Ils restent dans l'Assistant
-        # matériau, le point d'entrée recommandé pour un nouveau matériau.
-        form.addRow(_WrapLabel(
-            "Pour calibrer un <b>nouveau matériau</b> de façon standard "
-            "(largeurs brûlées, foyer/défocus), utilise l'<b>Assistant "
-            "matériau</b> -- il regroupe les trois planches, la saisie des "
-            "mesures et les déductions. Cette grille sert à explorer une "
-            "plage puissance/vitesse personnalisée (taille, remplissage, "
-            "découpe) hors de ce parcours standard."))
-        # La saisie des mesures n'est plus un dialogue séparé : elle est
-        # désormais inline, dans la section « ② Entrer les mesures » plus bas.
-        _intro(form,
-               "Grave (ou découpe) une grille de cellules sur une chute : "
-               "chaque cellule teste UN couple puissance/vitesse. Tu choisis "
-               "ensuite la meilleure à l'oeil. Aucune sélection requise.",
-               "Puissance croissante en colonnes (X), vitesse croissante en "
-               "lignes (Y) ; chaque colonne/ligne est étiquetée directement "
-               "sur la pièce (S..., F...), et la grille complète est aussi "
-               "imprimée dans la vue Rapport. Le champ « Hauteur (Z) de "
-               "test » permet de rejouer la même grille à une autre hauteur "
-               "(bec défocalisé) pour caractériser un matériau proprement, "
-               "une hauteur à la fois.")
+        _bullet_list(form, [
+            "<b>1.</b> Nouveau matériau à calibrer de façon standard&nbsp;? "
+            "Utilise plutôt l'<b>Assistant matériau</b> (planches, mesures "
+            "et déductions regroupées) : reste ici seulement pour une "
+            "plage personnalisée ou une découpe.",
+            "<b>2.</b> Grave une grille de cellules sur une chute (aucune "
+            "sélection requise)&nbsp;: chaque cellule teste un couple "
+            "puissance/vitesse ; choisis la meilleure à l'œil.",
+        ])
         _diagram(form, "diag_grid.svg")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
-            "<b>1.</b> Aucune sélection requise. Pour caler un <b>nouveau "
-            "matériau</b> de façon standard, utilise l'<b>Assistant "
-            "matériau</b> (planches foyer/défocus/point regroupées). Cette "
-            "grille sert plutôt à des plages personnalisées ou à la découpe.",
+            "<b>1.</b> Aucune sélection requise&nbsp;: la grille ne dépend "
+            "d'aucun objet du document.",
             "<b>2. Mode &amp; plages</b>&nbsp;: gravure ou découpe, plage de "
             "puissances (colonnes&nbsp;X) et de vitesses (lignes&nbsp;Y), nombre "
             "de cellules.",
