@@ -352,59 +352,6 @@ def _verrou(form, champs, titre="Verrouiller les résultats"):
     return chk
 
 
-def _etapes(form, etapes):
-    """En-tête compact « ① Graver → ② Mesurer → ③ … » : puces numérotées
-    cliquables placées en tête d'un panneau de test/calibration. Un clic déplie
-    la section visée et y fait défiler — le fil ①②③ reste visible même sections
-    repliées (répond à la « confusion UI »). `etapes` : liste de
-    (libellé_court, titre_section_exact) ; la section est résolue par son titre
-    (_SectionHeader._titre) dans la zone défilante, sans effet si introuvable."""
-    cercles = "①②③④⑤⑥⑦⑧⑨"
-    bande = QtWidgets.QWidget()
-    lay = QtWidgets.QHBoxLayout(bande)
-    lay.setContentsMargins(0, 0, 0, 4)
-    lay.setSpacing(6)
-
-    def _sauter(titre):
-        def _f():
-            sa = bande.parentWidget()
-            while sa is not None and not isinstance(sa, QtWidgets.QAbstractScrollArea):
-                sa = sa.parentWidget()
-            if sa is None or sa.widget() is None:
-                return
-            for h in sa.widget().findChildren(QtWidgets.QFrame):
-                if getattr(h, "_titre", None) == titre:
-                    try:
-                        h.set_open(True)
-                    except Exception:
-                        pass
-                    try:
-                        sa.ensureWidgetVisible(h)
-                    except Exception:
-                        pass
-                    break
-        return _f
-
-    for i, (libelle, titre) in enumerate(etapes, start=1):
-        num = cercles[i - 1] if i <= len(cercles) else str(i)
-        b = QtWidgets.QToolButton()
-        b.setText("{}  {}".format(num, libelle))
-        b.setToolTip("Aller à « {} »".format(titre))
-        b.setCursor(QtCore.Qt.PointingHandCursor)
-        b.setAutoRaise(True)
-        b.setStyleSheet(
-            "QToolButton{border:1px solid palette(mid);border-radius:11px;"
-            "padding:2px 10px;} QToolButton:hover{border-color:#ff8a00;}")
-        b.clicked.connect(_sauter(titre))
-        lay.addWidget(b)
-        if i < len(etapes):
-            fleche = QtWidgets.QLabel("→")
-            fleche.setStyleSheet("color:palette(mid);")
-            lay.addWidget(fleche)
-    lay.addStretch(1)
-    form.addRow(bande)
-
-
 class _GrilleResultats(QtWidgets.QGroupBox):
     """Grille de saisie de mesures « ligne x colonne -> valeur » pour une planche
     de test (ex. largeur brûlée par S et F). Une QDoubleSpinBox par croisement,
@@ -2425,10 +2372,6 @@ class TaskPanelNuancier:
 
         _diagram(form, "diag_nuancier.svg")
 
-        _etapes(form, [("Saisir", "① Saisir les tons mesurés"),
-                       ("Graver", "② Graver ce nuancier (planche physique)"),
-                       ("Photo", "③ Photo du résultat")])
-
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Grave d'abord une <b>Grille de test</b>, une <b>Rampe</b> "
@@ -4295,9 +4238,6 @@ class TaskPanelKerf:
 
         _panel_header(form, "kerf.svg", "Calibration kerf")
         _calibration_banner(form, "Calibration kerf")
-        _etapes(form, [("Graver", "① Graver le test"),
-                       ("Mesurer", "② Entrer les mesures (kerf)"),
-                       ("Photo", "③ Photo du résultat")])
         _intro(form,
                "Deux tests, à découper ensuite en mode Découpe multi-passes : "
                "le CARRÉ pour MESURER le kerf, le TENON + MORTAISE pour VALIDER "
@@ -4526,9 +4466,6 @@ class TaskPanelDefocusCalibration:
 
         _panel_header(form, "defocus.svg", "Bande de calibration défocus")
         _calibration_banner(form, "Bande de calibration défocus")
-        _etapes(form, [("Graver", "① Graver — balayage en hauteur (Z)"),
-                       ("Mesurer", "② Entrer les mesures (calibration du point)"),
-                       ("Photo", "③ Photo du résultat")])
         _intro(form,
                "Grave une rangée de traits, chacun à une hauteur de bec "
                "croissante (étiquetée) : le trait LE PLUS FIN te donne le "
@@ -4930,9 +4867,6 @@ class TaskPanelPowerRamp:
 
         _panel_header(form, "powerramp.svg", "Test rampe puissance / vitesse (lignes)")
         _calibration_banner(form, "Test rampe puissance / vitesse (lignes)")
-        _etapes(form, [("Graver", "① Graver — lignes (vitesses)"),
-                       ("Reporter", "② Reporter les tons retenus"),
-                       ("Photo", "③ Photo du résultat")])
         _intro(form,
                "Grave de longues lignes, UNE PAR VITESSE, avec la puissance "
                "qui MONTE le long de chaque ligne : on repère d'un coup où le "
@@ -5252,9 +5186,6 @@ class TaskPanelOffsetTest:
 
         _panel_header(form, "offset_test.svg", "Test des offsets X/Y du laser")
         _calibration_banner(form, "Test des offsets X/Y du laser")
-        _etapes(form, [("Graver", "① Graver — croix (géométrie)"),
-                       ("Mesurer", "② Entrer les mesures (écart des croix)"),
-                       ("Photo", "③ Photo du résultat")])
         _intro(form,
                "Job MIXTE fraise + laser : fraise une croix sur X0 Y0, puis "
                "grave une croix laser au même X0 Y0 programmé. L'écart mesuré "
@@ -6134,9 +6065,6 @@ class TaskPanelTestGrid:
 
         _panel_header(form, "testgrid.svg", "Grille de test puissance / vitesse")
         _calibration_banner(form, "Grille de test puissance / vitesse")
-        _etapes(form, [("Graver", "① Graver — préréglage recommandé"),
-                       ("Mesurer", "② Entrer les mesures (largeurs brûlées)"),
-                       ("Photo", "③ Photo du résultat")])
 
         _bullet_list(form, [
             "<b>1.</b> Nouveau matériau à calibrer de façon standard&nbsp;? "
@@ -6232,7 +6160,8 @@ class TaskPanelTestGrid:
         _btn_icon(self.btn_save_preset, "sect_preset.svg")
         self.btn_save_preset.setToolTip(
             "Sauvegarde les valeurs actuelles de TOUT le panneau sous un\n"
-            "nom de préréglage (un nom déjà existant est remplacé).")
+            "NOUVEAU nom de préréglage, sans toucher aux préréglages\n"
+            "existants (confirmation demandée si le nom choisi existe déjà).")
         self.btn_save_preset.clicked.connect(self._on_save_preset)
         self.btn_delete_preset = QtWidgets.QPushButton("Supprimer")
         self.btn_delete_preset.setToolTip("Supprime le préréglage sélectionné (les ★ d'usine sont protégés).")
@@ -6713,13 +6642,23 @@ class TaskPanelTestGrid:
         self.lbl_preset_summary.setVisible(True)
 
     def _on_save_preset(self):
-        current = self.combo_preset.currentData() or ""
+        # Champ vierge (pas pré-rempli avec le préréglage courant) : la
+        # sauvegarde AJOUTE un nouveau préréglage par défaut, elle ne
+        # remplace un existant que si on tape volontairement son nom --
+        # et seulement après confirmation, ci-dessous.
         name, ok = QtWidgets.QInputDialog.getText(
             self.form, "Sauvegarder le préréglage",
-            "Nom du préréglage (matériau) :", text=current)
+            "Nom du préréglage (matériau) :")
         name = name.strip()
         if not ok or not name:
             return
+        if name in core.all_presets("testgrid"):
+            reply = QtWidgets.QMessageBox.question(
+                self.form, "Préréglage existant",
+                "Un préréglage « {} » existe déjà -- le remplacer ?".format(name),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            if reply != QtWidgets.QMessageBox.Yes:
+                return
         core.save_preset("testgrid", name, self._preset_values())
         self._populate_preset_combo()
         idx = self.combo_preset.findData(name)
@@ -8942,11 +8881,6 @@ class TaskPanelAssistant:
             "Irréversible.")
         self.btn_supprimer_mat.clicked.connect(self._on_supprimer_materiau)
         form.addRow(self.btn_supprimer_mat)
-
-        _etapes(form, [("Graver", "① Graver les trois planches"),
-                       ("Mesurer", "② Entrer les mesures (largeurs)"),
-                       ("Photo", "③ Photo du résultat"),
-                       ("Déduire", "④ Déduire (modèle & nuancier)")])
 
         _section(form, "① Graver les trois planches", "sect_power.svg")
         form.addRow(_WrapLabel(
