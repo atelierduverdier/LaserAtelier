@@ -425,7 +425,7 @@
       </div>
     </div>
     <div class="mode">
-      <div class="shot"><img src="assets/text.svg" alt="Texte trait simple" style="object-fit:contain;padding:18%"></div>
+      <div class="shot"><img src="screenshots/panneaux/18_text.png" alt="Panneau Texte (trait simple)"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/text.svg" alt=""></span><h4>Texte (trait simple)</h4></div>
         <p>Grave du texte en <b>police mono-trait</b> : chaque lettre est dessinée d'un seul trait par branche (comme un traceur à plume), pas en contour rempli. Idéal au gros point / défocus. Police Hershey Sans 1-stroke (domaine public) — majuscules, minuscules, chiffres et accents.</p>
@@ -609,16 +609,33 @@
       </div>
     </div>
     <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/17_assistant.png" alt="Panneau Assistant matériau"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/assistant.svg" alt=""></span><h4>Assistant matériau</h4></div>
+        <p>Caractérise un matériau du début à la fin dans un seul panneau&nbsp;: grave les <b>trois planches</b> (foyer, défocus, largeur du point), mesure au pied à coulisse, saisis les valeurs — l'atelier en déduit les largeurs brûlées et les espacements de remplissage pour tous tes futurs jobs. Section ③&nbsp;: état du modèle (feed-aware ou non, tons mesurés) et une <b>sonde d'interpolation</b> pour prévoir une largeur avant de graver.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Point d'entrée recommandé pour un <b>nouveau matériau</b>, à la place des planches et grilles séparées.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Aucune sélection. Choisir/taper le nom du matériau.</li>
+            <li><b>① Graver les trois planches</b>&nbsp;: Planche 1 (foyer, S × F), Planche 2 (défocus, S × F, niveaux 15/36&nbsp;mm), Planche 3 (largeur du point) — trois fichiers séparés, recadrés au zéro pièce.</li>
+            <li><b>② Entrer les mesures</b>&nbsp;: largeurs brûlées au pied à coulisse, dans les mêmes grilles que la Grille de test.</li>
+            <li><b>③ Déduire</b>&nbsp;: état du modèle (couverture par niveau de défocus, sensibilité au feed, nombre de tons), sonde d'interpolation (S/F/défocus → largeur prédite), bouton pour graver le nuancier physique des tons mesurés.</li>
+          </ol>
+        </details>
+      </div>
+    </div>
+    <div class="mode">
       <div class="shot"><img src="screenshots/panneaux/10_grille_test.png" alt="Panneau Grille de test"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/testgrid.svg" alt=""></span><h4>Grille de test puissance/vitesse</h4></div>
-        <p>Matrice de cellules à puissance/vitesse variables, étiquetées, avec cadre net autour de chaque cellule. Un <b>préréglage recommandé</b> (« objectif ») remplit la grille prête à graver ; les <b>largeurs brûlées</b> se saisissent <b>inline</b> (section ②). Champ <b>Hauteur (Z) de test</b> pour rejouer la matrice à une autre hauteur, et <b>style de trait</b> du remplissage (plein / tirets / pointillé).</p>
+        <p><b>Nouveau matériau à calibrer de façon standard&nbsp;?</b> Préfère l'Assistant matériau (planches, mesures et déductions regroupées) ; cette grille sert aux plages personnalisées ou à la découpe. Matrice de cellules à puissance/vitesse variables, étiquetées, avec cadre net autour de chaque cellule. Un <b>préréglage recommandé</b> (« objectif ») remplit la grille prête à graver ; les <b>largeurs brûlées</b> se saisissent <b>inline</b> (section ②). Champ <b>Hauteur (Z) de test</b> pour rejouer la matrice à une autre hauteur, et <b>style de trait</b> du remplissage (plein / tirets / pointillé).</p>
         <div class="when"><b>Quand&nbsp;?</b> Trouver le couple puissance/vitesse d'un nouveau matériau, par paliers discrets.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>
           <img src="assets/diag_planche_calibration.svg" alt="Planches de calibration : traits au foyer, traits au défocus et largeur du point">
           <ol>
-            <li>Aucune sélection. Pour un nouveau matériau, préférer les <b>Planches 1-2-3</b> (foyer, défocus, largeur du point — un fichier chacune).</li>
+            <li>Aucune sélection requise&nbsp;: la grille ne dépend d'aucun objet du document.</li>
             <li>Choisir gravure/découpe, les plages de <b>puissance</b> (colonnes) et <b>vitesse</b> (lignes), le nombre de cellules.</li>
             <li>Régler taille des cellules, plein/contour, étiquettes S/F.</li>
             <li><b>Hauteur (Z) de test</b>&nbsp;: rejouer la grille à une autre hauteur (bec défocalisé).</li>
@@ -682,7 +699,7 @@
       </div>
     </div>
     <div class="mode">
-      <div class="shot"><img src="assets/catalogue.svg" alt="Catalogue" style="object-fit:contain;padding:18%"></div>
+      <div class="shot"><img src="screenshots/panneaux/19_catalogue.png" alt="Panneau Catalogue"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/catalogue.svg" alt=""></span><h4>Catalogue (planche de référence)</h4></div>
         <p>Grave en <b>un seul job</b> une planche de <b>référence</b> : les <b>6 styles de trait du Marquage</b> (sur un mot exemple) + un exemple de <b>Gravure remplie</b>, chaque bloc titré. À garder une fois les réglages calés — on voit le rendu réel de chaque style (plein, tirets, pointillé, vague, point élargi, dégradé) sur son matériau. <b>Aperçu photo</b> (rendu réaliste, chaque style bien distinct) avant de graver. La gravure photo se teste dans son propre mode (Gravure photo).</p>
