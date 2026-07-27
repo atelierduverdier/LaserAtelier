@@ -1139,10 +1139,16 @@ def _discretize_edge(edge, dist=0.3):
 
 
 def _render_engraving_photo(strokes, scale=24.0, margin_mm=3.0,
-                            wood=(208, 178, 138), max_px=2200):
+                            wood=(208, 178, 138), max_px=2200,
+                            collision_points=None):
     """`strokes` : liste de (points[(x,y)...], largeur_mm, teinte0..1).
-    Renvoie une QImage : fond bois, traits épais assombris par Multiply
-    (superpositions plus foncées). None si rien à peindre."""
+    `collision_points` : points (x,y) natifs (mêmes coordonnées que
+    `strokes`) où le bec serait trop proche de la surface voisine (cf.
+    warnings_out de generate_gcode_curved) -- marqués en magenta par
+    dessus le rendu, même couleur que create_collision_markers (vue 3D)
+    pour rester cohérent entre les deux aperçus. Renvoie une QImage :
+    fond bois, traits épais assombris par Multiply (superpositions plus
+    foncées). None si rien à peindre."""
     xs = [p[0] for s in strokes for p in s[0]]
     ys = [p[1] for s in strokes for p in s[0]]
     if not xs:
@@ -1181,6 +1187,17 @@ def _render_engraving_photo(strokes, scale=24.0, margin_mm=3.0,
             for q in pts[1:]:
                 path.lineTo(to_px(q))
             p.drawPath(path)
+
+    if collision_points:
+        # SourceOver (pas Multiply) : le repère doit rester magenta franc
+        # par-dessus le rendu, pas assombri comme les traits.
+        p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(QtGui.QColor(255, 0, 204))
+        r = max(2.5, 1.2 * sc)
+        for pt in collision_points:
+            p.drawEllipse(to_px(pt), r, r)
+
     p.end()
     return img
 
@@ -7523,7 +7540,17 @@ class TaskPanelCurved:
             QtWidgets.QMessageBox.information(
                 self.form, "Aperçu photo", "Rien à afficher (aucun trait).")
             return
-        img = _render_engraving_photo(strokes)
+        # Génération à blanc (quiet, gcode jeté) juste pour récupérer les
+        # points de collision -- même sonde que le vrai G-code, pour que
+        # le repère magenta de cet aperçu corresponde à celui de la vue 3D.
+        warnings_out = {}
+        core.generate_gcode_curved(
+            self._edges, pw, fd, self._z_focus(), core.TRANSIT_MARGIN_MM,
+            reference_shape=self._reference_shape, quiet=True, probe=self._probe,
+            warnings_out=warnings_out, **self._style_kwargs()
+        )
+        collision_points = [(pt.x, pt.y) for pt in warnings_out.get("nozzle_marking_points", [])]
+        img = _render_engraving_photo(strokes, collision_points=collision_points)
         if img is None:
             QtWidgets.QMessageBox.critical(self.form, "Aperçu photo", "Rendu impossible.")
             return
