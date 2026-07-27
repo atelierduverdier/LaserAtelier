@@ -196,6 +196,15 @@ string or `None`** (None = empty geometry). Shared conventions:
   stacked operations don't plunge at the wrong height (`_operation_intrinsic_safe_z`).
 - **`TRAVEL_CLEARANCE_MM`** is the flyover margin over the work Z for transits. On flat work it should
   be small/0 — lifting per hatch line is the classic wasteful bug; transit at the working Z, laser off.
+- **Stepped-ramp generators** (`generate_gcode_power_ramp_lines`, defocus calibration band) draw
+  tick/graduation marks that must land on the trajectory the G-code ACTUALLY follows, not a naive
+  continuous interpolation. The moved axis (X) and the ramped value (Z or S) are often parametrized
+  differently across the same `n_steps`/`k` loop (e.g. `x1 = length*(k+1)/n_steps` vs
+  `t = k/(n_steps-1)`), so a plain `x = length*(target-start)/(end-start)` formula silently lands a
+  tick one step early/late. Reconstruct the `(x, value)` breakpoints exactly like the generation
+  loop and interpolate within those, and check the result against an actually-generated `.ngc` file
+  — a headless test that only re-derives the same formula will pass while still being wrong (bug
+  fixed in v1.71.5 after the user caught it on a real file).
 
 ### Defocus model (used by filled-engraving, defocus fill, calibration)
 
