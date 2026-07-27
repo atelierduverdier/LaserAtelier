@@ -286,6 +286,14 @@ def _calibration_banner(form, mode_titre):
     lay.addWidget(lbl)
     form.addRow(holder)
     _hline(form)
+    # Le conteneur VBox suffit dans la plupart des cas, mais un texte plus
+    # long (ex. la précision "à refaire pour CHAQUE matériau") peut encore
+    # être replié à une largeur provisoire avant que le panneau ait sa
+    # largeur réelle -- même symptôme et même remède que _activer_sections
+    # (_toggle) : un recalage différé une fois la largeur définitive connue.
+    inner = form.parentWidget()
+    if inner is not None:
+        QtCore.QTimer.singleShot(0, lambda w=inner: (w.layout().activate(), w.adjustSize()))
 
 
 def _verrou(form, champs, titre="Verrouiller les résultats"):
