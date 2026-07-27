@@ -2179,8 +2179,11 @@ class TaskPanelGuide:
 
         _section(form, "Les 3 règles de la maison", "sect_safety.svg")
         _bullet_list(form, [
-            "• Zéro Z toujours sur la SURFACE de la pièce (le Z de travail "
-            "des Préférences est alors la focale du nez, une constante).",
+            "• Zéro Z sur la SURFACE de la pièce : la règle en CALIBRATION "
+            "(bandes, grilles, kerf), où le Z de travail des Préférences "
+            "reste une focale constante. En travail courant, zéro Z sur le "
+            "martyre (plan de travail) convient aussi -- l'épaisseur de la "
+            "pièce se règle alors via le décalage de surface / Z de départ.",
             "• On MESURE, on ne devine pas : calibration du point, kerf, "
             "offsets -- tout vient d'un test réel sur chute.",
             "• Toujours lancer l'aperçu CADRAGE avant le vrai job, lunettes "
