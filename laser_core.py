@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.54.0"
+VERSION = "1.55.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1829,6 +1829,15 @@ def run_projection(selection):
     if hasattr(new_obj, 'ViewObject'):
         new_obj.ViewObject.LineColor = (1.0, 0.0, 0.0)
         new_obj.ViewObject.LineWidth = 2.0
+    # Mémorise le solide d'origine : le motif projeté n'est qu'un compound
+    # d'arêtes, sans aucune trace de la surface dont il vient -- sans ce
+    # lien, retrouver une sonde de collision exacte plus tard obligerait à
+    # RESÉLECTIONNER le solide à chaque génération (cf. split_selection).
+    new_obj.addProperty(
+        "App::PropertyLink", "LaserAtelierSurfaceRef", "LaserAtelier",
+        "Solide 3D d'origine, mémorisé automatiquement à la projection "
+        "pour retrouver la sonde de collision sans le réselectionner.")
+    new_obj.LaserAtelierSurfaceRef = obj_3d
     # Recompute CIBLÉ sur le nouvel objet : un doc.recompute() global
     # forcerait aussi le recalcul de tout le reste du document (ex: un
     # Job CAM/Path avec Pocket_Shape), sans aucun rapport avec cet objet.
@@ -2703,7 +2712,14 @@ def split_selection(selection):
     """Sépare la sélection entre objets-sources d'edges (à graver) et
     objet de référence 3D (à sonder pour le Z). Un objet n'est reconnu
     comme référence que s'il est RÉELLEMENT 3D (cf. _est_reference_3d) :
-    les faces planes restent des sources de motif."""
+    les faces planes restent des sources de motif.
+
+    Si aucun solide 3D n'est sélectionné à côté du motif, on retombe sur
+    LaserAtelierSurfaceRef (mémorisé par run_projection à la création du
+    motif projeté) : plus besoin de RESÉLECTIONNER le solide à chaque
+    génération, seul le motif suffit. Absent sur les motifs créés avant
+    cette mémorisation -- la sélection manuelle du solide reste alors le
+    seul moyen d'activer la sonde exacte."""
     edge_sel = []
     reference_shape = None
     for sel_obj in selection:
@@ -2717,6 +2733,13 @@ def split_selection(selection):
                     "Plusieurs objets 3D de référence sélectionnés -- '{}' ignoré.\n".format(obj.Label))
             continue
         edge_sel.append(sel_obj)
+    if reference_shape is None:
+        for sel_obj in edge_sel:
+            ref_obj = getattr(sel_obj.Object, "LaserAtelierSurfaceRef", None)
+            ref_shape = getattr(ref_obj, "Shape", None)
+            if ref_shape is not None:
+                reference_shape = ref_shape
+                break
     return edge_sel, reference_shape
 
 
