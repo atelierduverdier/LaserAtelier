@@ -466,10 +466,10 @@ class _GrilleResultats(QtWidgets.QGroupBox):
 
 
 def _boutons_planches(form, ecrire):
-    """Les trois boutons « Planche 1/2/3 » (partagés entre la Grille de test
-    et l'Assistant matériau) : chacun génère son G-code et le remet à
-    `ecrire(gcode, chemin_defaut)` -- le recadrage au zéro pièce se fait à
-    l'écriture. Renvoie (btn1, btn2, btn3)."""
+    """Les boutons « Planche 1/2/3 » + « toutes en 1 fichier » (partagés
+    entre la Grille de test et l'Assistant matériau) : chacun génère son
+    G-code et le remet à `ecrire(gcode, chemin_defaut)` -- le recadrage au
+    zéro pièce se fait à l'écriture. Renvoie (btn1, btn2, btn3, btn_combine)."""
     b1 = QtWidgets.QPushButton("Planche 1 — Foyer (S × F)")
     b1.setToolTip(
         "Grille de traits AU FOYER : S (bornée à s_max) × F jusqu'au maxi\n"
@@ -483,8 +483,9 @@ def _boutons_planches(form, ecrire):
     b2 = QtWidgets.QPushButton("Planche 2 — Défocus (S × F, niveaux 15/36)")
     b2.setToolTip(
         "Traits AU DÉFOCUS : une grille S × F par niveau (~15 et 36 mm), en\n"
-        "BALAYANT le feed (jusqu'à ~2000). Mesure les largeurs -> alimente\n"
-        "le modèle feed-aware du remplissage (burn_width_defocus_scaled).\n"
+        "BALAYANT le feed (jusqu'à ~800 -- au-delà, ça ne marque quasiment\n"
+        "jamais au défocus). Mesure les largeurs -> alimente le modèle\n"
+        "feed-aware du remplissage (burn_width_defocus_scaled).\n"
         "Fichier séparé, recadré au zéro pièce.")
     b2.clicked.connect(lambda: ecrire(core.generate_gcode_planche_defocus(),
                                       "/tmp/planche2_defocus.ngc"))
@@ -499,7 +500,17 @@ def _boutons_planches(form, ecrire):
     b3.clicked.connect(lambda: ecrire(core.generate_gcode_planche_spot(),
                                       "/tmp/planche3_point.ngc"))
     form.addRow(b3)
-    return b1, b2, b3
+
+    b4 = QtWidgets.QPushButton("Toutes les planches (1 seul fichier)")
+    b4.setToolTip(
+        "Planches 1+2+3 empilées dans UN SEUL fichier -- un seul armement\n"
+        "au début, une seule fin, au lieu de charger trois fichiers l'un\n"
+        "après l'autre sur la machine. Même contenu que les trois boutons\n"
+        "séparés ci-dessus, juste réunis.")
+    b4.clicked.connect(lambda: ecrire(core.generate_gcode_planches_combinees(),
+                                      "/tmp/planches_combinees.ngc"))
+    form.addRow(b4)
+    return b1, b2, b3, b4
 
 
 class _MesuresPlanchesControleur:
@@ -515,7 +526,13 @@ class _MesuresPlanchesControleur:
 
     POWERS = (1000, 800, 600, 400, 200)
     FEEDS_FOCUS = (200, 400, 800, 1500, 3000, 6000)
-    FEEDS_DEFOCUS = (400, 800, 1500, 2000)
+    # Doit rester aligné sur les feeds par défaut de generate_gcode_planche_defocus
+    # (laser_core.py) : la grille de saisie n'a de colonnes que pour ce qui
+    # est réellement gravé sur la planche. Resserré le 27 juil. 2026 (était
+    # 400/800/1500/2000) -- au défocus, F1500/F2000 ne marquaient quasiment
+    # jamais (0 mesure enregistrée à ces vitesses sur MDF malgré plusieurs
+    # planches).
+    FEEDS_DEFOCUS = (200, 400, 600, 800)
 
     def __init__(self, form, parent, get_material, on_saved=None):
         self._parent = parent

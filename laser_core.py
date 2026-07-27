@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.60.0"
+VERSION = "1.61.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -222,36 +222,40 @@ def sanitize_gcode_for_linuxcnc(text):
     return "\n".join(l.rstrip() for l in out)
 
 
-def translate_gcode_origin(gcode):
-    """Recadre le G-code pour que le coin BAS-GAUCHE du parcours (min X,
-    min Y) tombe sur (0,0). Le job démarre alors au zéro pièce quel que
-    soit l'endroit où le dessin est posé dans le document FreeCAD --
-    on n'a plus à placer la géométrie pile sur l'origine.
+_GCODE_XY_RX = re.compile(r'([XY])(-?\d+\.?\d*)')
 
-    Ne translate que les mots X/Y de la PARTIE CODE de chaque ligne ; Z,
-    I/J (relatifs), F, S, P et les commentaires sont laissés intacts. Sûr
-    tel quel : les générateurs discrétisent tout en G1 (aucun arc G2/G3
-    dont les I/J absolus devraient suivre). Idempotent une fois recadré
-    (min = 0 -> décalage nul). Renvoie le texte inchangé s'il n'y a aucune
-    coordonnée."""
-    if not gcode:
-        return gcode
-    rx = re.compile(r'([XY])(-?\d+\.?\d*)')
 
-    def _code(line):  # partie avant un éventuel commentaire
-        c = line.find("(")
-        return line if c == -1 else line[:c]
+def _gcode_code_part(line):
+    """Partie d'une ligne de G-code AVANT un éventuel commentaire."""
+    c = line.find("(")
+    return line if c == -1 else line[:c]
 
+
+def gcode_bbox_xy(gcode):
+    """Emprise (min_x, max_x, min_y, max_y) du G-code, ou None si aucune
+    coordonnée X/Y trouvée. Même lecture que translate_gcode_origin/
+    shift_gcode_xy : uniquement les mots X/Y de la partie code de chaque
+    ligne."""
     xs, ys = [], []
-    for line in gcode.split("\n"):
-        for m in rx.finditer(_code(line)):
+    for line in (gcode or "").split("\n"):
+        for m in _GCODE_XY_RX.finditer(_gcode_code_part(line)):
             (xs if m.group(1) == "X" else ys).append(float(m.group(2)))
     if not xs and not ys:
-        return gcode
-    dx = -min(xs) if xs else 0.0
-    dy = -min(ys) if ys else 0.0
-    if abs(dx) < 1e-9 and abs(dy) < 1e-9:
-        return gcode
+        return None
+    return (min(xs) if xs else 0.0, max(xs) if xs else 0.0,
+            min(ys) if ys else 0.0, max(ys) if ys else 0.0)
+
+
+def shift_gcode_xy(gcode, dx, dy):
+    """Décale les mots X/Y de la partie CODE de chaque ligne de (dx, dy) mm.
+    Ne touche pas Z, I/J (relatifs), F, S, P ni les commentaires -- sûr tel
+    quel : les générateurs discrétisent tout en G1 (aucun arc G2/G3 dont les
+    I/J absolus devraient suivre). Sert à poser plusieurs motifs déjà
+    générés côte à côte dans un même fichier sans qu'ils se recouvrent (cf.
+    generate_gcode_planches_combinees). Renvoie le texte inchangé si vide ou
+    si le décalage est nul."""
+    if not gcode or (abs(dx) < 1e-9 and abs(dy) < 1e-9):
+        return gcode or ""
 
     def _shift(line):
         c = line.find("(")
@@ -263,9 +267,25 @@ def translate_gcode_origin(gcode):
             if abs(val) < 5e-5:
                 val = 0.0
             return "%s%.4f" % (m.group(1), val)
-        return rx.sub(_repl, code) + rest
+        return _GCODE_XY_RX.sub(_repl, code) + rest
 
     return "\n".join(_shift(line) for line in gcode.split("\n"))
+
+
+def translate_gcode_origin(gcode):
+    """Recadre le G-code pour que le coin BAS-GAUCHE du parcours (min X,
+    min Y) tombe sur (0,0). Le job démarre alors au zéro pièce quel que
+    soit l'endroit où le dessin est posé dans le document FreeCAD --
+    on n'a plus à placer la géométrie pile sur l'origine. Idempotent une
+    fois recadré (min = 0 -> décalage nul). Renvoie le texte inchangé s'il
+    n'y a aucune coordonnée."""
+    if not gcode:
+        return gcode
+    bbox = gcode_bbox_xy(gcode)
+    if bbox is None:
+        return gcode
+    xmin, _, ymin, _ = bbox
+    return shift_gcode_xy(gcode, -xmin, -ymin)
 
 
 # Persistance des champs G-code avant/après entre deux exécutions de la
@@ -4780,7 +4800,8 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
                                        draw_power_labels=True,
                                        label_power=None, label_feed=None, label_z=None,
                                        n_bands=1, feed_end=None, band_gap=5.0,
-                                       pre_gcode="", post_gcode="", frame_only=False, quiet=False):
+                                       pre_gcode="", post_gcode="", frame_only=False, quiet=False,
+                                       body_only=False):
     """Grave une rangée de courts traits, chacun à une hauteur de bec
     croissante (z_start, z_start+z_step, ...), à vitesse FIXE. Chaque trait
     est étiqueté à sa gauche par sa hauteur Z en mm entiers (la police
@@ -4812,7 +4833,11 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     suivant (laser éteint, pièce plate) -- pas de remontée au Z de sécurité
     entre chaque trait (inutile à plat, et lente).
 
-    frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
+    frame_only : ne trace que le rectangle englobant (cadrage séparé).
+
+    body_only : pour une PLANCHE au sein d'un fichier combiné (cf.
+    generate_gcode_planches_combinees) -- omet l'en-tête/l'armement/le
+    désarmement/M2, même convention que sur les générateurs de mode."""
     if label_power is None:
         label_power = LABEL_POWER
     if label_feed is None:
@@ -4890,31 +4915,33 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     z_safe = max([z for _, z, _, _ in marks] + [label_z]) + TRAVEL_CLEARANCE_MM
 
     lines = []
-    lines.append("(G-Code Laser - Bande de calibration defocus)")
-    if power_end is None:
-        p_desc = "S{:.0f}".format(power)
-    else:
-        p_desc = "S{:.0f}->{:.0f} (rampe)".format(power, power_end)
-    if n_bands > 1 and feed_end is not None:
-        f_desc = "{} bandes F{:.0f}->{:.0f}".format(n_bands, feed, feed_end)
-    else:
-        f_desc = "F{:.0f}".format(feed)
-    lines.append("(Traits : {} de Z={:.2f} a Z={:.2f} par pas de {:.2f}, {} -- {})".format(
-        n_marks, z_start, z_start + (n_marks - 1) * z_step, z_step, p_desc, f_desc))
-    lines.append("(Mesurer l'epaisseur de chaque trait : le plus fin = foyer)")
-    lines.append("G21")
-    lines.append("G90")
-    lines.append("G94")
-    lines.append(cmd_tool_comp())
-    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    if not body_only:
+        lines.append("(G-Code Laser - Bande de calibration defocus)")
+        if power_end is None:
+            p_desc = "S{:.0f}".format(power)
+        else:
+            p_desc = "S{:.0f}->{:.0f} (rampe)".format(power, power_end)
+        if n_bands > 1 and feed_end is not None:
+            f_desc = "{} bandes F{:.0f}->{:.0f}".format(n_bands, feed, feed_end)
+        else:
+            f_desc = "F{:.0f}".format(feed)
+        lines.append("(Traits : {} de Z={:.2f} a Z={:.2f} par pas de {:.2f}, {} -- {})".format(
+            n_marks, z_start, z_start + (n_marks - 1) * z_step, z_step, p_desc, f_desc))
+        lines.append("(Mesurer l'epaisseur de chaque trait : le plus fin = foyer)")
+        lines.append("G21")
+        lines.append("G90")
+        lines.append("G94")
+        lines.append(cmd_tool_comp())
+        lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
     if frame_only:
         lines.extend(build_frame_trace(
             min(p.x for p in all_pts), max(p.x for p in all_pts),
             min(p.y for p in all_pts), max(p.y for p in all_pts), z_safe))
-        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
-        lines.append("M2")
+        if not body_only:
+            lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+            lines.append("M2")
         return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
     if pre_gcode.strip():
@@ -4944,7 +4971,8 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
             lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(pt.x, pt.y, target_z, f))
         lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
 
-    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    if not body_only:
+        lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     lines.append("(===== Traits de calibration =====)")
     for chain, z, fb, mp in marks:
         _emit(chain, mp, fb, z)
@@ -4958,8 +4986,9 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")
         lines.append(post_gcode.strip())
-    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
-    lines.append("M2")
+    if not body_only:
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
@@ -5792,7 +5821,7 @@ def _operation_intrinsic_safe_z(op_type, params):
 
 
 def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=False, quiet=False,
-                             warnings_out=None):
+                             warnings_out=None, body_only=False):
     """Assemble plusieurs opérations (Marquage courbe / Découpe
     multi-passes / Grille de test, chacune avec ses propres paramètres)
     en UN SEUL job avec UN SEUL armement (M3) au tout début et UN SEUL
@@ -5817,7 +5846,14 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
 
     Une opération dont le générateur renvoie None (aucune géométrie,
     ex: sélection vide) est ignorée avec un avertissement (sauf si
-    quiet)."""
+    quiet).
+
+    body_only : comme pour les générateurs de mode -- omet l'en-tête/
+    l'armement/le désarmement/M2, pour que ce job combiné devienne à son
+    tour le corps d'un ENSEMBLE encore plus large (cf.
+    generate_gcode_planches_combinees, qui empile plusieurs planches de
+    calibration -- elles-mêmes des jobs combinés -- sous un seul
+    armement)."""
     if not operations:
         return None
 
@@ -5883,14 +5919,15 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
         return None
 
     lines = []
-    lines.append("(G-Code Laser - Job combiné : {} operation(s))".format(len(bodies)))
-    for label, _ in bodies:
-        lines.append("(  - {})".format(label))
-    lines.append("G21")
-    lines.append("G90")
-    lines.append("G94")
-    lines.append(cmd_tool_comp())
-    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    if not body_only:
+        lines.append("(G-Code Laser - Job combiné : {} operation(s))".format(len(bodies)))
+        for label, _ in bodies:
+            lines.append("(  - {})".format(label))
+        lines.append("G21")
+        lines.append("G90")
+        lines.append("G94")
+        lines.append(cmd_tool_comp())
+        lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
 
     if frame_only:
         # UN SEUL rectangle englobant GLOBAL (et non un par opération) : le
@@ -5919,22 +5956,24 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
         lines.append("M2")
         return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
-    if pre_gcode.strip():
+    if not body_only and pre_gcode.strip():
         lines.append("(-- G-code personnalisé (avant) --)")
         lines.append(pre_gcode.strip())
 
-    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    if not body_only:
+        lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
 
     for label, gcode in bodies:
         lines.append("(===== Operation : {} =====)".format(label))
         lines.append(gcode)
 
-    if post_gcode.strip():
-        lines.append("(-- G-code personnalisé (après) --)")
-        lines.append(post_gcode.strip())
+    if not body_only:
+        if post_gcode.strip():
+            lines.append("(-- G-code personnalisé (après) --)")
+            lines.append(post_gcode.strip())
 
-    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
-    lines.append("M2")
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
 
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
@@ -6747,12 +6786,16 @@ def generate_gcode_planche_focus(z_focus=None,
                                  powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
                                  feeds=(200.0, 400.0, 800.0, 1500.0, 3000.0, 6000.0),
                                  trait_len=20.0, row_gap=6.0, label_height=3.0,
-                                 pre_gcode="", post_gcode="", quiet=False):
+                                 pre_gcode="", post_gcode="", quiet=False, body_only=False):
     """PLANCHE 1 -- FOYER (Vitesse x Puissance). Grille de traits gravés AU
     FOYER : une ligne par puissance S (bornée à S_MAX), une colonne par vitesse
     F (jusqu'au maxi machine). À mesurer : la LARGEUR brûlée de chaque trait
     (un trait vierge est une donnée : seuil du matériau) -> alimente
-    burn_width_at (foyer, feed-aware). Un seul armement."""
+    burn_width_at (foyer, feed-aware). Un seul armement. AU FOYER, même les
+    feeds élevés (jusqu'à 6000) donnent une largeur mesurable non nulle
+    (constat MDF : la largeur y dépend surtout de la vitesse, très peu de
+    S) -- contrairement à la Planche 2 (défocus), cette plage n'a pas
+    besoin d'être resserrée."""
     if z_focus is None:
         z_focus = Z_WORK_MM
     powers = _powers_capped(powers)
@@ -6776,22 +6819,29 @@ def generate_gcode_planche_focus(z_focus=None,
     if label_edges:
         ops.append(_op_etiquettes(label_edges, z_focus, "Planche 1 : etiquettes"))
     return generate_gcode_combined(ops, pre_gcode=pre_gcode,
-                                   post_gcode=post_gcode, quiet=quiet)
+                                   post_gcode=post_gcode, quiet=quiet, body_only=body_only)
 
 
 def generate_gcode_planche_defocus(z_focus=None,
                                    powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
-                                   feeds=(400.0, 800.0, 1500.0, 2000.0),
+                                   feeds=(200.0, 400.0, 600.0, 800.0),
                                    defocus_levels_mm=DEFOCUS_LEVELS_MM,
                                    trait_len=20.0, row_gap=6.0, block_gap=10.0,
                                    label_height=3.0,
-                                   pre_gcode="", post_gcode="", quiet=False):
+                                   pre_gcode="", post_gcode="", quiet=False, body_only=False):
     """PLANCHE 2 -- DÉFOCUS (balayage du feed). Pour CHAQUE niveau de défocus
     (defocus_levels_mm, ~15 et 36 mm), une grille de traits S x F gravés à
-    z_focus + dz (le feed monte jusqu'à ~2000, au-delà ça ne marque plus au
-    défocus). À mesurer : la largeur brûlée de chaque trait -> alimente le
+    z_focus + dz. À mesurer : la largeur brûlée de chaque trait -> alimente le
     modèle feed-aware burn_width_defocus_scaled(S, F, défocus). Un bloc étiqueté
-    « d<mm> » par niveau, empilés. Un seul armement."""
+    « d<mm> » par niveau, empilés. Un seul armement.
+
+    feeds par défaut resserré à 200-800 (27 juil. 2026) : au DÉFOCUS
+    (contrairement au foyer), F1500/F2000 ne marquent quasiment jamais --
+    sur MDF, aucune mesure n'a jamais été enregistrée à ces vitesses
+    malgré plusieurs planches, alors que F800 a des largeurs mesurables
+    aux 5 puissances. L'ancienne plage (400-2000) gaspillait donc la
+    moitié de la grille en cases blanches ; la nouvelle reste dans la
+    zone qui marque, avec plus de résolution (200/600 en plus)."""
     if z_focus is None:
         z_focus = Z_WORK_MM
     powers = _powers_capped(powers)
@@ -6818,23 +6868,86 @@ def generate_gcode_planche_defocus(z_focus=None,
     if label_edges:
         ops.append(_op_etiquettes(label_edges, z_focus, "Planche 2 : etiquettes"))
     return generate_gcode_combined(ops, pre_gcode=pre_gcode,
-                                   post_gcode=post_gcode, quiet=quiet)
+                                   post_gcode=post_gcode, quiet=quiet, body_only=body_only)
 
 
-def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet=False):
+def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet=False,
+                                body_only=False):
     """PLANCHE 3 -- LARGEUR DU POINT. Reprend le noyau « Bande de calibration
     défocus » : une série de traits à hauteurs de bec croissantes (Z, du foyer
     jusqu'à ~36 mm), pour mesurer le Ø net au foyer et le Ø à une hauteur connue
     -> le modèle d'élargissement du point (spot_diameter_at_defocus). Le mode
     autonome « Bande de calibration défocus » (Préférences > Calibration du
     point) reste pour les réglages fins ; ce raccourci grave la bande avec des
-    valeurs par défaut, recadré au zéro pièce comme les autres planches."""
+    valeurs par défaut, recadré au zéro pièce comme les autres planches.
+
+    feed par défaut abaissé à 750 (27 juil. 2026, était 1500) : à S600,
+    F1500 ne marque pas du tout au-delà des tout premiers mm de défocus
+    (planche entièrement blanche constatée) -- F750 laisse le temps au
+    matériau de chauffer sur toute la plage de Z testée."""
     if z_focus is None:
         z_focus = Z_WORK_MM
     return generate_gcode_defocus_calibration(
         z_start=z_focus, z_step=3.0, n_marks=13, mark_length=15.0, row_gap=6.0,
-        power=600.0, feed=1500.0, pre_gcode=pre_gcode, post_gcode=post_gcode,
-        quiet=quiet)
+        power=600.0, feed=750.0, pre_gcode=pre_gcode, post_gcode=post_gcode,
+        quiet=quiet, body_only=body_only)
+
+
+def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="", quiet=False,
+                                      gap_mm=15.0):
+    """Grave les TROIS planches de calibration (foyer, défocus, largeur du
+    point) dans UN SEUL fichier -- un seul armement (M3) au début, un seul
+    désarmement (M5)/fin (M2) à la fin -- au lieu de les charger une par
+    une sur la machine. Empilées verticalement (Y croissant) : chaque
+    planche est générée à sa position NATIVE puis décalée en Y (via
+    shift_gcode_xy) pour démarrer juste après la précédente + `gap_mm`,
+    sans toucher à leur mise en page (X inchangé -- seule la hauteur
+    cumulée varie selon le nombre de puissances/vitesses testées). Une
+    planche vide (calibration invalide) est simplement omise. Renvoie
+    None si les trois sont vides."""
+    if z_focus is None:
+        z_focus = Z_WORK_MM
+    corps = [
+        generate_gcode_planche_focus(z_focus=z_focus, quiet=quiet, body_only=True),
+        generate_gcode_planche_defocus(z_focus=z_focus, quiet=quiet, body_only=True),
+        generate_gcode_planche_spot(z_focus=z_focus, quiet=quiet, body_only=True),
+    ]
+    corps = [c for c in corps if c]
+    if not corps:
+        return None
+
+    y_offset = 0.0
+    corps_decales = []
+    for c in corps:
+        bbox = gcode_bbox_xy(c)
+        dy = 0.0
+        if bbox is not None:
+            _, _, ymin, ymax = bbox
+            dy = y_offset - ymin
+            y_offset = ymax + dy + gap_mm
+        corps_decales.append(shift_gcode_xy(c, 0.0, dy))
+
+    lines = []
+    lines.append("(G-Code Laser - Planches de calibration combinees (foyer + defocus + point))")
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    for label, corps_c in zip(("Planche 1 : foyer", "Planche 2 : defocus", "Planche 3 : point"),
+                              corps_decales):
+        lines.append("(===== {} =====)".format(label))
+        lines.append(corps_c)
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
