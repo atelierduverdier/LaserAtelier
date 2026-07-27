@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.62.0"
+VERSION = "1.63.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7001,34 +7001,47 @@ def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="",
     """Grave les TROIS planches de calibration (foyer, défocus, largeur du
     point) dans UN SEUL fichier -- un seul armement (M3) au début, un seul
     désarmement (M5)/fin (M2) à la fin -- au lieu de les charger une par
-    une sur la machine. Empilées verticalement (Y croissant) : chaque
-    planche est générée à sa position NATIVE puis décalée en Y (via
-    shift_gcode_xy) pour démarrer juste après la précédente + `gap_mm`,
-    sans toucher à leur mise en page (X inchangé -- seule la hauteur
-    cumulée varie selon le nombre de puissances/vitesses testées). Une
-    planche vide (calibration invalide) est simplement omise. Renvoie
-    None si les trois sont vides."""
+    une sur la machine. Planche 1 (foyer) et Planche 2 (défocus) restent
+    empilées verticalement (Y croissant, X inchangé), comme avant. Planche 3
+    (largeur du point) est placée à sa DROITE (X croissant, juste après la
+    plus large des deux premières + `gap_mm`, alignée sur le même départ en
+    Y) plutôt que de continuer la pile verticale -- elle est déjà haute (13
+    traits + étiquettes) et l'allongerait inutilement. Une planche vide
+    (calibration invalide) est simplement omise. Renvoie None si les trois
+    sont vides."""
     if z_focus is None:
         z_focus = Z_WORK_MM
-    corps = [
-        generate_gcode_planche_focus(z_focus=z_focus, quiet=quiet, body_only=True),
-        generate_gcode_planche_defocus(z_focus=z_focus, quiet=quiet, body_only=True),
-        generate_gcode_planche_spot(z_focus=z_focus, quiet=quiet, body_only=True),
+    empilees = [
+        ("Planche 1 : foyer",
+         generate_gcode_planche_focus(z_focus=z_focus, quiet=quiet, body_only=True)),
+        ("Planche 2 : defocus",
+         generate_gcode_planche_defocus(z_focus=z_focus, quiet=quiet, body_only=True)),
     ]
-    corps = [c for c in corps if c]
-    if not corps:
+    empilees = [(label, c) for label, c in empilees if c]
+    spot = generate_gcode_planche_spot(z_focus=z_focus, quiet=quiet, body_only=True)
+    if not empilees and not spot:
         return None
 
-    y_offset = 0.0
+    y_offset, x_max = 0.0, 0.0
     corps_decales = []
-    for c in corps:
+    for label, c in empilees:
         bbox = gcode_bbox_xy(c)
         dy = 0.0
         if bbox is not None:
-            _, _, ymin, ymax = bbox
+            xmin, xmax, ymin, ymax = bbox
             dy = y_offset - ymin
             y_offset = ymax + dy + gap_mm
-        corps_decales.append(shift_gcode_xy(c, 0.0, dy))
+            x_max = max(x_max, xmax)
+        corps_decales.append((label, shift_gcode_xy(c, 0.0, dy)))
+
+    if spot:
+        bbox = gcode_bbox_xy(spot)
+        dx = dy = 0.0
+        if bbox is not None:
+            xmin, _, ymin, _ = bbox
+            dx = (x_max + gap_mm - xmin) if corps_decales else 0.0
+            dy = -ymin
+        corps_decales.append(("Planche 3 : point", shift_gcode_xy(spot, dx, dy)))
 
     lines = []
     lines.append("(G-Code Laser - Planches de calibration combinees (foyer + defocus + point))")
@@ -7041,8 +7054,7 @@ def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="",
         lines.append("(-- G-code personnalisé (avant) --)")
         lines.append(pre_gcode.strip())
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
-    for label, corps_c in zip(("Planche 1 : foyer", "Planche 2 : defocus", "Planche 3 : point"),
-                              corps_decales):
+    for label, corps_c in corps_decales:
         lines.append("(===== {} =====)".format(label))
         lines.append(corps_c)
     if post_gcode.strip():
