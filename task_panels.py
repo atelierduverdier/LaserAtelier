@@ -4938,7 +4938,8 @@ class TaskPanelPowerRamp:
             "<b>5. Génère et grave.</b> La règle graduée sous la 1re ligne "
             "donne la puissance sous chaque point&nbsp;: repère où le trait "
             "<b>apparaît</b> et où il <b>sature</b>, à chaque vitesse, puis "
-            "reporte les bons réglages au <b>Nuancier</b>.",
+            "ajoute les bons réglages directement en <b>② Reporter les tons "
+            "retenus</b> ci-dessous.",
         ])
 
         self._presets = _PresetController(form, inner, "powerramp", lambda: self._last_fields)
@@ -5099,16 +5100,48 @@ class TaskPanelPowerRamp:
 
         self._update_duration_preview()
         self._photo["reload"]()
+        self._ton_rapide["reload"]()
 
     def _build_ramp_next(self, form):
         """Section ② : la rampe ne donne pas une mesure chiffrée mais un
-        éventail de tons -- on reporte ceux qu'on garde dans le Nuancier."""
+        éventail de tons -- on les ajoute ici même, sans quitter le panneau
+        (même registre que le Nuancier, cf. _make_shade_quick_add)."""
         _section(form, "② Reporter les tons retenus", "sect_measure.svg")
         form.addRow(_WrapLabel(
             "La rampe sert à CHOISIR : repère les lignes dont le rendu te "
-            "plaît, puis ouvre le mode Nuancier et saisis-les (noirceur "
-            "0-100 %, réglage S/F/défocus, largeur). C'est le Nuancier qui "
-            "mémorise ces tons pour les dégradés et les photos calibrées."))
+            "plaît, puis ajoute leur ton ci-dessous (noirceur 0-100 %, "
+            "réglage S/F/défocus, largeur). Le Nuancier reste le registre "
+            "complet pour tout revoir ou corriger."))
+
+        self.combo_mat = QtWidgets.QComboBox()
+        self.combo_mat.setEditable(True)
+        self.combo_mat.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_mat.setMinimumContentsLength(14)
+        mats = core.shade_materials() or core.burn_width_materials()
+        self.combo_mat.addItems(mats)
+        self.combo_mat.setCurrentText(mats[0] if mats else "MDF")
+        self.combo_mat.setToolTip(
+            "Matériau caractérisé : les tons retenus y sont rangés. "
+            "Choisis-en un ou tape un nouveau nom.")
+        form.addRow("Matériau :", self.combo_mat)
+        self.combo_mat.currentIndexChanged.connect(lambda _i: self._ton_rapide["reload"]())
+        self.combo_mat.lineEdit().editingFinished.connect(lambda: self._ton_rapide["reload"]())
+
+        self._ton_rapide = _make_shade_quick_add(
+            form, lambda: self.combo_mat.currentText(),
+            on_added=self._maj_liste_materiaux)
+
+    def _maj_liste_materiaux(self):
+        """Après un ajout : rafraîchit la liste des matériaux du sélecteur
+        (un nouveau nom vient peut-être d'apparaître). Même pattern que
+        TaskPanelTestGrid._maj_liste_materiaux."""
+        cur = self.combo_mat.currentText()
+        self.combo_mat.blockSignals(True)
+        self.combo_mat.clear()
+        self.combo_mat.addItems(core.shade_materials() or core.burn_width_materials())
+        self.combo_mat.setCurrentText(cur)
+        self.combo_mat.blockSignals(False)
 
     def _gen_kwargs(self):
         return {

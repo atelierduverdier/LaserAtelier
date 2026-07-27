@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.68.0"
+VERSION = "1.69.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3775,7 +3775,7 @@ CALIBRATION_JOURNEY = [
         "mode": "Test rampe puissance / vitesse (lignes)",
         "but": "voir en continu où le trait apparaît et où il sature",
         "action": "charge le préréglage ★ « Gravure MDF (puissance/vitesse) »",
-        "reporter": "Nuancier — complément de l'étape 3",
+        "reporter": "« ② Reporter les tons retenus » ci-dessous -- complément de l'étape 3",
     },
 ]
 
