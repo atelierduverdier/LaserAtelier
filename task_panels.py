@@ -6090,9 +6090,8 @@ class TaskPanelTestGrid:
             "autre hauteur (bec défocalisé) pour caractériser un matériau, une "
             "hauteur à la fois.",
             "<b>5. Génère et grave</b> sur une chute. Choisis la meilleure "
-            "cellule à l'œil, puis ajoute son ton directement dans la "
-            "section <b>② Entrer les mesures</b> ci-dessous (« Ton retenu "
-            "(ajout rapide) »), ou reporte S/F en préréglage.",
+            "cellule à l'œil, puis reporte S/F au mode <b>Nuancier</b> (pour "
+            "un ton) ou en préréglage.",
         ])
 
         # ① GRAVER : d'abord un « objectif » (préréglage recommandé prêt à
@@ -6888,17 +6887,11 @@ class TaskPanelTestGrid:
             on_saved=self._maj_liste_materiaux)
         self._mesures.reload()
 
-        self._ton_rapide = _make_shade_quick_add(
-            form, lambda: self.edt_measure_mat.currentText(),
-            titre="Ton retenu (ajout rapide)", on_added=self._maj_liste_materiaux)
-        self._ton_rapide["reload"]()
-
     def _reload_measures(self):
         self._mesures.reload()
 
     def _reload_measures_and_photo(self):
         self._reload_measures()
-        self._ton_rapide["reload"]()
         if getattr(self, "_photo", None):
             self._photo["reload"]()
 
