@@ -67,15 +67,22 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_Combined",
             "LaserAtelier_JobsToCombined",
             "Separator",
-            # ===== CALIBRATION (après le travail, dans l'ordre du parcours ★1->★4) =====
-            "LaserAtelier_Assistant",           # le fil complet (planches -> mesures -> déductions)
-            "LaserAtelier_DefocusCalibration",  # ★1 foyer + défocus
-            "LaserAtelier_OffsetTest",          # ★2 offsets X/Y
-            "LaserAtelier_TestGrid",            # ★3 planche matériau
-            "LaserAtelier_PowerRamp",           # complément de ★3 (rampe continue)
-            "LaserAtelier_Kerf",                # ★4 kerf
-            "LaserAtelier_Nuancier",            # récap des tons (pas une étape numérotée)
-            "LaserAtelier_Catalogue",           # planche d'exemples (après calibration)
+            # ===== CALIBRATION : PREMIÈRE UTILISATION DU LASER =====
+            # Une fois par laser (pas par matériau) -- à refaire seulement
+            # après un changement optique ou un démontage/remontage.
+            "LaserAtelier_DefocusCalibration",  # ★1 foyer + point + défocus
+            "LaserAtelier_OffsetTest",          # ★2 offsets X/Y (démontage/remontage)
+            "Separator",
+            # ===== CALIBRATION : AJOUTER UN MATÉRIAU =====
+            # À refaire pour chaque nouveau matériau (bois, épaisseur...).
+            "LaserAtelier_Assistant",           # point d'entrée : planches -> mesures -> déductions
+            "LaserAtelier_TestGrid",            # ★3 planche matériau (foyer + défocus, S x F)
+            "LaserAtelier_PowerRamp",           # repérage rapide S/F, complément continu de ★3
+            "LaserAtelier_Nuancier",            # tons mesurés (gris/photo)
+            "LaserAtelier_Kerf",                # ★4 kerf (si découpe de ce matériau)
+            "Separator",
+            # -- Référence --
+            "LaserAtelier_Catalogue",           # planche d'exemples (une fois calibré)
             "Separator",
             # ===== RÉGLAGES (tout à droite, bord écran) =====
             "LaserAtelier_Settings",

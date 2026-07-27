@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.44.0</span><br>
+      <span class="ver">Version 1.45.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : cinq modules propres, dix-huit modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.44.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : cinq modules propres, dix-huit modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.45.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -356,11 +356,12 @@
     <img src="../resources/icons/combined.svg" alt="Job combiné">
     <img src="../resources/icons/combined_from_jobs.svg" alt="Jobs vers combiné"><span class="tb-sep"></span>
     <img src="../resources/icons/defocus.svg" alt="Calibration défocus">
-    <img src="../resources/icons/offset_test.svg" alt="Offsets X/Y">
+    <img src="../resources/icons/offset_test.svg" alt="Offsets X/Y"><span class="tb-sep"></span>
+    <img src="../resources/icons/assistant.svg" alt="Assistant matériau">
     <img src="../resources/icons/testgrid.svg" alt="Grille de test">
     <img src="../resources/icons/powerramp.svg" alt="Rampe">
-    <img src="../resources/icons/kerf.svg" alt="Kerf">
     <img src="../resources/icons/nuancier.svg" alt="Nuancier">
+    <img src="../resources/icons/kerf.svg" alt="Kerf"><span class="tb-sep"></span>
     <img src="../resources/icons/catalogue.svg" alt="Catalogue"><span class="tb-sep"></span>
     <img src="../resources/icons/settings.svg" alt="Préférences">
   </div>
@@ -388,10 +389,13 @@
       <div class="msep"></div>
       <div class="mi"><img src="../resources/icons/defocus.svg" alt="">Bande de calibration défocus</div>
       <div class="mi"><img src="../resources/icons/offset_test.svg" alt="">Test des offsets X/Y du laser</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/assistant.svg" alt="">Assistant matériau</div>
       <div class="mi"><img src="../resources/icons/testgrid.svg" alt="">Grille de test puissance/vitesse</div>
       <div class="mi"><img src="../resources/icons/powerramp.svg" alt="">Test rampe puissance/vitesse (lignes)</div>
-      <div class="mi"><img src="../resources/icons/kerf.svg" alt="">Motif de calibration kerf</div>
       <div class="mi"><img src="../resources/icons/nuancier.svg" alt="">Nuancier matériau</div>
+      <div class="mi"><img src="../resources/icons/kerf.svg" alt="">Motif de calibration kerf</div>
+      <div class="msep"></div>
       <div class="mi"><img src="../resources/icons/catalogue.svg" alt="">Catalogue (planche d'exemples)</div>
       <div class="msep"></div>
       <div class="mi"><img src="../resources/icons/settings.svg" alt="">Préférences</div>
@@ -426,14 +430,19 @@
     <div class="row"><img src="../resources/icons/combined.svg" alt=""><div><span class="nm">Job combiné</span> — <span class="ds">enchaîne plusieurs opérations en un seul fichier, un seul armement.</span></div></div>
     <div class="row"><img src="../resources/icons/combined_from_jobs.svg" alt=""><div><span class="nm">Jobs → job combiné</span> — <span class="ds">rassemble en un job combiné les jobs déjà sélectionnés dans l'arbre.</span></div></div>
 
-    <div class="fam">Calibration <span style="font-weight:400">(dans l'ordre ★1 → ★4)</span></div>
-    <div class="row"><img src="../resources/icons/defocus.svg" alt=""><div><span class="nm">Bande de calibration défocus</span> — <span class="ds">★1 · mesure le point laser à plusieurs hauteurs.</span></div></div>
-    <div class="row"><img src="../resources/icons/offset_test.svg" alt=""><div><span class="nm">Test des offsets X/Y</span> — <span class="ds">★2 · aligne le laser sur la fraise (valeur pour tool.tbl).</span></div></div>
+    <div class="fam">Calibration : première utilisation du laser</div>
+    <div class="row"><img src="../resources/icons/defocus.svg" alt=""><div><span class="nm">Bande de calibration défocus</span> — <span class="ds">★1 · mesure le point laser à plusieurs hauteurs. Une fois par laser, pas par matériau.</span></div></div>
+    <div class="row"><img src="../resources/icons/offset_test.svg" alt=""><div><span class="nm">Test des offsets X/Y</span> — <span class="ds">★2 · aligne le laser sur la fraise (valeur pour tool.tbl). À refaire seulement après démontage/remontage.</span></div></div>
+
+    <div class="fam">Calibration : ajouter un matériau</div>
+    <div class="row"><img src="../resources/icons/assistant.svg" alt=""><div><span class="nm">Assistant matériau</span> — <span class="ds">point d'entrée : grave les planches, saisis les mesures, le modèle se déduit tout seul.</span></div></div>
     <div class="row"><img src="../resources/icons/testgrid.svg" alt=""><div><span class="nm">Grille de test</span> — <span class="ds">★3 · balaie une matrice puissance/vitesse sur une chute.</span></div></div>
-    <div class="row"><img src="../resources/icons/powerramp.svg" alt=""><div><span class="nm">Rampe puissance/vitesse</span> — <span class="ds">complément de ★3 : des lignes à réglages croissants.</span></div></div>
-    <div class="row"><img src="../resources/icons/kerf.svg" alt=""><div><span class="nm">Motif de calibration kerf</span> — <span class="ds">★4 · mesure le trait de scie de la découpe.</span></div></div>
-    <div class="row"><img src="../resources/icons/nuancier.svg" alt=""><div><span class="nm">Nuancier matériau</span> — <span class="ds">le registre des gris mesurés (pas une étape numérotée).</span></div></div>
-    <div class="row"><img src="../resources/icons/catalogue.svg" alt=""><div><span class="nm">Catalogue</span> — <span class="ds">grave une planche d'exemples réels, une fois calibré.</span></div></div>
+    <div class="row"><img src="../resources/icons/powerramp.svg" alt=""><div><span class="nm">Rampe puissance/vitesse</span> — <span class="ds">complément de ★3 : des lignes à réglages croissants, pour un repérage visuel rapide.</span></div></div>
+    <div class="row"><img src="../resources/icons/nuancier.svg" alt=""><div><span class="nm">Nuancier matériau</span> — <span class="ds">le registre des gris mesurés, pour la gravure en niveaux de gris/photo.</span></div></div>
+    <div class="row"><img src="../resources/icons/kerf.svg" alt=""><div><span class="nm">Motif de calibration kerf</span> — <span class="ds">★4 · mesure le trait de scie de la découpe, si tu comptes découper ce matériau.</span></div></div>
+
+    <div class="fam">Référence</div>
+    <div class="row"><img src="../resources/icons/catalogue.svg" alt=""><div><span class="nm">Catalogue</span> — <span class="ds">grave une planche d'exemples réels, une fois les deux groupes ci-dessus faits.</span></div></div>
 
     <div class="fam">Réglages</div>
     <div class="row"><img src="../resources/icons/settings.svg" alt=""><div><span class="nm">Préférences</span> — <span class="ds">machine, profils laser, sauvegarde export/import (voir chapitre dédié).</span></div></div>
@@ -755,7 +764,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.44.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.45.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
