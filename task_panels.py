@@ -572,7 +572,12 @@ def _panel_header(form, icon_name, title):
     btn_sections = QtWidgets.QToolButton()
     btn_sections.setObjectName("laserToggleSections")
     btn_sections.setAutoRaise(True)
-    btn_sections.setArrowType(QtCore.Qt.DownArrow)
+    btn_sections.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
+    btn_sections.setText("▸")
+    btn_sections.setStyleSheet(
+        "QToolButton#laserToggleSections {"
+        "  color: #ff8a00; font-weight: bold;"
+        "  background: transparent; border: none; }")
     btn_sections.setToolTip("Replier / déplier toutes les sections")
     btn_sections.setVisible(False)
     lay.addWidget(btn_sections, 0)
@@ -745,15 +750,17 @@ def _section(form, title, icon_name=None, ouvert=False):
 
 def _maj_bouton_sections(bouton, entetes):
     """Met à jour le petit bouton « tout replier / déplier » de l'en-tête :
-    visible seulement s'il y a des sections ; chevron vers le haut + « Tout
-    replier » si au moins une section est ouverte, sinon chevron vers le bas
-    + « Tout déplier »."""
+    visible seulement s'il y a des sections ; même chevron texte (▸/▾) que
+    _SectionHeader._maj_picto -- ▾ (« Tout replier ») si au moins une
+    section est ouverte, sinon ▸ (« Tout déplier »). Un QToolButton natif
+    avec setArrowType() détonnait visuellement (icône encadrée) au milieu
+    des libellés plats de l'en-tête."""
     if not entetes:
         bouton.setVisible(False)
         return
     bouton.setVisible(True)
     qqch_ouvert = any(h.isChecked() for h in entetes)
-    bouton.setArrowType(QtCore.Qt.UpArrow if qqch_ouvert else QtCore.Qt.DownArrow)
+    bouton.setText("▾" if qqch_ouvert else "▸")
     bouton.setToolTip("Tout replier" if qqch_ouvert else "Tout déplier")
 
 
