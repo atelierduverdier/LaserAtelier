@@ -1861,6 +1861,24 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
     board_h = content_h + 2 * MARGIN + TITLE_H + TITLE_GAP
     y_sommet = board_h - MARGIN - TITLE_H - TITLE_GAP  # haut du 1er cercle
 
+    # Titre : peu de tons -> peu de colonnes -> cadre étroit, mais le texte
+    # (matériau + date + décompte) reste toujours aussi long. On réduit sa
+    # hauteur en priorité (même logique que les étiquettes ci-dessous) ;
+    # si même réduit au minimum lisible il déborde encore, on élargit le
+    # cadre plutôt que de le laisser dépasser -- calculé AVANT le cadre
+    # (coins) pour que celui-ci soit tracé à la bonne largeur finale.
+    quoi = ("tons " + material) if source == "tons" else "prereglages"
+    titre = "Nuancier {}  {}  ({} cercles)".format(
+        quoi, datetime.date.today().isoformat(), len(items))
+    title_h = TITLE_H
+    tw, _th = core.single_line_text_extent(titre, title_h)
+    title_maxw = board_w - 2 * MARGIN
+    if tw > title_maxw and tw > 0:
+        title_h = max(2.2, title_h * title_maxw / tw)
+        tw, _th = core.single_line_text_extent(titre, title_h)
+    if tw > title_maxw:
+        board_w = tw + 2 * MARGIN
+
     doc = FreeCAD.newDocument(
         "Nuancier_tons" if source == "tons" else "Nuancier_preregles")
     jobs, ignores = [], []
@@ -1900,11 +1918,8 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
              FreeCAD.Vector(0, 0, 0)]
     for a, b in zip(coins[:-1], coins[1:]):
         deco.append(Part.LineSegment(a, b).toShape())
-    quoi = ("tons " + material) if source == "tons" else "prereglages"
-    titre = "Nuancier {}  {}  ({} cercles)".format(
-        quoi, datetime.date.today().isoformat(), len(items))
     deco += core.single_line_text_to_edges(
-        titre, TITLE_H, x0=MARGIN, y0=board_h - MARGIN - TITLE_H)
+        titre, title_h, x0=MARGIN, y0=board_h - MARGIN - title_h)
     maxw = cell_w - 1.0
     for i, (_label_obj, grave, _recette) in enumerate(items):
         cx, cy = _centre(i)
