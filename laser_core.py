@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.71.3"
+VERSION = "1.71.4"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5055,11 +5055,11 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
 
     Étiquettes : la vitesse (F) à gauche de chaque ligne, et les bornes de
     puissance (Smin à gauche, Smax à droite) sous la première ligne. Si
-    z_ramp, une seconde règle de graduation sous celle de puissance donne
-    la hauteur Z tous les 10 mm pile le long de X (même convention que la
-    Bande de calibration défocus), pour situer le défocus à n'importe
-    quelle position de la rampe. Gravées à label_power/label_feed FIXES,
-    au foyer (z_work).
+    z_ramp, des traits verticaux CONTINUS traversent TOUTES les lignes de
+    rampe tous les 5 mm pile de hauteur Z (chiffre au pied de chaque
+    trait) : le défocus se lit directement en face de n'importe quelle
+    ligne, à l'intersection. Gravées à label_power/label_feed FIXES, au
+    foyer (z_work).
 
     frame_only : ne trace que le rectangle englobant (cadrage séparé)."""
     if label_power is None:
@@ -5120,23 +5120,26 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
             label_chains.extend(chain_edges(text_to_edges_vertical(
                 "{:.0f}".format(p), x_tick, tick_top - tick_len - grad_h * 0.4, grad_h)))
 
-        # Règle de graduation de hauteur (Z), sous celle de puissance :
-        # puissance ET hauteur montent ensemble le long de X (z_ramp), mais
-        # pas forcément sur des valeurs rondes en même temps -- amorces Z
-        # séparées, à des Z ronds tous les 10 mm pile (même convention que
-        # la Bande de calibration défocus), pour lire directement à quelle
-        # hauteur/défocus correspond une position le long de la rampe.
+        # Graduation de hauteur (Z) : un trait vertical CONTINU tous les
+        # 5 mm pile de Z, qui coupe TOUTES les lignes de rampe (pas une
+        # simple amorce sous la 1re ligne comme la graduation de
+        # puissance ci-dessus) -- on lit le défocus à l'intersection avec
+        # n'importe quelle ligne, sans avoir à viser une règle éloignée.
+        # Puissance ET hauteur montent ensemble le long de X (z_ramp),
+        # mais pas forcément sur des valeurs rondes en même temps, d'où
+        # des graduations Z séparées de celles de puissance.
         if z_ramp:
             max_digits = max((len(str(int(round(p)))) for p in uniq), default=1)
-            z_row_top = tick_top - tick_len - grad_h * (1.3 * max_digits + 1.0)
+            z_row_bas = tick_top - tick_len - grad_h * (1.3 * max_digits + 1.0)
+            y_haut_rampe = (n_lines - 1) * line_gap
             z_lo, z_hi = sorted((z_work, z_end))
-            for cm in range(math.ceil(z_lo / 10.0), math.floor(z_hi / 10.0) + 1):
-                z_val = cm * 10.0
+            for cm in range(math.ceil(z_lo / 5.0), math.floor(z_hi / 5.0) + 1):
+                z_val = cm * 5.0
                 x_tick = line_length * (z_val - z_work) / (z_end - z_work)
-                label_chains.append([FreeCAD.Vector(x_tick, z_row_top, 0.0),
-                                     FreeCAD.Vector(x_tick, z_row_top - tick_len, 0.0)])
+                label_chains.append([FreeCAD.Vector(x_tick, y_haut_rampe, 0.0),
+                                     FreeCAD.Vector(x_tick, z_row_bas - tick_len, 0.0)])
                 label_chains.extend(chain_edges(text_to_edges_vertical(
-                    "{:.0f}".format(z_val), x_tick, z_row_top - tick_len - grad_h * 0.4, grad_h)))
+                    "{:.0f}".format(z_val), x_tick, z_row_bas - tick_len - grad_h * 0.4, grad_h)))
 
     all_pts = []
     for y, _ in lines_geo:
