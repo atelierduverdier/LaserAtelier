@@ -21,6 +21,6 @@
     <text x="126" y="24" fill="#ff8a00">motif 2D à plat</text>
     <text x="126" y="52">projeté verticalement</text>
     <text x="126" y="78">sur la surface 3D</text>
-    <text x="126" y="92" fill="#ff8a00">→ objet « Hachures_3D »</text>
+    <text x="126" y="92" fill="#ff8a00">→ objet « Motif_Projete »</text>
   </g>
 </svg>

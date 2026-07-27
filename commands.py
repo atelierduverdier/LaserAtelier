@@ -304,7 +304,7 @@ class CurvedCommand:
             _warn_selection(
                 "Pièce PLATE : sélectionne juste le motif 2D (hachures,\n"
                 "tracés...).\n"
-                "Surface COURBE : sélectionne les Hachures_3D (motif projeté)\n"
+                "Surface COURBE : sélectionne le Motif_Projete\n"
                 "ET le modèle 3D d'origine, TOUS LES DEUX EN MÊME TEMPS -- le\n"
                 "modèle 3D permet une sonde exacte du relief pour que la\n"
                 "gravure suive fidèlement ses courbes (sans lui, le Z n'est\n"
@@ -330,7 +330,7 @@ class CurvedCutCommand:
         selection = Gui.Selection.getSelectionEx()
         if not selection:
             _warn_selection(
-                "Sélectionne les Hachures_3D (motif projeté) ET le modèle 3D\n"
+                "Sélectionne le Motif_Projete ET le modèle 3D\n"
                 "d'origine, TOUS LES DEUX EN MÊME TEMPS -- le modèle 3D permet\n"
                 "une sonde exacte du relief pour que la découpe suive\n"
                 "fidèlement ses courbes.")

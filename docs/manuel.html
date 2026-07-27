@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.58.0</span><br>
+      <span class="ver">Version 1.59.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : cinq modules propres, dix-huit modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.58.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : cinq modules propres, dix-huit modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.59.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -492,7 +492,7 @@
     <img class="shot" src="manuel_img/curved.png" alt="Panneau Marquage de motif">
     <h4>Marquage de motif <span class="meta">(plat ou courbe)</span></h4>
     <p class="quoi">Graver le tracé d'un motif filaire — le cœur de l'atelier.</p>
-    <p>Sur une pièce <strong>plate</strong> : on sélectionne le motif 2D, la gravure se fait à plat. Sur une pièce <strong>courbe</strong> : le motif doit d'abord être posé sur la surface avec le mode <em>Projeter sur surface 3D</em> (§ 7.2) ; on sélectionne ensuite le motif projeté (<code>Hachures_3D</code>) <strong>et</strong> le modèle 3D d'origine <em>ensemble</em>, pour que le relief soit sondé exactement pendant le marquage et que la distance focale reste constante. Sans le modèle 3D, le Z n'est qu'interpolé entre les points projetés.</p>
+    <p>Sur une pièce <strong>plate</strong> : on sélectionne le motif 2D, la gravure se fait à plat. Sur une pièce <strong>courbe</strong> : le motif doit d'abord être posé sur la surface avec le mode <em>Projeter sur surface 3D</em> (§ 7.2) ; on sélectionne ensuite le motif projeté (<code>Motif_Projete</code>) <strong>et</strong> le modèle 3D d'origine <em>ensemble</em>, pour que le relief soit sondé exactement pendant le marquage et que la distance focale reste constante. Sans le modèle 3D, le Z n'est qu'interpolé entre les points projetés.</p>
     <p>Propose cinq styles de trait (plein, tirets, pointillé, vague défocus, point élargi par défocus), tous suivant le relief.</p>
     <p class="meta"><b>Réglages clés :</b> puissance · vitesse · style de trait · suivi de surface (motif projeté + modèle 3D). <b>Fichier :</b> <code>marquage.ngc</code></p>
   </div></div>
@@ -561,8 +561,8 @@
     <img class="shot" src="manuel_img/project.png" alt="Panneau Projeter sur surface 3D">
     <h4>Projeter sur surface 3D</h4>
     <p class="quoi">Coller un motif 2D sur une surface courbe.</p>
-    <p>Projette un texte ou des hachures sur une sphère, une vague… par projection verticale sur le solide. Étape de <strong>préparation</strong> : produit l'objet <code>Hachures_3D</code> que le Marquage grave ensuite en suivant le relief. C'est le <strong>préalable à toute gravure sur pièce courbe</strong> (§ 7.1).</p>
-    <p class="meta"><b>Sortie :</b> objet « Hachures_3D » (motif + modèle 3D à sélectionner ensemble au marquage)</p>
+    <p>Projette un texte ou des hachures sur une sphère, une vague… par projection verticale sur le solide. Étape de <strong>préparation</strong> : produit l'objet <code>Motif_Projete</code> que le Marquage grave ensuite en suivant le relief. C'est le <strong>préalable à toute gravure sur pièce courbe</strong> (§ 7.1).</p>
+    <p class="meta"><b>Sortie :</b> objet « Motif_Projete » (motif + modèle 3D à sélectionner ensemble au marquage)</p>
   </div></div>
 
   <!-- 6.3 -->
@@ -774,7 +774,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.58.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.59.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

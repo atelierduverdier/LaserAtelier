@@ -29,7 +29,7 @@ le pipeline laser, du motif 2D au G-code, en 5 modes :
      ('common' sur le solide -- plus fiable que distToShape pour ce cas).
      Échantillonnage par DISTANCE (pas Deflection : une droite 2D n'a
      aucune courbure à approximer, Deflection ne donnerait que 2 points
-     -> corde droite sous la courbure réelle). Crée "Hachures_3D" (rouge).
+     -> corde droite sous la courbure réelle). Crée "Motif_Projete" (rouge).
      Étape de préparation, pas de G-code généré ici.
 
   3. MOTIF DE CALIBRATION KERF -- crée un carré test dans le document
@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.58.0"
+VERSION = "1.59.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1776,7 +1776,7 @@ def drop_edges_to_surface(edges_2d, shape_3d):
 
 
 def run_projection(selection):
-    """Crée l'objet 'Hachures_3D' dans le document (rouge), comme
+    """Crée l'objet 'Motif_Projete' dans le document (rouge), comme
     Coller_hachures_sur_3D.fcmacro -- accepte PLUSIEURS motifs 2D en une
     seule sélection (ex: ShapeString + hachures), tous projetés ensemble
     sur la MÊME surface 3D de référence en un seul objet résultat, au lieu
@@ -1824,7 +1824,7 @@ def run_projection(selection):
 
     doc = FreeCAD.ActiveDocument
     compound_3d = Part.Compound(edges_3d)
-    new_obj = doc.addObject("Part::Feature", "Hachures_3D")
+    new_obj = doc.addObject("Part::Feature", "Motif_Projete")
     new_obj.Shape = compound_3d
     if hasattr(new_obj, 'ViewObject'):
         new_obj.ViewObject.LineColor = (1.0, 0.0, 0.0)

@@ -4071,7 +4071,7 @@ class TaskPanelProject:
             "surface</b>, tout ensemble. L'état ci-dessous passe au vert quand "
             "la sélection est valide (exactement une surface + ≥ 1 motif).",
             "<b>3.</b> Clique <b>OK</b>&nbsp;: les motifs sont projetés sur la "
-            "surface en un objet <code>Hachures_3D</code>.",
+            "surface en un objet <code>Motif_Projete</code>.",
             "<b>4.</b> Enchaîne avec <b>Marquage de motif</b> ou <b>Découpe "
             "courbe</b>&nbsp;: sélectionne l'objet projeté <b>+</b> le modèle 3D "
             "pour graver/découper en suivant le relief.",
@@ -6862,7 +6862,7 @@ class TaskPanelCurved:
         _intro(form,
                "Grave un motif filaire (hachures, tracés...). Pièce PLATE : "
                "sélectionne juste le motif 2D. Surface COURBE : sélectionne "
-               "le motif projeté (Hachures_3D) ET le modèle 3D d'origine, "
+               "le motif projeté (Motif_Projete) ET le modèle 3D d'origine, "
                "les deux en même temps.",
                "Le modèle 3D permet une sonde exacte du relief pendant le "
                "marquage (sans lui, le Z n'est qu'interpolé entre les points "
@@ -6877,7 +6877,7 @@ class TaskPanelCurved:
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Sélectionne le <b>motif</b>. Pièce PLATE&nbsp;: le motif "
-            "2D seul. Surface COURBE&nbsp;: le motif projeté (<code>Hachures_3D"
+            "2D seul. Surface COURBE&nbsp;: le motif projeté (<code>Motif_Projete"
             "</code>) <b>ET</b> le modèle 3D d'origine, les deux ensemble.",
             "<b>2.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin de "
             "référence, Z sur le point haut de la surface. Avec le modèle 3D le "
@@ -8239,7 +8239,7 @@ class TaskPanelCurvedCut:
         _reselect_button(form, self._on_recapture_selection)
         _intro(form,
                "Découpe en plusieurs passes EN SUIVANT LE RELIEF d'une "
-               "surface courbe. Sélectionne le motif projeté (Hachures_3D) "
+               "surface courbe. Sélectionne le motif projeté (Motif_Projete) "
                "ET le modèle 3D d'origine, les deux en même temps.",
                "Le modèle 3D permet une sonde exacte du relief. Chaque passe "
                "recule le foyer un peu plus DANS la matière (comme la découpe "
@@ -8252,7 +8252,7 @@ class TaskPanelCurvedCut:
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
-            "<b>1.</b> Sélectionne le motif projeté (<code>Hachures_3D</code>) "
+            "<b>1.</b> Sélectionne le motif projeté (<code>Motif_Projete</code>) "
             "<b>ET</b> le modèle 3D d'origine, les deux en même temps.",
             "<b>2.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin de "
             "référence, Z sur le point haut de la surface&nbsp;— le relief est "
