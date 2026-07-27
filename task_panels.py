@@ -515,14 +515,19 @@ def _boutons_planches(form, ecrire):
 
 class _MesuresPlanchesControleur:
     """Bloc partagé « saisie des mesures des planches » (Grille de test,
-    Assistant matériau) : une _GrilleResultats pour la Planche 1 (foyer) +
-    une par niveau de défocus (Planche 2) + le bouton « Enregistrer les
-    mesures ». `get_material()` fournit le matériau courant ; reload()
-    recharge depuis la config (anciennes mesures mono-feed -> colonne F800
-    du bon niveau, z_offset déjà ramené au niveau standard par
-    load_burn_widths) ; l'enregistrement passe par save_burn_widths puis
-    rappelle `on_saved` (rafraîchir liste des matériaux, déductions...).
-    `parent` = le panneau hôte (boîtes de message via parent.form)."""
+    Assistant matériau) : une _GrilleResultats pour le foyer (Planche 1 dans
+    l'Assistant, ou la grille « Largeurs brûlées » dans Grille de test -- même
+    forme de données) + une par niveau de défocus (Planche 2/grille défocus)
+    + le bouton « Enregistrer les mesures ». Les titres des grilles ne disent
+    PAS « Planche N » : la même mesure peut venir d'une planche dédiée ou
+    d'une grille de test, et le nommer d'après la source figée dans l'un des
+    deux panneaux serait faux dans l'autre. `get_material()` fournit le
+    matériau courant ; reload() recharge depuis la config (anciennes mesures
+    mono-feed -> colonne F800 du bon niveau, z_offset déjà ramené au niveau
+    standard par load_burn_widths) ; l'enregistrement passe par
+    save_burn_widths puis rappelle `on_saved` (rafraîchir liste des
+    matériaux, déductions...). `parent` = le panneau hôte (boîtes de message
+    via parent.form)."""
 
     POWERS = (1000, 800, 600, 400, 200)
     # Doit rester aligné sur les feeds par défaut de generate_gcode_planche_focus
@@ -543,13 +548,13 @@ class _MesuresPlanchesControleur:
         self._on_saved = on_saved
         self._levels = [round(float(dz), 3) for dz in core.DEFOCUS_LEVELS_MM]
         self.grille_focus = _GrilleResultats(
-            "Planche 1 — traits au FOYER : largeur (mm)",
+            "Traits au FOYER : largeur (mm)",
             rows=self.POWERS, cols=self.FEEDS_FOCUS)
         form.addRow(self.grille_focus)
         self.grilles_defocus = {}
         for dz in self._levels:
             gr = _GrilleResultats(
-                "Planche 2 — défocus {:.0f} mm : largeur (mm)".format(dz),
+                "Défocus {:.0f} mm : largeur (mm)".format(dz),
                 rows=self.POWERS, cols=self.FEEDS_DEFOCUS)
             self.grilles_defocus[dz] = gr
             form.addRow(gr)
