@@ -2647,6 +2647,113 @@ def _make_shade_picker(form, on_apply):
     return {"mat": combo_mat, "shade": combo_shade, "reload": _reload}
 
 
+def _make_shade_quick_add(form, get_material, titre=None, on_added=None):
+    """Bloc compact « + Ajouter ce ton » : capture INLINE d'un ton juste
+    après une gravure (Grille de test, Rampe), sans quitter le panneau ni
+    ressaisir de mémoire dans le Nuancier. Écrit dans la MÊME liste que le
+    Nuancier (core.load_shades/save_shades) pour le matériau de
+    `get_material()` -- le Nuancier reste le registre complet (relecture,
+    correction, suppression) ; ce bloc n'ajoute qu'un ton à la fois, remis
+    aux valeurs par défaut après chaque ajout (saisie éphémère, pas de
+    valeur « au repos » à protéger -> pas de verrou ici, contrairement à
+    _GrilleResultats/Nuancier qui affichent en permanence des mesures déjà
+    enregistrées). Pas de QMessageBox de confirmation : après une seule
+    gravure on ajoute plusieurs tons candidats à la suite, un modal par clic
+    recréerait la friction qu'on retire par ailleurs -- le résumé compteur
+    sert de confirmation silencieuse. `titre` (optionnel) : sous-légende en
+    gras si ce bloc partage sa section avec un autre contenu (ex. les
+    grilles de largeurs) ; laisser None si la section englobante porte déjà
+    un titre suffisant. `on_added()` est rappelé après un ajout réussi (ex.
+    rafraîchir la liste de matériaux si le nom tapé était inédit). Renvoie
+    {"reload": fn} -- reload() (fin d'__init__, et à chaque changement de
+    matériau) met à jour le résumé « N ton(s) déjà enregistré(s) »."""
+    if titre:
+        form.addRow(_WrapLabel("<b>{}</b>".format(titre)))
+
+    row = QtWidgets.QWidget()
+    lay = QtWidgets.QFormLayout(row)
+    lay.setContentsMargins(0, 0, 0, 0)
+
+    spn_darkness = QtWidgets.QDoubleSpinBox()
+    spn_darkness.setRange(0.0, 100.0)
+    spn_darkness.setSuffix(" %")
+    spn_darkness.setValue(50.0)
+    spn_darkness.setToolTip("Noirceur jugée à l'œil : 0 = matériau intact, 100 = noir max.")
+    lay.addRow("Noirceur :", spn_darkness)
+
+    spn_power = QtWidgets.QDoubleSpinBox()
+    spn_power.setRange(0, core.S_MAX)
+    spn_power.setValue(500.0)
+    lay.addRow("Puissance S :", spn_power)
+
+    spn_feed = QtWidgets.QDoubleSpinBox()
+    spn_feed.setRange(1.0, 20000.0)
+    spn_feed.setValue(800.0)
+    spn_feed.setSuffix(" mm/min")
+    lay.addRow("Vitesse F :", spn_feed)
+
+    spn_defocus = QtWidgets.QDoubleSpinBox()
+    spn_defocus.setRange(0.0, 60.0)
+    spn_defocus.setDecimals(1)
+    spn_defocus.setSuffix(" mm")
+    lay.addRow("Défocus :", spn_defocus)
+
+    spn_width = QtWidgets.QDoubleSpinBox()
+    spn_width.setRange(0.0, 10.0)
+    spn_width.setDecimals(2)
+    spn_width.setSuffix(" mm")
+    spn_width.setToolTip("Largeur du trait au pied à coulisse, si mesurée (sinon laisser 0).")
+    lay.addRow("Largeur mesurée :", spn_width)
+
+    edt_label = QtWidgets.QLineEdit()
+    edt_label.setPlaceholderText("ex. gris moyen")
+    lay.addRow("Libellé :", edt_label)
+
+    form.addRow(row)
+
+    btn_add = QtWidgets.QPushButton("+ Ajouter ce ton")
+    btn_add.setToolTip(
+        "Ajoute ce ton au nuancier de ce matériau (même registre que le\n"
+        "mode Nuancier, qui reste l'endroit pour tout revoir/corriger).")
+    form.addRow(btn_add)
+
+    lbl_resume = _WrapLabel("")
+    form.addRow(lbl_resume)
+
+    def reload():
+        mat = (get_material() or "").strip()
+        n = len(core.load_shades(mat)) if mat else 0
+        lbl_resume.setText(
+            "{} ton(s) déjà enregistré(s) pour « {} ».".format(n, mat)
+            if mat else "Indique un matériau pour voir ses tons enregistrés.")
+
+    def _on_add():
+        mat = (get_material() or "").strip()
+        if not mat:
+            QtWidgets.QMessageBox.warning(
+                form.parentWidget(), "Ton", "Indiquer un nom de matériau.")
+            return
+        shades = core.load_shades(mat)
+        shades.append({
+            "darkness": spn_darkness.value(), "power": spn_power.value(),
+            "feed": spn_feed.value(), "z_offset": spn_defocus.value(),
+            "width": spn_width.value(), "label": edt_label.text().strip(),
+        })
+        core.save_shades(mat, shades)
+        spn_darkness.setValue(50.0)
+        spn_power.setValue(500.0)
+        spn_feed.setValue(800.0)
+        spn_defocus.setValue(0.0)
+        spn_width.setValue(0.0)
+        edt_label.clear()
+        reload()
+        if on_added:
+            on_added()
+
+    btn_add.clicked.connect(_on_add)
+    return {"reload": reload}
+
+
 # ==========================================================================
 # MODE : TEXTE TRAIT SIMPLE (police mono-trait Hershey)
 # ==========================================================================
@@ -6000,8 +6107,9 @@ class TaskPanelTestGrid:
             "autre hauteur (bec défocalisé) pour caractériser un matériau, une "
             "hauteur à la fois.",
             "<b>5. Génère et grave</b> sur une chute. Choisis la meilleure "
-            "cellule à l'œil, puis reporte S/F au <b>Nuancier</b> ou en "
-            "préréglage.",
+            "cellule à l'œil, puis ajoute son ton directement dans la "
+            "section <b>② Entrer les mesures</b> ci-dessous (« Ton retenu "
+            "(ajout rapide) »), ou reporte S/F en préréglage.",
         ])
 
         # ① GRAVER : d'abord un « objectif » (préréglage recommandé prêt à
@@ -6786,11 +6894,17 @@ class TaskPanelTestGrid:
             on_saved=self._maj_liste_materiaux)
         self._mesures.reload()
 
+        self._ton_rapide = _make_shade_quick_add(
+            form, lambda: self.edt_measure_mat.currentText(),
+            titre="Ton retenu (ajout rapide)", on_added=self._maj_liste_materiaux)
+        self._ton_rapide["reload"]()
+
     def _reload_measures(self):
         self._mesures.reload()
 
     def _reload_measures_and_photo(self):
         self._reload_measures()
+        self._ton_rapide["reload"]()
         if getattr(self, "_photo", None):
             self._photo["reload"]()
 
