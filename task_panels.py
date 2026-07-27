@@ -1495,22 +1495,24 @@ def _avertir_relief_sans_reference(parent_widget, edges, reference_shape):
     return reponse == QtWidgets.QMessageBox.Yes
 
 
-def _avertir_collision_detectee(parent_widget, count, quoi="gravure"):
+def _avertir_collision_detectee(parent_widget, count, quoi="gravure", determinant="cette"):
     """Après génération (sonde exacte active) : à `count` endroits, le bec
     (cône anti-collision) serait plus proche de la surface voisine que ne
     le permet le focus imposé -- jusqu'ici seulement écrit dans la vue
     Rapport de FreeCAD (pas toujours ouverte, facile à rater avant de
     lancer le job sur la machine pour de vrai). Fenêtre bloquante à la
-    place. Renvoie False si l'utilisateur annule la génération."""
+    place. `determinant` accorde l'article à `quoi` ("cette gravure" /
+    "cette découpe" / "ce job combiné"). Renvoie False si l'utilisateur
+    annule la génération."""
     if not count:
         return True
     reponse = QtWidgets.QMessageBox.warning(
         parent_widget, "Risque de collision détecté",
         "À {} endroit(s), le bec (cône anti-collision) serait plus proche "
-        "de la surface voisine que ne le permet le focus de cette {}.\n\n"
+        "de la surface voisine que ne le permet le focus de {} {}.\n\n"
         "Le Z n'a PAS été modifié (le focus reste imposé) -- vérifie "
         "visuellement ces zones avant de lancer le job sur la machine.\n\n"
-        "Générer quand même ?".format(count, quoi),
+        "Générer quand même ?".format(count, determinant, quoi),
         QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
         QtWidgets.QMessageBox.No)
     return reponse == QtWidgets.QMessageBox.Yes
@@ -9045,6 +9047,18 @@ class TaskPanelCombined:
             return
         _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_combine.ngc")
 
+    def _combined_collision_points(self):
+        """Points de collision (repère natif, aucun décalage Z nécessaire
+        -- cf. create_collision_markers) réunis sur TOUTES les opérations
+        curved/curved_cut du job en une seule liste. Génération complète
+        à part, G-code jeté (comme TaskPanelCurved._on_photo_preview) :
+        contrairement à rapid/mark, un point de collision n'a pas besoin
+        d'être isolé par opération, donc pas besoin de la boucle
+        opération-par-opération de _on_toolpath_preview ici."""
+        w = {}
+        core.generate_gcode_combined(self.operations, quiet=True, warnings_out=w)
+        return w.get("nozzle_points", [])
+
     def _on_toolpath_preview(self):
         if not self.operations:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Ajoute au moins une opération avant l'aperçu.")
@@ -9073,6 +9087,7 @@ class TaskPanelCombined:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, all_rapid, all_mark)
+        core.create_collision_markers(FreeCAD.ActiveDocument, self._combined_collision_points())
 
     def _on_photo_preview(self):
         """Rendu réaliste (image) de TOUT le job combiné : chaque opération
@@ -9091,7 +9106,8 @@ class TaskPanelCombined:
                 "Rien à peindre (opérations vides ou uniquement des grilles "
                 "de test).")
             return
-        img = _render_engraving_photo(strokes)
+        collision_points = [(pt.x, pt.y) for pt in self._combined_collision_points()]
+        img = _render_engraving_photo(strokes, collision_points=collision_points)
         if img is None:
             QtWidgets.QMessageBox.critical(self.form, "Aperçu photo", "Rendu impossible.")
             return
@@ -9102,11 +9118,20 @@ class TaskPanelCombined:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Ajoute au moins une opération avant de lancer le job.")
             return False
 
-        gcode = core.generate_gcode_combined(self.operations, )
+        warnings_out = {}
+        gcode = core.generate_gcode_combined(self.operations, warnings_out=warnings_out)
 
         if not gcode:
             QtWidgets.QMessageBox.critical(
                 self.form, "Erreur", "Aucun G-code généré (vérifie que les opérations contiennent de la géométrie).")
+            return False
+
+        # Marqueurs posés AVANT la fenêtre d'avertissement, comme sur les
+        # modes directs (Marquage/Découpe courbe) : déjà visibles dans la
+        # vue 3D dès que l'utilisateur ferme le dialogue.
+        core.create_collision_markers(FreeCAD.ActiveDocument, warnings_out.get("nozzle_points", []))
+        if not _avertir_collision_detectee(
+                self.form, warnings_out.get("nozzle_warnings", 0), "job combiné", "ce"):
             return False
 
         # Bouton : le panneau reste ouvert, re-cliquer regénère.

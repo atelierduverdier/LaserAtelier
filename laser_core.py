@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.57.0"
+VERSION = "1.58.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5791,7 +5791,8 @@ def _operation_intrinsic_safe_z(op_type, params):
     return None
 
 
-def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=False, quiet=False):
+def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=False, quiet=False,
+                             warnings_out=None):
     """Assemble plusieurs opérations (Marquage courbe / Découpe
     multi-passes / Grille de test, chacune avec ses propres paramètres)
     en UN SEUL job avec UN SEUL armement (M3) au tout début et UN SEUL
@@ -5805,6 +5806,14 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
     (l'emprise de toutes les opérations réunies, laser jamais armé), pour
     un fichier de vérification de cadrage séparé -- et non un rectangle
     par opération, qui ferait sautiller la tête d'un cadre à l'autre.
+
+    warnings_out : si fourni, reçoit "nozzle_warnings" (compte total) et
+    "nozzle_points" (liste de FreeCAD.Vector, coordonnées natives) en
+    fusionnant marquage ET découpe de TOUTES les sous-opérations
+    "curved"/"curved_cut" -- seules ces deux le supportent (cf.
+    generate_gcode_curved / generate_gcode_curved_cut) ; le risque de
+    collision est le même quelle que soit l'opération qui l'a détecté,
+    pas la peine de les distinguer côté appelant.
 
     Une opération dont le générateur renvoie None (aucune géométrie,
     ex: sélection vide) est ignorée avec un avertissement (sauf si
@@ -5853,6 +5862,10 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
         params["frame_only"] = frame_only
         if global_min_safe_z is not None:
             params["min_safe_z"] = global_min_safe_z
+        op_warnings = None
+        if warnings_out is not None and op_type in ("curved", "curved_cut"):
+            op_warnings = {}
+            params["warnings_out"] = op_warnings
         gcode = generator(**params)
         if not gcode:
             if not quiet:
@@ -5860,6 +5873,11 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
                     "Opération '{}' ignorée dans le job combiné (aucune géométrie générée).\n".format(label))
             continue
         bodies.append((label, gcode))
+        if op_warnings:
+            key_w = "nozzle_marking_warnings" if op_type == "curved" else "nozzle_cut_warnings"
+            key_p = "nozzle_marking_points" if op_type == "curved" else "nozzle_cut_points"
+            warnings_out["nozzle_warnings"] = warnings_out.get("nozzle_warnings", 0) + op_warnings.get(key_w, 0)
+            warnings_out.setdefault("nozzle_points", []).extend(op_warnings.get(key_p, []))
 
     if not bodies:
         return None
