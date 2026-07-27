@@ -8608,17 +8608,22 @@ class TaskPanelCurvedCut:
         FreeCAD.Console.PrintMessage(
             "Chaînage des segments connectés... ({})\n".format(
                 "objet 3D de référence détecté" if self._reference_shape is not None else "pas d'objet 3D, interpolation"))
+        warnings_out = {}
         gcode = core.generate_gcode_curved_cut(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_thickness.value(), self.spn_passes.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
             reference_shape=self._reference_shape,
             probe=self._probe,
+            warnings_out=warnings_out,
             **self._build_gcode_kwargs(),
         )
 
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
+            return False
+        if not _avertir_collision_detectee(
+                self.form, warnings_out.get("nozzle_cut_warnings", 0), "découpe"):
             return False
 
         # Bouton : le panneau reste ouvert, re-cliquer regénère.
