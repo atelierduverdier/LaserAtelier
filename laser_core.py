@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.64.0"
+VERSION = "1.65.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7001,12 +7001,22 @@ def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet
     feed par défaut abaissé à 750 (27 juil. 2026, était 1500) : à S600,
     F1500 ne marque pas du tout au-delà des tout premiers mm de défocus
     (planche entièrement blanche constatée) -- F750 laisse le temps au
-    matériau de chauffer sur toute la plage de Z testée."""
+    matériau de chauffer sur toute la plage de Z testée.
+
+    Rampe de puissance 600->1000 ajoutée (27 juil. 2026) : à S600 constant,
+    le dernier trait (défocus 44mm) ne marque plus assez pour être mesuré --
+    la même énergie étalée sur un point large donne une fluence trop faible.
+    Monter à S1000 dès le foyer saturerait/élargirait les premiers traits et
+    fausserait la mesure du point net ; la rampe garde S600 au foyer (déjà
+    correct) et ne monte qu'avec le défocus. draw_power_labels (par défaut)
+    grave la puissance réelle de chaque trait, donc rien d'autre à changer
+    pour la lire sur la planche."""
     if z_focus is None:
         z_focus = Z_WORK_MM
     return generate_gcode_defocus_calibration(
         z_start=z_focus, z_step=3.0, n_marks=13, mark_length=15.0, row_gap=6.0,
-        power=600.0, feed=750.0, plank_label="3", pre_gcode=pre_gcode, post_gcode=post_gcode,
+        power=600.0, power_end=1000.0, feed=750.0, plank_label="3",
+        pre_gcode=pre_gcode, post_gcode=post_gcode,
         quiet=quiet, body_only=body_only)
 
 
