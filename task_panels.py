@@ -5847,12 +5847,18 @@ class TaskPanelTestGrid:
                        ("Mesurer", "② Entrer les mesures (largeurs brûlées)"),
                        ("Photo", "③ Photo du résultat")])
 
-        # Trois planches de calibration séparées (fichiers distincts, recadrés
-        # au zéro pièce), boutons partagés avec l'Assistant matériau. On mesure
-        # ensuite leurs largeurs dans « ② Entrer les mesures » ci-dessous.
-        # Prérequis : calibration du point (Planche 3 / Préférences).
-        (self.btn_planche1, self.btn_planche2,
-         self.btn_planche3) = _boutons_planches(form, self._ecrire_planche)
+        # Les boutons "Planche 1-2-3" ont été retirés d'ici : les avoir à la
+        # fois ici ET dans l'Assistant matériau faisait double emploi avec
+        # l'objectif "Largeurs brûlées" ci-dessous, qui couvre le même besoin
+        # via cette grille personnalisable. Ils restent dans l'Assistant
+        # matériau, le point d'entrée recommandé pour un nouveau matériau.
+        form.addRow(_WrapLabel(
+            "Pour calibrer un <b>nouveau matériau</b> de façon standard "
+            "(largeurs brûlées, foyer/défocus), utilise l'<b>Assistant "
+            "matériau</b> -- il regroupe les trois planches, la saisie des "
+            "mesures et les déductions. Cette grille sert à explorer une "
+            "plage puissance/vitesse personnalisée (taille, remplissage, "
+            "découpe) hors de ce parcours standard."))
         # La saisie des mesures n'est plus un dialogue séparé : elle est
         # désormais inline, dans la section « ② Entrer les mesures » plus bas.
         _intro(form,
@@ -5871,8 +5877,9 @@ class TaskPanelTestGrid:
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Aucune sélection requise. Pour caler un <b>nouveau "
-            "matériau</b>, préfère les «&nbsp;Planches 1-2-3&nbsp;» ci-dessus "
-            "(foyer, défocus, largeur du point — un fichier chacune).",
+            "matériau</b> de façon standard, utilise l'<b>Assistant "
+            "matériau</b> (planches foyer/défocus/point regroupées). Cette "
+            "grille sert plutôt à des plages personnalisées ou à la découpe.",
             "<b>2. Mode &amp; plages</b>&nbsp;: gravure ou découpe, plage de "
             "puissances (colonnes&nbsp;X) et de vitesses (lignes&nbsp;Y), nombre "
             "de cellules.",
@@ -6675,13 +6682,6 @@ class TaskPanelTestGrid:
         self.edt_measure_mat.addItems(core.burn_width_materials() or core.shade_materials())
         self.edt_measure_mat.setCurrentText(cur)
         self.edt_measure_mat.blockSignals(False)
-
-    def _ecrire_planche(self, gcode, chemin):
-        if not gcode:
-            QtWidgets.QMessageBox.critical(
-                self.form, "Erreur", "Génération vide (calibration invalide ?).")
-            return
-        _write_gcode_with_dialog(self.form, gcode, chemin)
 
     def _on_generer(self):
         """Crée les cellules dans le document, génère le G-code de la grille
