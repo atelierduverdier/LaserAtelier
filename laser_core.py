@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.70.1"
+VERSION = "1.71.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4816,7 +4816,10 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     aussi gravée à sa DROITE -- indispensable avec une rampe, sinon on ne
     sait pas quelle puissance a donné quel trait. Les étiquettes sont
     gravées à une hauteur fixe (label_z, défaut z_start) pour rester
-    lisibles quel que soit le défocus du trait qu'elles désignent.
+    lisibles quel que soit le défocus du trait qu'elles désignent. Une
+    graduation encore plus à gauche complète ces étiquettes : une amorce +
+    son chiffre tous les 10 mm de Z pile (indépendant de z_step), pour situer
+    une hauteur précise même entre deux traits.
 
     power / power_end : puissance du 1er trait, et du dernier. Plus le trait
     est défocalisé, plus la MÊME puissance est étalée sur un gros point,
@@ -4898,6 +4901,25 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         if draw_power_labels:
             row_labels.extend(chain_edges(text_to_edges(
                 s_texts[k], s_col_x, y - label_height / 2.0, label_height)))
+
+    # Graduation continue de hauteur (Z), en plus des étiquettes par trait
+    # ci-dessus : une amorce + son chiffre tous les 10 mm de Z PILE, quel
+    # que soit z_step (qui ne tombe pas forcément sur des valeurs rondes) --
+    # repère visuel pour situer une hauteur précise (ex. le foyer) même
+    # entre deux traits, sans avoir à compter/interpoler les étiquettes.
+    if draw_labels and n_marks > 1 and z_step > 0:
+        grad_x = min(z_col_x, s_col_x) - row_gap * 0.5
+        tick_len = row_gap * 0.3
+        z_lo, z_hi = sorted((z_start, z_start + (n_marks - 1) * z_step))
+        for cm in range(math.ceil(z_lo / 10.0), math.floor(z_hi / 10.0) + 1):
+            z_grad = cm * 10.0
+            y_grad = (z_grad - z_start) / z_step * row_gap
+            row_labels.append([FreeCAD.Vector(grad_x, y_grad, 0.0),
+                               FreeCAD.Vector(grad_x + tick_len, y_grad, 0.0)])
+            txt = "{:g}".format(z_grad)
+            row_labels.extend(chain_edges(text_to_edges(
+                txt, grad_x - text_width(txt, label_height) - row_gap * 0.2,
+                y_grad - label_height / 2.0, label_height)))
 
     # Pas horizontal entre bandes : largeur d'une bande (traits ou libellé de
     # vitesse, au plus large) + band_gap, pour un espace CONSTANT = band_gap.
