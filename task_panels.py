@@ -525,7 +525,10 @@ class _MesuresPlanchesControleur:
     `parent` = le panneau hôte (boîtes de message via parent.form)."""
 
     POWERS = (1000, 800, 600, 400, 200)
-    FEEDS_FOCUS = (200, 400, 800, 1500, 3000, 6000)
+    # Doit rester aligné sur les feeds par défaut de generate_gcode_planche_focus
+    # (laser_core.py) : F6000 retiré le 27 juil. 2026 (ne marque plus depuis
+    # un changement de lentille).
+    FEEDS_FOCUS = (200, 400, 800, 1500, 3000)
     # Doit rester aligné sur les feeds par défaut de generate_gcode_planche_defocus
     # (laser_core.py) : la grille de saisie n'a de colonnes que pour ce qui
     # est réellement gravé sur la planche. Resserré le 27 juil. 2026 (était

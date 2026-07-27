@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.61.0"
+VERSION = "1.62.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -6763,63 +6763,130 @@ def _powers_capped(powers):
     return tuple(sorted({min(float(p), float(S_MAX)) for p in powers}))
 
 
-def _trait_op(x, y, power, feed, z_focus, nom, trait_len):
-    """Op « curved » d'un trait horizontal de longueur trait_len à (x, y),
-    gravé à z_focus (foyer + défocus éventuel)."""
-    p1 = FreeCAD.Vector(x, y, 0.0)
-    p2 = FreeCAD.Vector(x + trait_len, y, 0.0)
-    return {"type": "curved", "label": nom,
-            "params": dict(edges=[Part.LineSegment(p1, p2).toShape()],
-                           power=power, feed=feed, z_focus=z_focus,
-                           marge_survol=TRANSIT_MARGIN_MM)}
+def _emit_flat_marks(lines, bands, z_safe):
+    """Émet les lignes G-code pour une série de « bandes » de traits déjà à
+    plat -- (chain, power, feed, comment) avec chain = liste de (x, y) --
+    groupées par hauteur Z : `bands` = [(target_z, [(chain,power,feed,
+    comment), ...]), ...]. Un seul plongeon/une seule remontée PAR
+    CHANGEMENT de hauteur, jamais de retrait entre deux traits À LA MÊME
+    hauteur -- surface de calibration TOUJOURS plate (aucun relief à
+    dégager, contrairement aux modes Courbe/Découpe qui suivent une
+    surface). Même principe que generate_gcode_test_grid/
+    generate_gcode_defocus_calibration ; ne fait ici QUE l'émission, pas la
+    géométrie (appelant : construit `bands`, ajoute son propre en-tête/
+    armement avant, désarmement après). Modifie `lines` en place ; termine
+    par une remontée à z_safe si quoi que ce soit a été gravé."""
+    current_z = [None]
+
+    def _travel_to(x, y, target_z):
+        if current_z[0] != target_z:
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x, y, z_safe))
+            lines.append("G0 Z{:.4f}".format(target_z))
+            current_z[0] = target_z
+        else:
+            lines.append("G0 X{:.4f} Y{:.4f}".format(x, y))
+
+    last_comment = None
+    for target_z, band in bands:
+        for chain, power, feed, comment in band:
+            if comment != last_comment:
+                lines.append(comment)
+                last_comment = comment
+            x0, y0 = chain[0]
+            _travel_to(x0, y0, target_z)
+            lines.append(CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power))
+            for x, y in chain[1:]:
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(x, y, feed))
+            lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
+    if current_z[0] is not None:
+        lines.append("G0 Z{:.4f}".format(z_safe))
 
 
-def _op_etiquettes(label_edges, z_focus, nom):
-    """Op « curved » regroupant toutes les étiquettes d'une planche (gravées au
-    foyer aux réglages Étiquettes des Préférences)."""
-    return {"type": "curved", "label": nom,
-            "params": dict(edges=label_edges, power=LABEL_POWER, feed=LABEL_FEED,
-                           z_focus=z_focus, marge_survol=TRANSIT_MARGIN_MM)}
+def _label_band(label_edges, comment):
+    """Convertit des arêtes d'étiquettes (text_to_edges) en bande
+    (chain, power, feed, comment) aux réglages Étiquettes des Préférences,
+    format attendu par _emit_flat_marks (chain = liste de (x, y), le
+    z de chaque point Vector étant ignoré -- la hauteur vient de la bande)."""
+    if not label_edges:
+        return []
+    return [([(v.x, v.y) for v in chain], LABEL_POWER, LABEL_FEED, comment)
+            for chain in chain_edges(label_edges)]
 
 
 def generate_gcode_planche_focus(z_focus=None,
                                  powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
-                                 feeds=(200.0, 400.0, 800.0, 1500.0, 3000.0, 6000.0),
+                                 feeds=(200.0, 400.0, 800.0, 1500.0, 3000.0),
                                  trait_len=20.0, row_gap=6.0, label_height=3.0,
                                  pre_gcode="", post_gcode="", quiet=False, body_only=False):
     """PLANCHE 1 -- FOYER (Vitesse x Puissance). Grille de traits gravés AU
     FOYER : une ligne par puissance S (bornée à S_MAX), une colonne par vitesse
-    F (jusqu'au maxi machine). À mesurer : la LARGEUR brûlée de chaque trait
-    (un trait vierge est une donnée : seuil du matériau) -> alimente
-    burn_width_at (foyer, feed-aware). Un seul armement. AU FOYER, même les
-    feeds élevés (jusqu'à 6000) donnent une largeur mesurable non nulle
-    (constat MDF : la largeur y dépend surtout de la vitesse, très peu de
-    S) -- contrairement à la Planche 2 (défocus), cette plage n'a pas
-    besoin d'être resserrée."""
+    F. À mesurer : la LARGEUR brûlée de chaque trait (un trait vierge est une
+    donnée : seuil du matériau) -> alimente burn_width_at (foyer, feed-aware).
+    Un seul armement.
+
+    Feed max ramené à 3000 (27 juil. 2026, était 6000 avant un changement de
+    lentille) : F6000 ne marque plus du tout depuis -- si un futur
+    changement de lentille/tête fait remarquer au-delà, remonter la plage.
+
+    Surface TOUJOURS PLATE (calibration) : un seul plongeon/une seule
+    remontée pour tout le job (cf. _emit_flat_marks) -- jamais de retrait de
+    sécurité entre deux traits (tous au même Z ici), qui ferait perdre du
+    temps sans réduire aucun risque (le bec ne suit aucun relief sur une
+    chute plate). Même principe que generate_gcode_test_grid."""
     if z_focus is None:
         z_focus = Z_WORK_MM
     powers = _powers_capped(powers)
     x0, col_pitch = 16.0, trait_len + 12.0
-    ops, label_edges = [], []
+    label_edges = []
 
     def _lab(txt, x, y, h=None):
         label_edges.extend(text_to_edges(txt, x, y, h or label_height))
 
+    band = []
     for i, s in enumerate(powers):
         y = 4.0 + i * row_gap
         _lab("S{:.0f}".format(s), 2.0, y - label_height / 2.0)
         for j, f in enumerate(feeds):
-            ops.append(_trait_op(x0 + j * col_pitch, y, s, f, z_focus,
-                                 "Planche 1 : foyer S{:.0f} F{:.0f}".format(s, f),
-                                 trait_len))
+            x = x0 + j * col_pitch
+            comment = "(-- Planche 1 : S{:.0f} F{:.0f} --)".format(s, f)
+            band.append(([(x, y), (x + trait_len, y)], s, f, comment))
     y_head = 4.0 + len(powers) * row_gap + 1.0
     for j, f in enumerate(feeds):
         _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
     _lab("1", 0.0, y_head + 6.0, 5.0)
-    if label_edges:
-        ops.append(_op_etiquettes(label_edges, z_focus, "Planche 1 : etiquettes"))
-    return generate_gcode_combined(ops, pre_gcode=pre_gcode,
-                                   post_gcode=post_gcode, quiet=quiet, body_only=body_only)
+    labels = _label_band(label_edges, "(-- Planche 1 : etiquettes --)")
+
+    if not band and not labels:
+        return None
+
+    z_safe = z_focus + TRAVEL_CLEARANCE_MM
+    lines = []
+    if not body_only:
+        lines.append("(G-Code Laser - Planche 1 : foyer (vitesse x puissance))")
+        lines.append("(Traits : {} S x {} F, tous au foyer Z={:.4f})".format(
+            len(powers), len(feeds), z_focus))
+        lines.append("G21")
+        lines.append("G90")
+        lines.append("G94")
+        lines.append(cmd_tool_comp())
+        lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    if not body_only:
+        lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+
+    _emit_flat_marks(lines, [(z_focus, band), (z_focus, labels)], z_safe)
+
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    if not body_only:
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 def generate_gcode_planche_defocus(z_focus=None,
@@ -6841,34 +6908,70 @@ def generate_gcode_planche_defocus(z_focus=None,
     malgré plusieurs planches, alors que F800 a des largeurs mesurables
     aux 5 puissances. L'ancienne plage (400-2000) gaspillait donc la
     moitié de la grille en cases blanches ; la nouvelle reste dans la
-    zone qui marque, avec plus de résolution (200/600 en plus)."""
+    zone qui marque, avec plus de résolution (200/600 en plus).
+
+    Surface TOUJOURS PLATE (calibration) : un seul plongeon/une seule
+    remontée PAR NIVEAU de défocus (cf. _emit_flat_marks), jamais de
+    retrait entre deux traits au même niveau -- même principe que la
+    Planche 1."""
     if z_focus is None:
         z_focus = Z_WORK_MM
     powers = _powers_capped(powers)
     x0, col_pitch = 16.0, trait_len + 12.0
-    ops, label_edges = [], []
+    label_edges = []
 
     def _lab(txt, x, y, h=None):
         label_edges.extend(text_to_edges(txt, x, y, h or label_height))
 
+    bands = []  # [(z_focus + dz, band), ...], un par niveau de défocus
     y = 4.0
     for dz in defocus_levels_mm:
+        band = []
         for i, s in enumerate(powers):
             yy = y + i * row_gap
             _lab("S{:.0f}".format(s), 6.0, yy - label_height / 2.0)
             for j, f in enumerate(feeds):
-                ops.append(_trait_op(x0 + j * col_pitch, yy, s, f, z_focus + dz,
-                                     "Planche 2 : d{:.0f} S{:.0f} F{:.0f}".format(dz, s, f),
-                                     trait_len))
+                x = x0 + j * col_pitch
+                comment = "(-- Planche 2 : d{:.0f} S{:.0f} F{:.0f} --)".format(dz, s, f)
+                band.append(([(x, yy), (x + trait_len, yy)], s, f, comment))
+        bands.append((z_focus + dz, band))
         y_head = y + len(powers) * row_gap + 1.0
         for j, f in enumerate(feeds):
             _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
         _lab("d{:.0f}".format(dz), 0.0, y_head, 5.0)
         y = y_head + block_gap
-    if label_edges:
-        ops.append(_op_etiquettes(label_edges, z_focus, "Planche 2 : etiquettes"))
-    return generate_gcode_combined(ops, pre_gcode=pre_gcode,
-                                   post_gcode=post_gcode, quiet=quiet, body_only=body_only)
+    labels = _label_band(label_edges, "(-- Planche 2 : etiquettes --)")
+    bands.append((z_focus, labels))
+
+    if not any(band for _, band in bands):
+        return None
+
+    z_safe = max([z for z, _ in bands] + [z_focus]) + TRAVEL_CLEARANCE_MM
+    lines = []
+    if not body_only:
+        lines.append("(G-Code Laser - Planche 2 : defocus (S x F par niveau))")
+        lines.append("G21")
+        lines.append("G90")
+        lines.append("G94")
+        lines.append(cmd_tool_comp())
+        lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    if not body_only:
+        lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+
+    _emit_flat_marks(lines, bands, z_safe)
+
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    if not body_only:
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet=False,
