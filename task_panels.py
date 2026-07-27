@@ -7462,10 +7462,12 @@ class TaskPanelCurved:
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return
+        warnings_out = {}
         gcode = core.generate_gcode_curved(
             self._edges, self._effective_power(), self.spn_feed.value(),
             self._z_focus(), core.TRANSIT_MARGIN_MM,
             reference_shape=self._reference_shape, quiet=True, probe=self._probe,
+            warnings_out=warnings_out,
             **self._style_kwargs()
         )
         if not gcode:
@@ -7481,6 +7483,11 @@ class TaskPanelCurved:
         rapid = core.shift_segments_z(rapid, -z_offset)
         mark = core.shift_segments_z(mark, -z_offset)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+        # nozzle_marking_points est déjà en coordonnées NATIVES (capturé
+        # avant to_machine_z dans generate_gcode_curved) -- pas de décalage
+        # Z à appliquer, contrairement à rapid/mark ci-dessus.
+        core.create_collision_markers(
+            FreeCAD.ActiveDocument, warnings_out.get("nozzle_marking_points", []))
 
     def _on_photo_preview(self):
         """Rendu réaliste (image) du marquage : chaque trait à sa largeur
@@ -7607,6 +7614,11 @@ class TaskPanelCurved:
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
+        # Marqueurs posés AVANT la fenêtre d'avertissement : la vue 3D
+        # montre déjà les points en cause dès que l'utilisateur ferme le
+        # dialogue -- pas besoin d'un clic « aperçu du trajet » séparé.
+        core.create_collision_markers(
+            FreeCAD.ActiveDocument, warnings_out.get("nozzle_marking_points", []))
         if not _avertir_collision_detectee(
                 self.form, warnings_out.get("nozzle_marking_warnings", 0), "gravure"):
             return False
@@ -8548,11 +8560,13 @@ class TaskPanelCurvedCut:
         if not self._edges:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun segment trouvé (vérifie la sélection).")
             return
+        warnings_out = {}
         gcode = core.generate_gcode_curved_cut(
             self._edges, self.spn_power.value(), self.spn_feed.value(),
             self.spn_thickness.value(), self.spn_passes.value(),
             self.spn_zfocus.value(), self.spn_marge.value(),
-            reference_shape=self._reference_shape, quiet=True, probe=self._probe, **self._build_gcode_kwargs(),
+            reference_shape=self._reference_shape, quiet=True, probe=self._probe,
+            warnings_out=warnings_out, **self._build_gcode_kwargs(),
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -8567,6 +8581,10 @@ class TaskPanelCurvedCut:
         rapid = core.shift_segments_z(rapid, -z_offset)
         mark = core.shift_segments_z(mark, -z_offset)
         core.create_toolpath_preview_objects(FreeCAD.ActiveDocument, rapid, mark)
+        # nozzle_cut_points est déjà en coordonnées NATIVES (capturé avant
+        # to_machine_z) -- pas de décalage Z à appliquer ici.
+        core.create_collision_markers(
+            FreeCAD.ActiveDocument, warnings_out.get("nozzle_cut_points", []))
 
     def _build_combined_operation(self):
         if not self._edges:
@@ -8622,6 +8640,8 @@ class TaskPanelCurvedCut:
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code généré.")
             return False
+        core.create_collision_markers(
+            FreeCAD.ActiveDocument, warnings_out.get("nozzle_cut_points", []))
         if not _avertir_collision_detectee(
                 self.form, warnings_out.get("nozzle_cut_warnings", 0), "découpe"):
             return False

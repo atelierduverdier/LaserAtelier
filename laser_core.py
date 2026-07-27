@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.55.1"
+VERSION = "1.56.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2880,6 +2880,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     state_armed = body_only
     current_pos = None
     nozzle_marking_warnings = 0
+    nozzle_marking_points = []
     check_state = {"last": None}
 
     def _mark_check(p):
@@ -2888,7 +2889,9 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         # corriger changerait le focus). Contrôlé tous les
         # NOZZLE_CHECK_INTERVAL_MM (pas à chaque point discrétisé --
         # inutile pour un cône de 16mm, et ruineux en performance sur un
-        # remplissage dense).
+        # remplissage dense). Les points signalés (coordonnées NATIVES,
+        # avant to_machine_z) sont gardés pour create_collision_markers --
+        # un chiffre seul ne dit pas OÙ regarder sur la pièce.
         nonlocal nozzle_marking_warnings
         if not nozzle_check_active:
             return
@@ -2898,6 +2901,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         required = nozzle_clearance_z(p.x, p.y, p.z, height_probe.z_at, 0.0)
         if required > p.z + 0.05:
             nozzle_marking_warnings += 1
+            nozzle_marking_points.append(FreeCAD.Vector(p.x, p.y, p.z))
         check_state["last"] = p
 
     beam_on = CMD_BEAM_ON.format(sel=SPINDLE_SELECT, power=power)
@@ -3045,6 +3049,7 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     # d'avertissement, pas seulement un message de console.
     if warnings_out is not None:
         warnings_out["nozzle_marking_warnings"] = nozzle_marking_warnings
+        warnings_out["nozzle_marking_points"] = nozzle_marking_points
 
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
@@ -3538,6 +3543,31 @@ def create_toolpath_preview_objects(doc, rapid_segments, mark_segments, name_pre
         objs.append(obj)
     doc.recompute()
     return objs
+
+
+def create_collision_markers(doc, points, name_prefix="Apercu_Collision"):
+    """Crée/remplace un objet Part::Feature marquant, en magenta bien
+    visible (couleur absente du reste de l'aperçu : gris transit, rouge
+    marquage/découpe), chaque point où le bec (cône anti-collision)
+    serait trop proche de la surface voisine (cf. warnings_out de
+    generate_gcode_curved / generate_gcode_curved_cut) -- un chiffre seul
+    ne dit pas OÙ regarder sur la pièce. Supprime d'abord toute version
+    précédente du même aperçu, même si `points` est vide (pour ne pas
+    laisser des marqueurs obsolètes d'un essai précédent). Renvoie
+    l'objet créé, ou None si `points` est vide."""
+    for obj in list(doc.Objects):
+        if obj.Name.startswith(name_prefix):
+            doc.removeObject(obj.Name)
+    if not points:
+        return None
+    verts = [Part.Vertex(p) for p in points]
+    obj = doc.addObject("Part::Feature", name_prefix)
+    obj.Shape = Part.Compound(verts)
+    if hasattr(obj, 'ViewObject'):
+        obj.ViewObject.PointColor = (1.0, 0.0, 0.8)
+        obj.ViewObject.PointSize = 8
+    doc.recompute()
+    return obj
 
 
 # ==========================================================================
@@ -4650,6 +4680,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
 
     state_armed = body_only
     nozzle_cut_warnings = 0
+    nozzle_cut_points = []
 
     for chain in chains:
         closed = math.hypot(chain[0].x - chain[-1].x, chain[0].y - chain[-1].y) < 1e-6
@@ -4702,6 +4733,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
                     required = nozzle_clearance_z(p.x, p.y, p.z, height_probe.z_at, 0.0)
                     if required > p.z - pass_idx * z_step + 0.05:
                         nozzle_cut_warnings += 1
+                        nozzle_cut_points.append(FreeCAD.Vector(p.x, p.y, p.z))
                     last_check_pos = p
                 lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
                     p.x, p.y, to_machine_z(p.z, pass_idx), pass_feed))
@@ -4735,6 +4767,7 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
             "dernières passes, le foyer reculant dans la matière).\n".format(nozzle_cut_warnings))
     if warnings_out is not None:
         warnings_out["nozzle_cut_warnings"] = nozzle_cut_warnings
+        warnings_out["nozzle_cut_points"] = nozzle_cut_points
 
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
