@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.63.0"
+VERSION = "1.64.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4800,6 +4800,7 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
                                        draw_power_labels=True,
                                        label_power=None, label_feed=None, label_z=None,
                                        n_bands=1, feed_end=None, band_gap=5.0,
+                                       plank_label=None,
                                        pre_gcode="", post_gcode="", frame_only=False, quiet=False,
                                        body_only=False):
     """Grave une rangée de courts traits, chacun à une hauteur de bec
@@ -4828,6 +4829,12 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
     « F<vitesse> » au-dessus. On obtient d'un coup toutes les vitesses (donc
     tous les niveaux de gris/noir) sans relancer un job par vitesse.
     n_bands=1 (ou feed_end=None) -> une seule bande, comportement d'origine.
+
+    plank_label : si fourni (ex. "3"), grave ce texte en gros au-dessus à
+    gauche -- identifiant visuel de la planche quand plusieurs calibrations
+    finissent sur la même chute (cf. generate_gcode_planche_spot). None (par
+    défaut) -> rien de plus, comportement d'origine du panneau autonome
+    « Bande de calibration défocus ».
 
     Le transit entre traits se fait DIRECTEMENT à la hauteur du trait
     suivant (laser éteint, pièce plate) -- pas de remontée au Z de sécurité
@@ -4910,6 +4917,12 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         ftext = "F{:.0f}".format(fb)
         fx = dx + (mark_length - text_width(ftext, label_height)) / 2.0
         label_chains.extend(chain_edges(text_to_edges(ftext, fx, feed_label_y, label_height)))
+
+    if plank_label:
+        # Numéro identifiant la planche (ex. « 3 »), même colonne que les
+        # hauteurs Z (gauche), même rangée que le libellé de vitesse.
+        label_chains.extend(chain_edges(text_to_edges(
+            plank_label, z_col_x, feed_label_y, max(5.0, label_height * 1.5))))
 
     all_pts = [p for chain, _, _, _ in marks for p in chain] + [p for chain in label_chains for p in chain]
     z_safe = max([z for _, z, _, _ in marks] + [label_z]) + TRAVEL_CLEARANCE_MM
@@ -6940,6 +6953,7 @@ def generate_gcode_planche_defocus(z_focus=None,
             _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
         _lab("d{:.0f}".format(dz), 0.0, y_head, 5.0)
         y = y_head + block_gap
+    _lab("2", 0.0, y_head + 6.0, 5.0)
     labels = _label_band(label_edges, "(-- Planche 2 : etiquettes --)")
     bands.append((z_focus, labels))
 
@@ -6992,7 +7006,7 @@ def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet
         z_focus = Z_WORK_MM
     return generate_gcode_defocus_calibration(
         z_start=z_focus, z_step=3.0, n_marks=13, mark_length=15.0, row_gap=6.0,
-        power=600.0, feed=750.0, pre_gcode=pre_gcode, post_gcode=post_gcode,
+        power=600.0, feed=750.0, plank_label="3", pre_gcode=pre_gcode, post_gcode=post_gcode,
         quiet=quiet, body_only=body_only)
 
 
