@@ -6716,9 +6716,19 @@ class TaskPanelTestGrid:
 
     def _on_recipe_selected(self, index):
         """Applique un « objectif » recommandé : remplit d'un coup mode,
-        plages S/F et remplissage avec un jeu de réglages prêt à graver."""
+        plages S/F et remplissage avec un jeu de réglages prêt à graver.
+        Grise le préréglage matériau tant que l'objectif gouverne les
+        réglages affichés -- deux points de départ actifs à la fois (recette
+        générique vs réglages sauvegardés d'un matériau) n'a pas de sens."""
         key = self.combo_recipe.itemData(index)
         r = dict(self._recipes).get(key) if key else None
+        self.combo_preset.setEnabled(r is None)
+        self.btn_delete_preset.setEnabled(r is None)
+        if r is not None:
+            self.combo_preset.blockSignals(True)
+            self.combo_preset.setCurrentIndex(0)
+            self.combo_preset.blockSignals(False)
+            self.lbl_preset_summary.setVisible(False)
         if not r:
             self.lbl_recipe_note.setVisible(False)
             return
