@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.50.0"
+VERSION = "1.51.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3679,7 +3679,7 @@ CALIBRATION_JOURNEY = [
         "portee": "materiau",
         "mode": "Grille de test puissance / vitesse",
         "but": "caractériser un matériau (largeurs brûlées + noirceurs)",
-        "action": "grave les « Planches 1-2-3 », puis saisis les largeurs dans « ② Entrer les mesures »",
+        "action": "choisis l'Objectif « Largeurs brûlées — grille au foyer »",
         "reporter": "« ② Entrer les mesures » pour les largeurs, mode "
                     "Nuancier matériaux pour les tons (pas dans les Préférences)",
     },
