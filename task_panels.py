@@ -258,11 +258,17 @@ def _calibration_banner(form, mode_titre):
     etape = core.calibration_step_for(mode_titre)
     if etape is None:
         return
+    # La portée (laser/matériau) est LE point à clarifier ici : sans elle,
+    # « Étape 3/4 » donne l'impression fausse qu'un nouveau matériau oblige
+    # à repasser par les étapes 1 et 2 (qui, elles, sont propres au laser).
+    portee = ("une fois pour ce laser, jamais à refaire pour un nouveau matériau"
+              if etape["portee"] == "laser"
+              else "à refaire pour CHAQUE matériau (les étapes 1-2 ne le sont pas)")
     if etape["n"] is None:
-        tete = "★ Complément du parcours de calibration"
+        tete = "★ Complément -- {}".format(portee)
     else:
         total = len(core.calibration_numbered_steps())
-        tete = "★ Étape {}/{} de la première calibration".format(etape["n"], total)
+        tete = "★ Étape {}/{} -- {}".format(etape["n"], total, portee)
     lbl = _WrapLabel(
         "<b><span style=\"color:#ff8a00\">{tete}.</span></b> Pour {but} : "
         "{action}, grave sur une chute, mesure, puis reporte dans "

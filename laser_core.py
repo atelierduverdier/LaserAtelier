@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.45.0"
+VERSION = "1.46.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3653,9 +3653,14 @@ _FACTORY_PRESETS = {
 # (★) à charger, et où reporter le résultat. Le Guide rapide l'affiche en
 # entier ; chaque panneau de calibration affiche son étape en tête.
 # `n` = numéro d'étape (None = complément facultatif, hors numérotation).
+# `portee` = "laser" (une fois pour ce laser, jamais à refaire pour un
+# nouveau matériau) ou "materiau" (à refaire pour CHAQUE matériau) --
+# affichée dans le bandeau (_calibration_banner) pour éviter de croire
+# qu'un nouveau matériau oblige à tout reprendre depuis l'étape 1.
 CALIBRATION_JOURNEY = [
     {
         "n": 1,
+        "portee": "laser",
         "mode": "Bande de calibration défocus",
         "but": "trouver le foyer et la divergence du faisceau",
         "action": "charge le préréglage ★ « Recherche du foyer (fin) »",
@@ -3663,6 +3668,7 @@ CALIBRATION_JOURNEY = [
     },
     {
         "n": 2,
+        "portee": "laser",
         "mode": "Test des offsets X/Y du laser",
         "but": "aligner l'axe du laser sur celui de la broche",
         "action": "charge le préréglage ★ « Croix standard (10 mm) »",
@@ -3670,6 +3676,7 @@ CALIBRATION_JOURNEY = [
     },
     {
         "n": 3,
+        "portee": "materiau",
         "mode": "Grille de test puissance / vitesse",
         "but": "caractériser un matériau (largeurs brûlées + noirceurs)",
         "action": "grave les « Planches 1-2-3 », puis saisis les largeurs dans « ② Entrer les mesures »",
@@ -3677,6 +3684,7 @@ CALIBRATION_JOURNEY = [
     },
     {
         "n": 4,
+        "portee": "materiau",
         "mode": "Calibration kerf",
         "but": "mesurer le trait pour tenir les cotes",
         "action": "charge le préréglage ★ « Standard (20 mm) » (test Carré)",
@@ -3684,6 +3692,7 @@ CALIBRATION_JOURNEY = [
     },
     {
         "n": None,
+        "portee": "materiau",
         "mode": "Test rampe puissance / vitesse (lignes)",
         "but": "voir en continu où le trait apparaît et où il sature",
         "action": "charge le préréglage ★ « Gravure MDF (puissance/vitesse) »",
