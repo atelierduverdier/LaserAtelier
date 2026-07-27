@@ -4516,18 +4516,21 @@ class TaskPanelDefocusCalibration:
                "croissante (étiquetée) : le trait LE PLUS FIN te donne le "
                "foyer, les traits larges la divergence du faisceau. Zéro Z "
                "sur la surface, aucune sélection requise.",
-               "À mesurer au pied à coulisse : (1) la hauteur du trait le plus "
-               "fin = ton Z de foyer et sa largeur = « point au foyer » ; "
-               "(2) un trait bien plus large : sa hauteur moins celle du foyer "
-               "= « défocus de test », sa largeur = « point au défocus de "
-               "test ». REPORTE ces trois mesures dans les Préférences (icône "
-               "engrenage, section Calibration du point) : elles servent à "
-               "tous les modes (remplissage noir, styles vague/défocus...). "
-               "La rampe de puissance optionnelle garde les traits très "
-               "défocalisés visibles. Astuce : mets « Nombre de bandes » > 1 "
-               "pour graver plusieurs bandes côte à côte, une par vitesse "
-               "(de la 1re à la dernière) -- tous tes niveaux de gris/noir en "
-               "un seul job, chaque bande étiquetée de sa vitesse.")
+               "Calibre UNIQUEMENT la divergence du point (2 mesures, valables "
+               "pour tout le laser actif) -- pas les largeurs brûlées ni les "
+               "tons, qui se saisissent dans la Grille de test/Rampe et le "
+               "Nuancier. À mesurer au pied à coulisse : (1) la hauteur du "
+               "trait le plus fin = ton Z de foyer et sa largeur = « point au "
+               "foyer » ; (2) un trait bien plus large : sa hauteur moins "
+               "celle du foyer = « défocus de test », sa largeur = « point au "
+               "défocus de test ». « Enregistrer la calibration du point » "
+               "(② ci-dessous) range ces trois mesures pour le laser actif -- "
+               "inutile de repasser par les Préférences. La rampe de "
+               "puissance optionnelle garde les traits très défocalisés "
+               "visibles. Astuce : mets « Nombre de bandes » > 1 pour graver "
+               "plusieurs bandes côte à côte, une par vitesse (de la 1re à la "
+               "dernière) -- tous tes niveaux de gris/noir en un seul job, "
+               "chaque bande étiquetée de sa vitesse.")
         _diagram(form, "diag_defocus.svg")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
@@ -4544,9 +4547,10 @@ class TaskPanelDefocusCalibration:
             "= «&nbsp;point au foyer&nbsp;»&nbsp;; (2)&nbsp;un trait bien plus "
             "large → sa hauteur moins le foyer = <b>défocus de test</b>, sa "
             "largeur = «&nbsp;point au défocus&nbsp;».",
-            "<b>5.</b> <b>Reporte ces trois mesures</b> dans les Préférences "
-            "(⚙, section «&nbsp;Calibration du point&nbsp;»)&nbsp;: elles "
-            "servent à tous les modes (remplissage noir, styles vague/défocus…).",
+            "<b>5.</b> <b>« Enregistrer la calibration du point »</b> "
+            "ci-dessous (②) range ces trois mesures pour le laser actif&nbsp;: "
+            "elles servent à tous les modes (remplissage noir, styles "
+            "vague/défocus…) -- inutile de repasser par les Préférences.",
         ])
 
         self._presets = _PresetController(form, inner, "defocus_calib", lambda: self._last_fields)
