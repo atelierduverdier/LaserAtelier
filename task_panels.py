@@ -6623,6 +6623,19 @@ class TaskPanelTestGrid:
         self.chk_border.toggled.connect(self.spn_border_power.setEnabled)
         self.chk_border.toggled.connect(self.spn_border_feed.setEnabled)
 
+        # Un champ décrit par le résumé de préréglage (_preset_summary),
+        # modifié à la main, invalide ce résumé -- voir _on_champ_manuel_modifie.
+        for _w in (self.combo_mode, self.combo_filltype):
+            _w.currentIndexChanged.connect(self._on_champ_manuel_modifie)
+        for _w in (self.spn_power_min, self.spn_power_max, self.spn_power_steps,
+                   self.spn_feed_min, self.spn_feed_max, self.spn_feed_steps,
+                   self.spn_cell_size, self.spn_gap, self.spn_zwork,
+                   self.spn_hatch_spacing, self.spn_hatch_angle,
+                   self.spn_border_power, self.spn_border_feed):
+            _w.valueChanged.connect(self._on_champ_manuel_modifie)
+        for _w in (self.chk_proximity, self.chk_labels, self.chk_border):
+            _w.toggled.connect(self._on_champ_manuel_modifie)
+
         _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
@@ -6796,6 +6809,16 @@ class TaskPanelTestGrid:
         self.spn_border_feed.setValue(values.get("border_feed", self.spn_border_feed.value()))
         self.lbl_preset_summary.setText(self._preset_summary(values))
         self.lbl_preset_summary.setVisible(True)
+
+    def _on_champ_manuel_modifie(self, *_args):
+        """Masque le résumé du préréglage dès qu'un champ qu'il décrit est
+        modifié à la main : sans ça, le résumé restait affiché avec les
+        valeurs du DERNIER préréglage chargé même après les avoir
+        personnalisées, juste au-dessus du bouton Générer -- donnant
+        l'impression trompeuse que Générer va reproduire ce préréglage
+        plutôt que les valeurs actuelles des champs (ce qu'il fait déjà
+        correctement)."""
+        self.lbl_preset_summary.setVisible(False)
 
     def _on_save_preset(self):
         # Champ vierge (pas pré-rempli avec le préréglage courant) : la
