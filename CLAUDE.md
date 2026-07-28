@@ -118,7 +118,9 @@ Five modules, cleanly layered — keep the layering:
     from a measured reference, model F ∝ P/(d·v)). The reference fields are a **calibration**, not job
     params: read-only by default (an "Modifier la référence" checkbox unlocks them) so tweaking the
     job can't clobber them; `setValue` (restore/presets) still works while locked.
-  - `_make_shade_picker(form, on_apply)` — "Nuancier matériau" block (apply a measured gray tone).
+  - `_make_shade_picker(form, on_apply)` — "Nuancier matériau" block (apply a measured gray tone) +
+    a "Voir la photo du nuancier" button, enabled only when `result_photos("nuancier:"+material)`
+    is non-empty, to compare against the real engraved board before applying a tone.
   - `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat" section: a
     dropdown of ALL photos for the current `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`) +
     a clickable thumbnail (→ `_show_image_dialog`) + a free-text description field (e.g. the

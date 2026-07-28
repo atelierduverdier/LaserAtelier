@@ -2601,9 +2601,11 @@ class TaskPanelNuancier:
 
 def _make_shade_picker(form, on_apply):
     """Bloc « Nuancier matériau » réutilisable dans un panneau de mode :
-    sélecteur matériau + ton mesuré + bouton « Appliquer ce ton »
-    (on_apply(shade) est appelé avec le dict du ton). Renvoie ses widgets ;
-    l'appelant appelle ["reload"]() en fin d'__init__."""
+    sélecteur matériau + ton mesuré + bouton « Appliquer ce ton » + un lien
+    « Voir la photo du nuancier » (désactivé si ce matériau n'en a pas)
+    pour comparer au rendu réel avant d'appliquer un ton choisi sur un
+    simple numéro (on_apply(shade) est appelé avec le dict du ton). Renvoie
+    ses widgets ; l'appelant appelle ["reload"]() en fin d'__init__."""
     _section(form, "Nuancier matériau", "sect_preset.svg")
     combo_mat = QtWidgets.QComboBox()
     combo_mat.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -2619,6 +2621,9 @@ def _make_shade_picker(form, on_apply):
     combo_shade.setToolTip("Ton mesuré : noirceur % -- réglage (largeur).")
     form.addRow("Ton :", combo_shade)
 
+    btn_photo = QtWidgets.QPushButton("Voir la photo du nuancier")
+    form.addRow(btn_photo)
+
     btn = QtWidgets.QPushButton("Appliquer ce ton")
     btn.setToolTip(
         "Remplit puissance/vitesse (et défocus si le ton en a un) avec ce\n"
@@ -2629,11 +2634,19 @@ def _make_shade_picker(form, on_apply):
     def _reload_shades():
         combo_shade.clear()
         m = combo_mat.currentData()
-        if not m:
+        if m:
+            for s in core.load_shades(m):
+                combo_shade.addItem(core.shade_summary(s), s)
+        else:
             combo_shade.addItem("-- (aucun ton) --", None)
-            return
-        for s in core.load_shades(m):
-            combo_shade.addItem(core.shade_summary(s), s)
+        n = len(core.result_photos("nuancier:" + m)) if m else 0
+        btn_photo.setEnabled(n > 0)
+        btn_photo.setToolTip(
+            "{} photo{} de la planche gravée pour ce matériau -- voir le "
+            "rendu réel avant d'appliquer un ton.".format(n, "s" if n > 1 else "")
+            if n else
+            "Aucune photo enregistrée pour ce matériau (mode Nuancier, "
+            "section Photo du résultat).")
 
     def _reload():
         combo_mat.blockSignals(True)
@@ -2653,6 +2666,15 @@ def _make_shade_picker(form, on_apply):
         if s:
             on_apply(s)
     btn.clicked.connect(_apply)
+
+    def _on_photo():
+        m = combo_mat.currentData()
+        photos = core.result_photos("nuancier:" + m) if m else []
+        if photos:
+            img = QtGui.QImage(photos[0]["path"])
+            if not img.isNull():
+                _show_image_dialog(img, "Photo du nuancier -- {}".format(m))
+    btn_photo.clicked.connect(_on_photo)
 
     return {"mat": combo_mat, "shade": combo_shade, "reload": _reload}
 
