@@ -241,7 +241,13 @@ A linear divergence cone calibrated from **two real measurements** (never guesse
 `defocus_divergence_half_angle(d_focus, d_calib, z_calib)` → `spot_diameter_at_defocus(z, …)` →
 `defocus_for_fill_spacing(spacing, …)`. The **fill is inset by the spot radius** so the burn stays
 inside the outline (`fill_inset` in `build_test_grid_cells` / `build_filled_engraving_edges`,
-via square inset or `Part.Face.makeOffset2D(-r)` with graceful fallback for thin strokes). When a
+via square inset or `Part.Face.makeOffset2D(-r)`; `inset_face_robuste` re-polygonizes wires first —
+OCC segfaults on some imported BSplines — and on offset failure discriminates by `Area >
+2·perimeter·inset`: a genuinely thin stroke is skipped as before (the contour blackens it), but a
+LARGE face OCC chokes on — e.g. an imported SVG path rebuilt as one face with ~200 hole wires,
+where the offset returns null wholesale — falls back to filling WITHOUT inset plus a console
+warning, instead of silently producing an empty fill, which the panel then reported as the
+misleading "Rien à afficher (aucun trait)"). When a
 contour is drawn, the filled-engraving panel (`TaskPanelFilledEngraving._fill_inset`) reduces that
 inset by the **contour's burn radius** so the fill deliberately tucks *under* the contour (re-burned
 at focus on top) — closing the pale liseré left at the edge, most visible at high defocus where the

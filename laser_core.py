@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.79.1"
+VERSION = "1.79.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1724,15 +1724,26 @@ def power_for_line_fluence(feed, spot_diam, ref_power, ref_feed, ref_spot, ratio
 
 def inset_face_robuste(face, inset, deflection=0.05):
     """Rentre une face de `inset` mm vers l'intérieur et renvoie la liste
-    des faces résultantes ([] si la face est plus fine que 2*inset ou si
-    l'offset échoue).
+    des faces résultantes.
 
     Ne JAMAIS appeler makeOffset2D directement sur des faces importées :
     BRepOffsetAPI_MakeOffset (OCC) SEGFAULTE durement sur certains contours
     BSpline/Bézier issus d'imports SVG -- ce n'est pas une exception Python,
     ça tue FreeCAD. On discrétise donc d'abord chaque fil en polygone
     (flèche `deflection` mm, invisible au laser : bien plus fin que le
-    point) ; l'offset de polylignes, lui, est stable."""
+    point) ; l'offset de polylignes, lui, est stable.
+
+    Quand l'offset échoue quand même, deux situations bien distinctes :
+    - forme FINE (largeur < 2*inset partout) : disparaître est normal,
+      le contour gravé la noircit -> pas de remplissage ([]) ;
+    - face LARGE mais récalcitrante (ex. tracé SVG importé à ~200 fils :
+      OCC rend un offset nul en bloc) : ne rien remplir du tout serait
+      absurde -> repli en remplissage SANS retrait ([face]), avec un
+      avertissement console (la brûlure peut déborder d'environ `inset`
+      mm du contour).
+    Discriminant : une face ne peut légitimement disparaître sous le
+    retrait que si aire <= ~périmètre*inset ; au-delà (marge x2), c'est
+    un échec OCC, pas une forme fine."""
     try:
         poly_wires = []
         for w in face.Wires:
@@ -1744,9 +1755,21 @@ def inset_face_robuste(face, inset, deflection=0.05):
             poly_wires.append(Part.makePolygon(pts))
         poly_face = Part.makeFace(poly_wires, "Part::FaceMakerBullseye")
         off = poly_face.makeOffset2D(-inset)
-        return list(off.Faces)
+        if off.Faces:
+            return list(off.Faces)
+        raise ValueError("offset vide")
     except Exception:
-        return []  # trop fin, ou géométrie récalcitrante : pas de remplissage
+        try:
+            if face.Area > 2.0 * face.Length * inset:
+                FreeCAD.Console.PrintWarning(
+                    "Retrait de remplissage impossible sur une face de "
+                    "{:.0f} mm2 ({} fils) : remplissage SANS retrait, la "
+                    "brûlure peut déborder d'environ {:.2f} mm du "
+                    "contour.\n".format(face.Area, len(face.Wires), inset))
+                return [face]
+        except Exception:
+            pass
+        return []  # trop fin : le contour couvre, pas de remplissage
 
 
 def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inset=0.0,
