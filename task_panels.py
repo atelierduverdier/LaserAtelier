@@ -1243,12 +1243,13 @@ def _show_image_dialog(img, title):
 def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
     """Section réutilisable « Photo du résultat » pour les modes de test :
     une LISTE DÉROULANTE de toutes les photos mémorisées + une vignette
-    cliquable (agrandissement) + boutons Ajouter et Supprimer. `cle_getter()`
-    renvoie la clé courante (ex. « testgrid:MDF ») servant à ranger/retrouver
-    les photos. `titre` permet de numéroter la section selon le flux du
-    panneau (ex. « ③ Photo du résultat »). Renvoie {"reload": fn} :
-    l'appelant appelle reload() en fin d'__init__ et à chaque changement de
-    matériau."""
+    cliquable (agrandissement) + une description libre (défocus, focale…,
+    pour ne plus s'y perdre si on en garde plusieurs) + boutons Ajouter et
+    Supprimer. `cle_getter()` renvoie la clé courante (ex. « testgrid:MDF »)
+    servant à ranger/retrouver les photos. `titre` permet de numéroter la
+    section selon le flux du panneau (ex. « ③ Photo du résultat »). Renvoie
+    {"reload": fn} : l'appelant appelle reload() en fin d'__init__ et à
+    chaque changement de matériau."""
     _section(form, titre, "sect_photo.svg")
     form.addRow(_WrapLabel(
         "Garde une ou plusieurs photos de la pièce gravée + mesurée, pour "
@@ -1267,6 +1268,13 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
     lbl.setToolTip("Clique pour agrandir.")
     form.addRow(lbl)
 
+    edt_desc = QtWidgets.QLineEdit()
+    edt_desc.setPlaceholderText("ex. « défocus 15 mm », « au foyer »…")
+    edt_desc.setToolTip(
+        "Note libre pour retrouver le réglage utilisé pour CETTE photo "
+        "(défocus, focale…) -- surtout utile si tu en gardes plusieurs.")
+    form.addRow("Description :", edt_desc)
+
     btn_add = QtWidgets.QPushButton("Ajouter une photo…")
     btn_add.setToolTip("Choisis une photo (JPG/PNG…) du résultat réel : elle "
                        "est copiée dans le dossier de l'atelier et ajoutée à "
@@ -1275,36 +1283,40 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
     btn_del = QtWidgets.QPushButton("Supprimer la photo affichée")
     form.addRow(btn_del)
 
-    state = {"paths": []}
+    state = {"items": []}
 
     def _show_thumb():
         i = combo.currentIndex()
-        paths = state["paths"]
-        if 0 <= i < len(paths):
-            pm = QtGui.QPixmap(paths[i])
+        items = state["items"]
+        if 0 <= i < len(items):
+            pm = QtGui.QPixmap(items[i]["path"])
             if not pm.isNull():
                 lbl.setPixmap(pm.scaled(320, 180, QtCore.Qt.KeepAspectRatio,
                                         QtCore.Qt.SmoothTransformation))
                 lbl.setText("")
+                edt_desc.setText(items[i]["description"])
+                edt_desc.setEnabled(True)
                 btn_del.setEnabled(True)
                 return
         lbl.setPixmap(QtGui.QPixmap())
         lbl.setText("— aucune photo —")
+        edt_desc.setText("")
+        edt_desc.setEnabled(False)
         btn_del.setEnabled(False)
 
     def reload(select=None):
         cle = (cle_getter() or "").strip()
-        paths = core.result_photos(cle) if cle else []
-        state["paths"] = paths
+        items = core.result_photos(cle) if cle else []
+        state["items"] = items
         combo.blockSignals(True)
         combo.clear()
-        for i in range(len(paths)):
+        for i in range(len(items)):
             combo.addItem("Photo {}".format(i + 1))
-        if paths:
-            idx = select if (select is not None and 0 <= select < len(paths)) else 0
+        if items:
+            idx = select if (select is not None and 0 <= select < len(items)) else 0
             combo.setCurrentIndex(idx)
         combo.blockSignals(False)
-        combo.setEnabled(bool(paths))
+        combo.setEnabled(bool(items))
         _show_thumb()
 
     def _on_add():
@@ -1317,25 +1329,34 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
             None, "Choisir une photo du résultat", "",
             "Images (*.jpg *.jpeg *.png *.bmp *.webp)")
         if path and core.add_result_photo(cle, path):
-            reload(select=len(state["paths"]))   # sélectionne la nouvelle (dernière)
+            reload(select=len(state["items"]))   # sélectionne la nouvelle (dernière)
 
     def _on_del():
         i = combo.currentIndex()
-        paths = state["paths"]
-        if 0 <= i < len(paths):
-            core.delete_result_photo((cle_getter() or "").strip(), paths[i])
+        items = state["items"]
+        if 0 <= i < len(items):
+            core.delete_result_photo((cle_getter() or "").strip(), items[i]["file"])
             reload()
+
+    def _on_desc_edited():
+        i = combo.currentIndex()
+        items = state["items"]
+        if 0 <= i < len(items):
+            core.set_photo_description(
+                (cle_getter() or "").strip(), items[i]["file"], edt_desc.text())
+            items[i]["description"] = edt_desc.text()
 
     def _on_click(_ev):
         i = combo.currentIndex()
-        paths = state["paths"]
-        if 0 <= i < len(paths):
-            img = QtGui.QImage(paths[i])
+        items = state["items"]
+        if 0 <= i < len(items):
+            img = QtGui.QImage(items[i]["path"])
             if not img.isNull():
                 _show_image_dialog(img, "Photo du résultat")
     lbl.mousePressEvent = _on_click
 
     combo.currentIndexChanged.connect(lambda _i: _show_thumb())
+    edt_desc.editingFinished.connect(_on_desc_edited)
     btn_add.clicked.connect(_on_add)
     btn_del.clicked.connect(_on_del)
     return {"reload": reload}

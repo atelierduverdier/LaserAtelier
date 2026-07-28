@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.75.1"
+VERSION = "1.76.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -328,9 +328,12 @@ def save_config(data):
 # On garde une LISTE de photos par « clé » (mode + éventuel matériau, ex.
 # « testgrid:MDF ») pour comparer le rendu au réel plus tard. Les fichiers
 # vivent DANS le dossier de l'atelier (à côté du code, pour être conservés
-# avec lui même si la photo d'origine est effacée) ; la config ne stocke que
-# les noms de fichiers relatifs, sous le bloc « photos » (une liste par clé ;
-# un ancien enregistrement mono-photo, simple chaîne, est migré à la volée).
+# avec lui même si la photo d'origine est effacée) ; la config ne stocke,
+# sous le bloc « photos », qu'une liste par clé d'entrées {"file": nom de
+# fichier relatif, "description": texte libre -- ex. le défocus/focale
+# utilisé, pour ne plus s'y perdre quand on en garde plusieurs}. Un ancien
+# enregistrement mono-photo (simple chaîne) ou une liste de noms sans
+# description est migré à la volée par `_photo_list`.
 # Pas de Qt ici : la vignette est peinte dans le panneau.
 PHOTOS_DIRNAME = "photos_resultats"
 _WORKBENCH_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -433,25 +436,35 @@ def _photo_safe(cle):
 
 
 def _photo_list(cle):
-    """Noms de fichiers relatifs mémorisés pour `cle` (migre une éventuelle
-    ancienne valeur mono-photo en liste)."""
+    """Entrées {"file": nom de fichier relatif, "description": texte libre}
+    mémorisées pour `cle`, dans l'ordre d'ajout (migre à la volée une
+    ancienne valeur mono-photo, ou une liste de noms sans description)."""
     rec = (load_config().get("photos") or {}).get(cle)
     if not rec:
         return []
-    return [rec] if isinstance(rec, str) else list(rec)
+    if isinstance(rec, str):
+        rec = [rec]
+    return [e if isinstance(e, dict) else {"file": e, "description": ""} for e in rec]
 
 
 def result_photos(cle):
-    """Liste des chemins absolus des photos mémorisées pour `cle` (dans
-    l'ordre d'ajout), en ne gardant que les fichiers réellement présents."""
+    """Photos mémorisées pour `cle`, dans l'ordre d'ajout : liste de
+    {"path": chemin absolu, "file": nom relatif, "description": texte libre
+    -- ex. le défocus/focale utilisé, utile pour s'y retrouver quand on en
+    garde plusieurs}. Ne garde que les fichiers réellement présents."""
     d = photos_dir()
-    return [os.path.join(d, n) for n in _photo_list(cle)
-            if os.path.isfile(os.path.join(d, n))]
+    out = []
+    for e in _photo_list(cle):
+        p = os.path.join(d, e["file"])
+        if os.path.isfile(p):
+            out.append({"path": p, "file": e["file"], "description": e.get("description", "")})
+    return out
 
 
-def add_result_photo(cle, source_path):
-    """Copie `source_path` dans le dossier photos et l'AJOUTE à la liste de
-    `cle`. Renvoie le chemin absolu stocké, ou None en cas d'échec."""
+def add_result_photo(cle, source_path, description=""):
+    """Copie `source_path` dans le dossier photos et l'AJOUTE (avec sa
+    description, optionnelle) à la liste de `cle`. Renvoie le chemin absolu
+    stocké, ou None en cas d'échec."""
     ext = os.path.splitext(source_path)[1].lower() or ".jpg"
     base = _photo_safe(cle)
     d = photos_dir()
@@ -473,10 +486,25 @@ def add_result_photo(cle, source_path):
     cfg = load_config()
     photos = cfg.setdefault("photos", {})
     lst = _photo_list(cle)
-    lst.append(dest_rel)
+    lst.append({"file": dest_rel, "description": description})
     photos[cle] = lst
     save_config(cfg)
     return dest_abs
+
+
+def set_photo_description(cle, filename, description):
+    """Change la description mémorisée de la photo `filename` (nom ou
+    chemin) de `cle`. Sans effet si cette photo n'est pas dans la liste."""
+    cfg = load_config()
+    photos = cfg.setdefault("photos", {})
+    lst = _photo_list(cle)
+    target = os.path.basename(filename)
+    for e in lst:
+        if os.path.basename(e["file"]) == target:
+            e["description"] = description
+            photos[cle] = lst
+            save_config(cfg)
+            return
 
 
 def delete_result_photo(cle, filename=None):
@@ -493,11 +521,11 @@ def delete_result_photo(cle, filename=None):
         remove, keep = lst, []
     else:
         target = os.path.basename(filename)
-        remove = [n for n in lst if os.path.basename(n) == target]
-        keep = [n for n in lst if os.path.basename(n) != target]
-    for n in remove:
+        remove = [e for e in lst if os.path.basename(e["file"]) == target]
+        keep = [e for e in lst if os.path.basename(e["file"]) != target]
+    for e in remove:
         try:
-            os.remove(os.path.join(d, n))
+            os.remove(os.path.join(d, e["file"]))
         except OSError:
             pass
     if keep:

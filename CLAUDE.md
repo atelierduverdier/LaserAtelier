@@ -121,9 +121,11 @@ Five modules, cleanly layered — keep the layering:
   - `_make_shade_picker(form, on_apply)` — "Nuancier matériau" block (apply a measured gray tone).
   - `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat" section: a
     dropdown of ALL photos for the current `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`) +
-    a clickable thumbnail (→ `_show_image_dialog`) + add/delete buttons. Returns `{"reload": fn}`
-    (accepts an optional select index) to call at end of `__init__` and on material change. Backed
-    by core photo helpers (see persistence).
+    a clickable thumbnail (→ `_show_image_dialog`) + a free-text description field (e.g. the
+    defocus/focus level used, since that isn't reliably inferable from panel state — see
+    `set_photo_description`) + add/delete buttons. Returns `{"reload": fn}` (accepts an optional
+    select index) to call at end of `__init__` and on material change. Backed by core photo
+    helpers (see persistence).
   - **Test/calibration panel convention (①②③)**: every burn-and-measure mode reads top-to-bottom
     as **① Graver** (burn params; Test grid adds an "Objectif" recommended-recipe combo via
     `self._recipes`) → **② Entrer les mesures** (data typed INLINE — no separate dialog, no trip to
@@ -239,12 +241,15 @@ with the contour.
 Single JSON file `laser_atelier_config.json` in FreeCAD's user app-data dir
 (`load_config`/`save_config`). Holds: material `presets_*`, `nozzle` profile, per-mode pre/post
 G-code, a `settings` block, laser profiles (`lasers` + `active_laser`), and a `photos` block
-(key → LIST of relative filenames; an old single-string value is migrated on read). **Result
-photos** (several per test/calibration key) live in a `photos_resultats/` subdir of the **workbench
+(key → LIST of `{"file": relative filename, "description": free text}`; an old single-string value
+or a bare list of filenames is migrated on read by `_photo_list`). **Result photos** (several per
+test/calibration key) live in a `photos_resultats/` subdir of the **workbench
 dir** (`_WORKBENCH_DIR`, next to the code so they survive deleting the original; gitignored;
 migrated once from the old `app-data/laser_atelier_photos`); core helpers `photos_dir`/
-`result_photos`/`add_result_photo`/`delete_result_photo` (the last takes an optional filename; None
-clears all) copy/list/forget them (no Qt — the panel paints the thumbnail). `export_all(dest_zip)`
+`result_photos`/`add_result_photo`/`set_photo_description`/`delete_result_photo` (the last takes an
+optional filename; None clears all) copy/list/describe/forget them (no Qt — the panel paints the
+thumbnail and hosts a free-text description field, since no per-photo defocus/focus level can be
+inferred reliably — see the stepped-ramp caveat above). `export_all(dest_zip)`
 bundles the config JSON + all photos into a .zip and `import_all(src_zip)` restores it (validates
 the JSON + basename-only photo extraction against zip-slip; re-applies settings live). Both are in
 the Settings panel ("Exporter réglages + photos" / "Importer une sauvegarde") — import closes the
