@@ -286,22 +286,37 @@ def _calibration_banner(form, mode_titre):
     else:
         total = len(core.calibration_numbered_steps())
         tete = "★ Étape {}/{} -- {}".format(etape["n"], total, portee)
-    lbl = _WrapLabel(
-        "<b><span style=\"color:#ff8a00\">{tete}.</span></b> Pour {but} : "
-        "{action}, grave sur une chute, mesure, puis reporte dans "
-        "<b>{reporter}</b>. Le parcours complet est dans le "
-        "<b>Guide rapide</b>.".format(
-            tete=tete, but=etape["but"], action=etape["action"],
-            reporter=etape["reporter"]))
     # Conteneur VBox : QFormLayout n'honore pas le heightForWidth d'un label
     # replié posé en rangée directe (rangée trop basse) -- le conteneur, lui,
     # propage la hauteur repliée. Cf. _make_fluence_widgets.
+    intro = _WrapLabel(
+        "<b><span style=\"color:#ff8a00\">{tete}.</span></b> Pour {but}"
+        "&nbsp;:".format(tete=tete, but=etape["but"]))
     holder = QtWidgets.QWidget()
     lay = QtWidgets.QVBoxLayout(holder)
-    lay.setContentsMargins(0, 2, 0, 6)
+    lay.setContentsMargins(0, 2, 0, 2)
     lay.setSpacing(0)
-    lay.addWidget(lbl)
+    lay.addWidget(intro)
     form.addRow(holder)
+
+    actions = etape["action"]
+    if len(actions) > 1:
+        # Plusieurs actions distinctes -- jamais aplaties dans une seule
+        # phrase (cf. _bullet_list) : une ligne numérotée par action.
+        _bullet_list(form, ["<b>{}.</b> {}".format(i + 1, a)
+                            for i, a in enumerate(actions)])
+        suite = "Grave sur une chute, mesure, puis reporte dans"
+    else:
+        suite = "{}, grave sur une chute, mesure, puis reporte dans".format(actions[0])
+    outro = _WrapLabel(
+        "{suite} <b>{reporter}</b>. Le parcours complet est dans le "
+        "<b>Guide rapide</b>.".format(suite=suite, reporter=etape["reporter"]))
+    holder2 = QtWidgets.QWidget()
+    lay2 = QtWidgets.QVBoxLayout(holder2)
+    lay2.setContentsMargins(0, 0, 0, 6)
+    lay2.setSpacing(0)
+    lay2.addWidget(outro)
+    form.addRow(holder2)
     _hline(form)
     # Le conteneur VBox suffit dans la plupart des cas, mais un texte plus
     # long (ex. la précision "à refaire pour CHAQUE matériau") peut encore
@@ -2234,18 +2249,22 @@ class TaskPanelGuide:
             "fois pour la machine, l'étape ★3 pour chaque nouveau matériau. "
             "Chaque panneau de calibration rappelle son numéro d'étape en tête.")
         form.addRow(depart)
+        # Vue condensée (1 ligne/étape) : plusieurs actions sont jointes par
+        # « puis » ici -- le détail numéroté vit dans le bandeau ★ de chaque
+        # panneau (_calibration_banner), pas doublé ici.
         puces_calib = []
         for e in core.calibration_numbered_steps():
             puces_calib.append(
                 "<b>★{n} — {mode}.</b> Pour {but} : {action} → reporte dans "
                 "<b>{reporter}</b>.".format(
                     n=e["n"], mode=e["mode"], but=e["but"],
-                    action=e["action"], reporter=e["reporter"]))
+                    action=", puis ".join(e["action"]), reporter=e["reporter"]))
         for e in core.CALIBRATION_JOURNEY:
             if e["n"] is None:
                 puces_calib.append(
                     "<b>★ Complément — {mode}.</b> Pour {but} : {action}.".format(
-                        mode=e["mode"], but=e["but"], action=e["action"]))
+                        mode=e["mode"], but=e["but"],
+                        action=", puis ".join(e["action"])))
         _bullet_list(form, puces_calib)
 
         _section(form, "Le flux de travail", "sect_options.svg")

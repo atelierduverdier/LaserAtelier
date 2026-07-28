@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>1.71.6</b></span>
+        <span class="badge">Version <b>1.71.7</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -752,7 +752,12 @@
     <span class="ci">Par où commencer&nbsp;? — première calibration</span>
     <p>Vous venez d'installer l'atelier et rien n'est réglé&nbsp;? Faites ces gravures <b>dans l'ordre</b> — les étapes ★1 et ★2 une seule fois pour la machine, l'étape ★3 pour chaque nouveau matériau. Chaque panneau de calibration rappelle son numéro d'étape en tête et suit le même fil&nbsp;: <b>① graver</b>, <b>② entrer les mesures</b> (juste en dessous, plus besoin d'aller les chercher ailleurs) et garder une <b>③ photo du résultat</b>. Pour un nouveau matériau, l'<b>Assistant matériau</b> regroupe tout le fil — planches, saisie, déductions — dans un seul panneau.</p>
     <ol>
-      <li><b>★1 — Bande de calibration défocus.</b> Pour trouver le foyer et la divergence&nbsp;: charge le préréglage ★ «&nbsp;Recherche du foyer (fin)&nbsp;» pour le point le plus net, puis ★ «&nbsp;Divergence (large + rampe)&nbsp;» pour un point large mais toujours visible (la puissance y monte avec la hauteur), grave, mesure → saisis dans la section <b>② Entrer les mesures (calibration du point)</b> du panneau.</li>
+      <li><b>★1 — Bande de calibration défocus.</b> Pour trouver le foyer et la divergence&nbsp;:
+        <ol>
+          <li>charge le préréglage ★ «&nbsp;Recherche du foyer (fin)&nbsp;» pour le point le plus net&nbsp;;</li>
+          <li>charge le préréglage ★ «&nbsp;Divergence (large + rampe)&nbsp;» pour un point large mais toujours visible (la puissance y monte avec la hauteur).</li>
+        </ol>
+        Grave, mesure → saisis dans la section <b>② Entrer les mesures (calibration du point)</b> du panneau.</li>
       <li><b>★2 — Test des offsets X/Y.</b> Pour aligner l'axe du laser&nbsp;: charge le préréglage ★ «&nbsp;Croix standard (10&nbsp;mm)&nbsp;», grave, saisis l'écart en section <b>②</b>&nbsp;: la correction à reporter dans <code>tool.tbl</code> est calculée (LinuxCNC&nbsp;; à sauter en GRBL ou laser seul).</li>
       <li><b>★3 — Grille de test.</b> Pour caractériser un matériau&nbsp;: un <b>préréglage recommandé</b> (objectif) remplit la grille prête à graver&nbsp;; après gravure, saisis les largeurs en section <b>②</b> et les gris au <b>Nuancier</b>.</li>
       <li><b>★4 — Calibration kerf.</b> Pour tenir les cotes&nbsp;: charge le préréglage ★ «&nbsp;Standard (20&nbsp;mm)&nbsp;» (test Carré), mesure en section <b>②</b> → le kerf calculé se reporte en <b>Compensation de kerf</b>.</li>

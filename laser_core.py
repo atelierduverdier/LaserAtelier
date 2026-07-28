@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.71.6"
+VERSION = "1.71.7"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3735,17 +3735,23 @@ _FACTORY_PRESETS = {
 # nouveau matériau) ou "materiau" (à refaire pour CHAQUE matériau) --
 # affichée dans le bandeau (_calibration_banner) pour éviter de croire
 # qu'un nouveau matériau oblige à tout reprendre depuis l'étape 1.
+# `action` est TOUJOURS une liste (même à 1 élément) : une entrée à
+# plusieurs actions distinctes s'affiche en lignes numérotées séparées
+# (jamais une énumération aplatie dans une seule phrase/label).
 CALIBRATION_JOURNEY = [
     {
         "n": 1,
         "portee": "laser",
         "mode": "Bande de calibration défocus",
         "but": "trouver le foyer et la divergence du faisceau",
-        "action": "charge le préréglage ★ « Recherche du foyer (fin) » pour "
-                  "le point le plus net, puis ★ « Divergence (large + "
-                  "rampe) » pour un point large mais toujours visible "
-                  "(la puissance y monte avec la hauteur -- sans ça, les "
-                  "traits très défocalisés ne marquent plus)",
+        "action": [
+            "charge le préréglage ★ « Recherche du foyer (fin) » pour le "
+            "point le plus net",
+            "charge le préréglage ★ « Divergence (large + rampe) » pour un "
+            "point large mais toujours visible (la puissance y monte avec "
+            "la hauteur -- sans ça, les traits très défocalisés ne "
+            "marquent plus)",
+        ],
         "reporter": "« ② Entrer les mesures » ci-dessous (ou Préférences → "
                     "Calibration du point)",
     },
@@ -3754,7 +3760,7 @@ CALIBRATION_JOURNEY = [
         "portee": "laser",
         "mode": "Test des offsets X/Y du laser",
         "but": "aligner l'axe du laser sur celui de la broche",
-        "action": "charge le préréglage ★ « Croix standard (10 mm) »",
+        "action": ["charge le préréglage ★ « Croix standard (10 mm) »"],
         "reporter": "tool.tbl (LinuxCNC ; à sauter en GRBL ou laser seul)",
     },
     {
@@ -3762,7 +3768,7 @@ CALIBRATION_JOURNEY = [
         "portee": "materiau",
         "mode": "Grille de test puissance / vitesse",
         "but": "caractériser un matériau (largeurs brûlées + noirceurs)",
-        "action": "choisis l'Objectif « Largeurs brûlées — grille au foyer »",
+        "action": ["choisis l'Objectif « Largeurs brûlées — grille au foyer »"],
         "reporter": "« ② Entrer les mesures » ci-dessous pour les largeurs, "
                     "mode Nuancier matériaux pour les tons (pas dans les "
                     "Préférences)",
@@ -3772,7 +3778,7 @@ CALIBRATION_JOURNEY = [
         "portee": "materiau",
         "mode": "Calibration kerf",
         "but": "mesurer le trait pour tenir les cotes",
-        "action": "charge le préréglage ★ « Standard (20 mm) » (test Carré)",
+        "action": ["charge le préréglage ★ « Standard (20 mm) » (test Carré)"],
         "reporter": "Compensation de kerf des modes de découpe",
     },
     {
@@ -3780,7 +3786,7 @@ CALIBRATION_JOURNEY = [
         "portee": "materiau",
         "mode": "Test rampe puissance / vitesse (lignes)",
         "but": "voir en continu où le trait apparaît et où il sature",
-        "action": "charge le préréglage ★ « Gravure MDF (puissance/vitesse) »",
+        "action": ["charge le préréglage ★ « Gravure MDF (puissance/vitesse) »"],
         "reporter": "« ② Reporter les tons retenus » ci-dessous -- complément de l'étape 3",
     },
 ]
