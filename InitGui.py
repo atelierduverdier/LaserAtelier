@@ -49,6 +49,9 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_Guide",
             "Separator",
             # ===== BOUTONS DE TRAVAIL (à gauche) =====
+            # -- Import de dessins --
+            "LaserAtelier_ImporterSVG",
+            "Separator",
             # -- Gravure à plat --
             "LaserAtelier_Hatch",
             "LaserAtelier_Text",

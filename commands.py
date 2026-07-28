@@ -167,6 +167,24 @@ class ProjectCommand:
         _show(task_panels.TaskPanelProject())
 
 
+class ImportSVGCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("import_svg.svg"),
+            "MenuText": "Importer un dessin SVG",
+            "ToolTip": "Importe un fichier .svg directement en objets géométriques "
+                       "(un par tracé d'origine, couleur de remplissage capturée) -- "
+                       "beaucoup plus rapide et moins fragmenté qu'un détour par un "
+                       "export DXF (aucune sélection requise)",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        _show(task_panels.TaskPanelImportSVG())
+
+
 class KerfCommand:
     def GetResources(self):
         return {
@@ -428,6 +446,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_FilledEngraving", FilledEngravingCommand())
     Gui.addCommand("LaserAtelier_Halftone", HalftoneCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
+    Gui.addCommand("LaserAtelier_ImporterSVG", ImportSVGCommand())
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
     Gui.addCommand("LaserAtelier_Assistant", AssistantCommand())
     Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())

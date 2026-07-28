@@ -4470,6 +4470,98 @@ class TaskPanelProject:
 
 
 # ==========================================================================
+# MODE : IMPORT SVG (géométrie directe, sans détour DXF)
+# ==========================================================================
+class TaskPanelImportSVG:
+    """Panneau minimal : choisir un .svg, OK importe. Un Part::Feature par
+    élément <path> d'origine (sélectionnable individuellement ensuite),
+    couleur de remplissage posée en couleur de trait. Rien à persister
+    entre sessions, pas de génération de G-code ici."""
+
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+        _panel_header(form, "import_svg.svg", "Importer un dessin SVG")
+        _intro(form,
+               "Importe un fichier .svg directement en objets géométriques : "
+               "un objet par tracé d'origine, prêt pour Hachures, Gravure "
+               "remplie ou Marquage.",
+               "Les courbes (Bézier, arcs) sont aplaties en petits segments, "
+               "comme partout dans l'atelier. La couleur de remplissage de "
+               "chaque tracé (héritée des groupes) devient sa couleur de "
+               "trait dans l'arbre -- une aide visuelle pour repérer les "
+               "zones. Pas encore pris en charge (signalé à l'import, jamais "
+               "bloquant) : <code>&lt;use&gt;</code>, dégradés, "
+               "<code>&lt;clipPath&gt;</code>/<code>&lt;mask&gt;</code>, "
+               "images matricielles incorporées, classes CSS. Pour du texte, "
+               "convertis-le en tracés dans Inkscape avant l'export.")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Choisis le fichier <b>.svg</b> ci-dessous.",
+            "<b>2.</b> Clique <b>OK</b>&nbsp;: chaque tracé "
+            "<code>&lt;path&gt;</code> d'origine devient UN objet, "
+            "sélectionnable individuellement (utile pour appliquer ensuite "
+            "des tons différents par zone).",
+            "<b>3.</b> Enchaîne avec <b>Hachures</b>, <b>Gravure remplie</b> "
+            "ou <b>Marquage de motif</b> sur les objets importés.",
+        ])
+
+        _section(form, "Fichier", "sect_preview.svg")
+        self.edt_path = QtWidgets.QLineEdit()
+        self.edt_path.setToolTip("Chemin du fichier SVG à importer.")
+        btn_browse = QtWidgets.QPushButton("Parcourir...")
+        btn_browse.clicked.connect(self._on_browse)
+        row = QtWidgets.QWidget()
+        row_layout = QtWidgets.QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(self.edt_path, 1)
+        row_layout.addWidget(btn_browse, 0)
+        form.addRow("Fichier SVG :", row)
+
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Importer un dessin SVG")
+        self.form.setWindowIcon(_icon("import_svg.svg"))
+
+    def _on_browse(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self.form, "Choisir un fichier SVG",
+            self.edt_path.text() or os.path.expanduser("~"),
+            "Fichiers SVG (*.svg);;Tous les fichiers (*)")
+        if path:
+            self.edt_path.setText(path)
+
+    def accept(self):
+        path = self.edt_path.text().strip()
+        if not path:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Import SVG", "Choisis d'abord un fichier .svg.")
+            return False
+        import svg_import
+        count, warnings = svg_import.import_svg_file(path)
+        for w in warnings:
+            FreeCAD.Console.PrintWarning("Import SVG : {}\n".format(w))
+        if count == 0:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Import SVG",
+                "\n".join(warnings) or "Aucun tracé exploitable dans ce fichier.")
+            return False
+        FreeCAD.Console.PrintMessage(
+            "Import SVG : {} objet(s) créé(s) depuis {}.\n".format(
+                count, os.path.basename(path)))
+        if warnings:
+            QtWidgets.QMessageBox.information(
+                self.form, "Import SVG",
+                "{} objet(s) importé(s), avec {} avertissement(s) -- "
+                "détail dans la vue Rapport.".format(count, len(warnings)))
+        return True
+
+    def reject(self):
+        return True
+
+
+# ==========================================================================
 # MODE : CALIBRATION KERF
 # ==========================================================================
 class TaskPanelKerf:

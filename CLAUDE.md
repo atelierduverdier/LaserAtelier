@@ -153,6 +153,22 @@ Five modules, cleanly layered — keep the layering:
   truth. `VueJobLaser.doubleClicked` re-selects the sources and reopens the mode's panel
   pre-filled (`ouvrir_job`). Proxies carry no state (dumps/loads return None); regenerating
   updates the existing Job (user-renamed Labels are preserved).
+- **`svg_import.py`**: standalone SVG-to-geometry importer — parses a `.svg` file directly (stdlib
+  `xml.etree.ElementTree`, no Draft/DXF detour) into one `Part::Feature` per top-level `<path>`
+  element (`Shape = Part.Compound(edges)`, matching the bare-edge-compound convention
+  `_faces_from_any_shape`/`chain_edges` already handle from Draft's own SVG/DXF import), with
+  `ViewObject.LineColor` set from the path's resolved fill (inherited from ancestor `<g>`s per
+  normal SVG cascade; `style=` beats `fill=`; `fill="none"` falls back to the element's own
+  stroke, else black). The path-grammar/Bezier-and-arc-flattening/transform/color layer is **pure
+  Python with zero FreeCAD import at module level** — deliberately, so it's unit-testable with no
+  stubbing at all; only the object-creation functions (`_subpath_to_edges`, `_record_to_object`,
+  `import_svg_file`) import `FreeCAD`/`Part`, locally inside themselves. No true OCCT Bezier/Arc
+  edges anywhere (matches the rest of the codebase): curves are flattened to short
+  `Part.LineSegment` chains (tolerance 0.3 mm, a local constant mirroring `DISCRETIZE_DISTANCE`).
+  One `doc.recompute()` for the whole file — that's what makes it fast versus the fragmented DXF
+  detour. `<use>`, gradients, `<clipPath>`/`<mask>`/`<filter>`, embedded raster `<image>`, and CSS
+  class-selector cascading are out of scope — skipped with a collected `FreeCAD.Console.PrintWarning`,
+  never a hard failure.
 - **`commands.py`**: one `*Command` class per mode (`GetResources`/`IsActive`/`Activated`) that opens
   the matching task panel via `_show(panel)` (closes any active task dialog first — FreeCAD refuses a
   second one otherwise); `register_commands()` registers them all.
@@ -162,7 +178,10 @@ Five modules, cleanly layered — keep the layering:
 **Adding a mode** touches all four: a generator in `laser_core`, a panel in `task_panels`, a command
 in `commands.py` (+ `register_commands`), an entry in `InitGui.py`'s `command_list` (grouped by theme
 with `"Separator"` tokens), and an SVG in `resources/icons/` (64×64, orange `#ff8a00` + slate
-`#2f3540` house style; `sect_*.svg` are the small section pictos reused across panels). Every mode
+`#2f3540` house style; `sect_*.svg` are the small section pictos reused across panels). A
+self-contained subsystem may keep its generator-equivalent logic in its own sibling module instead
+of `laser_core.py` — `laser_jobs.py` and `svg_import.py` are the two such exceptions — but it still
+touches the same panel/command/`InitGui`/icon integration points. Every mode
 icon carries the **chapeau signature** (a small bowler hat, bottom-right corner, `class="chapeau-verdier"`
 group — copy it from any marked icon or from `chapeau.svg`, the full-size standalone source); add it
 to new mode icons, keep it out of `sect_*.svg` and `diag_*.svg`. Mode icons are mirrored in
