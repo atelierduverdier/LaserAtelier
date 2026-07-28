@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.80.2"
+VERSION = "1.81.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4521,6 +4521,71 @@ def reglage_couvrant_le_pas(spacing, material=None, defocus=0.0):
     # puissance la plus faible (moins de chaleur déposée hors du trait).
     s, f, w = max(couvrants, key=lambda t: (t[1], -t[0]))
     return {"power": s, "feed": f, "width": w}
+
+
+def espacement_pour_reglage(power, feed, material=None, borne_haute=None):
+    """L'INVERSE de reglage_couvrant_le_pas : là on part d'un pas voulu
+    pour trouver un réglage qui le couvre ; ici on part d'un réglage déjà
+    choisi (typiquement un ton du nuancier -- puissance et vitesse fixées)
+    pour en déduire le plus GRAND pas de hachure qu'il couvre encore sans
+    laisser de bande de bois nu -- l'espacement qui rend le remplissage
+    plein sans le deviner à la main.
+
+    Pourquoi une bissection et pas une simple inversion de la formule
+    optique : le pas fixe le défocus via le cône optique du point
+    (defocus_for_fill_spacing), mais la largeur RÉELLEMENT brûlée à ce
+    défocus (burn_width_defocus_scaled) grossit plus lentement que ce
+    cône -- c'est exactement l'écart que ces mesures corrigent. Partir de
+    la largeur mesurée du ton et l'utiliser directement comme pas, ou
+    inverser le cône optique pour retrouver le défocus exact du ton,
+    donnent tous deux un pas TROP GÉNÉREUX dans la majorité des réglages
+    mesurés (vérifié : 29 tons mesurés sur 41 sous-couvrent avec ces deux
+    raccourcis, jusqu'à -0,11 mm) -- la seule façon fiable de le savoir
+    est de rejouer le VRAI calcul (defocus_for_fill_spacing puis
+    burn_width_defocus_scaled) et de chercher où il s'équilibre.
+
+    Cherche par bissection la racine de f(pas) = largeur_brûlée(pas) -
+    pas : positive près de zéro (au foyer la largeur mesurée est non
+    nulle), et déjà mesurée négative au-delà pour la plupart des réglages
+    -- sinon la fonction couvre encore à `borne_haute` (ou par défaut 3x
+    la largeur au foyer), qui est alors renvoyée directement. None si
+    aucune mesure du matériau ne permet de calculer une largeur (le pas
+    voulu par l'appelant reste alors inchangé -- rien à proposer)."""
+    ha = calibrated_half_angle()
+
+    def _f(pas):
+        d = defocus_for_fill_spacing(pas, SPOT_FOCUS_MM, ha)
+        if d is None:
+            return None
+        burn = burn_width_defocus_scaled(power, feed, d, material)
+        return None if burn is None else burn - pas
+
+    haut = borne_haute
+    if haut is None:
+        foyer = burn_width_at(power, feed, material)
+        if not foyer:
+            return None
+        # Garde-fou seulement pour la borne PAR DÉFAUT (une borne_haute
+        # explicite de l'appelant, même très serrée, doit être respectée
+        # telle quelle -- sinon un pas voulu délibérément fin serait
+        # silencieusement élargi jusqu'au point au foyer).
+        haut = max(foyer * 3.0, SPOT_FOCUS_MM)
+    bas = 1e-3
+    f_bas, f_haut = _f(bas), _f(haut)
+    if f_bas is None or f_haut is None or f_bas < 0:
+        return None
+    if f_haut >= 0:
+        return haut
+    for _ in range(40):
+        milieu = (bas + haut) / 2.0
+        f_milieu = _f(milieu)
+        if f_milieu is None:
+            return bas
+        if f_milieu >= 0:
+            bas = milieu
+        else:
+            haut = milieu
+    return bas
 
 
 def shade_for_darkness(material, target_pct):

@@ -3650,10 +3650,23 @@ class TaskPanelFilledEngraving:
         form.addRow(_mat_row)
 
         def _apply_shade(s):
-            # Ton mesuré du nuancier -> puissance/vitesse du REMPLISSAGE
-            # (le défocus du remplissage reste calculé depuis l'espacement).
+            # Ton mesuré du nuancier -> puissance/vitesse du REMPLISSAGE,
+            # ET (style plein uniquement -- les styles décoratifs gardent
+            # l'espacement voulu, leurs vides sont un choix) l'espacement
+            # qui donne un remplissage PLEIN avec ce réglage précis, sans
+            # avoir à le deviner à la main : avant, il fallait faire
+            # coïncider DEUX choix indépendants (le ton ET l'espacement) ;
+            # un seul suffit désormais. L'espacement reste un champ normal
+            # -- rien n'empêche de l'élargir ensuite pour aller plus vite
+            # sur un aplat, au prix d'un remplissage moins net.
             self.spn_fill_power.setValue(s.get("power", self.spn_fill_power.value()))
             self.spn_fill_feed.setValue(s.get("feed", self.spn_fill_feed.value()))
+            if self.combo_fill_style.currentIndex() == 0:
+                espacement = core.espacement_pour_reglage(
+                    s.get("power"), s.get("feed"), self._materiau(),
+                    borne_haute=s.get("width") or None)
+                if espacement:
+                    self.spn_spacing.setValue(espacement)
             self._update_defocus_preview()
         self._shade_picker = _make_shade_picker(form, _apply_shade)
 

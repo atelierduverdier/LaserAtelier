@@ -353,6 +353,24 @@ F800"); `_on_corriger_recouvrement` writes both spinboxes and re-triggers the pr
 explaining the physics every time a value changes is something to read once, not a message to
 re-parse on every keystroke.
 
+Picking a tone from "Nuancier matériau" also sets the spacing now (v1.81.0, solid fill style
+only — decorative styles keep the user's spacing, their gaps are intentional):
+`espacement_pour_reglage(power, feed, material, borne_haute)` is the INVERSE of
+`reglage_couvrant_le_pas` — that one goes spacing→covering setting, this one goes setting→largest
+covering spacing, so choosing a tone is one decision instead of two (tone AND a spacing that
+happens to match it). It cannot be a closed-form inversion of `defocus_for_fill_spacing`: using the
+tone's own measured width directly as the spacing, or inverting the optical cone to reproduce the
+tone's own z_offset, both degenerate to the SAME answer (the clamp in each always ends up picking
+the raw width) and undercover **29 of 41** real measured tones by up to 0.11 mm — found by sweeping
+actual nuancier data, not by reasoning about the formulas. It instead bisects for the root of
+`f(pas) = burn_width_defocus_scaled(power, feed, defocus_for_fill_spacing(pas), material) - pas`,
+bounded above by `borne_haute` (the tone's own width when the caller has one, else
+`3× the focus-width` as a fallback) — verified zero undercoverage across all 41 tones, ~0.1 ms/call.
+An explicit `borne_haute` is honored exactly as given, however tight; the fallback-only safeguard
+must never leak onto a caller-supplied bound (a real bug caught by this feature's own test suite
+before it shipped). Wired into `TaskPanelFilledEngraving._apply_shade` only — `TaskPanelCurved` has
+no spacing concept, so its own `_apply_shade` (a `spn_spot_width` setter, unrelated) is unaffected.
+
 ### Persistence & user settings
 
 Single JSON file `laser_atelier_config.json` in FreeCAD's user app-data dir
