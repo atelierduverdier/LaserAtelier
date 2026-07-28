@@ -2417,8 +2417,9 @@ class TaskPanelNuancier:
     """Éditeur du nuancier : la palette de gris MESURÉE d'un matériau
     (cf. load_shades dans laser_core). On y consigne, après une grille ou
     une rampe de test, chaque ton jugé utile : réglage (S/F/défocus) +
-    résultat mesuré (noirceur %, largeur). Les modes Marquage et Gravure
-    remplie proposent ensuite « Appliquer ce ton » d'un clic."""
+    résultat mesuré (noirceur %, largeur). Dans les modes Marquage et
+    Gravure remplie, choisir un de ces tons (bloc « Nuancier matériau »)
+    l'applique aussitôt."""
 
     _COLS = ("Noirceur %", "Puissance S", "Vitesse F", "Défocus mm",
              "Largeur mm", "Libellé")
@@ -2619,44 +2620,49 @@ class TaskPanelNuancier:
 
 def _make_shade_picker(form, on_apply):
     """Bloc « Nuancier matériau » réutilisable dans un panneau de mode :
-    sélecteur matériau + ton mesuré + bouton « Appliquer ce ton » + un lien
-    « Voir la photo du nuancier » (désactivé si ce matériau n'en a pas)
-    pour comparer au rendu réel avant d'appliquer un ton choisi sur un
-    simple numéro (on_apply(shade) est appelé avec le dict du ton). Renvoie
-    ses widgets ; l'appelant appelle ["reload"]() en fin d'__init__."""
+    sélecteur matériau + ton mesuré + un lien « Voir la photo du
+    nuancier » (désactivé si ce matériau n'en a pas) pour comparer au
+    rendu réel avant de choisir un ton sur un simple numéro. Choisir un
+    ton dans la liste L'APPLIQUE immédiatement (on_apply(shade) est
+    appelé avec le dict du ton) -- même convention que le sélecteur de
+    préréglages (_PresetController), l'entrée neutre « -- Choisir -- »
+    en tête évitant toute application accidentelle au rechargement ou au
+    changement de matériau. Renvoie ses widgets ; l'appelant appelle
+    ["reload"]() en fin d'__init__."""
     _section(form, "Nuancier matériau", "sect_preset.svg")
     combo_mat = QtWidgets.QComboBox()
     combo_mat.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
     combo_mat.setMinimumContentsLength(14)
     combo_mat.setToolTip(
         "Matériau du nuancier (tons de gris MESURÉS, cf. le mode Nuancier\n"
-        "dans Tests & calibration).")
+        "dans Tests & calibration). Sert aussi de matériau à l'aperçu\n"
+        "photo. En changer ne modifie aucun réglage.")
     form.addRow("Matériau :", combo_mat)
 
     combo_shade = QtWidgets.QComboBox()
     combo_shade.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
     combo_shade.setMinimumContentsLength(18)
-    combo_shade.setToolTip("Ton mesuré : noirceur % -- réglage (largeur).")
+    combo_shade.setToolTip(
+        "Ton mesuré : noirceur % -- réglage (largeur). En choisir un\n"
+        "remplit AUSSITÔT puissance/vitesse (et défocus si le ton en a\n"
+        "un) avec ce réglage MESURÉ -- le rendu sur la pièce sera celui\n"
+        "constaté lors du test.")
     form.addRow("Ton :", combo_shade)
 
     btn_photo = QtWidgets.QPushButton("Voir la photo du nuancier")
     form.addRow(btn_photo)
 
-    btn = QtWidgets.QPushButton("Appliquer ce ton")
-    btn.setToolTip(
-        "Remplit puissance/vitesse (et défocus si le ton en a un) avec ce\n"
-        "réglage MESURÉ -- le rendu sur la pièce sera celui constaté lors\n"
-        "du test.")
-    form.addRow(btn)
-
     def _reload_shades():
+        combo_shade.blockSignals(True)
         combo_shade.clear()
         m = combo_mat.currentData()
         if m:
+            combo_shade.addItem("-- Choisir --", None)
             for s in core.load_shades(m):
                 combo_shade.addItem(core.shade_summary(s), s)
         else:
             combo_shade.addItem("-- (aucun ton) --", None)
+        combo_shade.blockSignals(False)
         n = len(core.result_photos("nuancier:" + m)) if m else 0
         btn_photo.setEnabled(n > 0)
         if n == 1:
@@ -2683,11 +2689,11 @@ def _make_shade_picker(form, on_apply):
 
     combo_mat.currentIndexChanged.connect(lambda _i: _reload_shades())
 
-    def _apply():
+    def _apply(_i=None):
         s = combo_shade.currentData()
         if s:
             on_apply(s)
-    btn.clicked.connect(_apply)
+    combo_shade.currentIndexChanged.connect(_apply)
 
     def _on_photo():
         m = combo_mat.currentData()
@@ -3540,7 +3546,7 @@ class TaskPanelFilledEngraving:
             "référence, Z sur la surface à graver (mode Martyre ou Pièce). "
             "«&nbsp;Décalage de surface&nbsp;» sert à graver un fond de poche.",
             "<b>3. Matériau / ton</b>&nbsp;: applique un préréglage matériau ou "
-            "un ton du <b>Nuancier</b> («&nbsp;Appliquer ce ton&nbsp;»), sinon "
+            "choisis un ton du <b>Nuancier</b> (il s'applique aussitôt), sinon "
             "règle puissance/vitesse à la main. Sans nuancier, coche "
             "«&nbsp;Puissance vs défocus&nbsp;» et donne une référence connue.",
             "<b>4. Remplissage</b>&nbsp;: espacement des hachures (resserré "
