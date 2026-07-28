@@ -2394,15 +2394,7 @@ class TaskPanelNuancier:
         _intro(form,
                "Ta palette de gris MESURÉE, par matériau : chaque ton = un "
                "réglage (S, F, défocus) + ce qu'il produit réellement "
-               "(noirceur 0-100 % à l'oeil, largeur du trait).",
-               "Alimente-le après une Grille ou une Rampe de test : garde "
-               "les cases/zones qui te plaisent, note leur noirceur en les "
-               "comparant entre elles (0 = matériau intact, 100 = le noir "
-               "max de ce matériau) et leur largeur au pied à coulisse. "
-               "La noirceur n'étant pas linéaire avec la puissance, le "
-               "logiciel s'appuiera sur CES mesures (ton le plus proche) "
-               "pour les dégradés, photos et choix rapides -- « on mesure, "
-               "on ne devine pas ». OK enregistre le tableau.")
+               "(noirceur 0-100 % à l'oeil, largeur du trait).")
 
         _diagram(form, "diag_nuancier.svg")
 
@@ -2418,9 +2410,11 @@ class TaskPanelNuancier:
             "défocus) <b>et ce qu'il produit</b>&nbsp;: noirceur 0-100&nbsp;% à "
             "l'œil (0 = matériau intact, 100 = noir max), largeur du trait au "
             "pied à coulisse, libellé libre.",
-            "<b>4.</b> Clique <b>OK</b> pour enregistrer le tableau. Il "
-            "alimente ensuite les <b>dégradés</b>, les <b>photos calibrées</b> "
-            "et le «&nbsp;ton sur mesure&nbsp;» (ton mesuré le plus proche).",
+            "<b>4.</b> Clique <b>OK</b> pour enregistrer le tableau. La "
+            "noirceur n'étant pas linéaire avec la puissance, ces mesures "
+            "alimentent ensuite les <b>dégradés</b>, les <b>photos "
+            "calibrées</b> et le «&nbsp;ton sur mesure&nbsp;» (ton mesuré le "
+            "plus proche) — on mesure, on ne devine pas.",
         ])
 
         _section(form, "① Saisir les tons mesurés", "sect_measure.svg")
@@ -2877,11 +2871,11 @@ class TaskPanelCatalogue:
         _intro(form,
                "Grave sur une chute une planche de RÉFÉRENCE : les 6 styles de "
                "trait du Marquage (sur un mot exemple) + un exemple de gravure "
-               "remplie, titrés, en un seul job.",
-               "À garder une fois tes réglages calés : tu vois le rendu réel de "
-               "chaque style sur ton matériau. « Aperçu photo » montre le rendu "
-               "avant de graver. La gravure photo se teste dans son propre mode "
-               "(Gravure photo), avec la mire des tramages et tous les réglages.")
+               "remplie, titrés, en un seul job. À garder une fois tes réglages "
+               "calés : tu vois le rendu réel de chaque style sur ton matériau "
+               "(« Aperçu photo » montre le rendu avant de graver). La gravure "
+               "photo se teste dans son propre mode (Gravure photo), avec la "
+               "mire des tramages et tous les réglages.")
 
         _section(form, "Contenu", "sect_options.svg")
         self.edt_sample = QtWidgets.QLineEdit("Laser")
@@ -4275,13 +4269,7 @@ class TaskPanelKerf:
         _intro(form,
                "Deux tests, à découper ensuite en mode Découpe multi-passes : "
                "le CARRÉ pour MESURER le kerf, le TENON + MORTAISE pour VALIDER "
-               "l'ajustement réel une fois le kerf connu.",
-               "Ordre conseillé : 1) découpe le CARRÉ avec Compensation de kerf "
-               "= 0, mesure la pièce, kerf = taille dessinée - taille mesurée ; "
-               "2) reporte ce kerf en Compensation, puis découpe le TENON + "
-               "MORTAISE : insère le tenon dans chaque mortaise et retiens le "
-               "JEU (gravé sous chacune) qui donne l'ajustement voulu -- serré "
-               "pour un collage, glissant pour du démontable.")
+               "l'ajustement réel une fois le kerf connu.")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
@@ -4895,15 +4883,8 @@ class TaskPanelPowerRamp:
         _intro(form,
                "Grave de longues lignes, UNE PAR VITESSE, avec la puissance "
                "qui MONTE le long de chaque ligne : on repère d'un coup où le "
-               "trait apparaît et où il sature, à chaque vitesse. Zéro Z sur "
-               "la surface, aucune sélection requise.",
-               "Complément continu de la Grille de test (cellules discrètes). "
-               "La règle graduée sous la première ligne donne la puissance "
-               "sous chaque point du trait. Option rampe Z : la hauteur du "
-               "bec monte aussi le long de la ligne (défocus progressif). "
-               "Astuce laser S/PWM : si le trait se pointille à haute "
-               "vitesse, baisse le nombre de paliers (chaque changement de "
-               "puissance fait micro-branler la machine).")
+               "trait apparaît et où il sature, à chaque vitesse. Complément "
+               "continu de la Grille de test (cellules discrètes).")
         _diagram(form, "diag_ramp.svg")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
@@ -4913,7 +4894,9 @@ class TaskPanelPowerRamp:
             "<b>2. Lignes (vitesses)</b>&nbsp;: longueur des lignes et liste des "
             "vitesses&nbsp;— une ligne par vitesse.",
             "<b>3. Rampe de puissance</b>&nbsp;: puissance min→max qui monte le "
-            "long de chaque ligne, et nombre de paliers.",
+            "long de chaque ligne, et nombre de paliers (si le trait se "
+            "pointille à haute vitesse en S/PWM, baisse le nombre de paliers "
+            "— chaque changement de puissance fait micro-branler la machine).",
             "<b>4. Rampe de hauteur (Z)</b> (option)&nbsp;: le bec monte aussi "
             "le long de la ligne (défocus progressif).",
             "<b>5. Génère et grave.</b> La règle graduée sous la 1re ligne "
@@ -8859,12 +8842,12 @@ class TaskPanelAssistant:
         _intro(form,
                "Caractérise un matériau du début à la fin : grave les trois "
                "planches, mesure au pied à coulisse, saisis — l'atelier en "
-               "déduit largeurs et espacements pour tous les modes.",
-               "Les modes autonomes (Grille, Rampe, Bande défocus, Nuancier) "
-               "restent : l'Assistant les orchestre sans les remplacer. "
-               "Prérequis, une fois par laser : la calibration du point "
-               "(Planche 3, saisie dans le mode « Bande de calibration "
-               "défocus » ou les Préférences).")
+               "déduit largeurs et espacements pour tous les modes. Les modes "
+               "autonomes (Grille, Rampe, Bande défocus, Nuancier) restent : "
+               "l'Assistant les orchestre sans les remplacer. Prérequis, une "
+               "fois par laser : la calibration du point (Planche 3, saisie "
+               "dans le mode « Bande de calibration défocus » ou les "
+               "Préférences).")
 
         self.combo_mat = QtWidgets.QComboBox()
         self.combo_mat.setEditable(True)
