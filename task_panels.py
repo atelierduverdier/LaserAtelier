@@ -3675,6 +3675,15 @@ class TaskPanelFilledEngraving:
             "engrenage) -- mesurée avec la Bande de calibration défocus.")
         form.addRow(self.lbl_defocus_result)
 
+        self.lbl_recouvrement = _WrapLabel("")
+        self.lbl_recouvrement.setToolTip(
+            "Le remplissage sera-t-il PLEIN ? Compare le trait réellement\n"
+            "BRÛLÉ (mesuré avec la planche de calibration, pour le matériau\n"
+            "du bloc « Nuancier matériau ») au pas de hachure demandé. Si le\n"
+            "trait est plus étroit que le pas, il reste du bois nu entre deux\n"
+            "passes : le remplissage sort rayé, en gris, et pas noir.")
+        form.addRow(self.lbl_recouvrement)
+
         _section(form, "Contour", "sect_contour.svg")
         self.chk_contour = QtWidgets.QCheckBox("Graver le contour (repassé après le remplissage)")
         self.chk_contour.setChecked(True)
@@ -3853,31 +3862,30 @@ class TaskPanelFilledEngraving:
                     "Défocus calculé : -- (calibration du point invalide dans\n"
                     "les Préférences : le point au défocus de test doit être\n"
                     "plus large qu'au foyer).")
+                # Sans défocus calculable, pas de pas de hachure fiable à
+                # comparer : on masque plutôt que de laisser un verdict périmé.
+                self._maj_recouvrement(None, None, 0.0, decoratif=True)
             else:
                 spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
                 # Retour de la correction par la planche (largeur brûlée
                 # mesurée), même logique que _build_edges.
                 spacing = self.spn_spacing.value()
                 fill_width = spot
-                extra = ""
                 if self.combo_fill_style.currentIndex() == 0:
                     power = self._effective_fill_power(defocus, half_angle)
-                    burn = core.burn_width_defocus_scaled(power, self.spn_fill_feed.value(), defocus)
+                    burn = core.burn_width_defocus_scaled(
+                        power, self.spn_fill_feed.value(), defocus, self._materiau())
                     if burn:
                         fill_width = min(spot, burn)
-                        if burn < spacing - 1e-6:
-                            extra = ("\nPlanche : brûlure mesurée {:.2f} mm à S{:.0f} "
-                                     "-> hachures resserrées à {:.2f} mm.".format(
-                                         burn, power, min(spacing, burn)))
-                        else:
-                            extra = ("\nPlanche : brûlure mesurée {:.2f} mm à S{:.0f} "
-                                     "-> l'espacement est couvert.".format(burn, power))
+                    self._maj_recouvrement(burn, power, spacing)
+                else:
+                    self._maj_recouvrement(None, None, spacing, decoratif=True)
                 inset = self._fill_inset(fill_width, half_angle)
                 self.lbl_defocus_result.setText(
                     "Défocus calculé : {:.2f} mm (bec remonté d'autant) -- point\n"
-                    "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.{}\n"
+                    "{:.3f} mm, remplissage rentré de {:.3f} mm du bord.\n"
                     "(Calibration du point : Préférences, icône engrenage.)".format(
-                        defocus, spot, inset, extra))
+                        defocus, spot, inset))
             # Retour visuel du contour : épaisseur voulue -> défocus.
             off = self._contour_offset(half_angle)
             if off <= 0:
@@ -3899,6 +3907,10 @@ class TaskPanelFilledEngraving:
         self._update_defocus_preview = _update_defocus_preview
         self.spn_spacing.valueChanged.connect(lambda _v: _update_defocus_preview())
         self.spn_contour_width.valueChanged.connect(lambda _v: _update_defocus_preview())
+        # Le matériau choisit la table des largeurs brûlées : en changer
+        # doit recalculer le verdict de recouvrement des hachures.
+        self._shade_picker["mat"].currentIndexChanged.connect(
+            lambda _i: _update_defocus_preview())
         for _w in (self.spn_fill_power, self.spn_fill_feed, self._fluence["chk"],
                    self._fluence["ref_power"], self._fluence["ref_feed"],
                    self._fluence["ref_spot"]):
@@ -4136,6 +4148,74 @@ class TaskPanelFilledEngraving:
             self.spn_contour_width.value(), core.SPOT_FOCUS_MM, half_angle, overlap=1.0)
         return off if off is not None else 0.0
 
+    def _materiau(self):
+        """Matériau retenu pour les largeurs brûlées MESURÉES : celui du
+        bloc « Nuancier matériau ». Sans lui, core ne sait choisir une
+        table que s'il n'existe qu'un seul matériau mesuré -- dès le
+        deuxième, la correction par la planche se désactivait en silence
+        et les hachures restaient à l'espacement demandé, même quand le
+        trait brûlé était deux fois plus étroit (remplissage rayé)."""
+        picker = getattr(self, "_shade_picker", None)
+        if picker is None:
+            return None
+        # currentData() est None sur l'entrée « -- (nuancier vide) -- » :
+        # pas de currentText() ici, un libellé ne doit pas passer pour un
+        # nom de matériau.
+        return picker["mat"].currentData() or None
+
+    def _maj_recouvrement(self, burn, power, spacing, decoratif=False):
+        """Met à jour le message « le remplissage sera-t-il PLEIN ? » --
+        la première question que pose une planche gravée. Compare le trait
+        RÉELLEMENT brûlé (planche de calibration) au pas de hachure : s'il
+        est plus étroit, il reste du bois nu entre deux passes et le
+        remplissage sort rayé. L'atelier resserre alors les hachures, mais
+        cela rallonge le job d'autant -- d'où la suggestion d'un réglage
+        mesuré qui couvre le pas d'un seul coup, plus noir et plus vite."""
+        lbl = self.lbl_recouvrement
+        if decoratif:
+            # Tirets, pointillé, vague : les vides sont voulus.
+            lbl.setText("")
+            lbl.setVisible(False)
+            return
+        lbl.setVisible(True)
+        mat = self._materiau()
+        if burn is None:
+            if not mat:
+                # La liste « Nuancier matériau » ne propose que les matériaux
+                # du nuancier : vide, il n'y a rien à choisir.
+                lbl.setText(
+                    "Recouvrement non vérifié : aucun matériau dans "
+                    "« Nuancier matériau » ci-dessus, l'atelier ne sait pas "
+                    "quelle largeur brûlée comparer au pas de hachure.")
+            else:
+                lbl.setText(
+                    "Recouvrement non vérifié : aucune largeur brûlée mesurée "
+                    "pour {} (planche de calibration, sections 1-2).".format(mat))
+            lbl.setStyleSheet("color: #b0740a;")
+            return
+        if burn >= spacing - 1e-6:
+            lbl.setText(
+                "Remplissage plein : trait brûlé de {:.2f} mm mesuré à S{:.0f}, "
+                "pour un pas de {:.2f} mm.".format(burn, power, spacing))
+            lbl.setStyleSheet("color: #2e7d32;")
+            return
+        msg = ("Remplissage RAYÉ à ces réglages : le trait brûlé ne fait que "
+               "{:.2f} mm (mesuré à S{:.0f}) pour un pas de {:.2f} mm. Les "
+               "hachures seront resserrées à {:.2f} mm, ce qui multiplie la "
+               "durée par {:.1f}.".format(burn, power, spacing, burn,
+                                          spacing / max(burn, 1e-9)))
+        sugg = core.reglage_couvrant_le_pas(spacing, mat)
+        if sugg:
+            msg += (" Mieux : S{:.0f} / F{:.0f} brûle {:.2f} mm et couvre le pas "
+                    "sans resserrer.".format(sugg["power"], sugg["feed"],
+                                             sugg["width"]))
+        else:
+            msg += (" Aucun réglage mesuré ne couvre ce pas : élargis le trait "
+                    "(plus de puissance, moins de vitesse), ou mesure d'autres "
+                    "réglages avec la planche de calibration.")
+        lbl.setText(msg)
+        lbl.setStyleSheet("color: #b0740a;")
+
     def _effective_fill_power(self, defocus, half_angle):
         """Puissance de remplissage réellement émise : celle du champ, ou
         celle recalculée par la compensation de fluence si elle est cochée
@@ -4161,7 +4241,8 @@ class TaskPanelFilledEngraving:
             c_off = self._contour_offset(half_angle)
             c_spot = core.spot_diameter_at_defocus(c_off, core.SPOT_FOCUS_MM, half_angle)
             c_burn = core.burn_width_defocus_scaled(
-                self.spn_contour_power.value(), self.spn_contour_feed.value(), c_off) or c_spot
+                self.spn_contour_power.value(), self.spn_contour_feed.value(), c_off,
+                self._materiau()) or c_spot
             inset = max(0.0, inset - c_burn / 2.0)
         return inset
 
@@ -4225,7 +4306,8 @@ class TaskPanelFilledEngraving:
             if self.chk_fill_grad.isChecked():
                 s0 = max(self.spn_fill_power.value(), 1e-9)
                 power = power * min(1.0, self.spn_grad_power_fin.value() / s0)
-            burn = core.burn_width_defocus_scaled(power, self.spn_fill_feed.value(), defocus)
+            burn = core.burn_width_defocus_scaled(power, self.spn_fill_feed.value(),
+                                                  defocus, self._materiau())
             if burn:
                 hatch_spacing = min(spacing, burn)
                 fill_width = min(spot, burn)
@@ -4364,7 +4446,8 @@ class TaskPanelFilledEngraving:
                         or self._shade_picker["mat"].currentText())
         fill_power = self._effective_fill_power(defocus, half_angle)
         spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
-        fill_width = core.burn_width_defocus_scaled(fill_power, self.spn_fill_feed.value(), defocus) or spot_fill
+        fill_width = core.burn_width_defocus_scaled(
+            fill_power, self.spn_fill_feed.value(), defocus, self._materiau()) or spot_fill
         fill_tone = _tone_measured(mat_nuancier, fill_power,
                                    self.spn_fill_feed.value(), defocus)
         if fill_tone is None:
@@ -4377,7 +4460,9 @@ class TaskPanelFilledEngraving:
         if self.chk_contour.isChecked() and contour_edges:
             c_power = self.spn_contour_power.value()
             spot_c = core.spot_diameter_at_defocus(contour_z_offset, core.SPOT_FOCUS_MM, half_angle)
-            c_width = core.burn_width_defocus_scaled(c_power, self.spn_contour_feed.value(), contour_z_offset) or spot_c
+            c_width = core.burn_width_defocus_scaled(
+                c_power, self.spn_contour_feed.value(), contour_z_offset,
+                self._materiau()) or spot_c
             c_tone = _tone_measured(mat_nuancier, c_power,
                                     self.spn_contour_feed.value(), contour_z_offset)
             if c_tone is None:

@@ -300,14 +300,34 @@ burned via three separate planks (`generate_gcode_planche_focus` / `_defocus` / 
 translated to piece zero on write): Planche 2 burns an S×F grid at **each** `DEFOCUS_LEVELS_MM`
 level (15 and 36 mm), and `burn_width_defocus_scaled` interpolates **bilinearly in (S, F)** at each
 level (shared `_bilinear_burn` helper, same as `burn_width_at` at focus: S linear, F log) then
-linearly between the two bracketing levels; outside the measured range, or with a single level, it
-falls back to the proportional-to-optical-spot extrapolation. Measurements are entered inline in the
+linearly between the two bracketing levels. **Below** the lowest measured level it interpolates
+between the directly-measured **focus** table and that level (v1.80.0) — the fill's own defocus is
+only a couple tenths of a mm (0.10 mm for a 0.26 mm spacing), and down there the burn is governed by
+heating time, not optics. Extrapolating the optical cone to z≈0 over-estimated it **2.1×** on beech
+(0.21 mm announced for 0.10 mm measured), so hatches the workbench believed solid came out striped.
+Only above the highest level (or with no focus table) does it still
+fall back to the proportional-to-optical-spot extrapolation. Measurements are entered inline in the
 Test-grid panel's "② Entrer les mesures" section (`_GrilleResultats` per plank/level, lock-by-default;
 stored with each point's `z_offset`, snapped to the nearest standard level by `_snap_defocus_level`
 on read — e.g. legacy 15.34 → 15; legacy single-feed data lands in the F800 column). This replaces
 the earlier single-point average that over-estimated the burn at a working defocus (e.g. 36 mm) far
 from the one measured point (~15 mm) — the root cause of the liseré that v1.11.2 could only mask
 with the contour.
+
+**Always pass `material` to the burn-width functions.** `_burn_width_material(None)` only guesses
+when *exactly one* material has been measured; with two or more it returns `None`, and every caller
+silently degrades — `burn_width_defocus_scaled` returns `None`, `_build_edges` skips the correction
+entirely, and the hatch keeps the requested spacing however narrow the real trace is. That is how a
+beech fill at S200/F1800 (0.10 mm burned, 0.26 mm spacing → 62 % bare wood) shipped as G-code the
+workbench believed solid. `TaskPanelFilledEngraving._materiau()` (v1.80.0) feeds the "Nuancier
+matériau" combo into all five of its calls; other panels still rely on the single-material guess.
+
+The same panel now answers "will this fill be **solid**?" out loud: `_maj_recouvrement` compares the
+measured burn to the hatch spacing and colours `lbl_recouvrement` green (covered) or amber (striped).
+When it's striped it names the cost of the automatic tightening *and* suggests the fastest measured
+setting whose trace covers the spacing (`core.reglage_couvrant_le_pas`) — widening the trace is
+almost always better than tripling the line count. Decorative fill styles (dashes, dots, wave) skip
+the check: their gaps are the point.
 
 ### Persistence & user settings
 

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.79.5"
+VERSION = "1.80.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4398,9 +4398,13 @@ def burn_width_defocus_scaled(power, feed, defocus, material=None):
       planche ne mesure qu'un feed au défocus (F fixe), le résultat ne dépend pas
       encore du feed ; il en dépendra dès qu'une planche multi-feed sera saisie ;
     - entre deux niveaux encadrants, interpolation linéaire en défocus ;
-    - hors de la plage mesurée (ou un seul niveau connu), extrapolation
-      PROPORTIONNELLE au diamètre optique du point (modèle conique) depuis
-      le niveau le plus proche.
+    - SOUS le premier niveau mesuré (cas du remplissage, quelques dixièmes
+      de mm), interpolation entre la largeur MESURÉE AU FOYER (section 1 de
+      la planche) et ce premier niveau -- au foyer la brûlure dépend du
+      temps de chauffe, pas de l'optique, et elle est mesurée en direct ;
+    - au-dessus du dernier niveau mesuré (ou sans mesure au foyer),
+      extrapolation PROPORTIONNELLE au diamètre optique du point (modèle
+      conique) depuis le niveau le plus proche.
 
     Constat planche : la brûlure réelle est plus étroite que le point
     optique (0,50 mm à S200 contre 1,18 mm optique) -- c'est elle qui
@@ -4410,7 +4414,8 @@ def burn_width_defocus_scaled(power, feed, defocus, material=None):
     mat = _burn_width_material(material)
     if not mat:
         return None
-    pts = load_burn_widths(mat).get("defocus") or []
+    table = load_burn_widths(mat)
+    pts = table.get("defocus") or []
     if not pts:
         return None
     # Regroupe les mesures par niveau de défocus (z_offset).
@@ -4437,6 +4442,20 @@ def burn_width_defocus_scaled(power, feed, defocus, material=None):
                 t = 0.0 if zb == za else (defocus - za) / (zb - za)
                 return _w_at(za) * (1 - t) + _w_at(zb) * t
         return _w_at(zs[0])
+    # SOUS le premier niveau mesuré : c'est le cas normal du remplissage
+    # (un pas de 0,26 mm ne demande que 0,10 mm de défocus). Là, la
+    # brûlure n'est PAS régie par l'optique mais par le temps de chauffe
+    # -- et elle est justement mesurée en direct au foyer (section 1 de la
+    # planche). On interpole donc entre cette mesure et le premier niveau
+    # de défocus, au lieu de faire redescendre le cône optique jusqu'à
+    # z=0 : sur hêtre à S200/F1800 ce cône annonçait 0,21 mm là où la
+    # planche mesure 0,10 mm (x2,1), d'où des remplissages rayés que
+    # l'atelier croyait pleins.
+    if defocus < zs[0]:
+        w_foyer = _bilinear_burn(table.get("focus") or [], power, feed)
+        if w_foyer is not None:
+            t = max(0.0, min(1.0, defocus / zs[0]))
+            return w_foyer * (1 - t) + _w_at(zs[0]) * t
     # Hors plage (ou un seul niveau) : extrapolation optique depuis le
     # niveau le plus proche.
     z0 = zs[0] if defocus < zs[0] else zs[-1]
@@ -4458,6 +4477,32 @@ def burn_width_focus_max(material=None):
         return None
     pts = load_burn_widths(mat).get("focus") or []
     return max(float(p["width"]) for p in pts) if pts else None
+
+
+def reglage_couvrant_le_pas(spacing, material=None):
+    """Le réglage MESURÉ au foyer le plus RAPIDE dont la brûlure couvre un
+    pas de hachure de `spacing` mm -- la vraie réponse à un remplissage
+    rayé. Quand le trait brûlé est plus étroit que le pas, l'atelier sait
+    resserrer les hachures, mais cela rallonge le job d'autant ; graver un
+    trait assez LARGE pour que deux passes voisines se rejoignent est
+    presque toujours meilleur (plus rapide ET plus noir, la largeur venant
+    d'une puissance plus forte).
+
+    Renvoie {"power", "feed", "width"}, ou None si aucune mesure du
+    matériau ne couvre ce pas -- il faut alors resserrer les hachures, ou
+    mesurer d'autres réglages avec la planche de calibration."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return None
+    couvrants = [p for p in (load_burn_widths(mat).get("focus") or [])
+                 if float(p.get("width") or 0.0) >= spacing - 1e-9]
+    if not couvrants:
+        return None
+    # Le plus rapide d'abord (job le plus court) ; à vitesse égale, la
+    # puissance la plus faible (moins de chaleur déposée hors du trait).
+    best = max(couvrants, key=lambda p: (float(p["feed"]), -float(p["power"])))
+    return {"power": float(best["power"]), "feed": float(best["feed"]),
+            "width": float(best["width"])}
 
 
 def shade_for_darkness(material, target_pct):
