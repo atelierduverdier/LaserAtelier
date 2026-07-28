@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.71.5"
+VERSION = "1.71.6"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3741,7 +3741,11 @@ CALIBRATION_JOURNEY = [
         "portee": "laser",
         "mode": "Bande de calibration défocus",
         "but": "trouver le foyer et la divergence du faisceau",
-        "action": "charge le préréglage ★ « Recherche du foyer (fin) »",
+        "action": "charge le préréglage ★ « Recherche du foyer (fin) » pour "
+                  "le point le plus net, puis ★ « Divergence (large + "
+                  "rampe) » pour un point large mais toujours visible "
+                  "(la puissance y monte avec la hauteur -- sans ça, les "
+                  "traits très défocalisés ne marquent plus)",
         "reporter": "« ② Entrer les mesures » ci-dessous (ou Préférences → "
                     "Calibration du point)",
     },
