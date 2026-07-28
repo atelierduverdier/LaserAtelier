@@ -4503,28 +4503,25 @@ class TaskPanelDefocusCalibration:
         _intro(form,
                "Grave une rangée de traits à hauteur de bec croissante "
                "(étiquetée) : le trait le <b>plus fin</b> donne le foyer, "
-               "les traits larges la divergence du faisceau. Zéro Z sur la "
-               "surface, aucune sélection requise.",
-               "Calibre uniquement la divergence du point (2 mesures, "
-               "valables pour tout le laser actif) -- pas les largeurs "
-               "brûlées ni les tons, qui se saisissent dans la Grille de "
-               "test/Rampe et le Nuancier. Le détail des mesures à faire est "
-               "dans le Mode d'emploi ci-dessous. Deux réglages optionnels : "
-               "la <b>rampe de puissance</b> garde les traits très "
-               "défocalisés visibles ; « <b>Nombre de bandes</b> » > 1 grave "
-               "une bande par vitesse en un seul job, chaque bande étiquetée "
-               "de sa vitesse.")
+               "les traits larges la divergence du faisceau.")
         _diagram(form, "diag_defocus.svg")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
+            "<b>Portée&nbsp;:</b> calibre uniquement la <b>divergence du "
+            "point</b> (2 mesures, valables pour tout le laser actif) -- "
+            "pas les largeurs brûlées ni les tons, qui se saisissent dans "
+            "la Grille de test/Rampe et le Nuancier.",
             "<b>1.</b> Pose le <b>zéro Z</b> sur la surface d'une chute. Aucune "
             "sélection requise.",
             "<b>2. Balayage en hauteur (Z)</b>&nbsp;: plage de hauteurs de bec "
             "(du foyer vers le haut) et pas&nbsp;; chaque trait est étiqueté de "
             "sa hauteur.",
-            "<b>3. Traits</b>&nbsp;: règle puissance/vitesse. Option <b>plusieurs"
-            " bandes</b> pour graver une bande par vitesse en un seul job.",
+            "<b>3. Traits</b>&nbsp;: règle puissance/vitesse -- une "
+            "<b>rampe de puissance</b> (puissance croissante) garde les "
+            "traits très défocalisés visibles. Option <b>plusieurs "
+            "bandes</b> pour graver une bande par vitesse en un seul job, "
+            "chaque bande étiquetée de sa vitesse.",
             "<b>4. Génère et grave</b>, puis mesure au pied à coulisse&nbsp;: "
             "(1)&nbsp;le trait le plus fin → ton <b>Z de foyer</b> et sa largeur "
             "= «&nbsp;point au foyer&nbsp;»&nbsp;; (2)&nbsp;un trait bien plus "
