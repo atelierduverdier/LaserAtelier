@@ -181,6 +181,25 @@ Five modules, cleanly layered — keep the layering:
 - **`InitGui.py`**: the `Workbench` class — toolbar/menu order (`command_list`), lazy imports in
   `Initialize()`. Runs at FreeCAD startup.
 
+**Fast face construction & fill-geometry memo** (perf work, v1.79.3): `FaceMakerBullseye`'s O(n²)
+nesting sort costs ~10.5 s on a 179-wire imported SVG trace, twice per fill (rebuild + inset). For
+≥12 wires `_faces_from_any_shape` first tries `_faces_rapides_depuis_fils` (laser_core), a
+Bullseye-free builder: pure-Python even-odd nesting on re-polygonized wires (0.02 mm deflection),
+self-intersecting wires repaired solo via `fix()` — which splits them, as Bullseye did silently;
+signed area is used ONLY for orientation, a bowtie has near-zero signed area yet real coverage —
+then faces assembled as `Part.Face([outer CCW] + [holes CW])`: explicit orientation is mandatory,
+without it holes ADD to the area instead of subtracting. Final sanity = non-empty tessellation +
+area coherence; any doubt returns None → Bullseye fallback. `isValid()` may stay False on tangent
+wires without harming the pipeline — the empirical gate is tessellation (measured: identical 9098
+hatch edges, 0.4 s vs 10.5 s). XY-plane only; other planes go straight to Bullseye (same in
+`inset_face_robuste`, which reuses the known `face.OuterWire`+holes structure instead of re-sorting).
+The filled-engraving panel memoizes the last built geometry (`_MEMO_REMPLISSAGE` in task_panels,
+key = selection Names + `Shape.hashCode()` + subelements + spacing/angle/inset/perimeter): photo-
+preview iterations and the final generation reuse faces/edges — tone/power changes don't touch
+geometry, so re-renders drop from ~30 s to <1 s on heavy traces. **Never test novel OCC call
+patterns in the user's live session**: a per-wire `makeOffset2D` experiment segfaulted the whole
+GUI (losing unsaved work); run risky probes with `freecadcmd` on a document copy in the scratchpad.
+
 **Adding a mode** touches all four: a generator in `laser_core`, a panel in `task_panels`, a command
 in `commands.py` (+ `register_commands`), an entry in `InitGui.py`'s `command_list` (grouped by theme
 with `"Separator"` tokens), and an SVG in `resources/icons/` (64×64, orange `#ff8a00` + slate
@@ -242,7 +261,10 @@ A linear divergence cone calibrated from **two real measurements** (never guesse
 `defocus_for_fill_spacing(spacing, …)`. The **fill is inset by the spot radius** so the burn stays
 inside the outline (`fill_inset` in `build_test_grid_cells` / `build_filled_engraving_edges`,
 via square inset or `Part.Face.makeOffset2D(-r)`; `inset_face_robuste` re-polygonizes wires first —
-OCC segfaults on some imported BSplines — and on offset failure discriminates by `Area >
+OCC segfaults on some imported BSplines — and rebuilds the polygonal face DIRECTLY from the known
+structure (`face.OuterWire` CCW + holes CW by signed area, XY plane only; other planes keep the old
+Bullseye build): `FaceMakerBullseye`'s O(n²) nesting sort costs ~11 s for nothing on a ~180-wire
+face whose structure is already known. On offset failure it discriminates by `Area >
 2·perimeter·inset`: a genuinely thin stroke is skipped as before (the contour blackens it), but a
 LARGE face OCC chokes on — e.g. an imported SVG path rebuilt as one face with ~200 hole wires,
 where the offset returns null wholesale — falls back to filling WITHOUT inset plus a console

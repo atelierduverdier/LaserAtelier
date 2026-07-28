@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.79.2"
+VERSION = "1.79.3"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1399,12 +1399,166 @@ def _to_xyz(u, v, origin, u_axis, v_axis):
     return origin + u_axis * u + v_axis * v
 
 
+def _aire_signee_2d(pts):
+    """Aire signée d'un polygone fermé [(x, y), ...] (positive = CCW)."""
+    s = 0.0
+    for i in range(len(pts) - 1):
+        s += pts[i][0] * pts[i + 1][1] - pts[i + 1][0] * pts[i][1]
+    return s / 2.0
+
+
+def _point_dans_polygone(x, y, pts):
+    """Parité des croisements (even-odd) : le point est-il dans le polygone ?"""
+    dedans = False
+    j = len(pts) - 1
+    for i in range(len(pts)):
+        xi, yi = pts[i]
+        xj, yj = pts[j]
+        if (yi > y) != (yj > y):
+            if x < xi + (y - yi) / (yj - yi) * (xj - xi):
+                dedans = not dedans
+        j = i
+    return dedans
+
+
+def _faces_rapides_depuis_fils(wires, deflection=0.02):
+    """Construit les faces (extérieur + trous, îlots compris) SANS
+    FaceMakerBullseye, dont le tri d'imbrication est en O(n²) coûteux
+    (mesuré : 10,5 s sur un tracé SVG importé de 179 fils, contre 0,4 s
+    ici, pour un hachurage strictement identique).
+
+    Chemin : chaque fil est re-polygonisé (flèche `deflection` mm, même
+    ordre de grandeur que la tolérance d'import SVG) ; un fil dont la
+    face solo ne se tessellise pas (auto-intersection...) est réparé par
+    fix(), qui le scinde en fils simples ; l'imbrication est classée en
+    pur Python (parité des contenances, préfiltre par bbox) ; chaque fil
+    de profondeur paire devient une face Part.Face([extérieur CCW] +
+    [trous directs CW]) -- l'orientation explicite est OBLIGATOIRE, sans
+    elle les trous s'ADDITIONNENT à l'aire au lieu de se soustraire.
+
+    Renvoie la liste de faces, ou None si le lot ne s'y prête pas
+    (fils non coplanaires en Z, réparation impossible, tessellation ou
+    aire finale incohérentes) : l'appelant retombe alors sur Bullseye.
+    Restriction assumée : plan Z=constante uniquement (imports SVG/DXF,
+    sketches XY) -- un plan quelconque part sur Bullseye."""
+    try:
+        polys = []          # [(points 2D CCW fermés, z)]
+        z_ref = None
+        for w in wires:
+            pts = w.discretize(Deflection=deflection)
+            if len(pts) < 3:
+                return None
+            if pts[0].distanceToPoint(pts[-1]) > 1e-6:
+                pts.append(pts[0])
+            for p in pts:
+                if z_ref is None:
+                    z_ref = p.z
+                elif abs(p.z - z_ref) > 1e-6:
+                    return None  # pas coplanaire en Z : Bullseye
+            polys.append([(p.x, p.y) for p in pts])
+
+        # Test solo : la face d'un fil sain se tessellise. Sinon le fil
+        # s'auto-intersecte : fix() le répare en le SCINDANT en fils
+        # simples (c'est ce que Bullseye faisait silencieusement).
+        # ATTENTION : l'aire signée ne sert qu'à ORIENTER -- un nœud
+        # papillon a une aire signée quasi NULLE (ses lobes s'annulent)
+        # tout en couvrant une vraie surface, il passe donc lui aussi
+        # par la réparation, pas à la poubelle.
+        sains = []
+        for p2 in polys:
+            aire = _aire_signee_2d(p2)
+            if abs(aire) > 1e-9:
+                p2o = p2 if aire > 0 else p2[::-1]
+                wpoly = Part.makePolygon(
+                    [FreeCAD.Vector(x, y, z_ref) for x, y in p2o])
+                fsolo = Part.Face(wpoly)
+                if fsolo.isValid() and len(fsolo.tessellate(0.05)[1]) > 0:
+                    sains.append(p2o)
+                    continue
+            else:
+                try:
+                    fsolo = Part.Face(Part.makePolygon(
+                        [FreeCAD.Vector(x, y, z_ref) for x, y in p2]))
+                except Exception:
+                    continue  # fil réellement dégénéré : rien à remplir
+            frep = fsolo.copy()
+            frep.fix(deflection, 1e-7, deflection)
+            if not frep.isValid():
+                if abs(aire) < 1e-3:
+                    continue  # sliver irréparable : le contour le couvre
+                return None
+            for wf in frep.Wires:
+                pts = wf.discretize(Deflection=deflection)
+                if pts[0].distanceToPoint(pts[-1]) > 1e-6:
+                    pts.append(pts[0])
+                p2f = [(p.x, p.y) for p in pts]
+                aire_f = _aire_signee_2d(p2f)
+                if abs(aire_f) < 1e-3:
+                    continue
+                sains.append(p2f if aire_f > 0 else p2f[::-1])
+        if not sains:
+            return None
+
+        # Imbrication : profondeur = nombre de polygones contenant le
+        # premier sommet (les fils ne se croisent pas entre eux, comme
+        # l'exige déjà Bullseye) ; préfiltre bbox avant le test exact.
+        bbs = [(min(x for x, y in p), min(y for x, y in p),
+                max(x for x, y in p), max(y for x, y in p)) for p in sains]
+        n = len(sains)
+        contenants = [[] for _ in range(n)]
+        for i in range(n):
+            xi, yi = sains[i][0]
+            for j in range(n):
+                if i == j:
+                    continue
+                b, bi = bbs[j], bbs[i]
+                if not (b[0] <= bi[0] and bi[2] <= b[2]
+                        and b[1] <= bi[1] and bi[3] <= b[3]):
+                    continue
+                if _point_dans_polygone(xi, yi, sains[j]):
+                    contenants[i].append(j)
+        prof = [len(c) for c in contenants]
+
+        faces = []
+        aire_attendue = 0.0
+        for i in range(n):
+            if prof[i] % 2:
+                continue
+            ws = [Part.makePolygon(
+                [FreeCAD.Vector(x, y, z_ref) for x, y in sains[i]])]
+            aire_attendue += _aire_signee_2d(sains[i])
+            for k in range(n):
+                if prof[k] == prof[i] + 1 and i in contenants[k]:
+                    ws.append(Part.makePolygon(
+                        [FreeCAD.Vector(x, y, z_ref)
+                         for x, y in sains[k][::-1]]))
+                    aire_attendue -= _aire_signee_2d(sains[k])
+            faces.append(Part.Face(ws))
+
+        # Contrôle final : tessellation non vide (le hachurage repose
+        # dessus) et aire cohérente avec les polygones. isValid() peut
+        # rester False (fils tangents entre eux) sans gêner le pipeline.
+        if not faces:
+            return None
+        for f in faces:
+            if len(f.tessellate(0.05)[1]) == 0:
+                return None
+        aire = sum(f.Area for f in faces)
+        if aire_attendue <= 0 or abs(aire - aire_attendue) > 0.005 * aire_attendue:
+            return None
+        return faces
+    except Exception:
+        return None
+
+
 def _faces_from_any_shape(shape, label="?"):
     """Faces planes fermées d'une forme QUELCONQUE : faces existantes,
     fils fermés (Sketch/Draft), ou ARÊTES LIBRES chaînées en fils
     (Compound d'un import DXF/SVG : ni faces ni fils, juste des edges --
     Part.sortEdges les regroupe, les chaînes fermées deviennent des
-    faces via Bullseye, trous compris)."""
+    faces via Bullseye, trous compris). Au-delà de quelques fils, un
+    chemin rapide sans Bullseye prend le relais (cf.
+    _faces_rapides_depuis_fils), avec repli Bullseye au moindre doute."""
     if shape is None:
         return []
     if getattr(shape, "Faces", None):
@@ -1420,6 +1574,13 @@ def _faces_from_any_shape(shape, label="?"):
                 pass
     if not wires:
         return []
+    if len(wires) >= 12:
+        # Le tri d'imbrication de Bullseye devient prohibitif quand les
+        # fils se comptent en dizaines (imports SVG/DXF) : chemin rapide
+        # d'abord, il rend None au moindre doute.
+        rapides = _faces_rapides_depuis_fils(wires)
+        if rapides:
+            return rapides
     try:
         return list(Part.makeFace(wires, "Part::FaceMakerBullseye").Faces)
     except Exception:
@@ -1745,15 +1906,42 @@ def inset_face_robuste(face, inset, deflection=0.05):
     retrait que si aire <= ~périmètre*inset ; au-delà (marge x2), c'est
     un échec OCC, pas une forme fine."""
     try:
-        poly_wires = []
+        # La structure de la face est CONNUE (OuterWire + trous) : la
+        # face polygonale se reconstruit directement, extérieur CCW et
+        # trous CW via l'aire signée, sans repayer le tri d'imbrication
+        # de Bullseye (11 s sur une face de ~180 fils, pour rien).
+        # L'orientation par aire signée suppose le plan XY (le seul cas
+        # réel au laser) : une face dans un autre plan repart sur la
+        # construction Bullseye historique.
+        outer = face.OuterWire
+        poly_ext = None
+        poly_trous = []
+        z_ref = None
+        plan_xy = True
         for w in face.Wires:
             pts = w.discretize(Deflection=deflection)
             if len(pts) < 3:
                 return []
             if pts[0].distanceToPoint(pts[-1]) > 1e-6:
                 pts.append(pts[0])
-            poly_wires.append(Part.makePolygon(pts))
-        poly_face = Part.makeFace(poly_wires, "Part::FaceMakerBullseye")
+            for p in pts:
+                if z_ref is None:
+                    z_ref = p.z
+                elif abs(p.z - z_ref) > 1e-6:
+                    plan_xy = False
+            p2 = [(p.x, p.y) for p in pts]
+            ccw = _aire_signee_2d(p2) > 0
+            if w.isSame(outer):
+                poly_ext = Part.makePolygon(pts if ccw else pts[::-1])
+            else:
+                poly_trous.append(Part.makePolygon(pts[::-1] if ccw else pts))
+        if poly_ext is None:
+            return []
+        if plan_xy:
+            poly_face = Part.Face([poly_ext] + poly_trous)
+        else:
+            poly_face = Part.makeFace([poly_ext] + poly_trous,
+                                      "Part::FaceMakerBullseye")
         off = poly_face.makeOffset2D(-inset)
         if off.Faces:
             return list(off.Faces)

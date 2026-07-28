@@ -3514,6 +3514,32 @@ def _make_surface_offset_row(form):
     return spn
 
 
+def _cle_geometrie_selection(selection):
+    """Empreinte de la sélection pour mémoïser la géométrie de remplissage :
+    (Name, hashCode de la Shape, sous-éléments) par objet. Le hashCode
+    change dès que la forme est recalculée, ce qui invalide le cache."""
+    items = []
+    for so in selection or []:
+        obj = so.Object
+        try:
+            code = obj.Shape.hashCode() if hasattr(obj, "Shape") else 0
+        except Exception:
+            code = 0
+        subs = (tuple(so.SubElementNames)
+                if getattr(so, "HasSubObjects", False) else ())
+        items.append((getattr(obj, "Name", "?"), code, subs))
+    return tuple(items)
+
+
+# Mémo à UNE entrée (la dernière géométrie construite) partagé entre les
+# aperçus photo successifs et la génération : sur un tracé SVG importé,
+# reconstruire faces + hachures coûte plusieurs secondes (voire ~16 s
+# avec un retrait qui échoue) -- itérer sur le ton ne change PAS la
+# géométrie, seul le rendu doit être refait.
+_MEMO_REMPLISSAGE = {"cle_faces": None, "faces": None,
+                     "cle_edges": None, "edges": None}
+
+
 class TaskPanelFilledEngraving:
     def __init__(self, selection):
         self.selection = selection
@@ -4144,7 +4170,15 @@ class TaskPanelFilledEngraving:
         (None, None, None, None) si la sélection est vide ou la calibration
         défocus invalide."""
         self._burn_note = None
-        faces = core.get_faces_from_selection_for_hatch(self.selection)
+        cle_faces = _cle_geometrie_selection(self.selection)
+        if (_MEMO_REMPLISSAGE["cle_faces"] == cle_faces
+                and _MEMO_REMPLISSAGE["faces"]):
+            faces = _MEMO_REMPLISSAGE["faces"]
+        else:
+            faces = core.get_faces_from_selection_for_hatch(self.selection)
+            _MEMO_REMPLISSAGE["cle_faces"] = cle_faces
+            _MEMO_REMPLISSAGE["faces"] = faces
+            _MEMO_REMPLISSAGE["cle_edges"] = None  # géométrie changée
         if not faces:
             if not silent:
                 hint = ""
@@ -4200,10 +4234,19 @@ class TaskPanelFilledEngraving:
                         "Espacement resserre a {:.2f} mm : brulure mesuree "
                         "{:.2f} mm a S{:.0f}, planche de calibration".format(
                             hatch_spacing, burn, power))
-        fill_edges, contour_edges = core.build_filled_engraving_edges(
-            faces, hatch_spacing, self.spn_angle.value(),
-            fill_inset=self._fill_inset(fill_width, half_angle),
-            add_perimeter=self.chk_perimeter.isChecked())
+        fill_inset = self._fill_inset(fill_width, half_angle)
+        cle_edges = (cle_faces, round(hatch_spacing, 6),
+                     round(self.spn_angle.value(), 6), round(fill_inset, 6),
+                     self.chk_perimeter.isChecked())
+        if _MEMO_REMPLISSAGE["cle_edges"] == cle_edges:
+            fill_edges, contour_edges = _MEMO_REMPLISSAGE["edges"]
+        else:
+            fill_edges, contour_edges = core.build_filled_engraving_edges(
+                faces, hatch_spacing, self.spn_angle.value(),
+                fill_inset=fill_inset,
+                add_perimeter=self.chk_perimeter.isChecked())
+            _MEMO_REMPLISSAGE["cle_edges"] = cle_edges
+            _MEMO_REMPLISSAGE["edges"] = (fill_edges, contour_edges)
         return fill_edges, contour_edges, defocus, self._contour_offset(half_angle)
 
     def _gen_kwargs(self, defocus, contour_z_offset):
