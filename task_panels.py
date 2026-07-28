@@ -2808,13 +2808,14 @@ class TaskPanelText:
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
-            "<b>1.</b> Tape le <b>texte</b> (Entrée = nouvelle ligne).",
+            "<b>1.</b> Tape le <b>texte</b> (Entrée = nouvelle ligne) : un "
+            "aperçu apparaît en direct dans la vue 3D.",
             "<b>2.</b> Place le curseur sur une ligne et clique un <b>bouton "
             "d'alignement</b> (gauche/centre/droite/justifié) pour la caler "
             "indépendamment des autres, comme dans un traitement de texte.",
             "<b>3.</b> Règle la <b>hauteur</b> (des capitales) et les espacements.",
-            "<b>4. OK</b> crée un objet «&nbsp;Texte…&nbsp;» dans l'arbre (coin "
-            "bas-gauche à l'origine).",
+            "<b>4. OK</b> garde l'objet «&nbsp;Texte…&nbsp;» dans l'arbre "
+            "(coin bas-gauche à l'origine) ; <b>Annuler</b> le supprime.",
             "<b>5.</b> Sélectionne-le et ouvre <b>Marquage</b> pour le graver "
             "(place-le d'abord, ou projette-le sur une surface courbe).",
         ])
@@ -2881,9 +2882,21 @@ class TaskPanelText:
 
         self.lbl_info = _WrapLabel("")
         form.addRow(self.lbl_info)
+
+        # Aperçu en direct dans la vue 3D : l'objet est créé/mis à jour au
+        # fil de la frappe (pas seulement au clic sur OK) -- un délai
+        # (anti-rebond) évite de régénérer la géométrie à chaque lettre.
+        self._obj = None
+        self._timer_apercu = QtCore.QTimer()
+        self._timer_apercu.setSingleShot(True)
+        self._timer_apercu.setInterval(250)
+        self._timer_apercu.timeout.connect(self._maj_apercu)
+
         for w in (self.spn_height, self.spn_cspace, self.spn_lspace):
             w.valueChanged.connect(self._update_info)
+            w.valueChanged.connect(self._demander_apercu)
         self.txt.textChanged.connect(self._update_info)
+        self.txt.textChanged.connect(self._demander_apercu)
 
         self._last_fields = {"text": self.txt, "height": self.spn_height,
                              "cspace": self.spn_cspace, "lspace": self.spn_lspace}
@@ -2893,6 +2906,7 @@ class TaskPanelText:
         self.form.setWindowTitle("Texte (trait simple)")
         self.form.setWindowIcon(_icon("text.svg"))
         self._update_info()
+        self._maj_apercu()
 
     def _update_info(self):
         w, h = core.single_line_text_extent(
@@ -2912,6 +2926,7 @@ class TaskPanelText:
         curseur.mergeBlockFormat(fmt)
         self.txt.setTextCursor(curseur)
         self.txt.setFocus()
+        self._demander_apercu()
 
     def _sync_boutons_align(self):
         """Reflète dans la barre l'alignement RÉEL de la ligne où se trouve
@@ -2922,17 +2937,40 @@ class TaskPanelText:
         if bouton is not None and not bouton.isChecked():
             bouton.setChecked(True)
 
-    def accept(self):
-        _save_last_values("text", self._last_fields)
+    def _aligns_actuels(self):
+        """Alignement RÉEL de chaque ligne du document (une valeur par
+        bloc/paragraphe) -- partagé entre l'aperçu en direct et accept()."""
         aligns = []
         blk = self.txt.document().begin()
         while blk.isValid():
             aligns.append(_ALIGN_QT_INV.get(int(blk.blockFormat().alignment()), "left"))
             blk = blk.next()
+        return aligns
+
+    def _demander_apercu(self, *_args):
+        """Programme une régénération de l'aperçu 3D dans peu (anti-rebond :
+        chaque frappe redémarre le délai au lieu de l'empiler)."""
+        self._timer_apercu.start()
+
+    def _maj_apercu(self):
+        """Crée/met à jour l'objet « Texte… » dans le document pour qu'il
+        reflète EN DIRECT ce qui est tapé -- silencieux (texte vide = objet
+        vidé, pas une erreur tant que la fenêtre reste ouverte)."""
+        if FreeCAD.ActiveDocument is None:
+            return
+        self._obj, _err = core.create_single_line_text_object(
+            self.txt.toPlainText(), self.spn_height.value(),
+            self.spn_cspace.value(), self.spn_lspace.value(),
+            align=self._aligns_actuels(), obj=self._obj)
+
+    def accept(self):
+        self._timer_apercu.stop()
+        _save_last_values("text", self._last_fields)
         obj, err = core.create_single_line_text_object(
             self.txt.toPlainText(), self.spn_height.value(),
             self.spn_cspace.value(), self.spn_lspace.value(),
-            align=aligns)
+            align=self._aligns_actuels(), obj=self._obj)
+        self._obj = obj
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False
@@ -2942,6 +2980,13 @@ class TaskPanelText:
         return True
 
     def reject(self):
+        self._timer_apercu.stop()
+        if self._obj is not None and FreeCAD.ActiveDocument is not None:
+            try:
+                FreeCAD.ActiveDocument.removeObject(self._obj.Name)
+                FreeCAD.ActiveDocument.recompute()
+            except Exception:
+                pass  # déjà supprimé par ailleurs : rien à faire
         return True
 
 

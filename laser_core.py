@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.73.1"
+VERSION = "1.74.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1275,19 +1275,26 @@ def single_line_text_extent(text, height=10.0, char_spacing=0.0, line_spacing=1.
 
 
 def create_single_line_text_object(text, height=10.0, char_spacing=0.0,
-                                   line_spacing=1.6, align="left"):
-    """Crée dans le document un objet fil « TexteTraitSimple » (texte en
-    police mono-trait), à sélectionner puis graver avec Marquage. Renvoie
+                                   line_spacing=1.6, align="left", obj=None):
+    """Crée (ou met à jour si `obj` est fourni -- aperçu en direct pendant
+    la frappe, cf. TaskPanelText) un objet fil « TexteTraitSimple » (texte
+    en police mono-trait) dans le document, à sélectionner puis graver
+    avec Marquage. Texte vide ou sans caractère traçable : vide la forme
+    de `obj` (sans le supprimer) plutôt que d'échouer. Renvoie
     (objet, erreur)."""
     doc = FreeCAD.ActiveDocument
     if doc is None:
         return None, "Ouvre (ou crée) un document d'abord."
-    if not (text or "").strip():
-        return None, "Saisis un texte."
-    edges = single_line_text_to_edges(text, height, char_spacing, line_spacing, align=align)
+    edges = (single_line_text_to_edges(text, height, char_spacing, line_spacing, align=align)
+              if (text or "").strip() else [])
     if not edges:
-        return None, "Aucun caractère traçable dans ce texte."
-    obj = doc.addObject("Part::Feature", "TexteTraitSimple")
+        if obj is not None:
+            obj.Shape = Part.Compound([])
+            doc.recompute()
+        return obj, ("Saisis un texte." if not (text or "").strip()
+                     else "Aucun caractère traçable dans ce texte.")
+    if obj is None:
+        obj = doc.addObject("Part::Feature", "TexteTraitSimple")
     obj.Shape = Part.Compound(edges)
     premiere = next((l for l in text.splitlines() if l.strip()), "texte")
     obj.Label = "Texte « {} »".format(premiere.strip()[:24])
