@@ -38,10 +38,13 @@ class SvgParseError(ValueError):
 # A. GRAMMAIRE DU CHEMIN `d` (tokenizer + machine à états)
 # ==========================================================================
 
-# Tolérance d'aplatissement par défaut, en mm : même jugement « assez fin
-# pour un trait laser » que DISCRETIZE_DISTANCE de laser_core (constante
-# locale volontairement dupliquée pour garder ce module sans dépendance).
-FLATTEN_TOL_MM = 0.3
+# Tolérance d'aplatissement par défaut, en mm : c'est une FLÈCHE maximale
+# (écart corde/courbe), pas un espacement de points. 0,02 mm reste bien
+# sous la largeur de brûlure du trait (~0,1-0,2 mm au foyer) : aucun
+# facettage visible, même sur une grande courbe douce. Sans coût aval :
+# chain_edges re-densifie de toute façon les segments à 0,3 mm
+# d'espacement pour le G-code.
+FLATTEN_TOL_MM = 0.02
 
 _ARG_COUNT = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4,
               "Q": 4, "T": 2, "A": 7, "Z": 0}
@@ -334,7 +337,7 @@ def flatten_arc(cx, cy, rx, ry, phi, theta1, delta_theta, tol=FLATTEN_TOL_MM):
     max_step = 2.0 * math.acos(max(-1.0, min(1.0, 1.0 - tol / r)))
     if max_step < 1e-6:
         max_step = 1e-6
-    n = max(2, min(200, int(math.ceil(abs(delta_theta) / max_step))))
+    n = max(2, min(1000, int(math.ceil(abs(delta_theta) / max_step))))
     pts = []
     for k in range(1, n + 1):
         t = theta1 + delta_theta * k / n

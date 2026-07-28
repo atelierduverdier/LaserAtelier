@@ -164,7 +164,10 @@ Five modules, cleanly layered — keep the layering:
   stubbing at all; only the object-creation functions (`_subpath_to_edges`, `_record_to_object`,
   `import_svg_file`) import `FreeCAD`/`Part`, locally inside themselves. No true OCCT Bezier/Arc
   edges anywhere (matches the rest of the codebase): curves are flattened to short
-  `Part.LineSegment` chains (tolerance 0.3 mm, a local constant mirroring `DISCRETIZE_DISTANCE`).
+  `Part.LineSegment` chains. `FLATTEN_TOL_MM = 0.02` is a max chord DEVIATION (sagitta), not a
+  point spacing — well under the burn width, so no visible faceting even on large gentle curves;
+  and since `chain_edges` re-densifies segments at 0.3 mm spacing for G-code anyway, the finer
+  import fidelity costs nothing downstream.
   One `doc.recompute()` for the whole file — that's what makes it fast versus the fragmented DXF
   detour. `<use>`, gradients, `<clipPath>`/`<mask>`/`<filter>`, embedded raster `<image>`, and CSS
   class-selector cascading are out of scope — skipped with a collected `FreeCAD.Console.PrintWarning`,
