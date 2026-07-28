@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.72.0"
+VERSION = "1.73.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1202,10 +1202,12 @@ def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
     """Texte -> arêtes Part en police mono-trait. `height` = hauteur de
     capitale (mm) ; `char_spacing` = espace ajouté entre lettres (mm) ;
     `line_spacing` = interligne en multiples de la hauteur. `align` : "left"
-    (défaut, chaque ligne part de x0), "center"/"right" (chaque ligne calée
-    sur la plus large du bloc), ou "justify" (les espaces internes sont
-    étirés pour que chaque ligne atteigne la largeur de la plus longue --
-    sans effet sur une ligne d'un seul mot, faute d'espace à étirer).
+    (défaut, la ligne part de x0), "center"/"right" (calée sur la plus
+    large du bloc), ou "justify" (les espaces internes sont étirés pour
+    atteindre la largeur de la plus longue -- sans effet sur une ligne d'un
+    seul mot, faute d'espace à étirer) -- ou une LISTE d'un de ces mots par
+    ligne (alignement indépendant par ligne, comme un traitement de texte ;
+    une liste plus courte que le nombre de lignes complète en "left").
     L'alignement ne change jamais l'encombrement global (seule la position
     des lignes les plus courtes bouge à l'intérieur). Origine : ligne de
     base de la 1re ligne en (x0, y0) (lettres au-dessus), lignes suivantes
@@ -1221,16 +1223,20 @@ def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
     lines = text.replace("\r", "").split("\n")
     widths = [_mono_line_width(line, hf, scale, char_spacing) for line in lines]
     maxw = max(widths) if widths else 0.0
+    if isinstance(align, (list, tuple)):
+        aligns = list(align) + ["left"] * (len(lines) - len(align))
+    else:
+        aligns = [align] * len(lines)
     edges = []
     y_line = y0
-    for line, lw in zip(lines, widths):
+    for line, lw, al in zip(lines, widths, aligns):
         n_spaces = line.count(" ")
         extra = 0.0
-        if align == "center":
+        if al == "center":
             x = x0 + (maxw - lw) / 2.0
-        elif align == "right":
+        elif al == "right":
             x = x0 + (maxw - lw)
-        elif align == "justify" and n_spaces > 0 and lw < maxw - 1e-6:
+        elif al == "justify" and n_spaces > 0 and lw < maxw - 1e-6:
             x = x0
             extra = (maxw - lw) / n_spaces
         else:

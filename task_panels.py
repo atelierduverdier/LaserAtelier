@@ -2746,6 +2746,47 @@ def _make_shade_quick_add(form, get_material, titre=None, on_added=None):
 # ==========================================================================
 # MODE : TEXTE TRAIT SIMPLE (police mono-trait Hershey)
 # ==========================================================================
+def _pixmap_alignement(cle, taille=18):
+    """Petit pictogramme 4 barres (façon traitement de texte) pour un
+    bouton d'alignement -- dessiné directement, pas besoin d'un fichier
+    SVG à part pour 4 icônes aussi simples."""
+    pm = QtGui.QPixmap(taille, taille)
+    pm.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(pm)
+    p.setRenderHint(QtGui.QPainter.Antialiasing)
+    p.setPen(QtCore.Qt.NoPen)
+    p.setBrush(QtGui.QColor("#2f3540"))
+    marge = 2.0
+    h_barre = 2.2
+    pas = (taille - 2 * marge) / 4.0
+    largeur_pleine = taille - 2 * marge
+    y = marge
+    for i in range(4):
+        lw = largeur_pleine if (cle == "justify" or i % 2 == 0) else largeur_pleine * 0.6
+        if cle == "right":
+            x = taille - marge - lw
+        elif cle == "center":
+            x = marge + (largeur_pleine - lw) / 2.0
+        else:
+            x = marge
+        p.drawRoundedRect(QtCore.QRectF(x, y, lw, h_barre), 0.6, 0.6)
+        y += pas
+    p.end()
+    return pm
+
+
+# Alignement (mot-clé interne <-> drapeau Qt du bloc/paragraphe visé par
+# le curseur du QPlainTextEdit) -- partagé entre la barre de boutons et
+# accept() (qui relit l'alignement RÉEL de chaque ligne pour la gravure).
+_ALIGN_QT = {
+    "left": QtCore.Qt.AlignLeft,
+    "center": QtCore.Qt.AlignHCenter,
+    "right": QtCore.Qt.AlignRight,
+    "justify": QtCore.Qt.AlignJustify,
+}
+_ALIGN_QT_INV = {int(v): k for k, v in _ALIGN_QT.items()}
+
+
 class TaskPanelText:
     """Crée un texte en police MONO-TRAIT (trait simple) comme objet fil, à
     graver ensuite avec Marquage. Chaque lettre est dessinée d'un seul trait
@@ -2762,28 +2803,52 @@ class TaskPanelText:
         _intro(form,
                "Grave du texte en TRAIT SIMPLE : chaque lettre est dessinée "
                "d'un seul trait par branche (comme un traceur à plume), pas "
-               "en contour rempli.",
-               "OK crée un objet fil dans l'arbre ; place-le en X/Y, projette-le "
-               "sur une surface courbe si besoin, puis grave-le avec Marquage "
-               "(tous les styles, préréglages, job combiné). Police Hershey "
-               "Sans 1-stroke (domaine public).")
+               "en contour rempli -- police Hershey Sans 1-stroke (domaine "
+               "public).")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Tape le <b>texte</b> (Entrée = nouvelle ligne).",
-            "<b>2.</b> Règle la <b>hauteur</b> (des capitales), les espacements et "
-            "l'<b>alignement</b> entre les lignes (sans effet sur une seule ligne).",
-            "<b>3. OK</b> crée un objet «&nbsp;Texte…&nbsp;» dans l'arbre (coin "
+            "<b>2.</b> Place le curseur sur une ligne et clique un <b>bouton "
+            "d'alignement</b> (gauche/centre/droite/justifié) pour la caler "
+            "indépendamment des autres, comme dans un traitement de texte.",
+            "<b>3.</b> Règle la <b>hauteur</b> (des capitales) et les espacements.",
+            "<b>4. OK</b> crée un objet «&nbsp;Texte…&nbsp;» dans l'arbre (coin "
             "bas-gauche à l'origine).",
-            "<b>4.</b> Sélectionne-le et ouvre <b>Marquage</b> pour le graver "
+            "<b>5.</b> Sélectionne-le et ouvre <b>Marquage</b> pour le graver "
             "(place-le d'abord, ou projette-le sur une surface courbe).",
         ])
 
         _section(form, "Texte", "sect_labels.svg")
+        barre_align = QtWidgets.QHBoxLayout()
+        barre_align.setSpacing(4)
+        self._boutons_align = {}
+        self._groupe_align = QtWidgets.QButtonGroup()
+        self._groupe_align.setExclusive(True)
+        for cle, titre in (
+                ("left", "Aligner cette ligne à gauche"),
+                ("center", "Centrer cette ligne"),
+                ("right", "Aligner cette ligne à droite"),
+                ("justify", "Justifier cette ligne (étire les espaces internes "
+                 "-- sans effet sur une ligne d'un seul mot, faute d'espace "
+                 "à étirer)")):
+            b = QtWidgets.QToolButton()
+            b.setCheckable(True)
+            b.setIcon(QtGui.QIcon(_pixmap_alignement(cle)))
+            b.setToolTip(titre)
+            b.clicked.connect(lambda _chk, c=cle: self._appliquer_alignement(c))
+            self._groupe_align.addButton(b)
+            barre_align.addWidget(b)
+            self._boutons_align[cle] = b
+        self._boutons_align["left"].setChecked(True)
+        barre_align.addStretch(1)
+        form.addRow("Alignement :", barre_align)
+
         self.txt = QtWidgets.QPlainTextEdit()
         self.txt.setPlaceholderText("Texte à graver (Entrée = nouvelle ligne)")
         self.txt.setMaximumHeight(90)
         self.txt.setPlainText("Atelier")
+        self.txt.cursorPositionChanged.connect(self._sync_boutons_align)
         form.addRow(self.txt)
 
         _section(form, "Dimensions", "sect_zheight.svg")
@@ -2813,16 +2878,6 @@ class TaskPanelText:
         self.spn_lspace.setToolTip("Interligne, en multiples de la hauteur.")
         form.addRow("Interligne (× hauteur) :", self.spn_lspace)
 
-        self.combo_align = QtWidgets.QComboBox()
-        self.combo_align.addItems(["Gauche", "Centré", "Droite", "Justifié"])
-        self.combo_align.setToolTip(
-            "Calage horizontal des lignes entre elles (sans effet sur un "
-            "texte à une seule ligne).\n« Justifié » étire les espaces "
-            "internes pour que chaque ligne atteigne la largeur de la "
-            "plus longue -- sans effet sur une ligne d'un seul mot, "
-            "faute d'espace à étirer.")
-        form.addRow("Alignement :", self.combo_align)
-
         self.lbl_info = _WrapLabel("")
         form.addRow(self.lbl_info)
         for w in (self.spn_height, self.spn_cspace, self.spn_lspace):
@@ -2830,8 +2885,7 @@ class TaskPanelText:
         self.txt.textChanged.connect(self._update_info)
 
         self._last_fields = {"text": self.txt, "height": self.spn_height,
-                             "cspace": self.spn_cspace, "lspace": self.spn_lspace,
-                             "align": self.combo_align}
+                             "cspace": self.spn_cspace, "lspace": self.spn_lspace}
         _restore_last_values("text", self._last_fields)
 
         self.form = _scrollable(inner)
@@ -2847,14 +2901,37 @@ class TaskPanelText:
             "Encombrement : {:.1f} × {:.1f} mm.".format(w, h) if w > 0
             else "Saisis un texte.")
 
-    _ALIGN_VALUES = ("left", "center", "right", "justify")
+    def _appliquer_alignement(self, cle):
+        """Applique l'alignement `cle` au(x) paragraphe(s) touché(s) par le
+        curseur/la sélection courante -- comme le bouton d'alignement d'un
+        traitement de texte, PAS un réglage global pour tout le bloc."""
+        curseur = self.txt.textCursor()
+        fmt = QtGui.QTextBlockFormat()
+        fmt.setAlignment(_ALIGN_QT[cle])
+        curseur.mergeBlockFormat(fmt)
+        self.txt.setTextCursor(curseur)
+        self.txt.setFocus()
+
+    def _sync_boutons_align(self):
+        """Reflète dans la barre l'alignement RÉEL de la ligne où se trouve
+        le curseur (déplacement au clic/aux flèches -- pas seulement après
+        un clic sur un bouton)."""
+        al = int(self.txt.textCursor().blockFormat().alignment())
+        bouton = self._boutons_align.get(_ALIGN_QT_INV.get(al, "left"))
+        if bouton is not None and not bouton.isChecked():
+            bouton.setChecked(True)
 
     def accept(self):
         _save_last_values("text", self._last_fields)
+        aligns = []
+        blk = self.txt.document().begin()
+        while blk.isValid():
+            aligns.append(_ALIGN_QT_INV.get(int(blk.blockFormat().alignment()), "left"))
+            blk = blk.next()
         obj, err = core.create_single_line_text_object(
             self.txt.toPlainText(), self.spn_height.value(),
             self.spn_cspace.value(), self.spn_lspace.value(),
-            align=self._ALIGN_VALUES[self.combo_align.currentIndex()])
+            align=aligns)
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False
