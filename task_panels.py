@@ -5215,21 +5215,16 @@ class TaskPanelOffsetTest:
                "Job MIXTE fraise + laser : fraise une croix sur X0 Y0, puis "
                "grave une croix laser au même X0 Y0 programmé. L'écart mesuré "
                "entre les deux croix = l'erreur d'offsets X/Y du T{} dans "
-               "tool.tbl. Lunettes laser obligatoires.".format(int(core.LASER_TOOL)),
-               "Correction : X_nouveau = X_actuel - dX (idem Y), avec dX = X "
-               "laser - X fraisé (écarts signés, sens machine). AVANT de "
-               "lancer : chute de bois sur le martyre (prévoir LARGE si un "
-               "signe d'offset est faux), fraise à graver montée à la main, "
-               "zéro X/Y à l'oeil au centre de la chute. Monter la glissière "
-               "laser pendant la pause du 2e changement d'outil. Aucune "
-               "sélection requise.")
+               "tool.tbl. Lunettes laser obligatoires.".format(int(core.LASER_TOOL)))
         _diagram(form, "diag_offset.svg")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1. Sécurité</b>&nbsp;: <b>lunettes laser obligatoires</b>. Chute "
-            "de bois sur le martyre (prévoir large), fraise à graver montée à la "
-            "main, zéro X/Y à l'œil au centre de la chute. Aucune sélection.",
+            "de bois sur le martyre, <b>prévoir large</b> (si un signe d'offset "
+            "est faux, la croix laser peut partir loin) ; fraise à graver "
+            "montée à la main, zéro X/Y à l'œil au centre de la chute. Aucune "
+            "sélection.",
             "<b>2. Croix (géométrie)</b>&nbsp;: taille des bras de la croix.",
             "<b>3. Croix fraisée / Croix laser</b>&nbsp;: profondeur et vitesse "
             "de la fraise, puissance et vitesse du laser.",
