@@ -3877,7 +3877,7 @@ class TaskPanelFilledEngraving:
                         power, self.spn_fill_feed.value(), defocus, self._materiau())
                     if burn:
                         fill_width = min(spot, burn)
-                    self._maj_recouvrement(burn, power, spacing)
+                    self._maj_recouvrement(burn, power, spacing, defocus)
                 else:
                     self._maj_recouvrement(None, None, spacing, decoratif=True)
                 inset = self._fill_inset(fill_width, half_angle)
@@ -4163,7 +4163,7 @@ class TaskPanelFilledEngraving:
         # nom de matériau.
         return picker["mat"].currentData() or None
 
-    def _maj_recouvrement(self, burn, power, spacing, decoratif=False):
+    def _maj_recouvrement(self, burn, power, spacing, defocus=0.0, decoratif=False):
         """Met à jour le message « le remplissage sera-t-il PLEIN ? » --
         la première question que pose une planche gravée. Compare le trait
         RÉELLEMENT brûlé (planche de calibration) au pas de hachure : s'il
@@ -4204,7 +4204,7 @@ class TaskPanelFilledEngraving:
                "hachures seront resserrées à {:.2f} mm, ce qui multiplie la "
                "durée par {:.1f}.".format(burn, power, spacing, burn,
                                           spacing / max(burn, 1e-9)))
-        sugg = core.reglage_couvrant_le_pas(spacing, mat)
+        sugg = core.reglage_couvrant_le_pas(spacing, mat, defocus)
         if sugg:
             msg += (" Mieux : S{:.0f} / F{:.0f} brûle {:.2f} mm et couvre le pas "
                     "sans resserrer.".format(sugg["power"], sugg["feed"],

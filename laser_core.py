@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.80.0"
+VERSION = "1.80.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4479,14 +4479,23 @@ def burn_width_focus_max(material=None):
     return max(float(p["width"]) for p in pts) if pts else None
 
 
-def reglage_couvrant_le_pas(spacing, material=None):
-    """Le réglage MESURÉ au foyer le plus RAPIDE dont la brûlure couvre un
-    pas de hachure de `spacing` mm -- la vraie réponse à un remplissage
-    rayé. Quand le trait brûlé est plus étroit que le pas, l'atelier sait
-    resserrer les hachures, mais cela rallonge le job d'autant ; graver un
-    trait assez LARGE pour que deux passes voisines se rejoignent est
-    presque toujours meilleur (plus rapide ET plus noir, la largeur venant
-    d'une puissance plus forte).
+def reglage_couvrant_le_pas(spacing, material=None, defocus=0.0):
+    """Le réglage MESURÉ le plus RAPIDE dont la brûlure couvre un pas de
+    hachure de `spacing` mm AU DÉFOCUS DE TRAVAIL -- la vraie réponse à un
+    remplissage rayé. Quand le trait brûlé est plus étroit que le pas,
+    l'atelier sait resserrer les hachures, mais cela rallonge le job
+    d'autant ; graver un trait assez LARGE pour que deux passes voisines se
+    rejoignent est presque toujours meilleur (plus rapide ET plus noir, la
+    largeur venant d'une puissance plus forte).
+
+    Le défocus compte : c'est l'espacement demandé qui le fixe (un pas de
+    0,90 mm fait remonter le bec de 13 mm), et un trait qui ne fait que
+    0,30 mm au foyer en fait 1,0 à ce défocus-là. On ne propose donc que
+    des couples (S, F) réellement mesurés au niveau de défocus le PLUS
+    PROCHE du défocus de travail -- section 1 de la planche près du foyer,
+    section 2 au-delà -- puis on les évalue avec le même interpolateur que
+    le verdict, pour que suggestion et verdict ne puissent pas se
+    contredire.
 
     Renvoie {"power", "feed", "width"}, ou None si aucune mesure du
     matériau ne couvre ce pas -- il faut alors resserrer les hachures, ou
@@ -4494,15 +4503,24 @@ def reglage_couvrant_le_pas(spacing, material=None):
     mat = _burn_width_material(material)
     if not mat:
         return None
-    couvrants = [p for p in (load_burn_widths(mat).get("focus") or [])
-                 if float(p.get("width") or 0.0) >= spacing - 1e-9]
+    table = load_burn_widths(mat)
+    niveaux = sorted({round(float(p.get("z_offset", 0.0) or 0.0), 3)
+                      for p in (table.get("defocus") or [])
+                      if float(p.get("z_offset", 0.0) or 0.0) > 0})
+    d = float(defocus or 0.0)
+    pres_du_foyer = not niveaux or abs(d) <= min(abs(d - z) for z in niveaux)
+    source = (table.get("focus") if pres_du_foyer else table.get("defocus")) or []
+    couvrants = []
+    for s, f in sorted({(float(p["power"]), float(p["feed"])) for p in source}):
+        w = burn_width_defocus_scaled(s, f, d, mat)
+        if w is not None and w >= spacing - 1e-9:
+            couvrants.append((s, f, w))
     if not couvrants:
         return None
     # Le plus rapide d'abord (job le plus court) ; à vitesse égale, la
     # puissance la plus faible (moins de chaleur déposée hors du trait).
-    best = max(couvrants, key=lambda p: (float(p["feed"]), -float(p["power"])))
-    return {"power": float(best["power"]), "feed": float(best["feed"]),
-            "width": float(best["width"])}
+    s, f, w = max(couvrants, key=lambda t: (t[1], -t[0]))
+    return {"power": s, "feed": f, "width": w}
 
 
 def shade_for_darkness(material, target_pct):

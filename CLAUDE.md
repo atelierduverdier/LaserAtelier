@@ -326,7 +326,11 @@ The same panel now answers "will this fill be **solid**?" out loud: `_maj_recouv
 measured burn to the hatch spacing and colours `lbl_recouvrement` green (covered) or amber (striped).
 When it's striped it names the cost of the automatic tightening *and* suggests the fastest measured
 setting whose trace covers the spacing (`core.reglage_couvrant_le_pas`) — widening the trace is
-almost always better than tripling the line count. Decorative fill styles (dashes, dots, wave) skip
+almost always better than tripling the line count. That search is **defocus-aware** (v1.80.1): the
+spacing itself sets the defocus (0.90 mm spacing → 13 mm of lift), and a trace that measures 0.30 mm
+at focus measures 1.0 mm up there, so candidates are the (S, F) couples measured at the level
+*nearest the working defocus* — focus table near zero, defocus table beyond — then scored with the
+same interpolator as the verdict, so suggestion and verdict can never contradict each other. Decorative fill styles (dashes, dots, wave) skip
 the check: their gaps are the point.
 
 ### Persistence & user settings
