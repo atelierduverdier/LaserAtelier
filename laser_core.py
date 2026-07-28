@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.81.0"
+VERSION = "1.81.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3343,7 +3343,13 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                 lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(
                     x, y, to_machine_z(z_local) + marge_survol))
 
-        lines.append("G0 Z{:.4f}".format(to_machine_z(p0.z)))
+        # Style "degrade" : l'approche doit déjà inclure le décalage du
+        # PREMIER point -- sinon le premier G1 (faisceau allumé, juste
+        # après) saute d'un coup de Z natif à Z natif + deg_dz(p1) sur
+        # ~DISCRETIZE_DISTANCE de déplacement XY, au lieu d'une transition
+        # douce comme "vague" (qui, lui, part toujours de dz=0).
+        z0_deg = deg_dz(p0) if style == "degrade" and deg_dz is not None else 0.0
+        lines.append("G0 Z{:.4f}".format(to_machine_z(p0.z) + z0_deg))
 
         if not state_armed:
             lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
@@ -5652,8 +5658,33 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
             if not uniq or abs(p - uniq[-1]) > max(span * 0.02, 1e-6):
                 uniq.append(p)
 
+        # Position réelle du palier -- la trajectoire de puissance est un
+        # ESCALIER (S posé au début de chaque bloc G1, cf. la boucle de
+        # gravure plus bas, et tenu constant jusqu'à la fin du bloc), pas
+        # une rampe continue : une interpolation linéaire sur toute la
+        # longueur (comme avant) place la graduation dans un palier plus
+        # FAIBLE que celui réellement gravé à cet endroit -- même défaut
+        # que celui déjà corrigé pour la graduation Z ci-dessous, dont on
+        # reprend ici le principe (reconstruire les vrais points de
+        # rupture plutôt qu'une formule séparée).
+        paliers_s = [(0.0, power_min)]
+        for k in range(n_steps):
+            t = k / float(n_steps - 1)
+            paliers_s.append((line_length * (k + 1) / float(n_steps),
+                              power_min + (power_max - power_min) * t))
+
+        def _x_pour_power(p_val, _pts=paliers_s):
+            if abs(p_val - power_min) < 1e-9:
+                return 0.0
+            if abs(p_val - power_max) < 1e-9:
+                return line_length
+            for (x0, _), (_, p1) in zip(_pts, _pts[1:]):
+                if p1 >= p_val - 1e-9:
+                    return x0
+            return line_length
+
         for p in uniq:
-            x_tick = 0.0 if span <= 0 else line_length * (p - power_min) / span
+            x_tick = _x_pour_power(p)
             # trait de graduation vertical
             label_chains.append([FreeCAD.Vector(x_tick, tick_top, 0.0),
                                  FreeCAD.Vector(x_tick, tick_top - tick_len, 0.0)])
@@ -6403,7 +6434,13 @@ def _operation_intrinsic_safe_z(op_type, params):
         z_min = min(p.z for p in all_pts)
         z_max = max(p.z for p in all_pts)
         z_offset = params.get("z_focus", 0.0) - z_min
-        return z_max + z_offset + params.get("marge_survol", 0.0) + 5.0
+        # Manquait : le style "vague" grave plus haut de wave_amplitude
+        # (cf. generate_gcode_curved) -- sans ce terme, une opération de
+        # Marquage en Vague pouvait imposer un plancher trop bas au reste
+        # du job combiné.
+        style_params = params.get("style_params") or {}
+        wave_amp = style_params.get("wave_amplitude", 0.0) if params.get("style") == "vague" else 0.0
+        return z_max + z_offset + wave_amp + params.get("marge_survol", 0.0) + 5.0
     if op_type == "filled":
         # Même formule que generate_gcode_filled_engraving (version légère).
         fill_edges = params.get("fill_edges") or []

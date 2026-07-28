@@ -271,7 +271,11 @@ string or `None`** (None = empty geometry). Shared conventions:
 - **`body_only=True`** omits header/arming/footer so a body can be embedded in a combined job with a
   single arm/disarm (see `generate_gcode_combined`). **`frame_only=True`** emits only the bounding
   rectangle (a separate framing-check file). **`min_safe_z`** imposes a common retract floor so
-  stacked operations don't plunge at the wrong height (`_operation_intrinsic_safe_z`).
+  stacked operations don't plunge at the wrong height (`_operation_intrinsic_safe_z`). Its
+  `"curved"`/`"curved_cut"` branch must mirror `generate_gcode_curved`'s OWN safe-Z formula exactly,
+  term for term — it forgot `wave_amplitude` until v1.81.1 (present in the `"filled"` branch right
+  below it, added when that mode got the same style), so a Marquage "vague" operation in a combined
+  job could impose too low a floor on the OTHER operations sharing that job.
 - **`TRAVEL_CLEARANCE_MM`** is the flyover margin over the work Z for transits. On flat work it should
   be small/0 — lifting per hatch line is the classic wasteful bug; transit at the working Z, laser off.
 - **Stepped-ramp generators** (`generate_gcode_power_ramp_lines`, defocus calibration band) draw
@@ -282,7 +286,10 @@ string or `None`** (None = empty geometry). Shared conventions:
   tick one step early/late. Reconstruct the `(x, value)` breakpoints exactly like the generation
   loop and interpolate within those, and check the result against an actually-generated `.ngc` file
   — a headless test that only re-derives the same formula will pass while still being wrong (bug
-  fixed in v1.71.5 after the user caught it on a real file).
+  fixed in v1.71.5 after the user caught it on a real file, for the Z tick only — the POWER tick in
+  `generate_gcode_power_ramp_lines` kept the naive continuous formula until v1.81.1, since power is
+  a STEP function, not a ramp: S is set once per G1 block and held for the whole segment, so the fix
+  there finds the first real breakpoint whose power reaches the target rather than interpolating).
 
 ### Defocus model (used by filled-engraving, defocus fill, calibration)
 
@@ -454,7 +461,12 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
 - Nuancier interpolation: `darkness_fluence_curve(material)` (defocused tones only, isotonic/PAVA
   smoothing), `fluence_for_darkness`, `feed_for_custom_shade` — used by Marquage's "ton sur mesure"
   and the calibrated photo modes. Marquage also has style `"degrade"` (linear defocus along a
-  direction, `deg_angle`/`deg_z_min`/`deg_z_max` in style_params).
+  direction, `deg_angle`/`deg_z_min`/`deg_z_max` in style_params) — the offset is a projection over
+  ALL chains together (not reset per chain, unlike `"vague"`'s explicit dz=0 at each chain's start),
+  so `generate_gcode_curved` must approach each chain's first point ALREADY at its `deg_dz` offset
+  (v1.81.1 fix) — otherwise the first beam-on move jumps from the native height straight to the
+  offset one over a single `DISCRETIZE_DISTANCE` step, burning a stationary mark at the start of
+  every chain that doesn't happen to begin at the projection's zero end.
 - **MACHINE CONSTRAINT (critical): never emit a G4 dwell with beam on.** The user's HAL scales laser
   power by real/requested velocity → at standstill power is forced to 0, so G4-pulse dots engrave
   NOTHING. All dot-like marks must be micro-strokes (short G1 whose feed reproduces the exposure
