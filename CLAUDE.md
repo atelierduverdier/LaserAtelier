@@ -281,15 +281,27 @@ plus `.` and `-`) so labels ("S400", "8.25") need no external font file. Extend 
 
 ### Single-line (monoline) text font
 
-Distinct from the 7-segment label font: a full **single-stroke** vector font for engraving text as
+Distinct from the 7-segment label font: full **single-stroke** vector fonts for engraving text as
 proper "stick" letters (one stroke per branch, like a pen plotter) — the right tool when the medial
-axis can't help (holed letters). Data lives in **`hershey_font.py`** (`GLYPHES[char] = (adv, [strokes])`
-in font units, baseline y=0, `CAP_HEIGHT` ≈ 662), a generated blob of the public-domain **Hershey Sans
-1-stroke** font (216 glyphs incl. lowercase + French accents; keep the Hershey credit). Core:
-`single_line_text_to_edges(text, height, char_spacing, line_spacing)` (height = cap height) and
-`create_single_line_text_object(...)`; the **Texte (trait simple)** mode (`TaskPanelText`) creates a
-`Part::Feature` wire in the tree to engrave with **Marquage** (reuses styles/curved/presets). To add
-glyphs, regenerate `hershey_font.py` from the source SVG font rather than hand-editing.
+axis can't help (holed letters). Several fonts are available (registry `HERSHEY_FONTS` in
+`laser_core.py`, key → display label), each a sibling data module `hershey_font[_clé].py`
+(`GLYPHES[char] = (adv, [strokes])` in font units, baseline y=0, `CAP_HEIGHT` ≈ 662) generated from
+a public-domain **Hershey** SVG font (keep the credit in each module's docstring) — `hershey_font.py`
+(no suffix) is the historic default, "Hershey Sans 1-stroke" ("sans"); `hershey_font_script.py` adds
+"Hershey Script 1-stroke" ("script", cursive). Only genuinely single-stroke Hershey variants belong
+here — most "Med"/"Bold"/"Serif" Hershey variants actually draw each stroke TWICE (duplex/outline,
+for a bolder plotted look) and defeat the point of this mode; check a reference glyph's path for a
+low, non-doubled stroke count before adding one. `_hershey_module(font)` resolves a registry key to
+its data module (silent fallback to "sans" on an unknown key or import failure). Core:
+`single_line_text_to_edges(text, height, char_spacing, line_spacing, font="sans")` (height = cap
+height) and `create_single_line_text_object(...)`; the **Texte (trait simple)** mode
+(`TaskPanelText`) creates a `Part::Feature` wire in the tree to engrave with **Marquage** (reuses
+styles/curved/presets). To add a font, generate a new `hershey_font_<clé>.py` sibling module from
+the source SVG font (same structure — don't hand-edit) and register it in `HERSHEY_FONTS`; to add
+glyphs to an existing font, regenerate its module rather than hand-editing. Known pre-existing gap in
+the shipped `hershey_font.py`: a handful of glyphs (ç, Ç, ß, £, ı, İ, æ, Æ…) are present in `GLYPHES`
+but with an empty stroke list — the original generator dropped curve-only glyphs instead of keeping
+their parseable subpaths — so they render as invisible blanks; not yet fixed.
 
 ### Photo engraving & nuancier-driven tone (July 2026)
 

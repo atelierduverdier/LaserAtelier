@@ -2803,7 +2803,7 @@ class TaskPanelText:
         _intro(form,
                "Grave du texte en TRAIT SIMPLE : chaque lettre est dessinée "
                "d'un seul trait par branche (comme un traceur à plume), pas "
-               "en contour rempli -- police Hershey Sans 1-stroke (domaine "
+               "en contour rempli -- polices Hershey mono-trait (domaine "
                "public).")
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
@@ -2813,7 +2813,8 @@ class TaskPanelText:
             "<b>2.</b> Place le curseur sur une ligne et clique un <b>bouton "
             "d'alignement</b> (gauche/centre/droite/justifié) pour la caler "
             "indépendamment des autres, comme dans un traitement de texte.",
-            "<b>3.</b> Règle la <b>hauteur</b> (des capitales) et les espacements.",
+            "<b>3.</b> Choisis une <b>police</b> et règle la <b>hauteur</b> "
+            "(des capitales) et les espacements.",
             "<b>4. OK</b> garde l'objet «&nbsp;Texte…&nbsp;» dans l'arbre "
             "(coin bas-gauche à l'origine) ; <b>Annuler</b> le supprime.",
             "<b>5.</b> Sélectionne-le et ouvre <b>Marquage</b> pour le graver "
@@ -2844,6 +2845,13 @@ class TaskPanelText:
         self._boutons_align["left"].setChecked(True)
         barre_align.addStretch(1)
         form.addRow("Alignement :", barre_align)
+
+        self.combo_font = QtWidgets.QComboBox()
+        for cle, libelle in core.HERSHEY_FONTS.items():
+            self.combo_font.addItem(libelle, cle)
+        self.combo_font.setToolTip(
+            "Police mono-trait (un seul passage de plume par branche).")
+        form.addRow("Police :", self.combo_font)
 
         # Réglages de dimension juste à côté des icônes d'alignement --
         # tout ce qui règle l'ASPECT du texte regroupé au même endroit,
@@ -2897,11 +2905,14 @@ class TaskPanelText:
         for w in (self.spn_height, self.spn_cspace, self.spn_lspace):
             w.valueChanged.connect(self._update_info)
             w.valueChanged.connect(self._demander_apercu)
+        self.combo_font.currentIndexChanged.connect(self._update_info)
+        self.combo_font.currentIndexChanged.connect(self._demander_apercu)
         self.txt.textChanged.connect(self._update_info)
         self.txt.textChanged.connect(self._demander_apercu)
 
         self._last_fields = {"text": self.txt, "height": self.spn_height,
-                             "cspace": self.spn_cspace, "lspace": self.spn_lspace}
+                             "cspace": self.spn_cspace, "lspace": self.spn_lspace,
+                             "font": self.combo_font}
         _restore_last_values("text", self._last_fields)
 
         self.form = _scrollable(inner)
@@ -2913,7 +2924,8 @@ class TaskPanelText:
     def _update_info(self):
         w, h = core.single_line_text_extent(
             self.txt.toPlainText(), self.spn_height.value(),
-            self.spn_cspace.value(), self.spn_lspace.value())
+            self.spn_cspace.value(), self.spn_lspace.value(),
+            font=self.combo_font.currentData())
         self.lbl_info.setText(
             "Encombrement : {:.1f} × {:.1f} mm.".format(w, h) if w > 0
             else "Saisis un texte.")
@@ -2963,7 +2975,8 @@ class TaskPanelText:
         self._obj, _err = core.create_single_line_text_object(
             self.txt.toPlainText(), self.spn_height.value(),
             self.spn_cspace.value(), self.spn_lspace.value(),
-            align=self._aligns_actuels(), obj=self._obj)
+            align=self._aligns_actuels(), obj=self._obj,
+            font=self.combo_font.currentData())
 
     def accept(self):
         self._timer_apercu.stop()
@@ -2971,7 +2984,8 @@ class TaskPanelText:
         obj, err = core.create_single_line_text_object(
             self.txt.toPlainText(), self.spn_height.value(),
             self.spn_cspace.value(), self.spn_lspace.value(),
-            align=self._aligns_actuels(), obj=self._obj)
+            align=self._aligns_actuels(), obj=self._obj,
+            font=self.combo_font.currentData())
         self._obj = obj
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)

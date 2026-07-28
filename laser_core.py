@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.74.1"
+VERSION = "1.75.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1185,6 +1185,36 @@ def chain_edges(edges, distance=DISCRETIZE_DISTANCE, tolerance=CHAIN_TOLERANCE):
 # public). On produit des arêtes Part que l'utilisateur grave ensuite avec
 # le mode Marquage (styles, suivi de surface, préréglages, job combiné).
 
+# Polices mono-trait disponibles (clé interne -> libellé affiché). Chacune
+# vit dans son propre module hershey_font[_clé].py (même structure : GLYPHES/
+# CAP_HEIGHT/ADV_DEFAULT), généré depuis la police SVG Hershey correspondante
+# -- voir hershey_font.py pour la provenance. "sans" est le défaut historique ;
+# n'ajouter ici que des polices réellement MONO-TRAIT (un seul passage de
+# plume) -- la plupart des variantes Hershey "Med"/"Bold"/"Serif" dessinent
+# en fait CHAQUE trait en double (façon contour) et ne conviennent pas à ce
+# mode, qui a précisément pour but de l'éviter.
+HERSHEY_FONTS = {
+    "sans": "Hershey Sans (bâton, défaut)",
+    "script": "Hershey Script (cursive)",
+}
+
+
+def _hershey_module(font):
+    """Module de données (GLYPHES/CAP_HEIGHT/ADV_DEFAULT) pour la police
+    mono-trait `font` (clé de HERSHEY_FONTS). Repli silencieux sur la
+    police par défaut si la clé est inconnue ou son module introuvable ;
+    si la police par défaut elle-même est introuvable, l'exception remonte
+    (les appelants savent déjà l'afficher proprement)."""
+    import importlib
+    nom = "hershey_font_" + font if font and font != "sans" else "hershey_font"
+    try:
+        return importlib.import_module(nom)
+    except Exception:
+        if font != "sans":
+            return _hershey_module("sans")
+        raise
+
+
 def _mono_line_width(line, hf, scale, char_spacing):
     """Largeur (mm) d'UNE ligne de texte mono-trait -- factorisé pour que
     single_line_text_to_edges et single_line_text_extent ne dupliquent pas
@@ -1198,22 +1228,23 @@ def _mono_line_width(line, hf, scale, char_spacing):
 
 def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
                               line_spacing=1.6, z=0.0, x0=0.0, y0=0.0,
-                              align="left"):
+                              align="left", font="sans"):
     """Texte -> arêtes Part en police mono-trait. `height` = hauteur de
     capitale (mm) ; `char_spacing` = espace ajouté entre lettres (mm) ;
-    `line_spacing` = interligne en multiples de la hauteur. `align` : "left"
-    (défaut, la ligne part de x0), "center"/"right" (calée sur la plus
-    large du bloc), ou "justify" (les espaces internes sont étirés pour
-    atteindre la largeur de la plus longue -- sans effet sur une ligne d'un
-    seul mot, faute d'espace à étirer) -- ou une LISTE d'un de ces mots par
-    ligne (alignement indépendant par ligne, comme un traitement de texte ;
-    une liste plus courte que le nombre de lignes complète en "left").
-    L'alignement ne change jamais l'encombrement global (seule la position
-    des lignes les plus courtes bouge à l'intérieur). Origine : ligne de
-    base de la 1re ligne en (x0, y0) (lettres au-dessus), lignes suivantes
-    en dessous. Renvoie [] si la police est absente ou le texte vide."""
+    `line_spacing` = interligne en multiples de la hauteur ; `font` = clé de
+    HERSHEY_FONTS. `align` : "left" (défaut, la ligne part de x0),
+    "center"/"right" (calée sur la plus large du bloc), ou "justify" (les
+    espaces internes sont étirés pour atteindre la largeur de la plus
+    longue -- sans effet sur une ligne d'un seul mot, faute d'espace à
+    étirer) -- ou une LISTE d'un de ces mots par ligne (alignement
+    indépendant par ligne, comme un traitement de texte ; une liste plus
+    courte que le nombre de lignes complète en "left"). L'alignement ne
+    change jamais l'encombrement global (seule la position des lignes les
+    plus courtes bouge à l'intérieur). Origine : ligne de base de la 1re
+    ligne en (x0, y0) (lettres au-dessus), lignes suivantes en dessous.
+    Renvoie [] si la police est absente ou le texte vide."""
     try:
-        import hershey_font as hf
+        hf = _hershey_module(font)
     except Exception:
         FreeCAD.Console.PrintError(
             "Police mono-trait indisponible (hershey_font.py manquant).\n")
@@ -1258,12 +1289,13 @@ def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
     return edges
 
 
-def single_line_text_extent(text, height=10.0, char_spacing=0.0, line_spacing=1.6):
+def single_line_text_extent(text, height=10.0, char_spacing=0.0, line_spacing=1.6,
+                            font="sans"):
     """(largeur_mm, hauteur_mm) approximative du texte mono-trait, sans
     construire d'arêtes -- pour l'aperçu d'encombrement du panneau. Valable
     quel que soit l'alignement (qui ne change pas l'encombrement global)."""
     try:
-        import hershey_font as hf
+        hf = _hershey_module(font)
     except Exception:
         return 0.0, 0.0
     scale = float(height) / float(hf.CAP_HEIGHT)
@@ -1275,17 +1307,19 @@ def single_line_text_extent(text, height=10.0, char_spacing=0.0, line_spacing=1.
 
 
 def create_single_line_text_object(text, height=10.0, char_spacing=0.0,
-                                   line_spacing=1.6, align="left", obj=None):
+                                   line_spacing=1.6, align="left", obj=None,
+                                   font="sans"):
     """Crée (ou met à jour si `obj` est fourni -- aperçu en direct pendant
     la frappe, cf. TaskPanelText) un objet fil « TexteTraitSimple » (texte
-    en police mono-trait) dans le document, à sélectionner puis graver
-    avec Marquage. Texte vide ou sans caractère traçable : vide la forme
-    de `obj` (sans le supprimer) plutôt que d'échouer. Renvoie
-    (objet, erreur)."""
+    en police mono-trait `font`, clé de HERSHEY_FONTS) dans le document, à
+    sélectionner puis graver avec Marquage. Texte vide ou sans caractère
+    traçable : vide la forme de `obj` (sans le supprimer) plutôt que
+    d'échouer. Renvoie (objet, erreur)."""
     doc = FreeCAD.ActiveDocument
     if doc is None:
         return None, "Ouvre (ou crée) un document d'abord."
-    edges = (single_line_text_to_edges(text, height, char_spacing, line_spacing, align=align)
+    edges = (single_line_text_to_edges(text, height, char_spacing, line_spacing,
+                                       align=align, font=font)
               if (text or "").strip() else [])
     if not edges:
         if obj is not None:
