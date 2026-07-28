@@ -2641,12 +2641,16 @@ def _make_shade_picker(form, on_apply):
             combo_shade.addItem("-- (aucun ton) --", None)
         n = len(core.result_photos("nuancier:" + m)) if m else 0
         btn_photo.setEnabled(n > 0)
-        btn_photo.setToolTip(
-            "{} photo{} de la planche gravée pour ce matériau -- voir le "
-            "rendu réel avant d'appliquer un ton.".format(n, "s" if n > 1 else "")
-            if n else
-            "Aucune photo enregistrée pour ce matériau (mode Nuancier, "
-            "section Photo du résultat).")
+        if n == 1:
+            tip = ("1 photo de la planche gravée pour ce matériau -- voir "
+                   "le rendu réel avant d'appliquer un ton.")
+        elif n > 1:
+            tip = ("{} photos de la planche gravée pour ce matériau -- "
+                   "clique pour choisir laquelle voir.".format(n))
+        else:
+            tip = ("Aucune photo enregistrée pour ce matériau (mode "
+                   "Nuancier, section Photo du résultat).")
+        btn_photo.setToolTip(tip)
 
     def _reload():
         combo_mat.blockSignals(True)
@@ -2670,10 +2674,25 @@ def _make_shade_picker(form, on_apply):
     def _on_photo():
         m = combo_mat.currentData()
         photos = core.result_photos("nuancier:" + m) if m else []
-        if photos:
-            img = QtGui.QImage(photos[0]["path"])
+        if not photos:
+            return
+
+        def _show(p):
+            img = QtGui.QImage(p["path"])
             if not img.isNull():
                 _show_image_dialog(img, "Photo du nuancier -- {}".format(m))
+
+        if len(photos) == 1:
+            _show(photos[0])
+            return
+        # Plusieurs photos pour ce matériau (ex. plusieurs défocus) : un
+        # menu plutôt qu'ouvrir la première au hasard, avec la description
+        # de chacune (cf. _make_photo_section) pour savoir laquelle choisir.
+        menu = QtWidgets.QMenu(btn_photo)
+        for i, p in enumerate(photos):
+            menu.addAction(p["description"] or "Photo {}".format(i + 1),
+                           lambda _checked=False, p=p: _show(p))
+        menu.exec(btn_photo.mapToGlobal(QtCore.QPoint(0, btn_photo.height())))
     btn_photo.clicked.connect(_on_photo)
 
     return {"mat": combo_mat, "shade": combo_shade, "reload": _reload}
