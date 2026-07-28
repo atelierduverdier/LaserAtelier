@@ -2844,7 +2844,8 @@ class TaskPanelText:
         barre_align.addStretch(1)
         form.addRow("Alignement :", barre_align)
 
-        self.txt = QtWidgets.QPlainTextEdit()
+        self.txt = QtWidgets.QTextEdit()
+        self.txt.setAcceptRichText(False)
         self.txt.setPlaceholderText("Texte à graver (Entrée = nouvelle ligne)")
         self.txt.setMaximumHeight(90)
         self.txt.setPlainText("Atelier")
