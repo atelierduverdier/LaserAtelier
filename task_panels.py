@@ -2771,7 +2771,8 @@ class TaskPanelText:
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Tape le <b>texte</b> (Entrée = nouvelle ligne).",
-            "<b>2.</b> Règle la <b>hauteur</b> (des capitales) et les espacements.",
+            "<b>2.</b> Règle la <b>hauteur</b> (des capitales), les espacements et "
+            "l'<b>alignement</b> entre les lignes (sans effet sur une seule ligne).",
             "<b>3. OK</b> crée un objet «&nbsp;Texte…&nbsp;» dans l'arbre (coin "
             "bas-gauche à l'origine).",
             "<b>4.</b> Sélectionne-le et ouvre <b>Marquage</b> pour le graver "
@@ -2812,6 +2813,16 @@ class TaskPanelText:
         self.spn_lspace.setToolTip("Interligne, en multiples de la hauteur.")
         form.addRow("Interligne (× hauteur) :", self.spn_lspace)
 
+        self.combo_align = QtWidgets.QComboBox()
+        self.combo_align.addItems(["Gauche", "Centré", "Droite", "Justifié"])
+        self.combo_align.setToolTip(
+            "Calage horizontal des lignes entre elles (sans effet sur un "
+            "texte à une seule ligne).\n« Justifié » étire les espaces "
+            "internes pour que chaque ligne atteigne la largeur de la "
+            "plus longue -- sans effet sur une ligne d'un seul mot, "
+            "faute d'espace à étirer.")
+        form.addRow("Alignement :", self.combo_align)
+
         self.lbl_info = _WrapLabel("")
         form.addRow(self.lbl_info)
         for w in (self.spn_height, self.spn_cspace, self.spn_lspace):
@@ -2819,7 +2830,8 @@ class TaskPanelText:
         self.txt.textChanged.connect(self._update_info)
 
         self._last_fields = {"text": self.txt, "height": self.spn_height,
-                             "cspace": self.spn_cspace, "lspace": self.spn_lspace}
+                             "cspace": self.spn_cspace, "lspace": self.spn_lspace,
+                             "align": self.combo_align}
         _restore_last_values("text", self._last_fields)
 
         self.form = _scrollable(inner)
@@ -2835,11 +2847,14 @@ class TaskPanelText:
             "Encombrement : {:.1f} × {:.1f} mm.".format(w, h) if w > 0
             else "Saisis un texte.")
 
+    _ALIGN_VALUES = ("left", "center", "right", "justify")
+
     def accept(self):
         _save_last_values("text", self._last_fields)
         obj, err = core.create_single_line_text_object(
             self.txt.toPlainText(), self.spn_height.value(),
-            self.spn_cspace.value(), self.spn_lspace.value())
+            self.spn_cspace.value(), self.spn_lspace.value(),
+            align=self._ALIGN_VALUES[self.combo_align.currentIndex()])
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False

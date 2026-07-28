@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.71.10"
+VERSION = "1.72.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1185,12 +1185,30 @@ def chain_edges(edges, distance=DISCRETIZE_DISTANCE, tolerance=CHAIN_TOLERANCE):
 # public). On produit des arêtes Part que l'utilisateur grave ensuite avec
 # le mode Marquage (styles, suivi de surface, préréglages, job combiné).
 
+def _mono_line_width(line, hf, scale, char_spacing):
+    """Largeur (mm) d'UNE ligne de texte mono-trait -- factorisé pour que
+    single_line_text_to_edges et single_line_text_extent ne dupliquent pas
+    le même parcours caractère par caractère."""
+    x = 0.0
+    for ch in line:
+        g = hf.GLYPHES.get(ch)
+        x += (g[0] if g else hf.ADV_DEFAULT) * scale + char_spacing
+    return x - char_spacing if line else 0.0
+
+
 def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
-                              line_spacing=1.6, z=0.0, x0=0.0, y0=0.0):
+                              line_spacing=1.6, z=0.0, x0=0.0, y0=0.0,
+                              align="left"):
     """Texte -> arêtes Part en police mono-trait. `height` = hauteur de
     capitale (mm) ; `char_spacing` = espace ajouté entre lettres (mm) ;
-    `line_spacing` = interligne en multiples de la hauteur. Origine : ligne
-    de base de la 1re ligne en (x0, y0) (lettres au-dessus), lignes suivantes
+    `line_spacing` = interligne en multiples de la hauteur. `align` : "left"
+    (défaut, chaque ligne part de x0), "center"/"right" (chaque ligne calée
+    sur la plus large du bloc), ou "justify" (les espaces internes sont
+    étirés pour que chaque ligne atteigne la largeur de la plus longue --
+    sans effet sur une ligne d'un seul mot, faute d'espace à étirer).
+    L'alignement ne change jamais l'encombrement global (seule la position
+    des lignes les plus courtes bouge à l'intérieur). Origine : ligne de
+    base de la 1re ligne en (x0, y0) (lettres au-dessus), lignes suivantes
     en dessous. Renvoie [] si la police est absente ou le texte vide."""
     try:
         import hershey_font as hf
@@ -1200,14 +1218,27 @@ def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
         return []
     scale = float(height) / float(hf.CAP_HEIGHT)
     line_pitch = line_spacing * height
+    lines = text.replace("\r", "").split("\n")
+    widths = [_mono_line_width(line, hf, scale, char_spacing) for line in lines]
+    maxw = max(widths) if widths else 0.0
     edges = []
     y_line = y0
-    for line in text.replace("\r", "").split("\n"):
-        x = x0
+    for line, lw in zip(lines, widths):
+        n_spaces = line.count(" ")
+        extra = 0.0
+        if align == "center":
+            x = x0 + (maxw - lw) / 2.0
+        elif align == "right":
+            x = x0 + (maxw - lw)
+        elif align == "justify" and n_spaces > 0 and lw < maxw - 1e-6:
+            x = x0
+            extra = (maxw - lw) / n_spaces
+        else:
+            x = x0
         for ch in line:
             g = hf.GLYPHES.get(ch)
             if g is None:
-                x += hf.ADV_DEFAULT * scale + char_spacing
+                x += hf.ADV_DEFAULT * scale + char_spacing + (extra if ch == " " else 0.0)
                 continue
             adv, strokes = g
             for st in strokes:
@@ -1216,33 +1247,29 @@ def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
                 for i in range(len(pts) - 1):
                     if pts[i].distanceToPoint(pts[i + 1]) > 1e-7:
                         edges.append(Part.LineSegment(pts[i], pts[i + 1]).toShape())
-            x += adv * scale + char_spacing
+            x += adv * scale + char_spacing + (extra if ch == " " else 0.0)
         y_line -= line_pitch
     return edges
 
 
 def single_line_text_extent(text, height=10.0, char_spacing=0.0, line_spacing=1.6):
     """(largeur_mm, hauteur_mm) approximative du texte mono-trait, sans
-    construire d'arêtes -- pour l'aperçu d'encombrement du panneau."""
+    construire d'arêtes -- pour l'aperçu d'encombrement du panneau. Valable
+    quel que soit l'alignement (qui ne change pas l'encombrement global)."""
     try:
         import hershey_font as hf
     except Exception:
         return 0.0, 0.0
     scale = float(height) / float(hf.CAP_HEIGHT)
     lines = text.replace("\r", "").split("\n") or [""]
-    maxw = 0.0
-    for line in lines:
-        x = 0.0
-        for ch in line:
-            g = hf.GLYPHES.get(ch)
-            x += (g[0] if g else hf.ADV_DEFAULT) * scale + char_spacing
-        maxw = max(maxw, x - char_spacing if line else 0.0)
+    maxw = max((_mono_line_width(line, hf, scale, char_spacing) for line in lines),
+              default=0.0)
     h = height + (len(lines) - 1) * line_spacing * height
     return maxw, h
 
 
 def create_single_line_text_object(text, height=10.0, char_spacing=0.0,
-                                   line_spacing=1.6):
+                                   line_spacing=1.6, align="left"):
     """Crée dans le document un objet fil « TexteTraitSimple » (texte en
     police mono-trait), à sélectionner puis graver avec Marquage. Renvoie
     (objet, erreur)."""
@@ -1251,7 +1278,7 @@ def create_single_line_text_object(text, height=10.0, char_spacing=0.0,
         return None, "Ouvre (ou crée) un document d'abord."
     if not (text or "").strip():
         return None, "Saisis un texte."
-    edges = single_line_text_to_edges(text, height, char_spacing, line_spacing)
+    edges = single_line_text_to_edges(text, height, char_spacing, line_spacing, align=align)
     if not edges:
         return None, "Aucun caractère traçable dans ce texte."
     obj = doc.addObject("Part::Feature", "TexteTraitSimple")
