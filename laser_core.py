@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.79.4"
+VERSION = "1.79.5"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1563,6 +1563,23 @@ def _faces_from_any_shape(shape, label="?"):
         return []
     if getattr(shape, "Faces", None):
         return list(shape.Faces)
+    # Compound de compounds (Motif_Projete depuis v1.79.5) : chaque
+    # sous-compound est UN motif d'origine -- ses faces se reconstruisent
+    # INDÉPENDAMMENT, sinon le pair/impair global sur l'ensemble des fils
+    # inverse des zones (sémantique SVG : un remplissage par <path>,
+    # superposés ensuite).
+    if getattr(shape, "ShapeType", "") == "Compound":
+        sous_compounds = [s for s in getattr(shape, "SubShapes", [])
+                          if getattr(s, "ShapeType", "") == "Compound"]
+        if sous_compounds:
+            faces = []
+            for s in sous_compounds:
+                faces.extend(_faces_from_any_shape(s, label))
+            restes = [s for s in shape.SubShapes
+                      if getattr(s, "ShapeType", "") != "Compound"]
+            if restes:
+                faces.extend(_faces_from_any_shape(Part.Compound(restes), label))
+            return faces
     wires = [w for w in getattr(shape, "Wires", []) if w.isClosed()]
     if not wires and getattr(shape, "Edges", None):
         for grp in Part.sortEdges(list(shape.Edges)):
@@ -2072,15 +2089,21 @@ def split_projection_selection(selection):
     return motifs, reference
 
 
-def drop_edges_to_surface(edges_2d, shape_3d):
+def drop_edges_to_surface(edges_2d, shape_3d, mesh_probe=None):
     """Projette chaque point des lignes 2D sur la surface 3D via la sonde
     par maillage (_MeshZProbe : tessellation une fois, puis interpolation
     barycentrique par point -- remplace l'ancien raycast booléen
     OpenCascade par point, ~5ms chacun, qui coûtait plus d'une minute sur
     un remplissage dense). L'interpolation linéaire donne un Z continu :
     pas de tracé en dents de scie, l'écart à la vraie surface est borné
-    par MESH_PROBE_DEVIATION_MM."""
-    mesh_probe = _MeshZProbe(shape_3d)
+    par MESH_PROBE_DEVIATION_MM.
+
+    mesh_probe : sonde _MeshZProbe(shape_3d) déjà construite, à passer
+    quand l'appelant projette PLUSIEURS lots sur la même surface (un
+    appel par motif dans run_projection) -- évite de re-tesseller la
+    surface à chaque lot."""
+    if mesh_probe is None:
+        mesh_probe = _MeshZProbe(shape_3d)
 
     def probe(x, y):
         z = mesh_probe.z_at_or_none(x, y)
@@ -2092,7 +2115,17 @@ def drop_edges_to_surface(edges_2d, shape_3d):
     for edge in edges_2d:
         pts = edge.discretize(Distance=PROJECTION_SAMPLE_DISTANCE)
         if len(pts) < 2:
-            continue
+            # Une arête PLUS COURTE que le pas d'échantillonnage ne rend
+            # qu'UN seul point (mesuré : discretize(Distance=1.0) sur
+            # 0,05 mm -> 1 point). La jeter perce la boucle du fil : le
+            # fil devient OUVERT, la face disparaît du remplissage (fond
+            # du dessin) ou son trou est avalé (détails blancs d'un
+            # visage) -- les imports SVG à flèche fine regorgent de
+            # micro-segments dans les zones très courbées. On retombe
+            # sur les deux sommets de l'arête.
+            pts = [v.Point for v in getattr(edge, "Vertexes", [])]
+            if len(pts) < 2:
+                continue
 
         pts_3d = [p for p in (probe(pt.x, pt.y) for pt in pts) if p is not None]
 
@@ -2126,14 +2159,29 @@ def run_projection(selection):
     FreeCAD.Console.PrintMessage(
         "Extraction des lignes 2D... ({} motif(s))\n".format(len(motif_objs)))
     edges_2d = []
+    lots_2d = []   # un lot d'arêtes PAR MOTIF, pour préserver le groupage
     for obj in motif_objs:
-        if hasattr(obj.Shape, 'Edges'):
+        if hasattr(obj.Shape, 'Edges') and obj.Shape.Edges:
+            lots_2d.append(list(obj.Shape.Edges))
             edges_2d.extend(obj.Shape.Edges)
     if not edges_2d:
         return None, "Aucune ligne trouvée dans le(s) motif(s) 2D."
 
     FreeCAD.Console.PrintMessage("Calcul de la projection sur le 3D (raycast Z)...\n")
-    edges_3d = drop_edges_to_surface(edges_2d, obj_3d.Shape)
+    # Projection PAR MOTIF, chaque lot devenant son propre sous-compound :
+    # le remplissage pair/impair se calcule par tracé d'origine (comme un
+    # lecteur SVG remplit chaque <path> indépendamment puis les
+    # superpose). Tout fusionner en un compound plat recalculait la
+    # parité GLOBALEMENT sur l'ensemble des fils : sur un dessin aux
+    # tracés imbriqués (skull importé), -59 % de surface remplie mesurée,
+    # zones inversées visibles à l'aperçu photo.
+    probe = _MeshZProbe(obj_3d.Shape)
+    groupes_3d = []
+    for lot in lots_2d:
+        edges_lot = drop_edges_to_surface(lot, obj_3d.Shape, probe)
+        if edges_lot:
+            groupes_3d.append(Part.Compound(edges_lot))
+    edges_3d = groupes_3d
     if not edges_3d:
         # Diagnostic : la sonde échoue quand (x, y) est HORS de la
         # silhouette de la surface vue de dessus -- le Z du motif n'a
@@ -2159,7 +2207,9 @@ def run_projection(selection):
     compound_3d = Part.Compound(edges_3d)
     new_obj = doc.addObject("Part::Feature", "Motif_Projete")
     new_obj.Shape = compound_3d
-    if hasattr(new_obj, 'ViewObject'):
+    # getattr et non hasattr : en headless (freecadcmd), ViewObject EXISTE
+    # mais vaut None -- hasattr laisse alors passer un AttributeError.
+    if getattr(new_obj, 'ViewObject', None) is not None:
         new_obj.ViewObject.LineColor = (1.0, 0.0, 0.0)
         new_obj.ViewObject.LineWidth = 2.0
     # Mémorise le solide d'origine : le motif projeté n'est qu'un compound

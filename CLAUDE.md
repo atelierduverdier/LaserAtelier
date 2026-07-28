@@ -199,6 +199,17 @@ preview iterations and the final generation reuse faces/edges — tone/power cha
 geometry, so re-renders drop from ~30 s to <1 s on heavy traces. **Never test novel OCC call
 patterns in the user's live session**: a per-wire `makeOffset2D` experiment segfaulted the whole
 GUI (losing unsaved work); run risky probes with `freecadcmd` on a document copy in the scratchpad.
+Projection (v1.79.5): `run_projection` projects EACH motif into its OWN sub-compound
+(`Part.Compound` of per-motif compounds) and `_faces_from_any_shape` recurses into sub-compounds —
+fill parity (even-odd) must be computed PER source path then overlaid, like an SVG renderer;
+merging all edges into one flat compound recomputed parity globally and flipped regions (measured
+−59 % filled area on the imported skull). Second, stacked bug: `discretize(Distance=d)` returns a
+SINGLE point for edges shorter than ~d/2, and `drop_edges_to_surface` silently dropped them —
+puncturing wire loops (a 21 000 mm² background face vanished; face holes were swallowed). Sub-d
+edges now fall back to their two Vertexes. Legacy flat-compound objects keep the old global
+behavior — re-run the projection to heal them. `ViewObject` guards must use
+`getattr(obj, 'ViewObject', None) is not None`: in freecadcmd the attribute EXISTS but is None,
+so `hasattr` lets an AttributeError through.
 G-code generation had its own freeze (v1.79.4): with no 3D reference, `generate_gcode_curved`
 builds `_IDWHeight(all_pts)` over EVERY discretized point (~150k on a dense fill) and each
 `z_at(x,y)` rebuilt a full distance list (~25 ms) — called once per transit step, so ~9k transits
