@@ -355,17 +355,23 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
 The **reverse** of photo mode: paint what the engraving will look like (a "Aperçu photo" button on
 Filled/Marquage/Combined). Lives entirely in `task_panels.py` (QPainter is Qt): each burn is drawn as
 a thick stroke at its **burn width** (`burn_width_defocus_scaled`, else the optical spot) and a
-**tone** (`_tone_burn` = areal fluence `P/(width·v)` = energy per burned area, saturating `1-exp(-3·f)`).
+**tone**. Tone is the **measured nuancier darkness first** (`_tone_measured` → `core.darkness_at`:
+shades grouped by measured defocus level, nearest level to the requested defocus, then the same
+bilinear S-linear/F-log interpolation as burn widths via the generalized
+`_bilinear_burn(..., key="darkness")`, clamped to the measured grid; the material comes from the
+panel's own "Nuancier matériau" combo), with the theoretical `_tone_burn` (areal fluence
+`P/(width·v)`, saturating `1-exp(-3·f)`) as **fallback** when the material has no usable shade.
 An earlier prototype used peak irradiance `P/(spot²·v)`, but it penalised defocus far too hard — a real
-MDF burn at S865 F600 defocused 36 mm comes out **dark, not pale** — so the model was **recalibrated on
-a real engraving** to areal fluence (fills read dark once above the char threshold; only genuinely
-under-powered/over-defocused settings stay pale). Strokes are composited with `CompositionMode_Multiply`
+MDF burn at S865 F600 defocused 36 mm comes out **dark, not pale** — so the fallback was **recalibrated
+on a real engraving** to areal fluence. The fallback still badly overestimates LIGHT tones (MDF S400
+F2000: 5% measured vs ~55% predicted — the "light fill renders black" bug), which is why measured data
+wins whenever it exists. Strokes are composited with `CompositionMode_Multiply`
 on a wood background so overlaps deepen. `_render_engraving_photo(strokes)` → QImage, `_show_image_dialog` shows it + PNG save.
 `_strokes_from_operation(op)` maps a combined-job operation dict (filled/curved/flat/curved_cut) to
-strokes, so `TaskPanelCombined` renders the whole job at once; testgrid/unknown types are skipped.
-Per-panel previews build strokes directly (no `_build_combined_operation`, to avoid its save/Job side
-effects). Theoretical render — accuracy scales with the burn-width plank; nuancier-driven tone is a
-possible refinement (not wired yet). Hachures is a geometry mode (no power/feed) → no preview.
+strokes, so `TaskPanelCombined` renders the whole job at once; testgrid/unknown types are skipped
+(no material context there either → fallback tone). Per-panel previews build strokes directly (no
+`_build_combined_operation`, to avoid its save/Job side effects). Hachures is a geometry mode
+(no power/feed) → no preview.
 
 ## Hardware context
 

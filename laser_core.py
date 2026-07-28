@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.78.1"
+VERSION = "1.79.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4044,17 +4044,18 @@ def _burn_width_material(material):
     return mats[0] if len(mats) == 1 else None
 
 
-def _bilinear_burn(pts, power, feed):
-    """Largeur brûlée (mm) interpolée BILINÉAIREMENT sur un nuage de points
-    {power, feed, width} : S linéaire, F logarithmique (c'est le temps de
-    chauffe qui pilote), bornée aux mesures. Dégénère proprement si un seul S
-    ou un seul F mesuré (l'axe non couvert retombe sur la valeur mesurée). None
-    si `pts` est vide."""
+def _bilinear_burn(pts, power, feed, key="width"):
+    """Valeur `key` (largeur brûlée par défaut, ou noirceur du nuancier)
+    interpolée BILINÉAIREMENT sur un nuage de points {power, feed, key} :
+    S linéaire, F logarithmique (c'est le temps de chauffe qui pilote),
+    bornée aux mesures. Dégénère proprement si un seul S ou un seul F
+    mesuré (l'axe non couvert retombe sur la valeur mesurée). None si
+    `pts` est vide."""
     if not pts:
         return None
     svals = sorted({float(p["power"]) for p in pts})
     fvals = sorted({float(p["feed"]) for p in pts})
-    grid = {(float(p["power"]), float(p["feed"])): float(p["width"])
+    grid = {(float(p["power"]), float(p["feed"])): float(p[key])
             for p in pts}
 
     def _bracket(vals, x):
@@ -4069,7 +4070,7 @@ def _bilinear_burn(pts, power, feed):
         if w is None:      # grille incomplète : plus proche voisin
             best = min(pts, key=lambda p: (abs(float(p["power"]) - sv),
                                            abs(float(p["feed"]) - fv)))
-            w = float(best["width"])
+            w = float(best[key])
         return w
 
     s1, s2, sx = _bracket(svals, float(power))
@@ -4194,6 +4195,31 @@ def shade_for_darkness(material, target_pct):
     if not shades:
         return None
     return min(shades, key=lambda s: abs(s.get("darkness", 0) - target_pct))
+
+
+def darkness_at(material, power, feed, z_offset=0.0):
+    """Noirceur MESURÉE (0..100) attendue pour (S, F) au défocus `z_offset`,
+    d'après le nuancier du matériau : les tons sont regroupés par niveau de
+    défocus mesuré, on retient le niveau LE PLUS PROCHE du défocus demandé,
+    puis interpolation bilinéaire en (S linéaire, F logarithmique), bornée
+    aux mesures -- même mécanique que les largeurs brûlées (_bilinear_burn).
+    Sert de teinte à l'aperçu photo : le modèle théorique de fluence
+    surestime beaucoup la noirceur des tons clairs (5 % mesuré là où il
+    prédit ~55 % sur MDF S400 F2000). None si le matériau n'a aucun ton
+    exploitable (l'appelant retombe sur le modèle théorique)."""
+    pts = [s for s in load_shades(material)
+           if float(s.get("power", 0) or 0) > 0
+           and float(s.get("feed", 0) or 0) > 0
+           and s.get("darkness") is not None]
+    if not pts:
+        return None
+    niveaux = {}
+    for s in pts:
+        z = round(float(s.get("z_offset", 0.0) or 0.0), 3)
+        niveaux.setdefault(z, []).append(s)
+    z_proche = min(niveaux, key=lambda z: abs(z - float(z_offset or 0.0)))
+    d = _bilinear_burn(niveaux[z_proche], power, feed, key="darkness")
+    return None if d is None else max(0.0, min(100.0, d))
 
 
 def shade_summary(shade):

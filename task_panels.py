@@ -1113,22 +1113,40 @@ def _scrollable(inner):
 
 # --- Aperçu photo réaliste (rendu du résultat gravé) -----------------------
 # Peint chaque trait à sa LARGEUR brûlée et à sa TEINTE, les recouvrements
-# s'assombrissant (mode Multiply). La teinte vient de la FLUENCE ARÉOLAIRE
-# P/(largeur·vitesse) -- l'énergie déposée par unité de surface brûlée --,
+# s'assombrissant (mode Multiply). La teinte vient d'abord de la NOIRCEUR
+# MESURÉE du nuancier du matériau (_tone_measured -> core.darkness_at) ;
+# sans ton exploitable, repli sur la FLUENCE ARÉOLAIRE P/(largeur·vitesse)
 # saturante : le MDF carbonise dès le seuil dépassé, au-delà plus d'énergie
 # ne noircit presque plus. (Un premier prototype utilisait l'irradiance de
 # crête P/(spot²·v) mais elle pénalisait trop le défocus : sur bois réel un
 # remplissage S865 F600 défocalisé à 36 mm ressort BIEN FONCÉ, pas pâle --
-# recalé sur une gravure réelle. Le nuancier mesuré pourra affiner plus tard.)
+# recalé sur une gravure réelle. Le modèle théorique surestime en revanche
+# la noirceur des tons CLAIRS -- 5 % mesuré là où il prédit ~55 % sur MDF
+# S400 F2000 --, d'où la priorité au nuancier mesuré.)
 
 def _tone_burn(power, feed, width):
     """Teinte 0..1 (0 = rien, 1 = noir) depuis la fluence aréolaire
-    P/(largeur·vitesse), saturante. `width` = largeur brûlée du trait (mm)."""
+    P/(largeur·vitesse), saturante. `width` = largeur brûlée du trait (mm).
+    Modèle THÉORIQUE de repli -- essayer d'abord _tone_measured."""
     import math
     if feed <= 0 or width <= 0:
         return 0.0
     fluence = power / (width * feed)
     return 1.0 - math.exp(-3.0 * fluence)
+
+
+def _tone_measured(material, power, feed, z_offset=0.0):
+    """Teinte 0..1 depuis la noirceur MESURÉE du nuancier du matériau
+    (niveau de défocus mesuré le plus proche, interpolation bornée aux
+    mesures -- cf. core.darkness_at). None si pas de matériau ou aucun ton
+    exploitable : l'appelant retombe alors sur le modèle _tone_burn."""
+    if not material:
+        return None
+    try:
+        d = core.darkness_at(material, power, feed, z_offset)
+    except Exception:
+        return None
+    return None if d is None else d / 100.0
 
 
 def _discretize_edge(edge, dist=0.3):
@@ -3936,8 +3954,9 @@ class TaskPanelFilledEngraving:
         self.btn_photo_preview = QtWidgets.QPushButton()
         self.btn_photo_preview.setToolTip(
             "Aperçu photo (rendu réaliste) : chaque trait à sa largeur brûlée\n"
-            "et à sa teinte (défocus large = pâle, net au foyer = foncé),\n"
-            "superpositions plus foncées. Rendu théorique avant de graver.")
+            "et à sa teinte -- la noirceur MESURÉE du nuancier du matériau\n"
+            "sélectionné ci-dessus quand elle existe, sinon un modèle\n"
+            "théorique --, superpositions plus foncées.")
         self.btn_photo_preview.clicked.connect(self._on_photo_preview)
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg"),
                             (self.btn_photo_preview, "sect_photo.svg")])
@@ -4290,11 +4309,17 @@ class TaskPanelFilledEngraving:
         half_angle = core.calibrated_half_angle()
         strokes = []
         # Remplissage : largeur = brûlure mesurée (sinon point optique) ;
-        # teinte selon l'irradiance de crête au défocus retenu.
+        # teinte = noirceur mesurée du nuancier (matériau du bloc
+        # « Nuancier matériau »), sinon modèle de fluence.
+        mat_nuancier = (self._shade_picker["mat"].currentData()
+                        or self._shade_picker["mat"].currentText())
         fill_power = self._effective_fill_power(defocus, half_angle)
         spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
         fill_width = core.burn_width_defocus_scaled(fill_power, self.spn_fill_feed.value(), defocus) or spot_fill
-        fill_tone = _tone_burn(fill_power, self.spn_fill_feed.value(), fill_width)
+        fill_tone = _tone_measured(mat_nuancier, fill_power,
+                                   self.spn_fill_feed.value(), defocus)
+        if fill_tone is None:
+            fill_tone = _tone_burn(fill_power, self.spn_fill_feed.value(), fill_width)
         for e in (fill_edges or []):
             pts = _discretize_edge(e)
             if pts:
@@ -4304,7 +4329,10 @@ class TaskPanelFilledEngraving:
             c_power = self.spn_contour_power.value()
             spot_c = core.spot_diameter_at_defocus(contour_z_offset, core.SPOT_FOCUS_MM, half_angle)
             c_width = core.burn_width_defocus_scaled(c_power, self.spn_contour_feed.value(), contour_z_offset) or spot_c
-            c_tone = _tone_burn(c_power, self.spn_contour_feed.value(), c_width)
+            c_tone = _tone_measured(mat_nuancier, c_power,
+                                    self.spn_contour_feed.value(), contour_z_offset)
+            if c_tone is None:
+                c_tone = _tone_burn(c_power, self.spn_contour_feed.value(), c_width)
             for e in contour_edges:
                 pts = _discretize_edge(e)
                 if pts:
@@ -7688,7 +7716,9 @@ class TaskPanelCurved:
         self.btn_photo_preview = QtWidgets.QPushButton()
         self.btn_photo_preview.setToolTip(
             "Aperçu photo (rendu réaliste) : chaque trait à sa largeur brûlée\n"
-            "et à sa teinte. Rendu théorique pour juger le résultat.")
+            "et à sa teinte -- la noirceur MESURÉE du nuancier du matériau\n"
+            "sélectionné ci-dessus quand elle existe, sinon un modèle\n"
+            "théorique.")
         self.btn_photo_preview.clicked.connect(self._on_photo_preview)
         _preview_row(form, [(self.btn_toolpath_preview, "btn_view3d.svg"),
                             (self.btn_photo_preview, "sect_photo.svg")])
@@ -7997,17 +8027,25 @@ class TaskPanelCurved:
         idx = self.combo_style.currentIndex()
         half = core.calibrated_half_angle()
         w_focus = core.burn_width_defocus_scaled(pw, fd, 0.0) or core.SPOT_FOCUS_MM
+        z_tone = 0.0
         if idx == 4:                                   # Défocus (point élargi)
             defocus = core.defocus_for_spot_diameter(
                 self.spn_spot_width.value(), core.SPOT_FOCUS_MM, half) or 0.0
             width = core.burn_width_defocus_scaled(pw, fd, defocus) or self.spn_spot_width.value()
+            z_tone = defocus
         elif idx == 3:                                 # Vague : moyenne foyer/max
             width = (w_focus + self.spn_wave_width.value()) / 2.0
         elif idx == 5:                                 # Dégradé : moyenne des deux
             width = (self.spn_deg_w0.value() + self.spn_deg_w1.value()) / 2.0
         else:                                          # plein / tirets / pointillé
             width = w_focus
-        tone = _tone_burn(pw, fd, width)
+        # Teinte : noirceur mesurée du nuancier (matériau du bloc
+        # « Nuancier matériau »), sinon modèle de fluence.
+        mat_nuancier = (self._shade_picker["mat"].currentData()
+                        or self._shade_picker["mat"].currentText())
+        tone = _tone_measured(mat_nuancier, pw, fd, z_tone)
+        if tone is None:
+            tone = _tone_burn(pw, fd, width)
         strokes = []
         for e in self._edges:
             pts = _discretize_edge(e)
