@@ -5249,8 +5249,10 @@ class TaskPanelPowerRamp:
         form.addRow(_WrapLabel(
             "La rampe sert à CHOISIR : repère les lignes dont le rendu te "
             "plaît, puis ajoute leur ton ci-dessous (noirceur 0-100 %, "
-            "réglage S/F/défocus, largeur). Le Nuancier reste le registre "
-            "complet pour tout revoir ou corriger."))
+            "réglage S/F/défocus, largeur). Active « Rampe Z » en ① pour "
+            "mesurer un ton EN DÉFOCUS avec largeur -- c'est ce qu'exige "
+            "« Ton sur mesure » (Marquage) pour interpoler. Le Nuancier "
+            "reste le registre complet pour tout revoir ou corriger."))
 
         self.combo_mat = QtWidgets.QComboBox()
         self.combo_mat.setEditable(True)
@@ -7676,7 +7678,10 @@ class TaskPanelCurved:
                 self.form, "Ton sur mesure",
                 "Pas assez de tons exploitables sur « {} » : il faut au moins "
                 "2 tons EN DÉFOCUS (largeur, vitesse et puissance renseignées) "
-                "pour interpoler.".format(material))
+                "pour interpoler. Pour en obtenir : mode Rampe puissance/"
+                "vitesse, coche « Rampe Z », mesure la largeur au pied à "
+                "coulisse sur la pièce gravée, puis « + Ajouter ce ton » dans "
+                "ce même panneau.".format(material))
             return
         feed, fluence, clamped = res
         self.combo_style.setCurrentIndex(4)      # style Défocus (point élargi)
