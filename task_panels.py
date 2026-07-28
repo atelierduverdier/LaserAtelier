@@ -2845,15 +2845,9 @@ class TaskPanelText:
         barre_align.addStretch(1)
         form.addRow("Alignement :", barre_align)
 
-        self.txt = QtWidgets.QTextEdit()
-        self.txt.setAcceptRichText(False)
-        self.txt.setPlaceholderText("Texte à graver (Entrée = nouvelle ligne)")
-        self.txt.setMaximumHeight(90)
-        self.txt.setPlainText("Atelier")
-        self.txt.cursorPositionChanged.connect(self._sync_boutons_align)
-        form.addRow(self.txt)
-
-        _section(form, "Dimensions", "sect_zheight.svg")
+        # Réglages de dimension juste à côté des icônes d'alignement --
+        # tout ce qui règle l'ASPECT du texte regroupé au même endroit,
+        # avant la boîte de saisie elle-même.
         self.spn_height = QtWidgets.QDoubleSpinBox()
         self.spn_height.setRange(1.0, 500.0)
         self.spn_height.setValue(10.0)
@@ -2879,6 +2873,14 @@ class TaskPanelText:
         self.spn_lspace.setSingleStep(0.1)
         self.spn_lspace.setToolTip("Interligne, en multiples de la hauteur.")
         form.addRow("Interligne (× hauteur) :", self.spn_lspace)
+
+        self.txt = QtWidgets.QTextEdit()
+        self.txt.setAcceptRichText(False)
+        self.txt.setPlaceholderText("Texte à graver (Entrée = nouvelle ligne)")
+        self.txt.setMaximumHeight(90)
+        self.txt.setPlainText("Atelier")
+        self.txt.cursorPositionChanged.connect(self._sync_boutons_align)
+        form.addRow(self.txt)
 
         self.lbl_info = _WrapLabel("")
         form.addRow(self.lbl_info)
