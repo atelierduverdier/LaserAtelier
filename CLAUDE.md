@@ -199,6 +199,13 @@ preview iterations and the final generation reuse faces/edges — tone/power cha
 geometry, so re-renders drop from ~30 s to <1 s on heavy traces. **Never test novel OCC call
 patterns in the user's live session**: a per-wire `makeOffset2D` experiment segfaulted the whole
 GUI (losing unsaved work); run risky probes with `freecadcmd` on a document copy in the scratchpad.
+G-code generation had its own freeze (v1.79.4): with no 3D reference, `generate_gcode_curved`
+builds `_IDWHeight(all_pts)` over EVERY discretized point (~150k on a dense fill) and each
+`z_at(x,y)` rebuilt a full distance list (~25 ms) — called once per transit step, so ~9k transits
+froze the GUI for many minutes to interpolate... a constant (flat work has all z equal). `_IDWHeight`
+now detects the constant-Z cloud in `__init__` and answers O(1); relief clouds keep the exact
+original IDW. Measured: skull fill G-code 0.6 s vs >10 min. When profiling generation, remember
+`heapq.nsmallest` shows up as cheap per call — the cost is the list comprehension feeding it.
 
 **Adding a mode** touches all four: a generator in `laser_core`, a panel in `task_panels`, a command
 in `commands.py` (+ `register_commands`), an entry in `InitGui.py`'s `command_list` (grouped by theme

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.79.3"
+VERSION = "1.79.4"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2900,10 +2900,24 @@ class _IDWHeight(object):
         self.points = [(p.x, p.y, p.z) for p in points]
         self.k = min(k, len(self.points)) if self.points else 0
         self.power = power
+        # Nuage PLAT (marquage/remplissage 2D : tous les Z identiques) :
+        # l'IDW d'une constante EST cette constante. Sans ce raccourci,
+        # chaque z_at rebalaye TOUT le nuage (mesuré ~25 ms sur un
+        # remplissage de 150 000 points) ; à raison d'un appel par pas de
+        # transit (~9 000 transits sur un tracé SVG dense), la génération
+        # G-code figeait l'interface plusieurs minutes... pour interpoler
+        # une valeur unique.
+        self.z_constant = None
+        if self.points:
+            z0 = self.points[0][2]
+            if all(abs(pz - z0) < 1e-9 for _, _, pz in self.points):
+                self.z_constant = z0
 
     def z_at(self, x, y):
         if not self.points:
             return None
+        if self.z_constant is not None:
+            return self.z_constant
         dists = [((px - x) ** 2 + (py - y) ** 2, pz) for px, py, pz in self.points]
         # nsmallest (O(N log k)) au lieu d'un tri complet (O(N log N)) :
         # appelé à chaque pas de transit, sur un nuage qui peut compter
