@@ -118,6 +118,18 @@ Five modules, cleanly layered — keep the layering:
     from a measured reference, model F ∝ P/(d·v)). The reference fields are a **calibration**, not job
     params: read-only by default (an "Modifier la référence" checkbox unlocks them) so tweaking the
     job can't clobber them; `setValue` (restore/presets) still works while locked.
+    `_appliquer_priorite_nuancier(shade_picker, fluence)` (v1.80.2) enforces which of the two
+    power-setting mechanisms wins when both a nuancier material *and* fluence compensation are active
+    at once: it disables the whole fluence `QGroupBox` (and force-unchecks its checkbox — disabling
+    alone leaves an already-ticked box still driving `_effective_fill_power`) whenever
+    `shade_picker["mat"].currentData()` is truthy. Call it as the **first** statement in the panel's
+    own preview function (`_update_defocus_preview` / `_update_style_ui`), never from a separate
+    signal connection — Qt fires same-signal slots in connection order, and computing effective power
+    before this sync runs would read a checkbox state one tick stale. Wired into both
+    `TaskPanelFilledEngraving` and `TaskPanelCurved` (the two panels with a shade picker + fluence
+    block); the latter also gained the missing `combo_mat.currentIndexChanged → _update_style_ui`
+    connection it never had. Root cause this fixed: a measured S1000 tone silently downgraded to a
+    calculated S529 the moment the fluence checkbox was ticked, with no visual sign anything changed.
   - `_make_shade_picker(form, on_apply)` — "Nuancier matériau" block: selecting a tone in the
     combo applies it IMMEDIATELY (same convention as `_PresetController`; a neutral "-- Choisir --"
     first entry + blocked signals during reloads prevent accidental applies, e.g. when switching
@@ -332,6 +344,14 @@ at focus measures 1.0 mm up there, so candidates are the (S, F) couples measured
 *nearest the working defocus* — focus table near zero, defocus table beyond — then scored with the
 same interpolator as the verdict, so suggestion and verdict can never contradict each other. Decorative fill styles (dashes, dots, wave) skip
 the check: their gaps are the point.
+
+The verdict itself is deliberately terse (v1.80.2): `lbl_recouvrement`'s text is a single clause
+("Remplissage RAYÉ (trait 0.10 mm pour un pas de 0.26 mm)."), the reasoning (measured-S, resulting
+spacing, the ×duration cost) lives in `setToolTip`, and — when a covering setting exists — a
+`btn_corriger_recouvrement` button appears with the setting in its own label ("Corriger : S1000 /
+F800"); `_on_corriger_recouvrement` writes both spinboxes and re-triggers the preview. A paragraph
+explaining the physics every time a value changes is something to read once, not a message to
+re-parse on every keystroke.
 
 ### Persistence & user settings
 

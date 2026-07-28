@@ -2263,6 +2263,38 @@ def _fluence_advice(spot, power, feed, w):
     return (txt, color, None)
 
 
+def _appliquer_priorite_nuancier(shade_picker, fluence):
+    """Le nuancier matériau et la compensation de fluence fixent tous les
+    deux la puissance -- les laisser actifs EN MÊME TEMPS est un piège
+    vécu : un ton mesuré à S1000 remplacé en silence par un S529 CALCULÉ,
+    sans rien pour le signaler (v1.80.1 et avant). Le nuancier gagne
+    TOUJOURS quand un matériau y est choisi : il vient d'une gravure
+    réelle, mesurée ; la compensation n'est qu'un calcul destiné aux
+    matériaux qui n'ont pas encore de nuancier. On grise donc le bloc
+    « Puissance vs défocus » (et on décoche sa case pour de vrai --
+    griser seul n'empêche pas un calcul déjà coché de continuer à
+    s'appliquer) dès qu'un matériau du nuancier est sélectionné.
+
+    À appeler en tout PREMIER dans la fonction d'aperçu du panneau (avant
+    de lire `fluence["chk"]` pour calculer une puissance effective) --
+    ainsi la case est toujours à jour avant d'être lue, sans dépendre de
+    l'ordre de connexion des signaux Qt."""
+    box = fluence["container"]
+    titre = getattr(box, "_titre_defaut_priorite_nuancier", None)
+    if titre is None:
+        titre = box.title()
+        box._titre_defaut_priorite_nuancier = titre
+    mat = shade_picker["mat"].currentData()
+    if mat:
+        if fluence["chk"].isChecked():
+            fluence["chk"].setChecked(False)
+        box.setEnabled(False)
+        box.setTitle("{} -- inutile : {} a des tons mesurés".format(titre, mat))
+    else:
+        box.setEnabled(True)
+        box.setTitle(titre)
+
+
 # ==========================================================================
 # GUIDE RAPIDE (point d'entrée pour découvrir l'atelier)
 # ==========================================================================
@@ -3675,6 +3707,12 @@ class TaskPanelFilledEngraving:
             "engrenage) -- mesurée avec la Bande de calibration défocus.")
         form.addRow(self.lbl_defocus_result)
 
+        # Verdict court (le détail va en info-bulle) + bouton « Corriger »
+        # qui applique le réglage mesuré suggéré -- même schéma que
+        # _duration_row (label + bouton dans une seule ligne du formulaire).
+        _ligne_recouvrement = QtWidgets.QWidget()
+        _mise_en_page_recouvrement = QtWidgets.QHBoxLayout(_ligne_recouvrement)
+        _mise_en_page_recouvrement.setContentsMargins(0, 0, 0, 0)
         self.lbl_recouvrement = _WrapLabel("")
         self.lbl_recouvrement.setToolTip(
             "Le remplissage sera-t-il PLEIN ? Compare le trait réellement\n"
@@ -3682,7 +3720,12 @@ class TaskPanelFilledEngraving:
             "du bloc « Nuancier matériau ») au pas de hachure demandé. Si le\n"
             "trait est plus étroit que le pas, il reste du bois nu entre deux\n"
             "passes : le remplissage sort rayé, en gris, et pas noir.")
-        form.addRow(self.lbl_recouvrement)
+        self.btn_corriger_recouvrement = QtWidgets.QPushButton("Corriger")
+        self.btn_corriger_recouvrement.setVisible(False)
+        self.btn_corriger_recouvrement.clicked.connect(self._on_corriger_recouvrement)
+        _mise_en_page_recouvrement.addWidget(self.lbl_recouvrement, 1)
+        _mise_en_page_recouvrement.addWidget(self.btn_corriger_recouvrement, 0)
+        form.addRow(_ligne_recouvrement)
 
         _section(form, "Contour", "sect_contour.svg")
         self.chk_contour = QtWidgets.QCheckBox("Graver le contour (repassé après le remplissage)")
@@ -3853,6 +3896,9 @@ class TaskPanelFilledEngraving:
         }
 
         def _update_defocus_preview():
+            # Le nuancier gagne toujours sur la compensation de fluence --
+            # en premier, avant de lire fluence["chk"] plus bas.
+            _appliquer_priorite_nuancier(self._shade_picker, self._fluence)
             # Calibration du point : centralisée dans les Préférences.
             half_angle = core.calibrated_half_angle()
             defocus = core.defocus_for_fill_spacing(
@@ -4164,57 +4210,91 @@ class TaskPanelFilledEngraving:
         return picker["mat"].currentData() or None
 
     def _maj_recouvrement(self, burn, power, spacing, defocus=0.0, decoratif=False):
-        """Met à jour le message « le remplissage sera-t-il PLEIN ? » --
+        """Met à jour le verdict « le remplissage sera-t-il PLEIN ? » --
         la première question que pose une planche gravée. Compare le trait
         RÉELLEMENT brûlé (planche de calibration) au pas de hachure : s'il
         est plus étroit, il reste du bois nu entre deux passes et le
-        remplissage sort rayé. L'atelier resserre alors les hachures, mais
-        cela rallonge le job d'autant -- d'où la suggestion d'un réglage
-        mesuré qui couvre le pas d'un seul coup, plus noir et plus vite."""
+        remplissage sort rayé. Le libellé reste court (une clause) ; le
+        détail (largeur mesurée, coût du resserrement) va dans l'info-bulle
+        plutôt que dans un paragraphe à lire à chaque fois. Quand un
+        réglage mesuré couvre le pas sans resserrer, le bouton « Corriger »
+        l'applique directement -- élargir le trait vaut presque toujours
+        mieux que tripler le nombre de lignes."""
         lbl = self.lbl_recouvrement
+        btn = self.btn_corriger_recouvrement
+        self._reglage_recouvrement_suggere = None
         if decoratif:
             # Tirets, pointillé, vague : les vides sont voulus.
             lbl.setText("")
+            lbl.setToolTip("")
             lbl.setVisible(False)
+            btn.setVisible(False)
             return
         lbl.setVisible(True)
+        btn.setVisible(False)
         mat = self._materiau()
         if burn is None:
+            lbl.setText("Recouvrement non vérifié.")
+            lbl.setStyleSheet("color: #b0740a;")
             if not mat:
                 # La liste « Nuancier matériau » ne propose que les matériaux
                 # du nuancier : vide, il n'y a rien à choisir.
-                lbl.setText(
-                    "Recouvrement non vérifié : aucun matériau dans "
-                    "« Nuancier matériau » ci-dessus, l'atelier ne sait pas "
-                    "quelle largeur brûlée comparer au pas de hachure.")
+                lbl.setToolTip(
+                    "Aucun matériau dans « Nuancier matériau » ci-dessus :\n"
+                    "l'atelier ne sait pas quelle largeur brûlée comparer\n"
+                    "au pas de hachure.")
             else:
-                lbl.setText(
-                    "Recouvrement non vérifié : aucune largeur brûlée mesurée "
-                    "pour {} (planche de calibration, sections 1-2).".format(mat))
-            lbl.setStyleSheet("color: #b0740a;")
+                lbl.setToolTip(
+                    "Aucune largeur brûlée mesurée pour {} (planche de\n"
+                    "calibration, sections 1-2).".format(mat))
             return
         if burn >= spacing - 1e-6:
-            lbl.setText(
-                "Remplissage plein : trait brûlé de {:.2f} mm mesuré à S{:.0f}, "
-                "pour un pas de {:.2f} mm.".format(burn, power, spacing))
+            lbl.setText("Remplissage plein (trait {:.2f} mm pour un pas de {:.2f} mm).".format(
+                burn, spacing))
             lbl.setStyleSheet("color: #2e7d32;")
+            lbl.setToolTip(
+                "Trait brûlé mesuré à S{:.0f} : {:.2f} mm, au moins aussi\n"
+                "large que le pas de {:.2f} mm -- pas de bande de bois nu\n"
+                "entre deux passes.".format(power, burn, spacing))
             return
-        msg = ("Remplissage RAYÉ à ces réglages : le trait brûlé ne fait que "
-               "{:.2f} mm (mesuré à S{:.0f}) pour un pas de {:.2f} mm. Les "
-               "hachures seront resserrées à {:.2f} mm, ce qui multiplie la "
-               "durée par {:.1f}.".format(burn, power, spacing, burn,
-                                          spacing / max(burn, 1e-9)))
+        ratio = spacing / max(burn, 1e-9)
+        lbl.setText("Remplissage RAYÉ (trait {:.2f} mm pour un pas de {:.2f} mm).".format(
+            burn, spacing))
+        lbl.setStyleSheet("color: #b0740a;")
+        tip = (
+            "Trait brûlé mesuré à S{:.0f} : {:.2f} mm, plus étroit que le\n"
+            "pas de {:.2f} mm demandé -- il reste du bois nu entre deux\n"
+            "passes. L'atelier resserre les hachures à {:.2f} mm pour\n"
+            "compenser, ce qui multiplie la durée du job par {:.1f}.".format(
+                power, burn, spacing, min(spacing, burn), ratio))
         sugg = core.reglage_couvrant_le_pas(spacing, mat, defocus)
         if sugg:
-            msg += (" Mieux : S{:.0f} / F{:.0f} brûle {:.2f} mm et couvre le pas "
-                    "sans resserrer.".format(sugg["power"], sugg["feed"],
-                                             sugg["width"]))
+            self._reglage_recouvrement_suggere = sugg
+            btn.setText("Corriger : S{:.0f} / F{:.0f}".format(sugg["power"], sugg["feed"]))
+            btn.setToolTip(
+                "Applique S{:.0f} / F{:.0f} -- ce réglage MESURÉ brûle\n"
+                "{:.2f} mm, assez pour couvrir le pas de {:.2f} mm sans\n"
+                "resserrer les hachures.".format(
+                    sugg["power"], sugg["feed"], sugg["width"], spacing))
+            btn.setVisible(True)
         else:
-            msg += (" Aucun réglage mesuré ne couvre ce pas : élargis le trait "
-                    "(plus de puissance, moins de vitesse), ou mesure d'autres "
-                    "réglages avec la planche de calibration.")
-        lbl.setText(msg)
-        lbl.setStyleSheet("color: #b0740a;")
+            tip += (
+                "\nAucun réglage mesuré ne couvre ce pas : élargis le\n"
+                "trait (plus de puissance, moins de vitesse), ou mesure\n"
+                "d'autres réglages avec la planche de calibration.")
+        lbl.setToolTip(tip)
+
+    def _on_corriger_recouvrement(self):
+        """Bouton « Corriger » : applique le réglage mesuré suggéré par
+        `_maj_recouvrement` (le plus rapide qui couvre le pas de hachure)
+        et rafraîchit l'aperçu -- élargir le trait plutôt que resserrer
+        les hachures."""
+        sugg = getattr(self, "_reglage_recouvrement_suggere", None)
+        if not sugg:
+            return
+        self.spn_fill_power.setValue(sugg["power"])
+        self.spn_fill_feed.setValue(sugg["feed"])
+        self._update_defocus_preview()
 
     def _effective_fill_power(self, defocus, half_angle):
         """Puissance de remplissage réellement émise : celle du champ, ou
@@ -7739,6 +7819,9 @@ class TaskPanelCurved:
         self._fluence = _make_fluence_widgets(form)
 
         def _update_style_ui():
+            # Le nuancier gagne toujours sur la compensation de fluence --
+            # en premier, avant de lire fluence["chk"] plus bas.
+            _appliquer_priorite_nuancier(self._shade_picker, self._fluence)
             idx = self.combo_style.currentIndex()
             # _set_row_visible masque libellé + champ (sinon des lignes
             # vides « Longueur tiret : » restent sur les styles inactifs).
@@ -7791,6 +7874,9 @@ class TaskPanelCurved:
 
         self._update_style_ui = _update_style_ui
         self.combo_style.currentIndexChanged.connect(lambda _i: _update_style_ui())
+        # Changer de matériau change qui a un nuancier : le bloc fluence
+        # doit se griser/dégriser tout de suite, pas au prochain champ modifié.
+        self._shade_picker["mat"].currentIndexChanged.connect(lambda _i: _update_style_ui())
         for w in (self.spn_wave_width, self.spn_wave_period, self.spn_feed, self.spn_spot_width,
                   self.spn_power, self._fluence["ref_power"], self._fluence["ref_feed"],
                   self._fluence["ref_spot"]):
