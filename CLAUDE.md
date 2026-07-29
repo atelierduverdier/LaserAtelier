@@ -554,6 +554,16 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
   measurable line" and "feeds fast enough for a light tone" barely overlap — which is exactly why
   every curve point ended up at 100 %. Expect the light end of the darkness scale to have no
   measurable width, and do not widen the feeds to chase it.
+  **The photo panel must engrave at the SAME defocus the tones were measured at** (v1.90.0). The
+  curve is a darkness↔fluence mapping valid only in its own regime: a tighter spot concentrates the
+  same power on a smaller area, and the error goes as the SQUARE of the diameter ratio. Observed —
+  nuancier measured at defocus 15 (spot 1.16), panel set to spot 0.80 (defocus 8.75) → 1.45× smaller
+  spot → **2.1× the power density**, every calibrated photo solid black, nothing said a word. The
+  trap is that "Largeur du point" silently drives `z_work` through `defocus_for_spot_diameter`, and
+  it used to sit alone in its own section far from the material and the pitch. `TaskPanelHalftone`
+  now groups material + spot width + pitch in one "Trait & matière" section with `_maj_regime()`
+  printing a live verdict (regime gap, and overlap = width/pitch) plus a one-click fix. The regime
+  half only applies to halftone mode 2 ("Lignes calibrées") — the others never read the curve.
   **Converting a curve fluence into S uses `_pas_surfacique(pitch, line_width)` — the PITCH, not the
   burn width** (v1.89.0). The curve is calibrated on ISOLATED lines (3 mm apart, one pass). A raster
   overlaps them: a 0.80 mm burn laid every 0.30 mm passes over each point 2.7×. Using the width

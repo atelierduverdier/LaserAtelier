@@ -6442,18 +6442,6 @@ class TaskPanelHalftone:
             "Largeur gravée. La hauteur suit les proportions de l'image.")
         form.addRow("Largeur cible :", self.spn_width)
 
-        self.spn_pitch = QtWidgets.QDoubleSpinBox()
-        self.spn_pitch.setRange(0.1, 3.0)
-        self.spn_pitch.setDecimals(2)
-        self.spn_pitch.setValue(0.4)
-        self.spn_pitch.setSuffix(" mm")
-        self.spn_pitch.setToolTip(
-            "Pas de la trame (distance entre deux points). Repère : le\n"
-            "diamètre du point au foyer (~0.15-0.3mm) ; plus fin = plus de\n"
-            "détail mais beaucoup plus de points (durée en carré inverse\n"
-            "du pas).")
-        form.addRow("Pas de trame :", self.spn_pitch)
-
         self.combo_rotation = QtWidgets.QComboBox()
         self.combo_rotation.addItems(["0°", "90°", "180°", "270°"])
         self.combo_rotation.setToolTip(
@@ -6567,19 +6555,7 @@ class TaskPanelHalftone:
             "piqueter/hâler les blancs.")
         form.addRow("Seuil blanc :", self.spn_white)
 
-        # --- Lignes calibrées (nuancier) : matériau + vitesse de balayage ---
-        self.combo_photo_mat = QtWidgets.QComboBox()
-        self.combo_photo_mat.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        self.combo_photo_mat.setMinimumContentsLength(14)
-        self.combo_photo_mat.setToolTip(
-            "Matériau du nuancier : la courbe noirceur->fluence de ses tons\n"
-            "MESURÉS (en défocus) pilote la puissance de chaque pixel.")
-        for m in core.shade_materials():
-            self.combo_photo_mat.addItem(m, m)
-        if self.combo_photo_mat.count() == 0:
-            self.combo_photo_mat.addItem("-- (nuancier vide) --", None)
-        form.addRow("Matériau (nuancier) :", self.combo_photo_mat)
-
+        # --- Vitesse de balayage des lignes calibrées ---
         self.spn_line_feed = QtWidgets.QDoubleSpinBox()
         self.spn_line_feed.setRange(1, 20000)
         self.spn_line_feed.setValue(1000)
@@ -6603,9 +6579,29 @@ class TaskPanelHalftone:
             _set_row_visible(form, self.combo_photo_mat, is_lignes)
             _set_row_visible(form, self.spn_line_feed, is_lignes or is_dither_l)
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
-        _sync_mode()
+        # appel initial déplacé plus bas : _sync_mode touche combo_photo_mat,
+        # désormais créé dans la section « Trait & matière » qui suit.
 
-        _section(form, "Taille des points", "sect_zheight.svg")
+        # Les trois réglages ci-dessous sont COUPLÉS et étaient dispersés
+        # dans trois sections : largeur/pas donnent le recouvrement, et
+        # largeur/matériau disent si l'on grave dans le régime où les tons
+        # ont été mesurés. Séparés, l'écart ne se voyait pas -- une photo
+        # gravée à défocus 8,8 alors que le nuancier était mesuré à 15
+        # sortait uniformément noire sans le moindre avertissement.
+        _section(form, "Trait & matière", "sect_zheight.svg")
+
+        self.combo_photo_mat = QtWidgets.QComboBox()
+        self.combo_photo_mat.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_photo_mat.setMinimumContentsLength(14)
+        self.combo_photo_mat.setToolTip(
+            "Matériau du nuancier : la courbe noirceur->fluence de ses tons\n"
+            "MESURÉS (en défocus) pilote la puissance de chaque pixel.")
+        for m in core.shade_materials():
+            self.combo_photo_mat.addItem(m, m)
+        if self.combo_photo_mat.count() == 0:
+            self.combo_photo_mat.addItem("-- (nuancier vide) --", None)
+        form.addRow("Matériau (nuancier) :", self.combo_photo_mat)
+
         self.spn_spot_width = QtWidgets.QDoubleSpinBox()
         self.spn_spot_width.setRange(0.0, 30.0)
         self.spn_spot_width.setDecimals(2)
@@ -6619,6 +6615,32 @@ class TaskPanelHalftone:
             "trame plus grand). Repère : la largeur du point devrait être\n"
             "proche du pas de trame pour des points qui se touchent presque.")
         form.addRow("Largeur du point :", self.spn_spot_width)
+
+        self.spn_pitch = QtWidgets.QDoubleSpinBox()
+        self.spn_pitch.setRange(0.1, 3.0)
+        self.spn_pitch.setDecimals(2)
+        self.spn_pitch.setValue(0.4)
+        self.spn_pitch.setSuffix(" mm")
+        self.spn_pitch.setToolTip(
+            "Pas de la trame (distance entre deux points). Repère : le\n"
+            "diamètre du point au foyer (~0.15-0.3mm) ; plus fin = plus de\n"
+            "détail mais beaucoup plus de points (durée en carré inverse\n"
+            "du pas).")
+        form.addRow("Pas de trame :", self.spn_pitch)
+
+        self.lbl_regime = _WrapLabel("")
+        form.addRow(self.lbl_regime)
+        self.btn_corriger_regime = QtWidgets.QPushButton(
+            "Corriger : largeur du point = défocus de la calibration")
+        self.btn_corriger_regime.clicked.connect(self._corriger_regime)
+        form.addRow(self.btn_corriger_regime)
+        for _w in (self.spn_spot_width, self.spn_pitch):
+            _w.valueChanged.connect(lambda _v: self._maj_regime())
+        self.combo_photo_mat.currentIndexChanged.connect(lambda _i: self._maj_regime())
+        _sync_mode()
+        self._maj_regime()      # verdict visible DÈS l'ouverture, pas seulement
+        # après avoir touché un champ : c'est à l'ouverture qu'on hérite d'un
+        # réglage de la session précédente, et donc là qu'un écart passe.
 
         _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
@@ -6914,6 +6936,87 @@ class TaskPanelHalftone:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
         _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_photo.ngc")
+
+    def _defocus_calibration(self):
+        """Défocus auquel les tons EXPLOITABLES du matériau ont été mesurés
+        (ceux qui nourrissent darkness_fluence_curve : défocus ET largeur),
+        ou None. C'est le régime dans lequel la courbe est valable."""
+        mat = self.combo_photo_mat.currentData()
+        if not mat:
+            return None
+        zs = [float(s.get("z_offset", 0) or 0) for s in core.load_shades(mat)
+              if (s.get("z_offset", 0) or 0) > 0 and (s.get("width", 0) or 0) > 0]
+        return sum(zs) / len(zs) if zs else None
+
+    def _maj_regime(self):
+        """Verdict en direct sur les trois réglages couplés de la section.
+
+        Deux écarts se lisent ici, et aucun ne se voyait avant : le RÉGIME
+        (grave-t-on au défocus où les tons ont été mesurés ?) et le
+        RECOUVREMENT (le pas est-il plus fin que le trait ?). Un point plus
+        serré que la calibration concentre la puissance sur une surface
+        plus petite -- l'écart est en CARRÉ du rapport des diamètres, donc
+        1,45x de point en moins = 2,1x de densité en plus, et la photo sort
+        uniformément noire sans que rien ne l'annonce (constaté le
+        29/07/2026 : nuancier mesuré à défocus 15, panneau réglé sur 8,75)."""
+        half = core.calibrated_half_angle()
+        largeur = self.spn_spot_width.value()
+        pas = self.spn_pitch.value()
+        z_cal = self._defocus_calibration()
+        if largeur <= 0:
+            largeur = max(pas, core.SPOT_FOCUS_MM)
+        z_photo = core.defocus_for_spot_diameter(
+            largeur, core.SPOT_FOCUS_MM, half) or 0.0
+        recouvre = largeur / pas if pas > 0 else 0.0
+        bouton, msgs, ok = False, [], True
+        # Le régime ne compte que pour « Lignes calibrées » : les autres
+        # tramages n'utilisent pas la courbe, les alarmer serait du bruit.
+        # Le RECOUVREMENT, lui, est signalé dans tous les cas -- il tient à
+        # la géométrie du balayage, pas à la calibration.
+        if self.combo_mode.currentIndex() != 2:
+            pass
+        elif z_cal is None:
+            msgs.append("Aucun ton mesuré en défocus AVEC sa largeur pour ce "
+                        "matériau : la courbe est vide, le tramage « Lignes "
+                        "calibrées » ne pourra pas s'en servir.")
+            ok = False
+        else:
+            l_cal = core.spot_diameter_at_defocus(z_cal, core.SPOT_FOCUS_MM, half)
+            ratio = (l_cal / largeur) ** 2 if largeur > 0 else 0.0
+            if abs(z_photo - z_cal) <= 1.5:
+                msgs.append("Point {:.2f} mm → défocus {:.1f} mm, conforme aux "
+                            "tons mesurés ({:.1f} mm).".format(largeur, z_photo, z_cal))
+            else:
+                ok = False
+                bouton = True
+                msgs.append(
+                    "Point {:.2f} mm → défocus {:.1f} mm, alors que les tons de "
+                    "ce matériau sont mesurés à <b>{:.1f} mm</b>. La gravure sera "
+                    "<b>{:.1f}× plus {}</b> que la calibration et sortira "
+                    "trop {}. Largeur à viser : <b>{:.2f} mm</b>.".format(
+                        largeur, z_photo, z_cal, max(ratio, 1.0 / max(ratio, 1e-9)),
+                        "dense" if ratio > 1 else "diffuse",
+                        "foncée" if ratio > 1 else "claire", l_cal))
+        if recouvre > 1.05:
+            msgs.append("Pas {:.2f} mm pour un trait de {:.2f} : chaque point "
+                        "est repassé {:.1f}×, l'atelier en tient compte.".format(
+                            pas, largeur, recouvre))
+        elif recouvre < 0.95 and recouvre > 0:
+            msgs.append("Pas {:.2f} mm plus large que le trait ({:.2f}) : il "
+                        "restera du bois nu entre les lignes.".format(pas, largeur))
+        self.lbl_regime.setText(
+            "<span style=\"color:{}\">{} {}</span>".format(
+                "#2e7d32" if ok else "#c62828", "✓" if ok else "⚠",
+                " ".join(msgs)))
+        self.btn_corriger_regime.setVisible(bouton)
+
+    def _corriger_regime(self):
+        """Aligne la largeur du point sur le défocus de la calibration."""
+        z_cal = self._defocus_calibration()
+        if z_cal is None:
+            return
+        self.spn_spot_width.setValue(core.spot_diameter_at_defocus(
+            z_cal, core.SPOT_FOCUS_MM, core.calibrated_half_angle()))
 
     def _on_sampler(self):
         """Mire comparative : le même dégradé gravé par les 4 tramages

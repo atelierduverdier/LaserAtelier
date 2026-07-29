@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.89.0</span><br>
+      <span class="ver">Version 1.90.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.89.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.90.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -590,6 +590,11 @@
     <p class="quoi">Balayer une matrice de réglages sur une chute.</p>
     <p>Grave une grille où puissance et vitesse varient case par case. Un menu « Objectif » propose une recette de départ ; le style de remplissage est réglable. On lit la meilleure case à l'œil. Aucune sélection n'est requise&nbsp;: la grille fabrique ses propres cases, contrairement au mode <em>Gravure remplie</em> qui attend une face.</p>
 
+    <h4>Section «&nbsp;Trait &amp; matière&nbsp;»&nbsp;: graver dans le régime de la calibration</h4>
+    <p>Trois réglages du mode <b>Gravure photo</b> sont indissociables et tiennent désormais dans une seule section&nbsp;: le <b>matériau</b> (donc la calibration de référence), la <b>largeur du point</b> et le <b>pas de trame</b>. Ils étaient auparavant dispersés dans trois sections différentes, ce qui rendait leur incohérence invisible.</p>
+    <p>Le piège&nbsp;: la «&nbsp;largeur du point&nbsp;» pilote en coulisses la <b>hauteur Z</b>, donc le défocus. Si elle ne correspond pas au défocus auquel vos tons ont été mesurés, la courbe ne s'applique plus. Et l'écart n'est pas proportionnel mais <b>en carré du rapport des diamètres</b>&nbsp;: un point 1,45&nbsp;fois plus serré concentre la même puissance sur une surface 2,1&nbsp;fois plus petite. Cas réellement rencontré&nbsp;: nuancier mesuré à défocus 15, panneau réglé sur 8,75 — toutes les photos calibrées sortaient uniformément noires, sans le moindre message.</p>
+    <p>Un <b>verdict en direct</b> s'affiche maintenant sous les trois champs. Il compare le défocus demandé à celui de la calibration, signale le recouvrement (pas plus fin que le trait&nbsp;= chaque point repassé plusieurs fois, ou pas plus large&nbsp;= bois nu entre les lignes), et propose un bouton qui aligne la largeur d'un clic. Le volet «&nbsp;régime&nbsp;» ne concerne que le tramage «&nbsp;Lignes calibrées&nbsp;», seul à consulter la courbe.</p>
+
     <h4>Ce qui gouverne la puissance en balayage&nbsp;: le pas, pas la largeur du trait</h4>
     <p>La courbe du nuancier est calibrée sur des <b>traits isolés</b>, gravés espacés, en un seul passage. Une photo, elle, balaie des lignes qui <b>se recouvrent</b>&nbsp;: un trait de 0,80&nbsp;mm posé tous les 0,30&nbsp;mm repasse près de trois fois sur le même bois. Convertir la fluence en puissance avec la <em>largeur du trait</em> délivrait donc près du triple de l'énergie voulue, et toute gravure calibrée sortait noire — y compris la bande&nbsp;3 de la mire, censée justement valider la calibration.</p>
     <p>Ce qui compte n'est pas la largeur d'un trait mais <b>de combien on avance entre deux lignes</b>&nbsp;: l'énergie reçue par unité de surface vaut <code>P / (pas × vitesse)</code>. La puissance se calcule donc sur le <b>pas</b>, et la largeur disparaît d'elle-même de la formule — signe qu'on tient la bonne grandeur. Cas inverse&nbsp;: si le pas dépasse la largeur, il reste du bois nu entre les lignes et c'est alors la largeur qui gouverne ce qui brûle.</p>
@@ -799,7 +804,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.89.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.90.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
