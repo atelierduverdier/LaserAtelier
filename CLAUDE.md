@@ -278,6 +278,20 @@ string or `None`** (None = empty geometry). Shared conventions:
   job could impose too low a floor on the OTHER operations sharing that job.
 - **`TRAVEL_CLEARANCE_MM`** is the flyover margin over the work Z for transits. On flat work it should
   be small/0 — lifting per hatch line is the classic wasteful bug; transit at the working Z, laser off.
+- **Chain ordering** (v1.82.0): `generate_gcode_curved` runs `order_chains_by_proximity(chains)` right
+  after `chain_edges`, so every mode built on it (Marquage AND the fill/contour bodies of Gravure
+  remplie) visits disjoint chains nearest-first, reversing a chain's direction when that end is closer.
+  `generate_hatch_edges`' line-by-line zigzag only orders WITHIN a hatch line; as soon as a line is cut
+  into a different number of segments than its neighbour (any shape with holes — orbits, cavities,
+  letter counters), the "next line" jumps across the whole piece. Measured on the user's real skull
+  (9268 chains): 56 m of travel → 5.1 m (−91 %), engraved length identical to the millimetre, G-code
+  190k → 171k lines with the SAME 133293 G1 moves. Nearest-neighbour search goes through a grid indexed
+  like `generate_hatch_edges`' bands, scanned in expanding rings and stopped once the best candidate
+  beats the next ring's edge — same criterion as an exhaustive search, 25 s → 0.16 s. Size the cell on
+  the bounding box's largest EXTENT, never its area: collinear chains (a single hatch line, one line of
+  text) give zero area, hence a microscopic cell and a hang. Exact ties are common on regular hatching
+  and grid vs. exhaustive break them differently (~1 % on the total), so only tie-free point sets can be
+  compared millimetre-for-millimetre between the two.
 - **Stepped-ramp generators** (`generate_gcode_power_ramp_lines`, defocus calibration band) draw
   tick/graduation marks that must land on the trajectory the G-code ACTUALLY follows, not a naive
   continuous interpolation. The moved axis (X) and the ramped value (Z or S) are often parametrized

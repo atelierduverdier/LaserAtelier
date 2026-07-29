@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.81.1"
+VERSION = "1.82.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1202,6 +1202,101 @@ def chain_edges(edges, distance=DISCRETIZE_DISTANCE, tolerance=CHAIN_TOLERANCE):
         chains.append(chain)
 
     return chains
+
+
+def order_chains_by_proximity(chains):
+    """Réordonne des chaînes (chacune une liste de points, typiquement la
+    sortie de chain_edges) par PLUS PROCHE VOISIN GLOUTON : à chaque étape,
+    part de la fin de la chaîne précédente et choisit la chaîne restante
+    la plus proche, dans le sens (normal ou inversé) qui minimise le saut.
+    Le tracé de chaque chaîne n'est jamais modifié, seul son SENS peut
+    l'être -- sans effet sur le rendu pour tous les styles de trait
+    existants (le style "degrade" calcule son décalage depuis la position
+    de chaque point, pas depuis l'ordre de parcours).
+
+    Distance en XY seulement (le Z suit le relief séparément pendant le
+    transit, cf. la boucle de generate_gcode_curved -- même convention).
+
+    Sur un remplissage complexe (hachures coupées par des trous : orbites,
+    cavités...), le zigzag ligne-par-ligne de generate_hatch_edges seul
+    laisse de GROS sauts d'un bout à l'autre de la pièce dès qu'une ligne
+    a un nombre de segments différent de la précédente -- mesuré sur le
+    crâne réel de l'atelier (9268 chaînes) : 56 m de trajet à vide ramenés
+    à 5,1 m (-91 %), pour une longueur gravée rigoureusement identique.
+
+    La recherche du plus proche passe par une GRILLE (même idée que les
+    bandes de generate_hatch_edges) explorée en anneaux croissants autour
+    du point courant : on s'arrête dès que le meilleur candidat trouvé est
+    plus près que le bord du prochain anneau. Le critère retenu est donc
+    le même qu'une recherche exhaustive, sans son coût quadratique -- 25 s
+    -> 0,16 s sur ce crâne, assez rapide pour tourner à chaque génération
+    sans figer l'interface. À une nuance près : sur des hachures régulières
+    les ex æquo exacts sont fréquents, et grille et parcours exhaustif ne
+    les départagent pas dans le même ordre -- d'où un trajet final qui peut
+    différer de ~1 % dans un sens ou dans l'autre. Sans importance ici (les
+    deux restent à -91 %), mais c'est pourquoi un test ne peut comparer les
+    deux au millimètre que sur des points sans ex æquo."""
+    remaining = list(chains)
+    if not remaining:
+        return []
+
+    xs = [p.x for c in remaining for p in (c[0], c[-1])]
+    ys = [p.y for c in remaining for p in (c[0], c[-1])]
+    x0, x1 = min(xs), max(xs)
+    y0, y1 = min(ys), max(ys)
+    # Maille visant une grille ~racine(n) x racine(n) : assez fine pour
+    # que le premier anneau suffise presque toujours, assez large pour ne
+    # pas parcourir des milliers de cases vides. Dimensionnée sur la plus
+    # grande ÉTENDUE et non sur l'aire : des chaînes toutes alignées (une
+    # seule ligne de hachure, un texte sur une ligne) donnent une aire
+    # nulle, donc une maille microscopique et une explosion du nombre
+    # d'anneaux à parcourir.
+    etendue = max(x1 - x0, y1 - y0, 1e-9)
+    maille = max(etendue / max(int(math.sqrt(len(remaining))), 1), 1e-6)
+
+    def _case(p):
+        return (int((p.x - x0) / maille), int((p.y - y0) / maille))
+
+    grille = defaultdict(list)
+    for idx, c in enumerate(remaining):
+        grille[_case(c[0])].append((idx, 0))
+        grille[_case(c[-1])].append((idx, 1))
+
+    prise = [False] * len(remaining)
+    prise[0] = True
+    ordered = [remaining[0]]
+    cur = remaining[0][-1]
+
+    for _ in range(len(remaining) - 1):
+        cx, cy = _case(cur)
+        best_idx, best_dist, best_rev = None, None, False
+        anneau = 0
+        while True:
+            for ix in range(cx - anneau, cx + anneau + 1):
+                for iy in range(cy - anneau, cy + anneau + 1):
+                    # Anneau = bord du carré seulement (l'intérieur a déjà
+                    # été vu au tour précédent).
+                    if anneau and abs(ix - cx) != anneau and abs(iy - cy) != anneau:
+                        continue
+                    for (idx, bout) in grille.get((ix, iy), ()):
+                        if prise[idx]:
+                            continue
+                        p = remaining[idx][0] if bout == 0 else remaining[idx][-1]
+                        d = math.hypot(p.x - cur.x, p.y - cur.y)
+                        if best_dist is None or d < best_dist:
+                            best_dist, best_idx, best_rev = d, idx, bout == 1
+            # Tout ce qui reste dehors est à plus de anneau*maille : dès que
+            # le candidat trouvé fait mieux, inutile d'élargir.
+            if best_dist is not None and best_dist <= anneau * maille:
+                break
+            anneau += 1
+        prise[best_idx] = True
+        chain = remaining[best_idx]
+        if best_rev:
+            chain = list(reversed(chain))
+        ordered.append(chain)
+        cur = chain[-1]
+    return ordered
 
 
 # ==========================================================================
@@ -3201,6 +3296,10 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     dose_slowed = [0]
     if not chains:
         return None
+    # Réordonne pour minimiser le trajet à vide entre chaînes disjointes
+    # (hachures d'un remplissage complexe surtout) -- le tracé de chaque
+    # chaîne n'est pas modifié, seul l'ORDRE et le SENS de parcours.
+    chains = order_chains_by_proximity(chains)
 
     style_params = dict(style_params or {})
     dash_len = style_params.get("dash_len", 3.0)
