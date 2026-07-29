@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.93.0</span><br>
+      <span class="ver">Version 1.94.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.93.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.94.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -615,6 +615,12 @@
     <p>Le piège&nbsp;: la «&nbsp;largeur du point&nbsp;» pilote en coulisses la <b>hauteur Z</b>, donc le défocus. Si elle ne correspond pas au défocus auquel vos tons ont été mesurés, la courbe ne s'applique plus. Et l'écart n'est pas proportionnel mais <b>en carré du rapport des diamètres</b>&nbsp;: un point 1,45&nbsp;fois plus serré concentre la même puissance sur une surface 2,1&nbsp;fois plus petite. Cas réellement rencontré&nbsp;: nuancier mesuré à défocus 15, panneau réglé sur 8,75 — toutes les photos calibrées sortaient uniformément noires, sans le moindre message.</p>
     <p>Un <b>verdict en direct</b> s'affiche maintenant sous les trois champs. Il compare le défocus ET la vitesse demandés à ceux de la calibration, signale le recouvrement (pas plus fin que le trait&nbsp;= chaque point repassé plusieurs fois, ou pas plus large&nbsp;= bois nu entre les lignes), et propose un bouton qui aligne largeur et vitesse d'un clic. Le volet «&nbsp;régime&nbsp;» ne concerne que le tramage «&nbsp;Lignes calibrées&nbsp;», seul à consulter la courbe.</p>
 
+    <h4>L'aperçu photo&nbsp;: voir la planche avant de la brûler</h4>
+    <p>Le mode <b>Gravure photo</b> affiche un rendu du résultat sur fond bois — une vignette dans le panneau, et un <b>Aperçu photo</b> plein format au bouton. Chaque tramage y est peint <em>comme il grave</em>&nbsp;: densité de points pour les diffusions, diamètre variable pour les gros points&nbsp;Z, gris continus pour les lignes calibrées.</p>
+    <p>Ça n'a pas toujours été le cas. La vignette traitait tout ce qui n'était pas «&nbsp;Durée variable&nbsp;» comme un tramage Floyd-Steinberg&nbsp;: le tramage <b>Lignes calibrées</b>, qui grave des gris continus modulés pixel par pixel, s'affichait en points noirs et blancs. Un portrait a été gravé sans que rien ne signale que ses demi-teintes étaient trop claires — l'aperçu <em>ne pouvait pas</em> le dire.</p>
+    <p>Pour les lignes calibrées, l'aperçu ne refait surtout pas ses propres calculs&nbsp;: il appelle la <b>fonction même du générateur</b> pour convertir chaque noirceur en puissance, puis remonte de la puissance à la noirceur obtenue. Il ne peut donc pas montrer autre chose que ce que la machine recevra. Ce détour rend visibles deux pertes que la noirceur demandée cache&nbsp;: les pixels sous le <b>seuil blanc</b>, qui laissent le bois nu, et les ombres <b>écrasées sur la puissance maximale</b>, qui perdent toute nuance entre elles. L'aperçu en annonce les pourcentages.</p>
+    <p>Une mesure hors de son domaine reste un piège. Les tramages à points brûlent en micro-traits dont la vitesse vient de la <em>durée du pulse</em> — souvent F200 à F1200, alors qu'un nuancier est mesuré bien plus vite. Interrogé hors de sa plage, le nuancier renvoie la valeur du bord <b>sans le signaler</b>&nbsp;: le point le plus bref et le plus long ressortaient à la même noirceur, et l'aperçu affichait une photo parfaitement plate qui avait pourtant l'air d'une mesure. L'atelier compare désormais le régime du tramage aux vitesses réellement mesurées&nbsp;; hors plage, il bascule sur le modèle théorique et l'écrit&nbsp;: «&nbsp;gris théoriques… à valider sur une chute&nbsp;».</p>
+
     <h4>La puissance se calcule sur la largeur MESURÉE du ton visé</h4>
     <p>La fluence d'un ton vaut <code>P / (largeur × vitesse)</code>, où la largeur est celle du trait <em>réellement brûlé</em>, relevée au pied à coulisse. Elle varie beaucoup avec la puissance&nbsp;: sur le hêtre, de 0,40&nbsp;mm sur les tons clairs à 1,00&nbsp;mm sur les noirs, pour un point optique de 1,16&nbsp;mm — à faible puissance, seul le cœur du faisceau dépasse le seuil de brûlure.</p>
     <p>Pour viser une noirceur, l'atelier réinverse donc cette fluence <b>avec la largeur mesurée de ce ton-là</b>. L'identité se referme exactement&nbsp;: <code>S = fluence × largeur × vitesse</code> redonne l'énergie par millimètre du ton qui avait produit cette teinte. Vérifié sur les six tons du hêtre, à 1,7&nbsp;% près.</p>
@@ -829,7 +835,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.93.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.94.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

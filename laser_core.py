@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.93.0"
+VERSION = "1.94.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4767,6 +4767,32 @@ def darkness_at(material, power, feed, z_offset=0.0):
     return None if d is None else max(0.0, min(100.0, d))
 
 
+def shade_feed_range(material, z_offset=0.0):
+    """(vitesse_min, vitesse_max) réellement MESURÉES sur le matériau, au
+    niveau de défocus le plus proche -- le même niveau que celui retenu par
+    `darkness_at`. None si aucun ton exploitable.
+
+    Sert à savoir si une teinte rendue par `darkness_at` est une mesure ou
+    un bornage : hors de cette plage, `darkness_at` renvoie la valeur du
+    bord sans le signaler, et deux régimes très différents ressortent
+    identiques. Repéré le 29/07/2026 -- les micro-traits d'une trame de
+    points tournent à F200-1200 alors que le nuancier Hêtre est mesuré de
+    F650 à F2000 : tous les points d'un aperçu sortaient à 22 %."""
+    pts = [s for s in load_shades(material)
+           if float(s.get("power", 0) or 0) > 0
+           and float(s.get("feed", 0) or 0) > 0
+           and s.get("darkness") is not None]
+    if not pts:
+        return None
+    niveaux = {}
+    for s in pts:
+        z = round(float(s.get("z_offset", 0.0) or 0.0), 3)
+        niveaux.setdefault(z, []).append(s)
+    z_proche = min(niveaux, key=lambda z: abs(z - float(z_offset or 0.0)))
+    feeds = [float(s["feed"]) for s in niveaux[z_proche]]
+    return min(feeds), max(feeds)
+
+
 def shade_summary(shade):
     """Résumé court d'un ton pour un sélecteur : « 45% -- S600 F800
     déf 2.0 (0.80mm) »."""
@@ -7303,44 +7329,31 @@ def generate_gcode_photo_dither_lines(darkness_rows, pitch, z_work, power, feed,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
-def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
-                               material, white_threshold=0.05,
-                               pre_gcode="", post_gcode="", frame_only=False,
-                               quiet=False):
-    """Photo CALIBRÉE en lignes balayées : chaque ligne de l'image est
-    parcourue en continu (serpentin), la puissance S modulée pixel par
-    pixel pour viser la noirceur du pixel via la courbe noirceur->fluence
-    du NUANCIER du matériau (tons mesurés, cf. darkness_fluence_curve).
-    S = fluence(noirceur) · min(pas, largeur) · vitesse -- c'est le PAS qui
-    gouverne l'énergie surfacique en balayage, pas la largeur du trait (cf.
-    _pas_surfacique). Sous la noirceur minimale
-    mesurée, la fluence est prolongée linéairement vers 0 (hautes lumières
-    progressives) ; les S au-delà de S_MAX sont plafonnés (compteur en
-    commentaire -- ralentir la vitesse si trop nombreux). G64 + S en ligne
-    sur les G1 : mouvement fluide, pas d'arrêt entre pixels.
-    line_width : largeur du trait (le défocus correspondant est à porter
-    dans z_work par l'appelant). Renvoie None si grille vide, image toute
-    blanche, ou nuancier insuffisant (< 2 tons en défocus)."""
-    h = len(darkness_rows)
-    w = len(darkness_rows[0]) if h else 0
-    if h < 1 or w < 1 or line_width <= 0 or feed <= 0:
-        return None
+def photo_line_power_fn(material, pitch, line_width, feed, white_threshold=0.05):
+    """Fabrique la conversion noirceur (0..1) -> S du tramage « lignes
+    calibrées ».
+
+    SOURCE UNIQUE : le générateur de G-code ET l'aperçu photo passent tous
+    les deux par ici. Un aperçu qui recalculerait sa propre version de
+    cette conversion finirait par montrer autre chose que ce que la machine
+    grave -- et il mentirait joliment, sans rien signaler.
+
+    Renvoie (puissance, infos), ou None si le nuancier du matériau n'a pas
+    2 tons en défocus exploitables. `puissance(d)` rend le S quantifié ;
+    `infos` est un dict mis à jour au fil des appels :
+    {"plafonnes": n} compte les pixels dont le S demandé dépassait S_MAX
+    (leurs nuances s'écrasent toutes sur le même noir)."""
     curve = darkness_fluence_curve(material)
     if len(curve) < 2:
-        if not quiet:
-            FreeCAD.Console.PrintWarning(
-                "Photo calibrée : le nuancier « {} » n'a pas assez de tons en "
-                "défocus (2 minimum) pour interpoler.\n".format(material))
         return None
     dmin, fmin = curve[0]
     dmax, fmax = curve[-1]
-
-    # Hissé hors de _cell_power : appelé pour CHAQUE pixel, une lecture de
+    # Hissé hors de puissance() : appelée pour CHAQUE pixel, une lecture de
     # config par point rendrait la génération inutilisable.
     wpts = darkness_width_points(material)
+    infos = {"plafonnes": 0}
 
-    clamped = [0]
-    def _cell_power(d):
+    def puissance(d):
         t = min(max(d, 0.0), 1.0) * 100.0
         if t < white_threshold * 100.0:
             return 0
@@ -7364,14 +7377,94 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
         w = interp_width_points(wpts, t)
         s = fl * (w if w else _pas_surfacique(pitch, line_width)) * feed
         if s > S_MAX:
-            clamped[0] += 1
+            infos["plafonnes"] += 1
             s = S_MAX
         return int(round(s / 5.0) * 5)      # quantifié : fusionne les segments
 
+    return puissance, infos
+
+
+def photo_line_tone_table(puissance, pas=0.002):
+    """Table {S : noirceur RÉELLEMENT obtenue}, échantillonnée sur la
+    fonction `puissance` elle-même -- jamais sur une formule parallèle.
+
+    La noirceur retenue pour un S est le MILIEU de l'intervalle de
+    noirceurs qui donnent ce S. Rend visibles les deux pertes du tramage
+    calibré, que la noirceur demandée seule ne montre pas : le seuil blanc
+    (S0 = bois nu) et le plafond S_MAX, où toutes les ombres s'écrasent sur
+    la même valeur. Sert à peindre l'aperçu photo."""
+    bornes = {}
+    n = int(round(1.0 / max(pas, 1e-6)))
+    for k in range(n + 1):
+        d = min(1.0, k * pas)
+        s = puissance(d)
+        if s in bornes:
+            bornes[s][1] = d
+        else:
+            bornes[s] = [d, d]
+    return {s: (lo + hi) / 2.0 for s, (lo, hi) in bornes.items()}
+
+
+def zdots_marks(darkness_rows, pitch, dot_min_mm, dot_max_mm,
+                white_threshold=0.05):
+    """Points du tramage GROS POINTS Z : [(x, y, diamètre_mm), ...] dans
+    l'ordre de parcours (serpentin). Partagée par le générateur G-code ET
+    l'aperçu photo, sur le modèle de `halftone_dots` -- le diamètre porte
+    la noirceur, c'est donc lui que l'aperçu doit peindre."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or dot_max_mm <= dot_min_mm:
+        return []
+    marks = []
+    for row in range(h):
+        y = (h - 1 - row) * pitch
+        cols = range(w) if row % 2 == 0 else range(w - 1, -1, -1)
+        for col in cols:
+            d = min(1.0, max(0.0, darkness_rows[row][col]))
+            if d < white_threshold:
+                continue
+            marks.append((col * pitch, y,
+                          dot_min_mm + (dot_max_mm - dot_min_mm) * d))
+    return marks
+
+
+def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
+                               material, white_threshold=0.05,
+                               pre_gcode="", post_gcode="", frame_only=False,
+                               quiet=False):
+    """Photo CALIBRÉE en lignes balayées : chaque ligne de l'image est
+    parcourue en continu (serpentin), la puissance S modulée pixel par
+    pixel pour viser la noirceur du pixel via la courbe noirceur->fluence
+    du NUANCIER du matériau (tons mesurés, cf. darkness_fluence_curve).
+    S = fluence(noirceur) · min(pas, largeur) · vitesse -- c'est le PAS qui
+    gouverne l'énergie surfacique en balayage, pas la largeur du trait (cf.
+    _pas_surfacique). Sous la noirceur minimale
+    mesurée, la fluence est prolongée linéairement vers 0 (hautes lumières
+    progressives) ; les S au-delà de S_MAX sont plafonnés (compteur en
+    commentaire -- ralentir la vitesse si trop nombreux). G64 + S en ligne
+    sur les G1 : mouvement fluide, pas d'arrêt entre pixels.
+    line_width : largeur du trait (le défocus correspondant est à porter
+    dans z_work par l'appelant). Renvoie None si grille vide, image toute
+    blanche, ou nuancier insuffisant (< 2 tons en défocus)."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or line_width <= 0 or feed <= 0:
+        return None
+    conv = photo_line_power_fn(material, pitch, line_width, feed,
+                               white_threshold)
+    if conv is None:
+        if not quiet:
+            FreeCAD.Console.PrintWarning(
+                "Photo calibrée : le nuancier « {} » n'a pas assez de tons en "
+                "défocus (2 minimum) pour interpoler.\n".format(material))
+        return None
+    puissance, infos = conv
+
     # S par cellule, puis émission en serpentin par plages de S constant.
-    grid = [[_cell_power(dv) for dv in row] for row in darkness_rows]
+    grid = [[puissance(dv) for dv in row] for row in darkness_rows]
     if not any(any(s > 0 for s in row) for row in grid):
         return None
+    clamped = [infos["plafonnes"]]
 
     z_safe = z_work + TRAVEL_CLEARANCE_MM
     lines = []
@@ -7430,18 +7523,12 @@ def generate_gcode_photo_zdots(darkness_rows, pitch, z_focus, power,
         return None
     half_angle = calibrated_half_angle()
     dots = []
-    for row in range(h):
-        y = (h - 1 - row) * pitch
-        cols = range(w) if row % 2 == 0 else range(w - 1, -1, -1)
-        for col in cols:
-            d = min(1.0, max(0.0, darkness_rows[row][col]))
-            if d < white_threshold:
-                continue
-            dia = dot_min_mm + (dot_max_mm - dot_min_mm) * d
-            z = z_focus + (defocus_for_spot_diameter(dia, SPOT_FOCUS_MM, half_angle) or 0.0)
-            r = (dia / dot_max_mm) ** 2
-            dw = dwell_min_s + (dwell_max_s - dwell_min_s) * r
-            dots.append((col * pitch, y, z, dw))
+    for x, y, dia in zdots_marks(darkness_rows, pitch, dot_min_mm, dot_max_mm,
+                                 white_threshold):
+        z = z_focus + (defocus_for_spot_diameter(dia, SPOT_FOCUS_MM, half_angle) or 0.0)
+        r = (dia / dot_max_mm) ** 2
+        dw = dwell_min_s + (dwell_max_s - dwell_min_s) * r
+        dots.append((x, y, z, dw))
     if not dots:
         return None
     z_safe = max(z for _, _, z, _ in dots) + TRAVEL_CLEARANCE_MM

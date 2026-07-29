@@ -1149,6 +1149,30 @@ def _tone_measured(material, power, feed, z_offset=0.0):
     return None if d is None else d / 100.0
 
 
+_BOIS_APERCU = (208, 178, 138)      # fond de tous les aperçus photo
+
+
+def _teinte_gravure(material, power, feed, width, z_offset=0.0, cache=None):
+    """Teinte 0..1 d'une marque gravée : nuancier MESURÉ d'abord
+    (_tone_measured), modèle théorique en repli (_tone_burn).
+
+    `cache` : dict de mémoïsation OBLIGATOIRE dès qu'on peint une trame --
+    `core.darkness_at` relit le nuancier dans la config à CHAQUE appel, et
+    une trame compte des dizaines de milliers de points. On mémoïse sur les
+    paramètres arrondis : deux points qui ne diffèrent que par un millième
+    de mm/min gravent la même chose."""
+    cle = (round(power), round(feed), round(z_offset, 3), round(width, 3))
+    if cache is not None and cle in cache:
+        return cache[cle]
+    t = _tone_measured(material, power, feed, z_offset)
+    if t is None:
+        t = _tone_burn(power, feed, width)
+    t = max(0.0, min(1.0, t))
+    if cache is not None:
+        cache[cle] = t
+    return t
+
+
 def _discretize_edge(edge, dist=0.3):
     """Arête Part -> liste de (x, y) échantillonnés."""
     pts = None
@@ -1162,7 +1186,7 @@ def _discretize_edge(edge, dist=0.3):
 
 
 def _render_engraving_photo(strokes, scale=24.0, margin_mm=3.0,
-                            wood=(208, 178, 138), max_px=2200,
+                            wood=_BOIS_APERCU, max_px=2200,
                             collision_points=None):
     """`strokes` : liste de (points[(x,y)...], largeur_mm, teinte0..1).
     `collision_points` : points (x,y) natifs (mêmes coordonnées que
@@ -6401,8 +6425,10 @@ class TaskPanelHalftone:
             "<b>4.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin "
             "<b>bas-gauche</b> (l'image y est posée en X0&nbsp;Y0), Z sur la "
             "surface.",
-            "<b>5. Vérifie</b>&nbsp;: «&nbsp;Aperçu des points&nbsp;» (vue 3D) "
-            "et «&nbsp;Aperçu cadrage&nbsp;» (fichier séparé, à blanc).",
+            "<b>5. Vérifie</b>&nbsp;: «&nbsp;Aperçu photo&nbsp;» (le rendu "
+            "sur le bois, en grand&nbsp;— c'est lui qui te dira si les demi-"
+            "teintes tiennent), «&nbsp;Aperçu des points&nbsp;» (vue 3D) et "
+            "«&nbsp;Aperçu cadrage&nbsp;» (fichier séparé, à blanc).",
             "<b>6. Génère</b>&nbsp;: «&nbsp;Générer et sauvegarder le "
             "G-code…&nbsp;». Compter ~2-4 points/seconde&nbsp;— un pas de trame "
             "trop fin donne un job très long.",
@@ -6479,9 +6505,12 @@ class TaskPanelHalftone:
         self.lbl_halftone_preview = QtWidgets.QLabel()
         self.lbl_halftone_preview.setAlignment(QtCore.Qt.AlignHCenter)
         self.lbl_halftone_preview.setToolTip(
-            "Aperçu du TRAMAGE : ce que les points graveront (noir = point,\n"
-            "blanc = rien). Se met à jour avec l'image, la largeur, le pas,\n"
-            "le tramage, le négatif et le seuil blanc.")
+            "Aperçu du RÉSULTAT sur le bois, avec le tramage courant :\n"
+            "points pour les tramages à points, gris calibrés pour les\n"
+            "lignes calibrées. Se met à jour avec l'image, la largeur, le\n"
+            "pas, le tramage, la tonalité, le négatif et le seuil blanc.\n"
+            "Le bouton « Aperçu photo », plus bas, montre le même rendu\n"
+            "en grand.")
         form.addRow(self.lbl_halftone_preview)
 
         self.btn_sampler = QtWidgets.QPushButton("Mire des tramages (comparatif sur chute)")
@@ -6659,13 +6688,24 @@ class TaskPanelHalftone:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
+        self.btn_photo_preview = QtWidgets.QPushButton()
+        self.btn_photo_preview.setToolTip(
+            "Aperçu photo : le rendu du résultat sur le bois, en grand,\n"
+            "avec le tramage courant -- points, lignes ou gris calibrés\n"
+            "selon le tramage choisi. Les gris des « lignes calibrées »\n"
+            "passent par la MÊME conversion que le G-code, et l'aperçu\n"
+            "annonce le bois resté nu et les ombres écrasées au maximum.\n"
+            "À regarder avant de graver : une planche de moins à brûler.")
+        self.btn_photo_preview.clicked.connect(self._on_photo_preview)
+
         self.btn_dots_preview = QtWidgets.QPushButton()
         self.btn_dots_preview.setToolTip(
             "Dessine chaque point de la trame (petite croix) dans la vue 3D,\n"
             "à sa position réelle -- pour vérifier l'emprise et la densité\n"
             "sur le modèle. Purement visuel.")
         self.btn_dots_preview.clicked.connect(self._on_dots_preview)
-        _preview_row(form, [(self.btn_dots_preview, "btn_view3d.svg")])
+        _preview_row(form, [(self.btn_photo_preview, "sect_photo.svg"),
+                            (self.btn_dots_preview, "btn_view3d.svg")])
 
         self._last_fields = {
             "image": self.edt_image, "width": self.spn_width,
@@ -6802,42 +6842,229 @@ class TaskPanelHalftone:
 
     _PREVIEW_MAX_CELLS = 250000  # plafond du tramage d'APERÇU (coût borné)
 
+    _MARGE_APERCU_MM = 2.0
+
+    def _render_photo_preview(self, darkness, largeur_px=240):
+        """Rendu réaliste, sur fond bois, de ce que le tramage COURANT
+        gravera -- chaque tramage peint comme il grave, jamais comme un
+        autre. Renvoie (QImage, note) ou (None, raison).
+
+        Les tons viennent du nuancier MESURÉ du matériau quand il existe,
+        du modèle théorique sinon (cf. _teinte_gravure). Le tramage
+        « lignes calibrées » passe, lui, par la fonction du générateur
+        elle-même (core.photo_line_power_fn) : l'aperçu ne peut donc pas
+        montrer autre chose que ce que le G-code demandera."""
+        h = len(darkness)
+        w = len(darkness[0]) if h else 0
+        pitch = self.spn_pitch.value()
+        if h < 1 or w < 1 or pitch <= 0:
+            return None, "grille vide"
+        idx = self.combo_mode.currentIndex()
+        material = self.combo_photo_mat.currentData()
+        white = self.spn_white.value() / 100.0
+        spot = self.spn_spot_width.value()
+        power = self.spn_power.value()
+        marge = self._MARGE_APERCU_MM
+        sc = max(1.0, largeur_px / float(w * pitch + 2 * marge))
+
+        if idx == 2:
+            return self._apercu_lignes_calibrees(darkness, pitch, sc, marge)
+
+        # Tramages à marques : on peint chaque marque à sa position, sa
+        # largeur brûlée et sa teinte, puis _render_engraving_photo compose
+        # le tout sur le bois (les recouvrements s'assombrissent).
+        cache = {}
+        seg = max(0.05, min(0.3 * pitch, 0.2))
+        demi = seg / 2.0
+        half_angle = core.calibrated_half_angle()
+        strokes = []
+
+        # Les tramages à points brûlent en MICRO-TRAITS : leur vitesse vient
+        # de la durée du pulse (F = seg/durée), pas du réglage de vitesse.
+        # Elle tombe souvent bien en dessous des vitesses auxquelles le
+        # nuancier a été mesuré -- et `darkness_at` borne alors aux mesures
+        # SANS LE DIRE : le point le plus bref et le plus long ressortent
+        # à la même noirceur, et l'aperçu affiche une photo plate qui a
+        # pourtant l'air d'une mesure. Repéré le 29/07/2026 sur Hêtre
+        # (micro-traits F200-1200, tons mesurés F650-2000, tout à 22 %).
+        # Règle : si le régime sort du domaine mesuré, TOUT le rendu passe
+        # au modèle théorique et l'aperçu l'annonce -- même règle pour les
+        # cinq tramages, qu'on le voie ou non à l'écran.
+        if idx == 3:
+            feeds = [self.spn_line_feed.value()]
+        else:
+            feeds = [max(1.0, seg / max(d / 1000.0, 1e-3) * 60.0)
+                     for d in (self.spn_dwell_min.value(),
+                               self.spn_dwell_max.value())]
+        z_ref = core.defocus_for_spot_diameter(
+            spot, core.SPOT_FOCUS_MM, half_angle) or 0.0
+        plage = core.shade_feed_range(material, z_ref)
+        theorique = plage is None or not all(
+            plage[0] - 1e-6 <= f <= plage[1] + 1e-6 for f in feeds)
+        hors = "" if not theorique else (
+            "gris théoriques : ce tramage brûle à F{:.0f}-{:.0f}, hors des "
+            "vitesses mesurées{} — à valider sur une chute".format(
+                min(feeds), max(feeds),
+                "" if plage is None else " (F{:.0f}-{:.0f})".format(*plage)))
+        def teinte(pw, feed, largeur, z_off):
+            if theorique:
+                return max(0.0, min(1.0, _tone_burn(pw, feed, largeur)))
+            return _teinte_gravure(material, pw, feed, largeur, z_off, cache)
+
+        dwell_min = self.spn_dwell_min.value() / 1000.0
+        dwell_max = self.spn_dwell_max.value() / 1000.0
+        largeur = spot if spot > 0 else core.SPOT_FOCUS_MM
+        if idx == 4:
+            dot_max = spot if spot > core.SPOT_FOCUS_MM else max(
+                pitch * 0.9, core.SPOT_FOCUS_MM * 3)
+            p_z = power or core.S_MAX
+            for x, y, dia in core.zdots_marks(darkness, pitch,
+                                              core.SPOT_FOCUS_MM, dot_max,
+                                              white):
+                # Même chaîne que generate_gcode_photo_zdots : le diamètre
+                # fixe le défocus, et la durée suit la surface du point --
+                # c'est la TAILLE qui porte l'image, pas le gris.
+                z_off = core.defocus_for_spot_diameter(
+                    dia, core.SPOT_FOCUS_MM, half_angle) or 0.0
+                dw = dwell_min + (dwell_max - dwell_min) * (dia / dot_max) ** 2
+                f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
+                strokes.append(([(x, y)], dia,
+                                teinte(p_z, f_dot, dia, z_off)))
+        elif idx == 3:
+            # Diffusion en lignes : chaque case allumée est balayée sur un
+            # PAS entier, à puissance et vitesse fixes -- c'est la DENSITÉ
+            # des cases allumées qui porte l'image.
+            t = teinte(power, self.spn_line_feed.value(), largeur, z_ref)
+            binaire = core.floyd_steinberg_dither(darkness)
+            for row in range(h):
+                y = (h - 1 - row) * pitch
+                for col in range(w):
+                    if binaire[row][col]:
+                        strokes.append((
+                            [(col * pitch, y), ((col + 1) * pitch, y)],
+                            largeur, t))
+        else:
+            # Diffusion : points tous identiques, la densité porte l'image.
+            # Durée variable : un point par case, c'est la durée du pulse
+            # (donc la vitesse du micro-trait) qui porte le gris.
+            for x, y, dw in core.halftone_dots(
+                    darkness, pitch, dwell_min, dwell_max,
+                    mode="duree" if idx == 1 else "diffusion",
+                    white_threshold=white):
+                f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
+                strokes.append(([(x - demi, y), (x + demi, y)], largeur,
+                                teinte(power, f_dot, largeur, z_ref)))
+
+        if not strokes:
+            return None, "aucun point à graver (seuil blanc trop haut ?)"
+        img = _render_engraving_photo(strokes, scale=sc, margin_mm=marge,
+                                      max_px=max(largeur_px, 1200))
+        if img is None:
+            return None, "rendu impossible"
+        # Pas de compte de marques dans la note : l'aperçu tourne sur une
+        # grille réduite, le chiffre serait faux. On annonce plutôt D'OÙ
+        # viennent les gris -- ça, c'est vrai à toutes les échelles.
+        return img, hors or "tons mesurés sur le nuancier « {} »".format(
+            material or "?")
+
+    def _apercu_lignes_calibrees(self, darkness, pitch, sc, marge):
+        """Tramage « lignes calibrées » : pas de marques isolées mais un
+        balayage continu, donc une CASE peinte par pixel. On passe par la
+        fonction du générateur, puis on remonte de S à la noirceur
+        réellement obtenue -- ce qui rend visibles les deux pertes que la
+        noirceur demandée cache : les pixels sous le seuil (bois nu) et
+        les ombres écrasées sur le plafond S_MAX."""
+        h = len(darkness)
+        w = len(darkness[0])
+        largeur = self.spn_spot_width.value()
+        if largeur <= 0:
+            largeur = max(pitch, core.SPOT_FOCUS_MM)
+        conv = core.photo_line_power_fn(
+            self.combo_photo_mat.currentData(), pitch, largeur,
+            self.spn_line_feed.value(), self.spn_white.value() / 100.0)
+        if conv is None:
+            return None, ("le nuancier de ce matériau n'a pas 2 tons en "
+                          "défocus : impossible de calibrer les gris")
+        puissance, infos = conv
+        tons = core.photo_line_tone_table(puissance)
+        s_max = max(tons)
+
+        cases = QtGui.QImage(w, h, QtGui.QImage.Format_RGB32)
+        nus = plafonnes = 0
+        for y in range(h):
+            ligne = darkness[y]
+            for x in range(w):
+                s = puissance(ligne[x])
+                if s <= 0:
+                    nus += 1
+                    cases.setPixel(x, y, QtGui.qRgb(*_BOIS_APERCU))
+                    continue
+                if s >= s_max:
+                    plafonnes += 1
+                v = 1.0 - tons.get(s, 0.0)
+                cases.setPixel(x, y, QtGui.qRgb(int(_BOIS_APERCU[0] * v),
+                                                int(_BOIS_APERCU[1] * v),
+                                                int(_BOIS_APERCU[2] * v)))
+        # Même cadrage que les tramages à marques (marge de bois autour).
+        W = max(1, int((w * pitch + 2 * marge) * sc))
+        H = max(1, int((h * pitch + 2 * marge) * sc))
+        img = QtGui.QImage(W, H, QtGui.QImage.Format_RGB32)
+        img.fill(QtGui.QColor(*_BOIS_APERCU))
+        p = QtGui.QPainter(img)
+        # Sans lissage : la machine grave VRAIMENT des lignes discrètes au
+        # pas de trame, l'aperçu ne doit pas les fondre en dégradé.
+        p.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, False)
+        p.drawImage(QtCore.QRectF(marge * sc, marge * sc,
+                                  w * pitch * sc, h * pitch * sc), cases)
+        p.end()
+        n = float(w * h)
+        return img, "{:.0f} % de bois nu, {:.0f} % d'ombres écrasées à S{:.0f}".format(
+            100.0 * nus / n, 100.0 * plafonnes / n, s_max)
+
+    # Deux plafonds, parce que les deux surfaces n'ont pas le même budget :
+    # la vignette se recalcule à CHAQUE réglage touché, l'aperçu plein
+    # format part d'un clic explicite. Peindre 250 000 marques dans 240 px
+    # coûtait jusqu'à 1,8 s pour un résultat où dix marques tombent sur le
+    # même pixel -- le panneau devenait pâteux dès qu'on tournait un bouton.
+    _VIGNETTE_MAX_CELLS = 20000
+
     def _update_halftone_preview(self):
-        """Rendu du tramage dans le panneau : une image pixel-par-point
-        (noir = point gravé), agrandie SANS lissage pour que la trame
-        reste visible. Sur une trame très fine, l'aperçu est calculé sur
-        une grille RÉDUITE (représentatif, coût borné) -- il reste
-        toujours affiché ; la génération réelle, elle, utilise la grille
-        exacte."""
-        darkness = self._build_rows(silent=True, max_cells=self._PREVIEW_MAX_CELLS)
+        """Vignette du panneau : le MÊME rendu que le bouton « Aperçu
+        photo », en petit. Sur une trame très fine, calculé sur une grille
+        RÉDUITE (représentatif, coût borné) -- la génération réelle, elle,
+        utilise toujours la grille exacte."""
+        darkness = self._build_rows(silent=True,
+                                    max_cells=self._VIGNETTE_MAX_CELLS)
         if darkness is None:
             self.lbl_halftone_preview.setVisible(False)
             return
-        h = len(darkness)
-        w = len(darkness[0])
-        mode = "duree" if self.combo_mode.currentIndex() == 1 else "diffusion"
-        white = self.spn_white.value() / 100.0
-        buf = bytearray(w * h)
-        if mode == "diffusion":
-            binary = core.floyd_steinberg_dither(darkness)
-            for y in range(h):
-                base = y * w
-                rowb = binary[y]
-                for x in range(w):
-                    buf[base + x] = 0 if rowb[x] else 255
-        else:
-            for y in range(h):
-                base = y * w
-                rowd = darkness[y]
-                for x in range(w):
-                    d = rowd[x]
-                    buf[base + x] = 255 if d < white else 255 - int(d * 255)
-        img = QtGui.QImage(bytes(buf), w, h, w, QtGui.QImage.Format_Grayscale8).copy()
-        pm = QtGui.QPixmap.fromImage(img)
-        target_w = 240
-        pm = pm.scaledToWidth(target_w, QtCore.Qt.FastTransformation)
-        self.lbl_halftone_preview.setPixmap(pm)
+        img, _note = self._render_photo_preview(darkness, largeur_px=240)
+        if img is None:
+            self.lbl_halftone_preview.setVisible(False)
+            return
+        self.lbl_halftone_preview.setPixmap(QtGui.QPixmap.fromImage(img))
         self.lbl_halftone_preview.setVisible(True)
+
+    def _on_photo_preview(self):
+        """Aperçu photo plein format, comme dans les autres modes."""
+        darkness = self._build_rows(max_cells=self._PREVIEW_MAX_CELLS)
+        if darkness is None:
+            return
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        try:
+            self._afficher_apercu_photo(darkness)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+    def _afficher_apercu_photo(self, darkness):
+        img, note = self._render_photo_preview(darkness, largeur_px=900)
+        if img is None:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Aperçu photo",
+                "Rendu impossible : {}.".format(note))
+            return
+        _show_image_dialog(img, "Aperçu photo — {} ({})".format(
+            self.combo_mode.currentText(), note))
 
     def _on_dots_preview(self):
         doc = FreeCAD.ActiveDocument

@@ -661,6 +661,39 @@ strokes, so `TaskPanelCombined` renders the whole job at once; testgrid/unknown 
 `_build_combined_operation`, to avoid its save/Job side effects). Hachures is a geometry mode
 (no power/feed) → no preview.
 
+**Photo mode got the same preview in v1.94.0** — `TaskPanelHalftone._render_photo_preview(darkness,
+largeur_px)` → `(QImage, note)`, feeding BOTH the in-panel thumbnail and a full-size "Aperçu photo"
+button, so the two can never disagree. Each of the 5 tramages is painted **the way it burns**: dot
+density (0, 3), dwell-driven tone (1), continuous calibrated greys (2), varying dot diameter (4).
+Before this, `_update_halftone_preview` treated everything except "Durée variable" as Floyd-Steinberg
+— the calibrated-lines mode, which engraves continuous modulated greys, was shown as black/white
+dots, and a portrait was burned with no warning that its mid-tones were far too light.
+
+Two rules make this preview trustworthy, and both are worth preserving:
+
+- **Never re-implement the S conversion.** The calibrated-lines path calls
+  `core.photo_line_power_fn(material, pitch, line_width, feed, white_threshold)` → `(puissance,
+  infos)` — the *same* factory `generate_gcode_photo_lines` uses — then inverts it via
+  `core.photo_line_tone_table(puissance)` (sampled on `puissance` itself, never on a parallel
+  formula) to get the darkness actually obtained. That inversion is what surfaces the two losses a
+  "requested darkness" histogram hides: pixels under the white threshold (bare wood) and shadows
+  clamped at `S_MAX` (all collapsing to one black). Both are reported in the note.
+  `core.zdots_marks(...)` plays the same shared-source role for mode 4.
+- **A clamped measurement is not a measurement.** `core.darkness_at` bounds to the measured grid and
+  returns the edge value silently. Dot tramages burn micro-lines whose feed comes from the *pulse
+  duration* (F200–1200 on Hêtre), while the nuancier was measured F650–2000 → every dot came back at
+  22 %, a perfectly flat photo that looked like data. `core.shade_feed_range(material, z_offset)`
+  (same nearest-defocus-level selection as `darkness_at`) now gates it: outside the measured span,
+  the WHOLE render switches to `_tone_burn` and the note says so — same rule for all 5 tramages,
+  whether or not the flatness would have been visible.
+
+Perf: two cell caps, because the surfaces have different budgets. `_VIGNETTE_MAX_CELLS = 20000` for
+the thumbnail (recomputed on every settings change) vs `_PREVIEW_MAX_CELLS = 250000` for the button
+(explicit click, wait cursor). Painting 250k marks into a 240 px thumbnail cost up to 1.8 s for a
+result where ten marks land on the same pixel. `_teinte_gravure(..., cache)` memoises on rounded
+args — `darkness_at` re-reads the config on every call, so an un-memoised tone lookup inside a
+per-mark loop is the same catastrophe as a per-pixel config read in a generator.
+
 ## Hardware context
 
 Default profile is the **LT-80W-AA-PRO** diode module with the square shroud removed (so it can
