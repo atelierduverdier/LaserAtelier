@@ -2671,15 +2671,32 @@ def _make_shade_picker(form, on_apply):
         "photo. En changer ne modifie aucun réglage.")
     form.addRow("Matériau :", combo_mat)
 
+    combo_critere = QtWidgets.QComboBox()
+    for cle, libelle in core.CRITERES_CLASSEMENT:
+        combo_critere.addItem(libelle, cle)
+    combo_critere.setToolTip(
+        "Comment regrouper et trier la liste ci-dessous. On ne cherche pas\n"
+        "toujours la même chose : une NUANCE pour un marquage, une LARGEUR\n"
+        "de trait pour un remplissage, un niveau de DÉFOCUS pour retrouver\n"
+        "une gravure déjà faite. La valeur du critère choisi passe en tête\n"
+        "de chaque ligne, pour la parcourir des yeux.")
+    form.addRow("Classer par :", combo_critere)
+
     combo_shade = QtWidgets.QComboBox()
     combo_shade.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
     combo_shade.setMinimumContentsLength(18)
     combo_shade.setToolTip(
-        "Ton mesuré : noirceur % -- réglage (largeur). En choisir un\n"
-        "remplit AUSSITÔT puissance/vitesse (et défocus si le ton en a\n"
-        "un) avec ce réglage MESURÉ -- le rendu sur la pièce sera celui\n"
-        "constaté lors du test.")
-    form.addRow("Ton :", combo_shade)
+        "Réglages MESURÉS de ce matériau, groupés par le critère ci-dessus.\n"
+        "En choisir un remplit AUSSITÔT puissance/vitesse (et défocus s'il\n"
+        "en a un) -- le rendu sur la pièce sera celui constaté au test.\n"
+        "\n"
+        "La liste réunit DEUX sources : les tons du Nuancier (noirceur jugée\n"
+        "à l'oeil) et les points de la grille de largeurs brûlées (largeur\n"
+        "au pied à coulisse). Une valeur non mesurée s'affiche « -- » : un\n"
+        "point de grille n'a pas de noirceur, beaucoup de tons n'ont pas de\n"
+        "largeur. Rien n'est recopié d'une table à l'autre, donc ajouter ou\n"
+        "retirer une mesure se voit ici immédiatement.")
+    form.addRow("Réglage :", combo_shade)
 
     btn_photo = QtWidgets.QPushButton("Voir la photo du nuancier")
     form.addRow(btn_photo)
@@ -2690,10 +2707,19 @@ def _make_shade_picker(form, on_apply):
         m = combo_mat.currentData()
         if m:
             combo_shade.addItem("-- Choisir --", None)
-            for s in core.load_shades(m):
-                combo_shade.addItem(core.shade_summary(s), s)
+            critere = combo_critere.currentData() or "noirceur"
+            groupes = core.grouper_reglages(core.reglages_disponibles(m), critere)
+            for titre, entrees in groupes:
+                # En-tête de groupe : une entrée désactivée, donc visible mais
+                # non sélectionnable -- pas de faux réglage applicable.
+                combo_shade.addItem("── {} ──".format(titre), None)
+                modele = combo_shade.model().item(combo_shade.count() - 1)
+                if modele is not None:
+                    modele.setEnabled(False)
+                for r in entrees:
+                    combo_shade.addItem("    " + core.resume_reglage(r, critere), r)
         else:
-            combo_shade.addItem("-- (aucun ton) --", None)
+            combo_shade.addItem("-- (aucune mesure) --", None)
         combo_shade.blockSignals(False)
         n = len(core.result_photos("nuancier:" + m)) if m else 0
         btn_photo.setEnabled(n > 0)
@@ -2711,15 +2737,20 @@ def _make_shade_picker(form, on_apply):
     def _reload():
         combo_mat.blockSignals(True)
         combo_mat.clear()
-        mats = core.shade_materials()
+        # Union des deux tables : un matériau dont on n'a mesuré que des
+        # largeurs (jamais jugé de nuance) a quand même des réglages à
+        # proposer -- il était invisible ici tant que seul le nuancier
+        # comptait.
+        mats = sorted(set(core.shade_materials()) | set(core.burn_width_materials()))
         if not mats:
-            combo_mat.addItem("-- (nuancier vide) --", None)
+            combo_mat.addItem("-- (aucune mesure) --", None)
         for m in mats:
             combo_mat.addItem(m, m)
         combo_mat.blockSignals(False)
         _reload_shades()
 
     combo_mat.currentIndexChanged.connect(lambda _i: _reload_shades())
+    combo_critere.currentIndexChanged.connect(lambda _i: _reload_shades())
 
     def _apply(_i=None):
         s = combo_shade.currentData()

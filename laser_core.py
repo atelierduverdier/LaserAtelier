@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.82.0"
+VERSION = "1.83.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4742,6 +4742,173 @@ def shade_summary(shade):
     if shade.get("label"):
         parts += " " + shade["label"]
     return parts
+
+
+# --------------------------------------------------------------------------
+# RÉGLAGES SÉLECTIONNABLES : nuancier + grille de largeurs, classés
+# --------------------------------------------------------------------------
+# Deux tables mesurent le même laser sur le même matériau, sans se recouvrir :
+#   - le NUANCIER porte un jugement (noirceur 0-100 % à l'oeil) sur des
+#     réglages retenus ; peu d'entrées ont une largeur (7 sur 83 en hêtre) ;
+#   - la GRILLE DE LARGEURS mesure au pied à coulisse la largeur brûlée de
+#     chaque croisement (S, F) à chaque niveau de défocus, sans noirceur.
+# Les deux servent à choisir un réglage avant de graver, mais seul le
+# nuancier était proposé dans les panneaux. On les EXPOSE ENSEMBLE plutôt
+# que de recopier la grille dans le nuancier : la copie obligerait à
+# inventer une noirceur (elles sont presque toutes noires), ce qui
+# fausserait darkness_fluence_curve -- donc la photo calibrée et le « ton
+# sur mesure » -- et allongerait de moitié une liste déjà difficile à
+# parcourir. Lire les deux à la volée garde chaque table dans son rôle et
+# rend la synchronisation automatique : ajouter ou retirer une mesure se
+# voit aussitôt, sans code de recopie qui pourrait dériver.
+
+# Bandes de classement. Bornes choisies sur les mesures réelles de
+# l'atelier, pas rondes par principe : 0,30 mm est la largeur au foyer du
+# hêtre à S1000/F800 (le trait « net » de référence), 1 mm la largeur
+# obtenue vers 20 mm de défocus, au-delà de laquelle on est clairement en
+# remplissage.
+_BANDES_NOIRCEUR = ((25.0, "Clair (0-25 %)"), (60.0, "Moyen (25-60 %)"),
+                    (90.0, "Foncé (60-90 %)"), (101.0, "Noir (90-100 %)"))
+_BANDES_LARGEUR = ((0.30, "Trait fin (moins de 0,30 mm)"),
+                   (1.0, "Trait moyen (0,30 à 1 mm)"),
+                   (1e9, "Trait large (1 mm et plus)"))
+
+CRITERES_CLASSEMENT = (
+    ("noirceur", "Noirceur"),
+    ("largeur", "Largeur de trait"),
+    ("defocus", "Défocus"),
+)
+
+
+def _cle_reglage(power, feed, z_offset):
+    """Identité d'un réglage : (S, F, défocus ramené au niveau standard).
+    Sert à reconnaître qu'un point de la grille et un ton du nuancier
+    décrivent la MÊME gravure."""
+    return (round(float(power or 0.0), 1),
+            round(float(feed or 0.0), 1),
+            round(_snap_defocus_level(z_offset or 0.0), 1))
+
+
+def reglages_disponibles(material):
+    """Tous les réglages applicables pour ce matériau, tons du nuancier ET
+    points mesurés de la grille de largeurs, en une seule liste.
+
+    Chaque entrée garde les clés d'un ton (power, feed, z_offset, width,
+    darkness, label) -- les appelants qui appliquent un ton n'ont donc rien
+    à changer -- plus `origine` ("nuancier" ou "grille"). `darkness` vaut
+    None pour un point de grille : sa noirceur n'a pas été jugée, et
+    afficher 0 ou 100 serait une mesure inventée.
+
+    TOUS les tons du nuancier sont conservés, y compris deux tons de même
+    (S, F, défocus) : un même réglage peut avoir été jugé deux fois (le
+    hêtre en compte 5 paires), c'est à l'utilisateur d'arbitrer dans le
+    Nuancier, pas à cette fonction d'en perdre un en silence. Seul un point
+    de GRILLE est écarté quand un ton décrit déjà le même réglage -- et il
+    lui cède au passage sa largeur mesurée si le ton n'en avait pas."""
+    tons = [dict(s, origine="nuancier") for s in load_shades(material)]
+    cles_tons = {_cle_reglage(t.get("power"), t.get("feed"), t.get("z_offset"))
+                 for t in tons}
+
+    largeurs = {}
+    points = []
+    bw = load_burn_widths(material) or {}
+    for p in (bw.get("focus") or []):
+        points.append((p, 0.0))
+    for p in (bw.get("defocus") or []):
+        points.append((p, _snap_defocus_level(p.get("z_offset", 0.0))))
+    for p, z in points:
+        cle = _cle_reglage(p.get("power"), p.get("feed"), z)
+        largeur = float(p.get("width") or 0.0)
+        if largeur:
+            largeurs.setdefault(cle, largeur)
+        if cle in cles_tons:
+            continue
+        cles_tons.add(cle)
+        tons.append({"power": float(p.get("power") or 0.0),
+                     "feed": float(p.get("feed") or 0.0),
+                     "z_offset": z, "width": largeur, "darkness": None,
+                     "label": "", "origine": "grille"})
+
+    # Un ton sans largeur en récupère une si la grille a mesuré le même
+    # réglage : mesure déjà faite, aucune raison de la laisser inutilisée.
+    for t in tons:
+        if t.get("origine") == "nuancier" and not t.get("width"):
+            l = largeurs.get(_cle_reglage(t.get("power"), t.get("feed"),
+                                          t.get("z_offset")))
+            if l:
+                t["width"] = l
+    return tons
+
+
+def _bande(valeur, bandes, titre_absent):
+    """(rang, titre) de la bande contenant `valeur` ; le groupe « non
+    mesuré » est rangé en dernier (rang très grand) plutôt qu'en tête : ce
+    sont les entrées dont on ne sait rien sur le critère demandé."""
+    if not valeur:
+        return (len(bandes), titre_absent)
+    for i, (borne, titre) in enumerate(bandes):
+        if valeur < borne:
+            return (i, titre)
+    return (len(bandes) - 1, bandes[-1][1])
+
+
+def grouper_reglages(reglages, critere="noirceur"):
+    """Groupe et trie des réglages selon `critere` ("noirceur", "largeur"
+    ou "defocus"), et renvoie [(titre_du_groupe, [réglage, ...]), ...] dans
+    l'ordre d'affichage. Le classement change de critère parce qu'on ne
+    cherche pas toujours la même chose : une nuance pour un marquage, une
+    largeur de trait pour un remplissage, un niveau de défocus pour
+    retrouver une gravure déjà faite."""
+    groupes = {}
+    for r in reglages:
+        if critere == "largeur":
+            rang, titre = _bande(r.get("width"), _BANDES_LARGEUR,
+                                 "Largeur non mesurée")
+            tri = r.get("width") or 0.0
+        elif critere == "defocus":
+            # Ramené au niveau standard : un ton saisi à 15,34 mm et un point
+            # de grille à 15,0 décrivent le même étage de la planche. Sans ce
+            # calage ils formaient deux groupes distincts affichés tous les
+            # deux « Défocus 15 mm ».
+            z = _snap_defocus_level(float(r.get("z_offset") or 0.0))
+            rang = z
+            titre = "Au foyer (trait net)" if not z else "Défocus {:.0f} mm".format(z)
+            tri = r.get("width") or 0.0
+        else:
+            rang, titre = _bande(r.get("darkness"), _BANDES_NOIRCEUR,
+                                 "Noirceur non jugée")
+            tri = r.get("darkness") or 0.0
+        groupes.setdefault((rang, titre), []).append((tri, r))
+
+    sortie = []
+    for (_, titre), entrees in sorted(groupes.items()):
+        entrees.sort(key=lambda x: (x[0], x[1].get("power") or 0.0))
+        sortie.append((titre, [r for _, r in entrees]))
+    return sortie
+
+
+def resume_reglage(r, critere="noirceur"):
+    """Libellé court d'un réglage dans un sélecteur, la valeur du critère
+    de classement EN TÊTE : c'est elle qu'on parcourt des yeux quand on
+    cherche « la largeur qu'il me faut » ou « la nuance qu'il me faut ».
+    Une valeur non mesurée est affichée « -- » et jamais remplacée par un
+    zéro, qui se lirait comme une mesure."""
+    d, l = r.get("darkness"), r.get("width")
+    txt_d = "-- %" if d is None else "{:.0f} %".format(d)
+    txt_l = "-- mm" if not l else "{:.2f} mm".format(l)
+    reglage = "S{:.0f} F{:.0f}".format(r.get("power") or 0, r.get("feed") or 0)
+    if r.get("z_offset"):
+        reglage += " déf {:.0f}".format(r["z_offset"])
+    if critere == "largeur":
+        tete, reste = txt_l, "{} · {}".format(reglage, txt_d)
+    elif critere == "defocus":
+        tete, reste = reglage, "{} · {}".format(txt_d, txt_l)
+    else:
+        tete, reste = txt_d, "{} · {}".format(reglage, txt_l)
+    resume = "{} — {}".format(tete, reste)
+    if r.get("label"):
+        resume += " " + r["label"]
+    return resume
 
 
 def darkness_fluence_curve(material):

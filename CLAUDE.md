@@ -135,7 +135,17 @@ Five modules, cleanly layered — keep the layering:
     first entry + blocked signals during reloads prevent accidental applies, e.g. when switching
     material just to drive the photo preview), plus a "Voir la photo du nuancier" button, enabled
     only when `result_photos("nuancier:"+material)` is non-empty, to compare against the real
-    engraved board before picking a tone.
+    engraved board before picking a tone. Since v1.83.0 the list is built from
+    `core.reglages_disponibles(material)` + `core.grouper_reglages(...)`, so it offers BOTH the
+    nuancier's tones and the burn-width grid's measured points, under disabled (non-selectable)
+    group headers, with a "Classer par" combo (`core.CRITERES_CLASSEMENT`: noirceur / largeur /
+    defocus) that regroups and re-sorts. Materials come from the union of `shade_materials()` and
+    `burn_width_materials()` — a material with widths but no judged tone used to be invisible here.
+    Do NOT copy the grid into the nuancier to achieve this: grid points carry no darkness, so a copy
+    would have to invent one (they're nearly all black), which skews `darkness_fluence_curve` and
+    hence calibrated photo engraving and "ton sur mesure"; it would also add ~50 rows to a beech
+    nuancier of 83 that the user already finds unreadable. Reading both tables live also makes the
+    sync free: adding or removing a measurement shows up immediately, with no copy code to drift.
   - `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat" section: a
     dropdown of ALL photos for the current `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`) +
     a clickable thumbnail (→ `_show_image_dialog`) + a free-text description field (e.g. the
