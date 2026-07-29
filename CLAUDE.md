@@ -146,6 +146,14 @@ Five modules, cleanly layered — keep the layering:
     hence calibrated photo engraving and "ton sur mesure"; it would also add ~50 rows to a beech
     nuancier of 83 that the user already finds unreadable. Reading both tables live also makes the
     sync free: adding or removing a measurement shows up immediately, with no copy code to drift.
+  - `_nuancier_geometrie(n_items, colonnes)` — layout of the PHYSICAL swatch board (Ø20 circle per
+    tone): drawing constants, chosen columns/rows, frame size. SINGLE SOURCE, called both by
+    `_construire_nuancier_preregles` (which builds the geometry) and by the panel's size preview —
+    a preview recomputing the layout on its own would start lying the moment a constant changes here
+    (exactly what happened to the ramp graduations). Column count is a user setting since v1.84.0
+    (`NUANCIER_COLONNES_DEFAUT = 10`, was hardcoded at 5): past a few dozen tones, 5 columns give a
+    narrow, very tall strip that wastes stock — 83 beech tones = 152 × 640 mm, versus 292 × 348 mm
+    on 10 columns for the same circles.
   - `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat" section: a
     dropdown of ALL photos for the current `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`) +
     a clickable thumbnail (→ `_show_image_dialog`) + a free-text description field (e.g. the

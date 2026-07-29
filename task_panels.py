@@ -1801,6 +1801,45 @@ def _save_last_values(panel_key, fields, selection=None):
 # COMPLET via « Ajouter au job combiné » ; le mode Job combiné lit cette liste.
 _COMBINED_OPS = []
 
+# Largeur par défaut de la planche nuancier, en cercles. 10 plutôt que les 5
+# historiques : au-delà d'une trentaine de tons, 5 colonnes donnent une bande
+# étroite et très haute (83 tons = 152 x 640 mm) qui gaspille la chute et se
+# range mal ; 10 colonnes rendent la même planche à peu près carrée
+# (292 x 348 mm) sans retirer un seul cercle.
+NUANCIER_COLONNES_DEFAUT = 10
+
+
+def _nuancier_geometrie(n_items, colonnes=None):
+    """Disposition de la planche nuancier pour `n_items` cercles : constantes
+    de dessin, nombre de colonnes/lignes retenu et encombrement du cadre.
+
+    SOURCE UNIQUE, appelée par le constructeur de la planche ET par l'aperçu
+    de taille du panneau : une taille annoncée qui recalculerait la mise en
+    page de son côté finirait par mentir dès qu'on touche une constante ici
+    (c'est exactement ce qui était arrivé aux graduations de la rampe)."""
+    n = max(int(n_items), 1)
+    DIAM = 20.0
+    GAP_X = 8.0            # espace horizontal entre cercles
+    LABEL_GAP = 2.5        # cercle -> étiquette
+    LABEL_H = 4.0          # hauteur nominale des étiquettes
+    GAP_Y = 10.0           # espace vertical entre cellules
+    MARGIN = 10.0          # marge intérieure au cadre
+    TITLE_H = 5.0
+    TITLE_GAP = 5.0
+    cols = min(max(int(colonnes or NUANCIER_COLONNES_DEFAUT), 1), n)
+    cell_w = DIAM + GAP_X
+    cell_h = DIAM + LABEL_GAP + LABEL_H + GAP_Y
+    nrows = (n + cols - 1) // cols
+    content_h = nrows * cell_h - GAP_Y
+    board_w = 2 * MARGIN + cols * DIAM + (cols - 1) * GAP_X
+    board_h = content_h + 2 * MARGIN + TITLE_H + TITLE_GAP
+    return {"DIAM": DIAM, "GAP_X": GAP_X, "LABEL_GAP": LABEL_GAP,
+            "LABEL_H": LABEL_H, "GAP_Y": GAP_Y, "MARGIN": MARGIN,
+            "TITLE_H": TITLE_H, "TITLE_GAP": TITLE_GAP,
+            "cols": cols, "nrows": nrows, "cell_w": cell_w, "cell_h": cell_h,
+            "board_w": board_w, "board_h": board_h,
+            "y_sommet": board_h - MARGIN - TITLE_H - TITLE_GAP}
+
 
 def _add_to_combined_job(operation):
     """Ajoute une opération {type,label,params} au job combiné et informe."""
@@ -1876,14 +1915,20 @@ def _nuancier_items(source, material):
 
 
 def _construire_nuancier_preregles(label_power=None, label_feed=None,
-                                   source="tons", material=""):
+                                   source="tons", material="", colonnes=None):
     """Construit un document « nuancier physique » : un cercle Ø20 (face) par
     entrée (ton mesuré ou préréglage, cf. _nuancier_items), portant SA recette
     (LaserAtelierReglages) + un Job « filled » ; une étiquette gravée sous
     chaque cercle, un cadre et un titre daté regroupés en un objet Marquage +
     Job. Cercles du plus clair au plus foncé. Le G-code sort ensuite du job
     combiné. Renvoie (document, [Jobs], avertissement) ; jobs=None si rien à
-    graver (message dans l'avertissement)."""
+    graver (message dans l'avertissement).
+
+    `colonnes` : largeur de la grille de cercles. Le nombre de colonnes était
+    plafonné à 5 : passé quelques dizaines de tons, la planche devenait une
+    bande étroite et très haute (83 tons de hêtre = 152 x 640 mm), pénible à
+    débiter dans une chute et à ranger. Les mêmes cercles sur 10 colonnes
+    tiennent en 292 x 348 mm. None = NUANCIER_COLONNES_DEFAUT."""
     import Part
     import datetime
     import laser_jobs
@@ -1896,24 +1941,14 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
     if not items:
         return None, None, err
 
-    DIAM = 20.0
-    R = DIAM / 2.0
-    GAP_X = 8.0            # espace horizontal entre cercles
-    LABEL_GAP = 2.5        # cercle -> étiquette
-    LABEL_H = 4.0          # hauteur nominale des étiquettes
-    GAP_Y = 10.0           # espace vertical entre cellules
-    MARGIN = 10.0          # marge intérieure au cadre
-    TITLE_H = 5.0
-    TITLE_GAP = 5.0
-    COLS = min(5, len(items))
-
-    cell_w = DIAM + GAP_X
-    cell_h = DIAM + LABEL_GAP + LABEL_H + GAP_Y
-    nrows = (len(items) + COLS - 1) // COLS
-    content_h = nrows * cell_h - GAP_Y
-    board_w = 2 * MARGIN + COLS * DIAM + (COLS - 1) * GAP_X
-    board_h = content_h + 2 * MARGIN + TITLE_H + TITLE_GAP
-    y_sommet = board_h - MARGIN - TITLE_H - TITLE_GAP  # haut du 1er cercle
+    g = _nuancier_geometrie(len(items), colonnes)
+    DIAM, R = g["DIAM"], g["DIAM"] / 2.0
+    GAP_X, LABEL_GAP, LABEL_H = g["GAP_X"], g["LABEL_GAP"], g["LABEL_H"]
+    GAP_Y, MARGIN = g["GAP_Y"], g["MARGIN"]
+    TITLE_H, TITLE_GAP = g["TITLE_H"], g["TITLE_GAP"]
+    COLS, cell_w, cell_h = g["cols"], g["cell_w"], g["cell_h"]
+    nrows, board_w, board_h = g["nrows"], g["board_w"], g["board_h"]
+    y_sommet = g["y_sommet"]
 
     # Titre : peu de tons -> peu de colonnes -> cadre étroit, mais le texte
     # (matériau + date + décompte) reste toujours aussi long. On réduit sa
@@ -2397,12 +2432,12 @@ class TaskPanelGuide:
         return True
 
 
-def _lancer_nuancier_physique(parent_form, source, material):
+def _lancer_nuancier_physique(parent_form, source, material, colonnes=None):
     """Construit le nuancier physique (un cercle par ton mesuré ou par
     préréglage, recette + Job chacun + étiquettes), l'empile dans le job
     combiné et ouvre le panneau Job combiné, prêt à générer. Partagé entre
     le mode Nuancier et l'Assistant matériau. Confirme si le job combiné
-    n'est pas vide."""
+    n'est pas vide. `colonnes` : cf. _construire_nuancier_preregles."""
     items, err = _nuancier_items(source, material)
     if not items:
         QtWidgets.QMessageBox.information(parent_form, "Nuancier", err)
@@ -2420,7 +2455,7 @@ def _lancer_nuancier_physique(parent_form, source, material):
         if rep == QtWidgets.QMessageBox.Yes:
             _COMBINED_OPS[:] = []
     doc, jobs, warn = _construire_nuancier_preregles(
-        source=source, material=material)
+        source=source, material=material, colonnes=colonnes)
     if not jobs:
         QtWidgets.QMessageBox.critical(
             parent_form, "Nuancier",
@@ -2543,6 +2578,25 @@ class TaskPanelNuancier:
             "  nombreux) -- c'est le nuancier au sens propre.\n"
             "- Préréglages : les recettes nommées de Gravure remplie.")
         form.addRow("Source des cercles :", self.combo_nuancier_source)
+
+        self.spn_nuancier_cols = QtWidgets.QSpinBox()
+        self.spn_nuancier_cols.setRange(1, 30)
+        self.spn_nuancier_cols.setValue(NUANCIER_COLONNES_DEFAUT)
+        self.spn_nuancier_cols.setToolTip(
+            "Largeur de la planche, en cercles. Au-delà d'une trentaine de\n"
+            "tons, peu de colonnes donnent une bande étroite et très haute\n"
+            "qui gaspille la chute : 83 tons sur 5 colonnes font 152 x 640 mm,\n"
+            "les mêmes sur 10 colonnes font 292 x 348 mm. Le nombre de cercles\n"
+            "ne change pas, seule la forme de la planche.")
+        form.addRow("Colonnes :", self.spn_nuancier_cols)
+
+        self.lbl_nuancier_taille = _WrapLabel("")
+        form.addRow(self.lbl_nuancier_taille)
+        self.spn_nuancier_cols.valueChanged.connect(
+            lambda _v: self._maj_taille_nuancier())
+        self.combo_nuancier_source.currentIndexChanged.connect(
+            lambda _i: self._maj_taille_nuancier())
+
         btn_nuancier = QtWidgets.QPushButton("Créer la planche nuancier…")
         _btn_icon(btn_nuancier, "filled.svg")
         btn_nuancier.setToolTip(
@@ -2557,12 +2611,14 @@ class TaskPanelNuancier:
 
         self._reload_materials()
         self.combo_mat.activated.connect(
-            lambda _i: (self._load_material(), self._photo["reload"]()))
+            lambda _i: (self._load_material(), self._photo["reload"](),
+                        self._maj_taille_nuancier()))
 
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Nuancier matériau")
         self.form.setWindowIcon(_icon("nuancier.svg"))
         self._photo["reload"]()
+        self._maj_taille_nuancier()
 
     def _reload_materials(self):
         current = self.combo_mat.currentText()
@@ -2632,7 +2688,25 @@ class TaskPanelNuancier:
         _lancer_nuancier_physique(
             self.form,
             self.combo_nuancier_source.currentData() or "tons",
+            self.combo_mat.currentText().strip(),
+            colonnes=self.spn_nuancier_cols.value())
+
+    def _maj_taille_nuancier(self):
+        """Encombrement de la planche AVANT de la construire : passé quelques
+        dizaines de tons, le nombre de colonnes décide si la planche tient
+        dans une chute ou pas -- autant le voir en réglant, pas après avoir
+        généré le job."""
+        items, _err = _nuancier_items(
+            self.combo_nuancier_source.currentData() or "tons",
             self.combo_mat.currentText().strip())
+        if not items:
+            self.lbl_nuancier_taille.setText("")
+            return
+        g = _nuancier_geometrie(len(items), self.spn_nuancier_cols.value())
+        self.lbl_nuancier_taille.setText(
+            "Planche : <b>{:.0f} × {:.0f} mm</b> — {} cercles sur {} colonne(s), "
+            "{} ligne(s).".format(g["board_w"], g["board_h"], len(items),
+                                  g["cols"], g["nrows"]))
 
     def accept(self):
         material = self.combo_mat.currentText().strip()
