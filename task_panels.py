@@ -6528,7 +6528,8 @@ class TaskPanelHalftone:
         self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable",
                                   "Lignes calibrées (nuancier)",
                                   "Diffusion en lignes (points fins, rapide)",
-                                  "Gros points Z (taille variable, artistique)"])
+                                  "Gros points Z (taille variable, artistique)",
+                                  "Similigravure (trame 45°, sans calibration)"])
         self.combo_mode.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_mode.setMinimumContentsLength(17)
         self.combo_mode.setToolTip(
@@ -6544,8 +6545,29 @@ class TaskPanelHalftone:
             "Diffusion en lignes : le MÊME rendu points que Diffusion, mais\n"
             "balayé en continu, faisceau allumé/éteint par pixel à puissance\n"
             "fixe -- l'esthétique des points, à la vitesse d'un balayage\n"
-            "(point fin au foyer : largeur du point à 0).")
+            "(point fin au foyer : largeur du point à 0).\n"
+            "Similigravure : trame régulière à 45° façon journal, où c'est le\n"
+            "DIAMÈTRE du point qui rend le gris. Chaque point est brûlé à\n"
+            "fond, toujours pareil : aucun nuancier n'est consulté, le gris\n"
+            "est une surface. C'est le tramage à choisir quand les gris\n"
+            "calibrés sortent irréguliers -- le seuil de brûlure du bois ne\n"
+            "décide plus à la place de l'image. À graver AU FOYER.")
         form.addRow("Tramage :", self.combo_mode)
+
+        self.spn_dot_spacing = QtWidgets.QDoubleSpinBox()
+        self.spn_dot_spacing.setRange(0.3, 5.0)
+        self.spn_dot_spacing.setDecimals(2)
+        self.spn_dot_spacing.setSingleStep(0.1)
+        self.spn_dot_spacing.setValue(1.27)
+        self.spn_dot_spacing.setSuffix(" mm")
+        self.spn_dot_spacing.setToolTip(
+            "Similigravure : distance entre deux points de la trame.\n"
+            "Plus c'est serré, plus l'image est fine mais moins il y a de\n"
+            "niveaux de gris -- la maille compte 2k² pixels, avec\n"
+            "k = espacement / (pas × √2), arrondi. L'espacement et le nombre\n"
+            "de niveaux RÉELLEMENT obtenus s'affichent sous la grille.\n"
+            "1,27 mm au pas 0,15 donne 72 niveaux, trame bien visible.")
+        form.addRow("Espacement des points :", self.spn_dot_spacing)
 
         self.spn_power = QtWidgets.QDoubleSpinBox()
         self.spn_power.setRange(0, core.S_MAX)
@@ -6592,12 +6614,18 @@ class TaskPanelHalftone:
             is_lignes = idx == 2
             is_dither_l = idx == 3
             is_zdots = idx == 4
+            is_simili = idx == 5
             self.spn_dwell_min.setEnabled(is_duree or is_zdots)
             self.spn_dwell_max.setEnabled(idx in (0, 1, 4))
             self.spn_power.setEnabled(not is_lignes)   # calculée par pixel (mode 2)
             self.spn_white.setEnabled(is_duree or is_lignes or is_zdots)
-            _set_row_visible(form, self.combo_photo_mat, is_lignes)
-            _set_row_visible(form, self.spn_line_feed, is_lignes or is_dither_l)
+            # La similigravure ne consulte pas le nuancier, mais elle a
+            # besoin du matériau pour la LARGEUR BRÛLÉE (recouvrement des
+            # lignes) et pour la teinte de l'aperçu.
+            _set_row_visible(form, self.combo_photo_mat, is_lignes or is_simili)
+            _set_row_visible(form, self.spn_dot_spacing, is_simili)
+            _set_row_visible(form, self.spn_line_feed,
+                             is_lignes or is_dither_l or is_simili)
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
         # appel initial déplacé plus bas : _sync_mode touche combo_photo_mat,
         # désormais créé dans la section « Trait & matière » qui suit.
@@ -6715,6 +6743,7 @@ class TaskPanelHalftone:
             "dwell_min": self.spn_dwell_min, "dwell_max": self.spn_dwell_max,
             "white": self.spn_white, "spot_width": self.spn_spot_width,
             "line_feed": self.spn_line_feed, "gamma": self.spn_gamma,
+            "dot_spacing": self.spn_dot_spacing,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -6724,8 +6753,15 @@ class TaskPanelHalftone:
 
         for _sig in (self.edt_image.textChanged, self.spn_width.valueChanged,
                      self.spn_pitch.valueChanged, self.spn_white.valueChanged,
-                     self.spn_gamma.valueChanged):
+                     self.spn_gamma.valueChanged,
+                     self.spn_dot_spacing.valueChanged,
+                     # la mise en garde « trait plus étroit que le pas » de
+                     # la similigravure dépend aussi de ces trois-là
+                     self.spn_power.valueChanged,
+                     self.spn_line_feed.valueChanged):
             _sig.connect(lambda *_a: self._update_grid_info())
+        self.combo_photo_mat.currentIndexChanged.connect(
+            lambda _i: self._update_grid_info())
         self.combo_mode.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.combo_rotation.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.chk_invert.toggled.connect(lambda _v: self._update_grid_info())
@@ -6832,12 +6868,41 @@ class TaskPanelHalftone:
         pitch = self.spn_pitch.value()
         # Dimensions et orientation affichées : permet de vérifier d'un
         # coup d'oeil que l'image est chargée dans le bon sens (EXIF).
-        self.lbl_grid.setText(
-            "Image {} x {} px ({}) -- grille {} x {} cases = {:.0f} x {:.0f} mm "
-            "({} points max).".format(
-                img.width(), img.height(),
-                "portrait" if img.height() > img.width() else "paysage",
-                cols, rows, (cols - 1) * pitch, (rows - 1) * pitch, cols * rows))
+        texte = ("Image {} x {} px ({}) -- grille {} x {} cases = {:.0f} x "
+                 "{:.0f} mm ({} points max).".format(
+                     img.width(), img.height(),
+                     "portrait" if img.height() > img.width() else "paysage",
+                     cols, rows, (cols - 1) * pitch, (rows - 1) * pitch,
+                     cols * rows))
+        if self.combo_mode.currentIndex() == 5:
+            # L'espacement demandé est arrondi à la maille : autant montrer
+            # ce qu'on aura VRAIMENT, et combien de gris il en reste.
+            k = core.am_screen_k(self.spn_dot_spacing.value(), pitch)
+            reel = core.am_screen_spacing(k, pitch)
+            texte += (" Trame : {:.2f} mm entre points ({:.0f} en travers), "
+                      "{} niveaux de gris.".format(
+                          reel, (cols - 1) * pitch / reel if reel else 0,
+                          2 * k * k))
+            # La similigravure ne tient sa promesse -- surface couverte =
+            # noirceur demandée -- que si les lignes de balayage se
+            # touchent. Un trait plus étroit que le pas laisse du bois nu
+            # ENTRE les lignes : les points sortent peignés et toute
+            # l'image s'éclaircit dans le même rapport, sans que rien ne le
+            # signale. Sur hêtre au foyer à F2000, le trait ne fait que
+            # 0,10 mm : le pas doit suivre.
+            brule = core.burn_width_at(self.spn_power.value(),
+                                       self.spn_line_feed.value(),
+                                       self.combo_photo_mat.currentData())
+            if brule and pitch > brule + 1e-9:
+                texte += (" ATTENTION : à S{:.0f} F{:.0f} le trait brûlé ne "
+                          "fait que {:.2f} mm, plus étroit que le pas de "
+                          "{:.2f} -- les points sortiront peignés et les gris "
+                          "environ {:.0f} % trop clairs. Descendre le pas à "
+                          "{:.2f} mm, ou ralentir.".format(
+                              self.spn_power.value(),
+                              self.spn_line_feed.value(), brule, pitch,
+                              100.0 * (1.0 - brule / pitch), brule))
+        self.lbl_grid.setText(texte)
         self._update_halftone_preview()
 
     _PREVIEW_MAX_CELLS = 250000  # plafond du tramage d'APERÇU (coût borné)
@@ -6890,14 +6955,15 @@ class TaskPanelHalftone:
         # Règle : si le régime sort du domaine mesuré, TOUT le rendu passe
         # au modèle théorique et l'aperçu l'annonce -- même règle pour les
         # cinq tramages, qu'on le voie ou non à l'écran.
-        if idx == 3:
+        if idx in (3, 5):
             feeds = [self.spn_line_feed.value()]
         else:
             feeds = [max(1.0, seg / max(d / 1000.0, 1e-3) * 60.0)
                      for d in (self.spn_dwell_min.value(),
                                self.spn_dwell_max.value())]
-        z_ref = core.defocus_for_spot_diameter(
-            spot, core.SPOT_FOCUS_MM, half_angle) or 0.0
+        # La similigravure grave AU FOYER : le point doit rester net.
+        z_ref = 0.0 if idx == 5 else (core.defocus_for_spot_diameter(
+            spot, core.SPOT_FOCUS_MM, half_angle) or 0.0)
         plage = core.shade_feed_range(material, z_ref)
         theorique = plage is None or not all(
             plage[0] - 1e-6 <= f <= plage[1] + 1e-6 for f in feeds)
@@ -6930,12 +6996,30 @@ class TaskPanelHalftone:
                 f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
                 strokes.append(([(x, y)], dia,
                                 teinte(p_z, f_dot, dia, z_off)))
-        elif idx == 3:
-            # Diffusion en lignes : chaque case allumée est balayée sur un
-            # PAS entier, à puissance et vitesse fixes -- c'est la DENSITÉ
-            # des cases allumées qui porte l'image.
-            t = teinte(power, self.spn_line_feed.value(), largeur, z_ref)
-            binaire = core.floyd_steinberg_dither(darkness)
+        elif idx in (3, 5):
+            # Deux tramages BINAIRES balayés : chaque case allumée est
+            # brûlée sur un PAS entier, à puissance et vitesse fixes. Seul
+            # l'algorithme qui décide des cases change -- diffusion d'erreur
+            # (densité de points) ou trame à 45° (diamètre des points).
+            feed_l = self.spn_line_feed.value()
+            if idx == 5:
+                # Au foyer, et à la largeur BRÛLÉE mesurée si on l'a : c'est
+                # elle qui donne l'engraissement des points, donc l'écart
+                # entre le gris demandé et celui qui sortira du bois.
+                largeur = core.burn_width_at(power, feed_l, material) \
+                    or core.SPOT_FOCUS_MM
+                # Le k de l'aperçu se calcule sur le pas RÉELLEMENT en main
+                # (la grille est réduite), pour garder le bon nombre de
+                # points en travers de l'image.
+                pas_eff = self.spn_width.value() / max(1, w - 1)
+                binaire = core.am_halftone_screen(
+                    darkness, core.am_screen_k(self.spn_dot_spacing.value(),
+                                               pas_eff))
+            else:
+                binaire = core.floyd_steinberg_dither(darkness)
+            if not binaire:
+                return None, "trame impossible à construire"
+            t = teinte(power, feed_l, largeur, z_ref)
             for row in range(h):
                 y = (h - 1 - row) * pitch
                 for col in range(w):
@@ -7145,6 +7229,15 @@ class TaskPanelHalftone:
                 rows, pitch=k["pitch"], z_work=k["z_work"],
                 power=self.spn_power.value(), feed=self.spn_line_feed.value(),
                 **extra)
+        if idx == 5:
+            # Similigravure : le point doit être NET, c'est lui le grain de
+            # la trame -- on grave au foyer, sans tenir compte de la
+            # « largeur du point » (qui pilote le défocus des autres modes).
+            k = self._gen_kwargs()
+            return core.generate_gcode_photo_am(
+                rows, pitch=k["pitch"], z_work=core.Z_WORK_MM,
+                power=self.spn_power.value(), feed=self.spn_line_feed.value(),
+                dot_spacing_mm=self.spn_dot_spacing.value(), **extra)
         return core.generate_gcode_halftone(rows, **self._gen_kwargs(), **extra)
 
     def _update_duration_preview(self):

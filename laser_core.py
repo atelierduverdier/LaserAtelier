@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.94.0"
+VERSION = "1.95.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7273,6 +7273,166 @@ def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed, y0=0.0):
                     edge, y, feed, cur_s, sel)
         lines.append("S0 {}".format(sel))
     lines.append("G0 Z{:.4f}".format(z_safe))
+
+
+# --- Similigravure : trame AM à 45 degrés ---------------------------------
+# Le gris ne vient ni de la puissance ni de la durée mais de la SURFACE d'un
+# point toujours brûlé à fond. Une brûlure est une brûlure : plus besoin de
+# nuancier calibré, et le seuil de brûlure du bois cesse de décider à notre
+# place -- c'est exactement le défaut qui ruinait les demi-teintes des
+# photos calibrées, où le fil du bois tranchait entre 10 et 30 % de noirceur.
+#
+# Trame à TANGENTE RATIONNELLE : la maille est portée par les vecteurs
+# (k, k) et (-k, k) du réseau de pixels. En posant u = x+y et v = y-x, ces
+# deux vecteurs deviennent (2k, 0) et (0, 2k) : la maille se lit en
+# arithmétique entière exacte, l'angle vaut 45 degrés sans arrondi (donc
+# pas de moiré), et elle compte 2k² pixels -- soit autant de niveaux de gris.
+_AM_RANGS = {}
+
+
+def am_screen_k(spacing_mm, pitch):
+    """Ordre de maille k pour viser `spacing_mm` entre deux points, à un
+    pas de trame donné. La période vaut k·√2·pas : k est donc arrondi, et
+    l'espacement réellement obtenu se lit avec `am_screen_spacing`."""
+    if pitch <= 0 or spacing_mm <= 0:
+        return 2
+    return max(2, int(round(spacing_mm / (pitch * math.sqrt(2.0)))))
+
+
+def am_screen_spacing(k, pitch):
+    """Espacement RÉEL entre deux points (mm) pour une maille d'ordre k."""
+    return k * math.sqrt(2.0) * pitch
+
+
+def am_screen_ranks(k):
+    """{(u mod 2k, v mod 2k) -> rang} : ordre d'allumage des 2k² pixels
+    d'une maille, du centre vers le bord.
+
+    Le représentant de chaque classe est celui LE PLUS PROCHE DU CENTRE,
+    pas le premier rencontré au balayage -- sans ça la maille n'est pas un
+    pavé compact autour de son centre et les points sortent en losanges
+    allongés au lieu de disques. Mémoïsé : la table ne dépend que de k."""
+    table = _AM_RANGS.get(k)
+    if table is not None:
+        return table
+    n = 2 * k * k
+    proches = {}
+    for y in range(-3 * k, 3 * k + 1):
+        for x in range(-3 * k, 3 * k + 1):
+            cle = ((x + y) % (2 * k), (y - x) % (2 * k))
+            d2 = x * x + y * y
+            if cle not in proches or d2 < proches[cle][0]:
+                proches[cle] = (d2, x, y)
+    # u et v ont toujours la même parité (u+v = 2y) : seules 2k² des 4k²
+    # classes sont atteignables, ce qui est bien le compte attendu.
+    if len(proches) != n:
+        return {}
+    ordre = sorted(proches.items(), key=lambda kv: kv[1][0])
+    table = {cle: rang for rang, (cle, _p) in enumerate(ordre)}
+    _AM_RANGS[k] = table
+    return table
+
+
+def am_halftone_screen(darkness_rows, k):
+    """Grille binaire de la similigravure : True = pixel brûlé.
+
+    Chaque maille allume ses N pixels les plus proches du centre, avec
+    N = noirceur MOYENNE de la maille × 2k². La surface couverte vaut donc
+    exactement la noirceur demandée -- la trame est linéaire par
+    construction, sans courbe ni calibration."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    rangs = am_screen_ranks(k)
+    if h < 1 or w < 1 or not rangs:
+        return []
+    n = 2 * k * k
+    pas = 2 * k
+    # Regroupement CENTRÉ sur les points du réseau, d'où le +k : les rangs
+    # de `am_screen_ranks` sont classés autour du centre de maille, alors
+    # qu'une simple division entière découpe des cases décalées d'une
+    # demi-maille. Sans ce recentrage, le gris appliqué à un point vient
+    # d'une zone voisine et non de l'endroit où le point sera brûlé --
+    # l'image se décale d'une demi-maille et les points s'y étalent.
+    cumul = {}
+    for y in range(h):
+        ligne = darkness_rows[y]
+        for x in range(w):
+            m = ((x + y + k) // pas, (y - x + k) // pas)
+            a = cumul.get(m)
+            if a is None:
+                cumul[m] = [ligne[x], 1]
+            else:
+                a[0] += ligne[x]
+                a[1] += 1
+    seuils = {m: int(round(min(1.0, max(0.0, s / c)) * n))
+              for m, (s, c) in cumul.items()}
+    out = []
+    for y in range(h):
+        row = []
+        for x in range(w):
+            m = ((x + y + k) // pas, (y - x + k) // pas)
+            row.append(rangs[((x + y) % pas, (y - x) % pas)] < seuils.get(m, 0))
+        out.append(row)
+    return out
+
+
+def generate_gcode_photo_am(darkness_rows, pitch, z_work, power, feed,
+                            dot_spacing_mm=1.27, pre_gcode="", post_gcode="",
+                            frame_only=False, quiet=False):
+    """Photo en SIMILIGRAVURE : trame à 45 degrés dont le DIAMÈTRE des
+    points porte le gris, comme une image de journal. Chaque point est
+    brûlé à pleine puissance -- aucun nuancier n'est consulté, le gris est
+    une surface, donc de la géométrie. Balayage continu (serpentin,
+    faisceau allumé/éteint par pixel), même émission que la diffusion en
+    lignes. À graver AU FOYER : le point doit être net, c'est lui le grain
+    de la trame. Renvoie None si grille vide ou toute blanche."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or power <= 0 or feed <= 0 or pitch <= 0:
+        return None
+    k = am_screen_k(dot_spacing_mm, pitch)
+    binaire = am_halftone_screen(darkness_rows, k)
+    if not binaire:
+        return None
+    grid = [[int(power) if v else 0 for v in row] for row in binaire]
+    if not any(any(c > 0 for c in row) for row in grid):
+        return None
+
+    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    lines = []
+    lines.append("(G-Code Laser - Photo : similigravure, trame 45 degres)")
+    lines.append("(Image : {} x {} px au pas {:.2f}mm, S{:.0f} F{:.0f})".format(
+        w, h, pitch, power, feed))
+    lines.append("(Trame : maille k={}, {:.2f}mm entre points, {} niveaux)".format(
+        k, am_screen_spacing(k, pitch), 2 * k * k))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(0.0, w * pitch, 0.0, (h - 1) * pitch, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed)
+
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 def generate_gcode_photo_dither_lines(darkness_rows, pitch, z_work, power, feed,

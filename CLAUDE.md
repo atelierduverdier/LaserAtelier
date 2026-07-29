@@ -687,6 +687,37 @@ Two rules make this preview trustworthy, and both are worth preserving:
   the WHOLE render switches to `_tone_burn` and the note says so — same rule for all 5 tramages,
   whether or not the flatness would have been visible.
 
+**Similigravure — clustered-dot AM screen (v1.95.0, tramage index 5).** The other five ask the wood
+to *produce* a grey (power, dwell, or density of identical dots); near the burn threshold the grain
+decides instead, which is what wrecked the calibrated portrait's mid-tones. This one makes grey a
+**surface**: every dot burns at full power, the *diameter* carries the tone, so no nuancier, no
+curve, no regime to respect. `core.am_halftone_screen(darkness_rows, k)` → binary grid, then the
+existing `_emit_raster_rows` (same emitter as dither-lines) — that reuse is why the whole feature is
+small. Burns AT FOCUS (`z_work = Z_WORK_MM`, ignoring "largeur du point"): the dot must be crisp,
+it *is* the grain.
+
+Rational-tangent screening: the cell is spanned by `(k, k)` and `(-k, k)` on the pixel lattice. With
+`u = x+y`, `v = y-x` those become `(2k, 0)` and `(0, 2k)` → exact integer arithmetic, **exactly 45°
+with no rounding** (hence no moiré), and `2k²` pixels = `2k²` grey levels. Each cell lights its N
+pixels nearest the centre, `N = mean darkness × 2k²`, so coverage *equals* the requested darkness —
+verified 0→100 % to within one cell pixel. `am_screen_k(spacing_mm, pitch)` /
+`am_screen_spacing(k, pitch)` convert between the user-facing mm spacing and k; the panel shows the
+spacing actually obtained, since k is rounded.
+
+Two traps worth keeping in mind if this code is touched:
+
+- **Centre the cell grouping on the lattice points** — note the `+k` in `am_halftone_screen`'s cell
+  index. `am_screen_ranks` orders pixels around the cell CENTRE (min-norm representative per residue
+  class), while plain floor division cuts cells offset by half a mesh. Mismatched, the tone applied
+  to a dot comes from a region half a cell away and the dot smears across the boundary. Invisible by
+  eye (the render still looked like round dots); caught only by a compactness assertion on a single
+  cell's lit pixels vs the radius of an equal-area disc.
+- **The coverage promise assumes the scan lines touch.** A burn narrower than the pitch leaves bare
+  wood between lines: dots come out combed and the whole image lightens by `1 - burn/pitch`, silently.
+  On Hêtre at focus F2000 the measured burn is only 0.10 mm. `_update_grid_info` compares
+  `core.burn_width_at(power, feed, material)` against the pitch and says so with numbers. This is why
+  the material combo stays visible for this tramage even though the nuancier is never consulted.
+
 Perf: two cell caps, because the surfaces have different budgets. `_VIGNETTE_MAX_CELLS = 20000` for
 the thumbnail (recomputed on every settings change) vs `_PREVIEW_MAX_CELLS = 250000` for the button
 (explicit click, wait cursor). Painting 250k marks into a 240 px thumbnail cost up to 1.8 s for a
