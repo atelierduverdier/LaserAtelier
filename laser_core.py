@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.87.0"
+VERSION = "1.87.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4273,10 +4273,24 @@ CALIBRATION_JOURNEY = [
         "portee": "materiau",
         "mode": "Grille de test puissance / vitesse",
         "but": "caractériser un matériau (largeurs brûlées + noirceurs)",
-        "action": ["choisis l'Objectif « Largeurs brûlées — grille au foyer »"],
+        # DEUX grilles, pas une : la version au foyer ne suffit pas. Une
+        # largeur mesurée au foyer est rejetée par darkness_fluence_curve
+        # (filtre z_offset > 0), donc un atelier qui s'arrête à la première
+        # se retrouve avec une photo calibrée et un « ton sur mesure » muets,
+        # sans que rien ne le signale -- c'est arrivé (83 tons de hêtre, 6
+        # points de courbe tous à 100 %).
+        "action": [
+            "choisis l'Objectif « Largeurs brûlées — grille au foyer » : ces "
+            "largeurs-là calent le remplissage et le bouton « Auto (½ point) » "
+            "des Hachures",
+            "puis l'Objectif « Largeurs brûlées — grille en défocus », en "
+            "relevant cette fois la NOIRCEUR de chaque case en plus de sa "
+            "largeur : ce couple-là, et lui seul, fait marcher la gravure "
+            "photo calibrée et le « ton sur mesure »",
+        ],
         "reporter": "« ② Entrer les mesures » ci-dessous pour les largeurs, "
-                    "mode Nuancier matériaux pour les tons (pas dans les "
-                    "Préférences)",
+                    "mode Nuancier matériaux pour les tons -- en leur donnant "
+                    "leur largeur ET leur noirceur (pas dans les Préférences)",
     },
     {
         "n": 4,
