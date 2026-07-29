@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.87.2</span><br>
+      <span class="ver">Version 1.88.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.87.2</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.88.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -593,6 +593,7 @@
     <h4>Objectif «&nbsp;Largeurs brûlées — grille en défocus&nbsp;»</h4>
     <p>C'est celui qui débloque la <strong>gravure photo calibrée</strong> et le «&nbsp;ton sur mesure&nbsp;». Ces deux fonctions s'appuient sur une courbe noirceur → énergie qui n'accepte QUE les tons réunissant trois choses&nbsp;: un défocus, une <b>noirceur jugée</b> et une <b>largeur mesurée</b>. Un nuancier riche en noirceurs mais sans largeurs ne leur sert à rien — c'est le piège classique, et il est silencieux.</p>
     <p>L'objectif règle la grille à <b>défocus 15<p>L'objectif règle la grille à <b>défocus 15&nbsp;mm</b> avec un espacement de hachures de <b>3&nbsp;mm</b>.nbsp;mm</b>, en <b>vitesses lentes (F200 à F2000)</b>, avec un espacement de hachures de <b>3<p>L'objectif règle la grille à <b>défocus 15&nbsp;mm</b> avec un espacement de hachures de <b>3&nbsp;mm</b>.nbsp;mm</b>. Ce chiffre n'est pas arbitraire&nbsp;: à ce défocus le point fait environ 1,15&nbsp;mm, il reste donc près de 2&nbsp;mm de bois nu entre deux traits, et chaque trait se mesure seul au pied à coulisse. L'objectif voisin, «&nbsp;grille au foyer&nbsp;», ne convient pas ici&nbsp;: une largeur mesurée au foyer n'entre pas dans la courbe.</p>
+    <p>Le défocus s'applique aux <b>cellules seules</b>, via le champ «&nbsp;Défocus des cellules&nbsp;». Les <b>étiquettes d'axe et le cadre restent au foyer</b>, donc nets et lisibles. Écarter tout le job en montant la «&nbsp;Hauteur (Z) de test&nbsp;» défocaliserait aussi les chiffres, qui baveraient — et cette hauteur, mémorisée d'une session à l'autre, resterait ensuite collée dans tous les jobs suivants. Choisir un objectif remet toujours la hauteur de test au foyer.</p>
     <p>Pourquoi si lent&nbsp;? En défocus, le point est environ quatre fois plus large qu'au foyer, donc la densité de puissance chute d'autant&nbsp;: un trait <em>isolé</em> cesse de marquer bien avant les vitesses où vivent les tons clairs. Une première version de cet objectif visait F1000 à F4000 — la plage des tons du nuancier — et 18 cases sur 25 sont sorties vierges sur du hêtre. Conséquence à accepter&nbsp;: le haut de l'échelle de noirceur restera peut-être sans largeur mesurable. C'est une limite physique, pas un réglage à forcer&nbsp;; mesurez ce qui est lisible.</p>
     <p><b>Gravez la même grille deux fois</b>, en ne changeant que l'espacement des hachures&nbsp;: à 3&nbsp;mm pour mesurer la largeur d'un trait, puis à 1&nbsp;mm pour juger la noirceur en aplat. Un aplat ne se juge pas sur des traits espacés, et une largeur ne se mesure pas sur un aplat. Reportez ensuite chaque case dans <b>Nuancier → «&nbsp;+ Ajouter un ton&nbsp;»</b> avec ses deux mesures. Une dizaine de cases bien réparties du clair au foncé suffisent à faire repartir la courbe.</p>
     <p class="meta"><b>Fichier :</b> <code>grille_test.ngc</code></p>
@@ -794,7 +795,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.87.2 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.88.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

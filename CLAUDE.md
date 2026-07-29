@@ -553,7 +553,15 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
   deeper consequence is physical, not a tooling gap: on this material, "feeds slow enough for a
   measurable line" and "feeds fast enough for a light tone" barely overlap — which is exactly why
   every curve point ended up at 100 %. Expect the light end of the darkness scale to have no
-  measurable width, and do not widen the feeds to chase it. Marquage also has style `"degrade"` (linear defocus along a
+  measurable width, and do not widen the feeds to chase it.
+  **Defocus goes on `cell_z_offset` (the "Défocus des cellules" field), NEVER on `z_work`.**
+  `generate_gcode_test_grid` engraves axis labels at `z_work` and the border at `z_border` precisely
+  so they stay sharp while only the cells are defocused; raising `z_work` takes all three out of
+  focus and the digits smear. The panel previously derived `cell_z_offset` from the hatch spacing,
+  and only for fill type "Défocus (noir)" — which cannot express "defocus 15, spacing 3" (isolated
+  lines), hence the field. `_on_recipe_selected` also resets `z_work` to `core.Z_WORK_MM`
+  unconditionally: the panel restores its last field values across sessions, so a defocused height
+  left behind silently poisons every later job (observed). Marquage also has style `"degrade"` (linear defocus along a
   direction, `deg_angle`/`deg_z_min`/`deg_z_max` in style_params) — the offset is a projection over
   ALL chains together (not reset per chain, unlike `"vague"`'s explicit dz=0 at each chain's start),
   so `generate_gcode_curved` must approach each chain's first point ALREADY at its `deg_dz` offset

@@ -7038,7 +7038,7 @@ class TaskPanelTestGrid:
                 "mode": 0, "power_min": 400, "power_max": 1000, "power_steps": 5,
                 "feed_min": 200, "feed_max": 2000, "feed_steps": 5,
                 "filltype": 0, "hatch_spacing": 3.0, "border": True,
-                "z_defocus": 15.0, "cell_size": 16.0,
+                "cell_defocus": 15.0, "cell_size": 16.0,
                 "note": "Traits ISOLÉS en défocus 15 mm : l'espacement de 3 mm "
                         "dépasse largement le point élargi (~1,15 mm), donc "
                         "chaque trait se mesure seul au pied à coulisse.\n"
@@ -7239,6 +7239,21 @@ class TaskPanelTestGrid:
             "par-dessus pour les cellules.".format(core.Z_WORK_MM))
         form.addRow("Hauteur (Z) de test :", self.spn_zwork)
 
+        self.spn_cell_defocus = QtWidgets.QDoubleSpinBox()
+        self.spn_cell_defocus.setRange(0.0, 60.0)
+        self.spn_cell_defocus.setDecimals(2)
+        self.spn_cell_defocus.setValue(0.0)
+        self.spn_cell_defocus.setSuffix(" mm")
+        self.spn_cell_defocus.setToolTip(
+            "Écart au foyer appliqué aux CELLULES SEULES : elles se gravent\n"
+            "à « Hauteur (Z) de test » + cette valeur, pendant que les\n"
+            "étiquettes d'axe et le cadre restent au foyer, donc nets et\n"
+            "lisibles. Écarter tout le job (en montant la hauteur de test)\n"
+            "défocaliserait aussi les chiffres, qui baveraient.\n"
+            "0 = tout au foyer. Ignoré en remplissage « Défocus (noir) »,\n"
+            "où le défocus est déduit de l'espacement des hachures.")
+        form.addRow("Défocus des cellules :", self.spn_cell_defocus)
+
         _section(form, "Remplissage", "sect_fill.svg")
         self.combo_filltype = QtWidgets.QComboBox()
         self.combo_filltype.addItems(["Parallèles", "Croisées (grille)", "Défocus (noir)"])
@@ -7418,6 +7433,7 @@ class TaskPanelTestGrid:
         for _w in (self.spn_power_min, self.spn_power_max, self.spn_power_steps,
                    self.spn_feed_min, self.spn_feed_max, self.spn_feed_steps,
                    self.spn_cell_size, self.spn_gap, self.spn_zwork,
+                   self.spn_cell_defocus,
                    self.spn_hatch_spacing, self.spn_hatch_angle,
                    self.spn_border_power, self.spn_border_feed):
             _w.valueChanged.connect(self._on_champ_manuel_modifie)
@@ -7703,9 +7719,18 @@ class TaskPanelTestGrid:
                         "Préférences, icône engrenage).")
                 return None, None, None, None
             cell_z_offset = defocus
+        elif mode == "gravure":
+            # Défocus SAISI, indépendant de l'espacement : nécessaire pour
+            # graver des traits isolés (espacement large) à un défocus donné,
+            # ce que le remplissage « Défocus (noir) » ne sait pas exprimer --
+            # il déduit le défocus de l'espacement, donc un espacement large
+            # y donnerait un point énorme au lieu de traits séparés.
+            cell_z_offset = self.spn_cell_defocus.value()
+        if cell_z_offset > 0:
             # Rayon du point élargi à ce défocus : on rentre la zone
             # hachurée d'autant pour que la brûlure ne déborde pas du carré.
-            spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
+            spot = core.spot_diameter_at_defocus(
+                cell_z_offset, core.SPOT_FOCUS_MM, core.calibrated_half_angle())
             fill_inset = spot / 2.0
 
         cells = core.build_test_grid_cells(
@@ -7819,11 +7844,16 @@ class TaskPanelTestGrid:
             self.spn_hatch_spacing.setValue(r["hatch_spacing"])
         if "cell_size" in r:
             self.spn_cell_size.setValue(r["cell_size"])
-        # `z_defocus` est un ÉCART au foyer, pas une hauteur absolue : la
-        # focale vient des Préférences et change d'un profil laser à l'autre,
-        # un objectif ne peut donc pas coder un Z en dur.
-        if "z_defocus" in r:
-            self.spn_zwork.setValue(core.Z_WORK_MM + r["z_defocus"])
+        # Le défocus s'applique aux CELLULES SEULES, jamais en montant la
+        # hauteur de test : celle-ci emporterait les étiquettes d'axe et le
+        # cadre avec elle, qui sortiraient baveux au lieu de rester nets.
+        # La hauteur est REMISE au foyer, sans condition : le panneau restaure
+        # ses derniers champs d'une session à l'autre, donc une hauteur
+        # défocalisée laissée là traînerait dans tous les jobs suivants sans
+        # que rien ne le dise (c'est arrivé : une version de l'objectif
+        # défocus montait z_work, et la valeur restait collée après coup).
+        self.spn_zwork.setValue(core.Z_WORK_MM)
+        self.spn_cell_defocus.setValue(r.get("cell_defocus", 0.0))
         self.chk_border.setChecked(r.get("border", True))
         self.lbl_recipe_note.setText("\U0001f4a1 " + r["note"])
         self.lbl_recipe_note.setVisible(True)
