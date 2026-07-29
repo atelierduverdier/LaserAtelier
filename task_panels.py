@@ -2760,6 +2760,183 @@ class TaskPanelNuancier:
         return True
 
 
+class _PastilleReglage(QtWidgets.QAbstractButton):
+    """Pastille cliquable d'un réglage mesuré : un disque teinté par la
+    NOIRCEUR mesurée, avec sa légende dessous.
+
+    Un point de la grille de largeurs n'a pas de noirceur jugée
+    (darkness=None) : son disque est hachuré, jamais peint en blanc ou en
+    gris moyen -- une teinte inventée se lirait comme une mesure et c'est
+    précisément le piège que `reglages_disponibles` évite en gardant None.
+    """
+
+    DIAM = 54              # diamètre du disque, en pixels
+    H_LEGENDE = 30         # place réservée aux deux lignes de légende
+
+    def __init__(self, reglage, critere, parent=None):
+        super().__init__(parent)
+        self._r = reglage
+        self._critere = critere
+        self.setCheckable(True)
+        self.setFixedSize(self.DIAM + 16, self.DIAM + self.H_LEGENDE)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setToolTip(core.resume_reglage(reglage, critere)
+                        + ("\n(largeur mesurée à la grille, noirceur non jugée)"
+                           if reglage.get("darkness") is None else ""))
+
+    def _legende(self):
+        """Ligne 1 : le réglage. Ligne 2 : la valeur du critère de classement
+        -- et si CELLE-LÀ n'a pas été mesurée, la mesure qui existe plutôt
+        qu'un « -- » qui n'apprend rien. Classés par noirceur, les points de
+        grille formaient sinon un bloc de pastilles hachurées toutes
+        légendées « -- % », alors que chacun a une largeur au pied à
+        coulisse. Rien n'est inventé : on montre une autre mesure, on ne
+        comble pas le trou."""
+        r = self._r
+        l1 = "S{:.0f} F{:.0f}".format(r.get("power") or 0, r.get("feed") or 0)
+        d, w = r.get("darkness"), r.get("width")
+        txt_d = None if d is None else "{:.0f} %".format(d)
+        txt_w = "{:.2f} mm".format(w) if w else None
+        if self._critere == "largeur":
+            ordre = (txt_w, txt_d)
+        elif self._critere == "defocus":
+            ordre = ("déf {:.0f}".format(r.get("z_offset") or 0), txt_d, txt_w)
+        else:
+            ordre = (txt_d, txt_w)
+        return l1, next((t for t in ordre if t), "--")
+
+    def paintEvent(self, _event):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        d = self._r.get("darkness")
+        cx = self.width() / 2.0
+        disque = QtCore.QRectF(cx - self.DIAM / 2.0, 4.0, self.DIAM, self.DIAM)
+
+        # Anneau d'état AVANT le disque : sur un ton noir, un liseré posé
+        # par-dessus disparaîtrait dans la masse.
+        if self.isChecked() or self.underMouse():
+            p.setPen(QtCore.Qt.NoPen)
+            p.setBrush(QtGui.QColor(255, 138, 0) if self.isChecked()
+                       else QtGui.QColor(255, 138, 0, 90))
+            p.drawEllipse(disque.adjusted(-4, -4, 4, 4))
+
+        if d is None:
+            p.setBrush(QtGui.QBrush(QtGui.QColor(150, 150, 150),
+                                    QtCore.Qt.BDiagPattern))
+        else:
+            # Même conversion que l'aperçu photo : 100 % de noirceur = noir.
+            g = max(0, min(255, 255 - int(round(float(d) / 100.0 * 255))))
+            p.setBrush(QtGui.QColor(g, g, g))
+        p.setPen(QtGui.QPen(QtGui.QColor(70, 70, 70), 1.0))
+        p.drawEllipse(disque)
+
+        l1, l2 = self._legende()
+        f = p.font()
+        f.setPointSizeF(max(6.5, f.pointSizeF() - 1.5))
+        p.setFont(f)
+        p.setPen(self.palette().color(QtGui.QPalette.WindowText))
+        haut = int(disque.bottom()) + 2
+        p.drawText(QtCore.QRect(0, haut, self.width(), 13),
+                   QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, l1)
+        p.drawText(QtCore.QRect(0, haut + 12, self.width(), 13),
+                   QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, l2)
+        p.end()
+
+    def enterEvent(self, event):
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.update()
+        super().leaveEvent(event)
+
+
+def _choisir_reglage_visuel(parent, combo_shade, material, critere):
+    """Grille de pastilles cliquables : le nuancier montré, pas décrit.
+    Renvoie l'index d'item à sélectionner dans `combo_shade`, ou None.
+
+    La grille est construite À PARTIR DU COMBO, pas d'un nouvel appel à
+    `reglages_disponibles` : groupes, ordre et contenu sont donc les mêmes
+    par construction -- une seconde lecture des mesures pourrait diverger de
+    la liste affichée (mesure enregistrée entre-temps) et faire appliquer
+    autre chose que la pastille cliquée.
+
+    On renvoie un INDEX, pas le réglage : PySide fait transiter les données
+    d'item par un QVariant et reconstruit un dict NEUF à chaque itemData(),
+    donc deux lectures du même item ne sont jamais le même objet. Désigner
+    l'entrée par son index et laisser le combo la rejouer est le seul lien
+    fiable ; comparer des réglages par identité échouerait en silence."""
+    modele = combo_shade.model()
+    groupes, courant = [], None
+    for i in range(combo_shade.count()):
+        r = combo_shade.itemData(i)
+        if r:
+            if courant is None:            # réglages sans en-tête (cas rare)
+                courant = ("", [])
+                groupes.append(courant)
+            courant[1].append((i, r))
+        else:
+            item = modele.item(i)
+            if item is not None and not item.isEnabled():
+                courant = (combo_shade.itemText(i).strip("─ "), [])
+                groupes.append(courant)
+    groupes = [g for g in groupes if g[1]]
+    if not groupes:
+        return None
+
+    dlg = QtWidgets.QDialog(parent)
+    dlg.setWindowTitle("Nuancier {} — choisir un réglage".format(material or ""))
+    dlg.setWindowIcon(_icon("nuancier.svg"))
+    lay = QtWidgets.QVBoxLayout(dlg)
+    lay.addWidget(_WrapLabel(
+        "Chaque pastille est teintée par la <b>noirceur mesurée</b> du réglage. "
+        "Clique celle qui convient : elle est appliquée aussitôt. Une pastille "
+        "<b>hachurée</b> vient de la grille de largeurs brûlées — sa largeur est "
+        "mesurée, mais sa noirceur n'a jamais été jugée."))
+
+    interieur = QtWidgets.QWidget()
+    vbox = QtWidgets.QVBoxLayout(interieur)
+    groupe_boutons = QtWidgets.QButtonGroup(dlg)
+    groupe_boutons.setExclusive(True)
+    choisi = {"index": None}
+
+    def _clic(bouton):
+        choisi["index"] = bouton.property("index_combo")
+        dlg.accept()
+
+    COLS = 7
+    for titre, entrees in groupes:
+        if titre:
+            lbl = QtWidgets.QLabel("<b>{}</b>".format(titre))
+            lbl.setStyleSheet("margin-top:6px;")
+            vbox.addWidget(lbl)
+        bloc = QtWidgets.QWidget()
+        grille = QtWidgets.QGridLayout(bloc)
+        grille.setSpacing(4)
+        for k, (idx, r) in enumerate(entrees):
+            past = _PastilleReglage(r, critere)
+            past.setProperty("index_combo", idx)
+            past.setChecked(idx == combo_shade.currentIndex())
+            groupe_boutons.addButton(past)
+            past.clicked.connect(lambda _c=False, b=past: _clic(b))
+            grille.addWidget(past, k // COLS, k % COLS)
+        grille.setColumnStretch(COLS, 1)
+        vbox.addWidget(bloc)
+    vbox.addStretch(1)
+
+    zone = QtWidgets.QScrollArea()
+    zone.setWidgetResizable(True)
+    zone.setWidget(interieur)
+    lay.addWidget(zone, 1)
+    boutons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Cancel)
+    boutons.button(QtWidgets.QDialogButtonBox.Cancel).setText("Annuler")
+    boutons.rejected.connect(dlg.reject)
+    lay.addWidget(boutons)
+    dlg.resize(640, 620)
+    dlg.exec()
+    return choisi["index"]
+
+
 def _make_shade_picker(form, on_apply):
     """Bloc « Nuancier matériau » réutilisable dans un panneau de mode :
     sélecteur matériau + ton mesuré + un lien « Voir la photo du
@@ -2808,8 +2985,18 @@ def _make_shade_picker(form, on_apply):
         "retirer une mesure se voit ici immédiatement.")
     form.addRow("Réglage :", combo_shade)
 
+    btn_visuel = QtWidgets.QPushButton("Choisir dans le nuancier…")
+    _btn_icon(btn_visuel, "nuancier.svg")
+    btn_visuel.setToolTip(
+        "Montre les réglages ci-dessus en PASTILLES teintées par leur\n"
+        "noirceur mesurée, plutôt qu'en lignes de texte : on compare des\n"
+        "nuances à l'oeil, pas des nombres. Cliquer une pastille applique\n"
+        "son réglage, comme la liste.")
     btn_photo = QtWidgets.QPushButton("Voir la photo du nuancier")
-    form.addRow(btn_photo)
+    ligne_btn = QtWidgets.QHBoxLayout()
+    ligne_btn.addWidget(btn_visuel)
+    ligne_btn.addWidget(btn_photo)
+    form.addRow(ligne_btn)
 
     def _reload_shades():
         combo_shade.blockSignals(True)
@@ -2831,6 +3018,9 @@ def _make_shade_picker(form, on_apply):
         else:
             combo_shade.addItem("-- (aucune mesure) --", None)
         combo_shade.blockSignals(False)
+        n_reglages = sum(1 for i in range(combo_shade.count())
+                         if combo_shade.itemData(i))
+        btn_visuel.setEnabled(n_reglages > 0)
         n = len(core.result_photos("nuancier:" + m)) if m else 0
         btn_photo.setEnabled(n > 0)
         if n == 1:
@@ -2867,6 +3057,18 @@ def _make_shade_picker(form, on_apply):
         if s:
             on_apply(s)
     combo_shade.currentIndexChanged.connect(_apply)
+
+    def _on_visuel():
+        idx = _choisir_reglage_visuel(
+            btn_visuel, combo_shade, combo_mat.currentData() or "",
+            combo_critere.currentData() or "noirceur")
+        if idx is None:
+            return
+        if idx == combo_shade.currentIndex():
+            _apply()          # même entrée : setCurrentIndex n'émettrait rien,
+        else:                 # or cliquer une pastille doit toujours appliquer
+            combo_shade.setCurrentIndex(idx)
+    btn_visuel.clicked.connect(_on_visuel)
 
     def _on_photo():
         m = combo_mat.currentData()

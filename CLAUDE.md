@@ -146,6 +146,25 @@ Five modules, cleanly layered — keep the layering:
     hence calibrated photo engraving and "ton sur mesure"; it would also add ~50 rows to a beech
     nuancier of 83 that the user already finds unreadable. Reading both tables live also makes the
     sync free: adding or removing a measurement shows up immediately, with no copy code to drift.
+    Since v1.85.0 a "Choisir dans le nuancier…" button opens the same list as a clickable GRID —
+    see `_choisir_reglage_visuel`.
+  - `_PastilleReglage` / `_choisir_reglage_visuel(parent, combo_shade, material, critere)` — the
+    visual face of the picker above: one clickable disc per setting, tinted from its MEASURED
+    darkness with the same `255 - d*255` convention the halftone preview uses, grouped under the
+    same `grouper_reglages` headers. Two rules hold it together:
+    (1) **The grid is built from the combo's own items, never from a second `reglages_disponibles`
+    call** — that makes identical grouping/order/content structural rather than something to keep
+    in sync, and a measurement saved between the two reads can't make the click apply a different
+    setting than the disc showed.
+    (2) **It returns an INDEX and lets the combo replay it.** PySide round-trips item data through a
+    QVariant and rebuilds a NEW dict on every `itemData()` call, so two reads of one item are never
+    the same object — matching settings by identity fails silently, and the index is the only
+    reliable handle. (Tests must compare item data with `==`, never `is`.) Setting the same index
+    emits no signal, so `_on_visuel` calls `_apply()` directly in that case.
+    A grid point has no judged darkness (`darkness is None`): its disc is HATCHED, never painted a
+    made-up grey — same reasoning as `reglages_disponibles` keeping None. Its caption falls back to
+    the measurement that does exist (the caliper width), so sorting by darkness doesn't produce a
+    block of identical hatched discs all labelled "-- %".
   - `_nuancier_geometrie(n_items, colonnes, n_lignes)` — layout of the PHYSICAL swatch board (Ø14
     circle per tone): drawing constants, chosen columns/rows, frame size. SINGLE SOURCE, called both
     by `_construire_nuancier_preregles` (which builds the geometry) and by the panel's size preview —
