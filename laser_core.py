@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.96.0"
+VERSION = "1.96.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7343,6 +7343,46 @@ def burn_width_range(material, feed):
     return table[0][1], table[-1][1]
 
 
+def swell_max_feed(material):
+    """La vitesse mesurée la PLUS RAPIDE à laquelle le trait enfle encore,
+    ou None. Sert à ne pas se contenter de dire « trop vite » : au-delà
+    d'un seuil la largeur ne dépend plus de la puissance, et l'utile est
+    de nommer la vitesse qui marche, pas celle qui échoue."""
+    mat = _burn_width_material(material)
+    mesures = load_burn_widths(mat or "").get("focus") if mat else None
+    if not mesures:
+        return None
+    vitesses = sorted({float(e.get("feed", 0) or 0) for e in mesures},
+                      reverse=True)
+    for f in vitesses:
+        if f <= 0:
+            continue
+        p = burn_width_range(material, f)
+        if p and p[1] - p[0] > 1e-9:
+            return f
+    return None
+
+
+def swell_refus_message(material, feed):
+    """Pourquoi les « lignes gravées » refusent, et QUOI FAIRE. Un message
+    qui dit seulement « trop vite » laisse l'utilisateur chercher la bonne
+    valeur ; celui-ci la nomme."""
+    plage = burn_width_range(material, feed)
+    if plage is None:
+        return ("aucune largeur brûlée mesurée pour « {} » -- passer par "
+                "« Calibration du kerf » avant d'utiliser ce tramage."
+                .format(material or "?"))
+    rapide = swell_max_feed(material)
+    if rapide is None:
+        return ("sur « {} » le trait ne varie à AUCUNE vitesse mesurée : la "
+                "table de largeurs est trop pauvre pour ce tramage."
+                .format(material))
+    return ("à F{:.0f} le trait mesure {:.2f} mm à toutes les puissances -- il "
+            "n'enfle plus, ce tramage n'a plus d'objet. Descendre à "
+            "F{:.0f}, la plus rapide où il enfle encore ({:.2f} à {:.2f} mm)."
+            .format(feed, plage[0], rapide, *burn_width_range(material, rapide)))
+
+
 def swell_power_levels(material, feed, line_min_mm, niveaux=256):
     """Table noirceur -> S du tramage « lignes gravées ».
 
@@ -7393,10 +7433,8 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
     if niveaux is None:
         if not quiet:
             FreeCAD.Console.PrintWarning(
-                "Lignes gravées : « {} » n'a pas de largeurs brûlées mesurées, "
-                "ou le trait n'enfle plus à F{:.0f} (au-delà de F1500 la "
-                "largeur ne dépend plus de la puissance).\n".format(
-                    material, feed))
+                "Lignes gravées : {}\n".format(
+                    swell_refus_message(material, feed)))
         return None
     puissances, w_min, w_max = niveaux
     n = len(puissances)

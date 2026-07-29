@@ -6650,6 +6650,14 @@ class TaskPanelHalftone:
                              is_lignes or is_simili or is_enfle)
             _set_row_visible(form, self.spn_dot_spacing, is_simili)
             _set_row_visible(form, self.spn_line_min, is_enfle)
+            # « Largeur du point » pilote le DÉFOCUS : elle n'a aucun sens
+            # pour les deux tramages qui gravent au foyer, où la largeur du
+            # trait vient de la puissance (lignes gravées) ou n'est qu'un
+            # grain de trame (similigravure). L'afficher laissait le verdict
+            # de recouvrement raisonner sur un point de 0,80 mm pendant que
+            # la machine en trace un de 0,10 à 0,30.
+            _set_row_visible(form, self.spn_spot_width,
+                             not (is_simili or is_enfle))
             _set_row_visible(form, self.spn_line_feed,
                              is_lignes or is_dither_l or is_simili or is_enfle)
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
@@ -6941,10 +6949,7 @@ class TaskPanelHalftone:
                 # Le seul cas où ce tramage ne veut rien dire : à vitesse
                 # élevée la largeur ne dépend plus de la puissance, le trait
                 # n'enfle plus et on grave des lignes uniformes.
-                texte += (" ATTENTION : à F{:.0f} le trait mesure {:.2f} mm à "
-                          "TOUTES les puissances — il n'enfle plus, ce tramage "
-                          "n'a plus d'objet. Descendre sous F1500."
-                          .format(feed, plage[0]))
+                texte += " ATTENTION : " + core.swell_refus_message(mat, feed)
             else:
                 w_min = max(self.spn_line_min.value(), plage[0])
                 w_max = plage[1]
@@ -7063,9 +7068,7 @@ class TaskPanelHalftone:
             niv = core.swell_power_levels(material, feed_l,
                                           self.spn_line_min.value())
             if niv is None:
-                return None, ("aucune largeur brûlée mesurée pour ce "
-                              "matériau, ou trait qui n'enfle plus à "
-                              "F{:.0f} (rester sous F1500)".format(feed_l))
+                return None, core.swell_refus_message(material, feed_l)
             puissances, w_min, w_max = niv
             n = len(puissances)
             t = teinte(puissances[-1], feed_l, w_max, 0.0)
@@ -7455,7 +7458,14 @@ class TaskPanelHalftone:
                     "Vitesse à viser : <b>F{:.0f}</b>.".format(
                         fphoto, " ou ".join("F{:.0f}".format(f) for f in fcal),
                         cible))
-        if recouvre > 1.05:
+        # Le recouvrement se calcule sur « Largeur du point », qui pilote le
+        # DÉFOCUS. Les deux tramages qui gravent au foyer n'ont pas de point
+        # défocalisé : y appliquer ce verdict ferait raisonner sur 0,80 mm
+        # pendant que la machine trace 0,10 à 0,30. Leur propre verdict est
+        # sous la grille, calculé sur les largeurs brûlées mesurées.
+        if self.combo_mode.currentIndex() in (5, 6):
+            pass
+        elif recouvre > 1.05:
             msgs.append("Pas {:.2f} mm pour un trait de {:.2f} : chaque point "
                         "est repassé {:.1f}×, l'atelier en tient compte.".format(
                             pas, largeur, recouvre))
