@@ -564,8 +564,19 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
   now groups material + spot width + pitch in one "Trait & matière" section with `_maj_regime()`
   printing a live verdict (regime gap, and overlap = width/pitch) plus a one-click fix. The regime
   half only applies to halftone mode 2 ("Lignes calibrées") — the others never read the curve.
-  **Converting a curve fluence into S uses `_pas_surfacique(pitch, line_width)` — the PITCH, not the
-  burn width** (v1.89.0). The curve is calibrated on ISOLATED lines (3 mm apart, one pass). A raster
+  **Converting a curve fluence into S uses `width_for_darkness(material, target)` — the MEASURED burn
+  width of the tone being aimed at** (v1.91.0), never a geometric width. `fluence = P/(width·v)`, so
+  `S = fluence·width·feed` gives back exactly `P·feed/v`: the energy per millimetre of the tone that
+  produced that darkness. Verified on the workshop's 6 beech tones, within 1.7 % (the residue is S
+  quantised to steps of 5). Substituting anything else breaks the identity the curve rests on. The
+  burn width varies strongly with power — 0.40 mm on light tones up to 1.00 mm on blacks, for a
+  1.16 mm optical spot: at low power only the beam's core crosses the burn threshold. Using the
+  raster PITCH instead (v1.89.0) made a 10 % target ask for S230 instead of S120 — nearly double the
+  energy, and the mire came out black over its whole length. `darkness_width_points` must be HOISTED
+  out of pixel loops (both generators do): it reads the config, and one read per pixel would make
+  photo generation unusable. `_pas_surfacique(pitch, line_width)` survives only as the FALLBACK when
+  a material has no measured width at all — the raster reasoning below still applies there.
+  Historical note on that fallback (v1.89.0). The curve is calibrated on ISOLATED lines (3 mm apart, one pass). A raster
   overlaps them: a 0.80 mm burn laid every 0.30 mm passes over each point 2.7×. Using the width
   delivered 2.7× too much energy and every calibrated photo came out solid black —
   `generate_gcode_photo_lines` AND `generate_gcode_photo_sampler` both did it, so the mire that was

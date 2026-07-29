@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.90.0"
+VERSION = "1.91.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4948,6 +4948,54 @@ def resume_reglage(r, critere="noirceur"):
     return resume
 
 
+def width_for_darkness(material, target_pct):
+    """Largeur de trait BRÛLÉE mesurée pour viser une noirceur (%), par
+    interpolation linéaire entre les tons, bornée aux extrêmes mesurés.
+    Renvoie None si le matériau n'a pas au moins 2 tons exploitables.
+
+    C'est le pendant indispensable de `fluence_for_darkness` : la fluence
+    d'un ton vaut P/(largeur·vitesse), où la largeur est celle du trait
+    RÉELLEMENT brûlé, mesurée au pied à coulisse. Elle varie fortement avec
+    la puissance -- de 0,40 mm sur les tons clairs à 1,00 mm sur les noirs,
+    pour un point optique de 1,16 mm : à faible puissance, seul le coeur du
+    faisceau dépasse le seuil de brûlure.
+
+    Réinverser la fluence avec autre chose que CETTE largeur casse
+    l'identité qui fonde la courbe. Avec elle, S = fluence·largeur·vitesse
+    redonne exactement P·vitesse/v, c'est-à-dire l'énergie par millimètre
+    du ton qui a produit cette teinte -- vérifié sur les 6 tons du hêtre,
+    à 2 % près. En utilisant le PAS de balayage à la place (v1.89.0), une
+    cible à 10 % réclamait S230 au lieu de S120 : plus du double d'énergie,
+    et la mire sortait noire sur toute sa longueur."""
+    return interp_width_points(darkness_width_points(material), target_pct)
+
+
+def darkness_width_points(material):
+    """[(noirceur, largeur mesurée), ...] trié, mêmes tons exploitables que
+    `darkness_fluence_curve`. À HISSER hors des boucles de pixels : lire la
+    config pour chaque point d'une photo la rendrait inutilisable."""
+    pts = [(float(s["darkness"]), float(s["width"]))
+           for s in load_shades(material)
+           if (s.get("z_offset", 0) or 0) > 0 and (s.get("width", 0) or 0) > 0
+           and (s.get("feed", 0) or 0) > 0 and (s.get("power", 0) or 0) > 0]
+    pts.sort(key=lambda p: p[0])
+    return pts if len(pts) >= 2 else []
+
+
+def interp_width_points(pts, target_pct):
+    """Largeur interpolée dans `pts` (cf. darkness_width_points), bornée aux
+    extrêmes mesurés -- pas d'extrapolation. None si moins de 2 points."""
+    if not pts:
+        return None
+    t = min(max(float(target_pct), pts[0][0]), pts[-1][0])
+    for (d0, w0), (d1, w1) in zip(pts, pts[1:]):
+        if d0 <= t <= d1:
+            if d1 - d0 < 1e-9:
+                return (w0 + w1) / 2.0
+            return w0 + (w1 - w0) * (t - d0) / (d1 - d0)
+    return pts[-1][1]
+
+
 def darkness_fluence_curve(material):
     """Courbe noirceur (%) -> fluence P/(d·v), interpolable, construite sur
     les tons MESURÉS du matériau. Seuls les tons en DÉFOCUS (z_offset > 0,
@@ -7266,6 +7314,10 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
     dmin, fmin = curve[0]
     dmax, fmax = curve[-1]
 
+    # Hissé hors de _cell_power : appelé pour CHAQUE pixel, une lecture de
+    # config par point rendrait la génération inutilisable.
+    wpts = darkness_width_points(material)
+
     clamped = [0]
     def _cell_power(d):
         t = min(max(d, 0.0), 1.0) * 100.0
@@ -7284,7 +7336,12 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
                     break
             if fl is None:
                 fl = fmax
-        s = fl * _pas_surfacique(pitch, line_width) * feed
+        # Largeur MESURÉE du ton visé, jamais une largeur géométrique :
+        # c'est elle qui figure au dénominateur de la fluence (cf.
+        # width_for_darkness). Repli sur la géométrie si le matériau
+        # n'a pas encore 2 tons exploitables.
+        w = interp_width_points(wpts, t)
+        s = fl * (w if w else _pas_surfacique(pitch, line_width)) * feed
         if s > S_MAX:
             clamped[0] += 1
             s = S_MAX
@@ -7434,6 +7491,7 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
              for c in range(cols)] for _r in range(rows_per)]
 
     curve = darkness_fluence_curve(material) if material else []
+    wpts = darkness_width_points(material) if material else []
     bands = [(0, "diffusion"), (1, "duree"), (2, "calibre"), (3, "dither_lignes")]
     band_step = band_h_mm + gap_mm
     z_safe = z_work + TRAVEL_CLEARANCE_MM
@@ -7509,8 +7567,12 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
                 for d in row:
                     if d not in level_s:
                         res = fluence_for_darkness(material, d * 100.0)
-                        sval = (min(S_MAX, res[0] * _pas_surfacique(pitch, line_width) * feed)
-                                if res else 0)
+                        # Même règle que generate_gcode_photo_lines : la
+                        # largeur MESURÉE du ton visé, pas une largeur
+                        # géométrique (cf. width_for_darkness).
+                        w = interp_width_points(wpts, d * 100.0)
+                        sval = (min(S_MAX, res[0] * (w or _pas_surfacique(
+                            pitch, line_width)) * feed) if res else 0)
                         level_s[d] = int(round(sval / 5.0) * 5)
                     srow.append(level_s[d])
                 sgrid.append(srow)
