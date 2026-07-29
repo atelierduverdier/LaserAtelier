@@ -718,6 +718,35 @@ Two traps worth keeping in mind if this code is touched:
   `core.burn_width_at(power, feed, material)` against the pitch and says so with numbers. This is why
   the material combo stays visible for this tramage even though the nuancier is never consulted.
 
+**Lignes gravées — swelling line (v1.96.0, tramage index 6).** One continuous line per row, beam
+never cut, whose **width** carries the grey: thin in the lights, thick in the darks, like a copperplate
+engraving. Grey is geometry again, but read off the **measured burn widths** (the kerf table), not the
+nuancier — so no calibration curve, and no bare wood anywhere (the original complaint about the
+calibrated portrait: 27 % of the board unengraved). `core.swell_power_levels(material, feed,
+line_min_mm)` → `(256 S values, w_min, w_max)` is the shared source for both
+`generate_gcode_photo_swell_lines` and the preview; it indexes rather than inverting per pixel,
+because the width table is a config read.
+
+Burns **at focus**, which is counter-intuitive — the fat lines the power/speed ramp records in
+defocus (up to 2.60 mm) are useless here. What sets the contrast is not absolute width but the
+**ratio** thinnest/thickest: pitch ≥ widest line, so coverage runs `w_min/pitch → w_max/pitch` and
+contrast caps at `1 - w_min/w_max`. In defocus the spot is already wide, its size is set by beam
+geometry and power barely moves it. Measured on Hêtre — defocus 36: 1.90→2.60 mm (1.4×, 27 %);
+defocus 15: 0.80→1.30 (1.6×, 38 %); **at focus: 0.10→0.30 (3.0×, 67 %)**. At focus the burn width
+isn't the spot size, it's *where the beam profile crosses the wood's burn threshold* — and that point
+moves a lot with power.
+
+Two constraints the panel enforces:
+
+- **Feed changes nothing below F1500** (0.10→0.30 identical at F200, F400 AND F800 — so take the
+  fastest), but **from F1500 the width is flat** at 0.10 whatever the power. Past that the line stops
+  swelling and the mode is meaningless: `swell_power_levels` returns None, the generator refuses, and
+  `_update_grid_info` says so rather than emitting uniform lines.
+- **Never sample below the lowest MEASURED power.** `burn_width_at` clamps to the measured grid, so
+  S0 reports a 0.10 mm line when it burns nothing at all — a mode promising an unbroken line must not
+  pick a power it knows nothing about. `burn_width_power_table` starts at the lowest measured S
+  (S200 on Hêtre). Caught by a test asserting `min(levels) > 0`, not by eye.
+
 Perf: two cell caps, because the surfaces have different budgets. `_VIGNETTE_MAX_CELLS = 20000` for
 the thumbnail (recomputed on every settings change) vs `_PREVIEW_MAX_CELLS = 250000` for the button
 (explicit click, wait cursor). Painting 250k marks into a 240 px thumbnail cost up to 1.8 s for a

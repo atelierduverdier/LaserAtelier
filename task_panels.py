@@ -6529,7 +6529,8 @@ class TaskPanelHalftone:
                                   "Lignes calibrées (nuancier)",
                                   "Diffusion en lignes (points fins, rapide)",
                                   "Gros points Z (taille variable, artistique)",
-                                  "Similigravure (trame 45°, sans calibration)"])
+                                  "Similigravure (trame 45°, sans calibration)",
+                                  "Lignes gravées (trait qui enfle)"])
         self.combo_mode.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_mode.setMinimumContentsLength(17)
         self.combo_mode.setToolTip(
@@ -6551,8 +6552,29 @@ class TaskPanelHalftone:
             "fond, toujours pareil : aucun nuancier n'est consulté, le gris\n"
             "est une surface. C'est le tramage à choisir quand les gris\n"
             "calibrés sortent irréguliers -- le seuil de brûlure du bois ne\n"
-            "décide plus à la place de l'image. À graver AU FOYER.")
+            "décide plus à la place de l'image. À graver AU FOYER.\n"
+            "Lignes gravées : lignes continues, faisceau jamais coupé, dont\n"
+            "l'ÉPAISSEUR rend le gris -- fin dans les clairs, épais dans les\n"
+            "foncés, comme une gravure sur cuivre. Le gris est là aussi une\n"
+            "géométrie, mais lue sur les LARGEURS BRÛLÉES mesurées et non\n"
+            "sur le nuancier. Plus jamais de bois nu. AU FOYER, et sous\n"
+            "F1500 : au-delà le trait n'enfle plus.")
         form.addRow("Tramage :", self.combo_mode)
+
+        self.spn_line_min = QtWidgets.QDoubleSpinBox()
+        self.spn_line_min.setRange(0.02, 3.0)
+        self.spn_line_min.setDecimals(2)
+        self.spn_line_min.setSingleStep(0.05)
+        self.spn_line_min.setValue(0.10)
+        self.spn_line_min.setSuffix(" mm")
+        self.spn_line_min.setToolTip(
+            "Lignes gravées : épaisseur du trait dans les BLANCS -- la ligne\n"
+            "n'est jamais coupée, c'est son minimum. Le maximum, lui, est\n"
+            "celui que le matériau donne à pleine puissance (mesuré).\n"
+            "Plus ce minimum est bas, plus le contraste est grand : le\n"
+            "contraste vaut 1 - mini/maxi. La plage réellement disponible\n"
+            "s'affiche sous la grille.")
+        form.addRow("Épaisseur mini du trait :", self.spn_line_min)
 
         self.spn_dot_spacing = QtWidgets.QDoubleSpinBox()
         self.spn_dot_spacing.setRange(0.3, 5.0)
@@ -6615,17 +6637,21 @@ class TaskPanelHalftone:
             is_dither_l = idx == 3
             is_zdots = idx == 4
             is_simili = idx == 5
+            is_enfle = idx == 6
             self.spn_dwell_min.setEnabled(is_duree or is_zdots)
             self.spn_dwell_max.setEnabled(idx in (0, 1, 4))
-            self.spn_power.setEnabled(not is_lignes)   # calculée par pixel (mode 2)
+            # Modes 2 et 6 : la puissance est calculée par pixel.
+            self.spn_power.setEnabled(not (is_lignes or is_enfle))
             self.spn_white.setEnabled(is_duree or is_lignes or is_zdots)
-            # La similigravure ne consulte pas le nuancier, mais elle a
-            # besoin du matériau pour la LARGEUR BRÛLÉE (recouvrement des
-            # lignes) et pour la teinte de l'aperçu.
-            _set_row_visible(form, self.combo_photo_mat, is_lignes or is_simili)
+            # La similigravure et les lignes gravées ne consultent pas le
+            # nuancier, mais elles ont besoin du matériau pour les LARGEURS
+            # BRÛLÉES et pour la teinte de l'aperçu.
+            _set_row_visible(form, self.combo_photo_mat,
+                             is_lignes or is_simili or is_enfle)
             _set_row_visible(form, self.spn_dot_spacing, is_simili)
+            _set_row_visible(form, self.spn_line_min, is_enfle)
             _set_row_visible(form, self.spn_line_feed,
-                             is_lignes or is_dither_l or is_simili)
+                             is_lignes or is_dither_l or is_simili or is_enfle)
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
         # appel initial déplacé plus bas : _sync_mode touche combo_photo_mat,
         # désormais créé dans la section « Trait & matière » qui suit.
@@ -6744,6 +6770,7 @@ class TaskPanelHalftone:
             "white": self.spn_white, "spot_width": self.spn_spot_width,
             "line_feed": self.spn_line_feed, "gamma": self.spn_gamma,
             "dot_spacing": self.spn_dot_spacing,
+            "line_min": self.spn_line_min,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -6755,6 +6782,7 @@ class TaskPanelHalftone:
                      self.spn_pitch.valueChanged, self.spn_white.valueChanged,
                      self.spn_gamma.valueChanged,
                      self.spn_dot_spacing.valueChanged,
+                     self.spn_line_min.valueChanged,
                      # la mise en garde « trait plus étroit que le pas » de
                      # la similigravure dépend aussi de ces trois-là
                      self.spn_power.valueChanged,
@@ -6902,6 +6930,33 @@ class TaskPanelHalftone:
                               self.spn_power.value(),
                               self.spn_line_feed.value(), brule, pitch,
                               100.0 * (1.0 - brule / pitch), brule))
+        if self.combo_mode.currentIndex() == 6:
+            mat = self.combo_photo_mat.currentData()
+            feed = self.spn_line_feed.value()
+            plage = core.burn_width_range(mat, feed)
+            if plage is None:
+                texte += (" Trait : aucune largeur brûlée mesurée pour ce "
+                          "matériau — passe par « Calibration du kerf ».")
+            elif plage[1] - plage[0] < 1e-9:
+                # Le seul cas où ce tramage ne veut rien dire : à vitesse
+                # élevée la largeur ne dépend plus de la puissance, le trait
+                # n'enfle plus et on grave des lignes uniformes.
+                texte += (" ATTENTION : à F{:.0f} le trait mesure {:.2f} mm à "
+                          "TOUTES les puissances — il n'enfle plus, ce tramage "
+                          "n'a plus d'objet. Descendre sous F1500."
+                          .format(feed, plage[0]))
+            else:
+                w_min = max(self.spn_line_min.value(), plage[0])
+                w_max = plage[1]
+                texte += (" Trait : {:.2f} → {:.2f} mm, couverture {:.0f} → "
+                          "{:.0f} %, contraste {:.0f} %.".format(
+                              w_min, w_max, 100.0 * w_min / pitch,
+                              100.0 * min(1.0, w_max / pitch),
+                              100.0 * (1.0 - w_min / w_max)))
+                if w_max > pitch + 1e-9:
+                    texte += (" Le trait maxi dépasse le pas : les lignes se "
+                              "recouvrent dans les foncés (pas ≥ {:.2f} mm "
+                              "pour les garder distinctes).".format(w_max))
         self.lbl_grid.setText(texte)
         self._update_halftone_preview()
 
@@ -6955,14 +7010,16 @@ class TaskPanelHalftone:
         # Règle : si le régime sort du domaine mesuré, TOUT le rendu passe
         # au modèle théorique et l'aperçu l'annonce -- même règle pour les
         # cinq tramages, qu'on le voie ou non à l'écran.
-        if idx in (3, 5):
+        if idx in (3, 5, 6):
             feeds = [self.spn_line_feed.value()]
         else:
             feeds = [max(1.0, seg / max(d / 1000.0, 1e-3) * 60.0)
                      for d in (self.spn_dwell_min.value(),
                                self.spn_dwell_max.value())]
-        # La similigravure grave AU FOYER : le point doit rester net.
-        z_ref = 0.0 if idx == 5 else (core.defocus_for_spot_diameter(
+        # Similigravure et lignes gravées gravent AU FOYER : dans un cas le
+        # point doit rester net, dans l'autre c'est la largeur au foyer qui
+        # répond à la puissance.
+        z_ref = 0.0 if idx in (5, 6) else (core.defocus_for_spot_diameter(
             spot, core.SPOT_FOCUS_MM, half_angle) or 0.0)
         plage = core.shade_feed_range(material, z_ref)
         theorique = plage is None or not all(
@@ -6996,6 +7053,38 @@ class TaskPanelHalftone:
                 f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
                 strokes.append(([(x, y)], dia,
                                 teinte(p_z, f_dot, dia, z_off)))
+        elif idx == 6:
+            # Lignes gravées : une case = un segment d'un PAS, dont la
+            # LARGEUR porte le gris. On passe par la table du générateur,
+            # et on fusionne les cases de même niveau exactement comme
+            # _emit_raster_rows fusionne les S égaux -- l'aperçu dessine
+            # donc les mêmes segments que la machine gravera.
+            feed_l = self.spn_line_feed.value()
+            niv = core.swell_power_levels(material, feed_l,
+                                          self.spn_line_min.value())
+            if niv is None:
+                return None, ("aucune largeur brûlée mesurée pour ce "
+                              "matériau, ou trait qui n'enfle plus à "
+                              "F{:.0f} (rester sous F1500)".format(feed_l))
+            puissances, w_min, w_max = niv
+            n = len(puissances)
+            t = teinte(puissances[-1], feed_l, w_max, 0.0)
+            for row in range(h):
+                y = (h - 1 - row) * pitch
+                col = 0
+                while col < w:
+                    k0 = max(0, min(n - 1, int(round(
+                        min(1.0, max(0.0, darkness[row][col])) * (n - 1)))))
+                    c0 = col
+                    while col < w:
+                        k = max(0, min(n - 1, int(round(
+                            min(1.0, max(0.0, darkness[row][col])) * (n - 1)))))
+                        if k != k0:
+                            break
+                        col += 1
+                    largeur_k = w_min + (w_max - w_min) * k0 / float(n - 1)
+                    strokes.append(([(c0 * pitch, y), (col * pitch, y)],
+                                    largeur_k, t))
         elif idx in (3, 5):
             # Deux tramages BINAIRES balayés : chaque case allumée est
             # brûlée sur un PAS entier, à puissance et vitesse fixes. Seul
@@ -7238,6 +7327,15 @@ class TaskPanelHalftone:
                 rows, pitch=k["pitch"], z_work=core.Z_WORK_MM,
                 power=self.spn_power.value(), feed=self.spn_line_feed.value(),
                 dot_spacing_mm=self.spn_dot_spacing.value(), **extra)
+        if idx == 6:
+            # Lignes gravées : au foyer aussi -- c'est la largeur brûlée au
+            # foyer qui répond à la puissance (3x), pas celle du défocus.
+            k = self._gen_kwargs()
+            return core.generate_gcode_photo_swell_lines(
+                rows, pitch=k["pitch"], z_work=core.Z_WORK_MM,
+                feed=self.spn_line_feed.value(),
+                material=self.combo_photo_mat.currentData(),
+                line_min_mm=self.spn_line_min.value(), **extra)
         return core.generate_gcode_halftone(rows, **self._gen_kwargs(), **extra)
 
     def _update_duration_preview(self):

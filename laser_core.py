@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.95.0"
+VERSION = "1.96.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7273,6 +7273,175 @@ def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed, y0=0.0):
                     edge, y, feed, cur_s, sel)
         lines.append("S0 {}".format(sel))
     lines.append("G0 Z{:.4f}".format(z_safe))
+
+
+# --- Lignes gravées : le TRAIT ENFLE avec l'image -------------------------
+# Ni puissance perçue ni trame : le gris est une LARGEUR de trait, donc de la
+# géométrie -- comme la similigravure, mais en lignes continues. La ligne
+# n'est jamais coupée : elle part d'une épaisseur minimale réglable dans les
+# blancs et enfle jusqu'à la largeur maximale que le matériau donne.
+#
+# Ça se grave AU FOYER, et c'est contre-intuitif : les gros traits relevés en
+# défocus par la rampe ne servent à rien ici. Ce qui fait le contraste n'est
+# pas la largeur absolue mais le RAPPORT entre le trait le plus fin et le plus
+# épais -- le pas vaut au moins le trait le plus large, donc la couverture va
+# de fin/pas à épais/pas, et le contraste plafonne à 1 - fin/épais. Or en
+# défocus le point est déjà large, sa taille est fixée par la géométrie du
+# faisceau, et la puissance n'y change presque rien. Mesuré sur hêtre --
+# défocus 36 : 1,90 à 2,60 mm, soit 1,4x seulement ; défocus 15 : 0,80 à
+# 1,30 mm, 1,6x ; AU FOYER : 0,10 à 0,30 mm, 3,0x. Au foyer la largeur brûlée
+# n'est pas la taille du point mais l'endroit où le profil du faisceau
+# franchit le seuil de brûlure du bois -- et ce point-là se déplace beaucoup
+# avec la puissance. D'où le contraste : 67 % contre 27 %.
+#
+# Deuxième fait mesuré : la vitesse ne change rien tant qu'on reste dessous
+# (0,10 -> 0,30 identique à F200, F400 ET F800 -- autant prendre la plus
+# rapide), mais à partir de F1500 la largeur est PLATE à 0,10 quelle que soit
+# la puissance. Au-delà, le trait n'enfle plus du tout et le mode n'a plus
+# d'objet.
+
+
+def burn_width_power_table(material, feed, pas_s=5.0):
+    """[(S, largeur brûlée), ...] au FOYER pour cette vitesse, échantillonné
+    sur `burn_width_at` -- donc sur les mesures, jamais sur une formule
+    parallèle. S croissant, largeur rendue monotone : une largeur qui
+    redescendrait quand la puissance monte est une erreur de mesure, pas une
+    propriété du bois. [] si le matériau n'a pas de table."""
+    if feed <= 0:
+        return []
+    mesures = load_burn_widths(_burn_width_material(material) or "").get("focus")
+    if not mesures:
+        return []
+    # Partir de la plus faible puissance MESURÉE, pas de S0 : sous la plage
+    # mesurée `burn_width_at` borne et rend la largeur du bord, si bien que
+    # S0 semble donner un trait de 0,10 mm alors qu'il ne grave rien. Le
+    # tramage promet une ligne jamais coupée -- il ne doit jamais choisir
+    # une puissance dont on ne sait rien.
+    s_dep = min(float(e.get("power", 0) or 0) for e in mesures)
+    n = int(S_MAX / max(pas_s, 1.0))
+    table = []
+    plafond = 0.0
+    for k in range(n + 1):
+        s = k * pas_s
+        if s < s_dep - 1e-9:
+            continue
+        w = burn_width_at(s, feed, material)
+        if w is None:
+            return []
+        plafond = max(plafond, float(w))
+        table.append((s, plafond))
+    return table
+
+
+def burn_width_range(material, feed):
+    """(largeur_mini, largeur_maxi) atteignables au foyer à cette vitesse,
+    ou None. Les deux égales = le trait n'enfle plus, le tramage « lignes
+    gravées » n'a plus d'objet (F >= 1500 sur hêtre : plat à 0,10 mm)."""
+    table = burn_width_power_table(material, feed)
+    if not table:
+        return None
+    return table[0][1], table[-1][1]
+
+
+def swell_power_levels(material, feed, line_min_mm, niveaux=256):
+    """Table noirceur -> S du tramage « lignes gravées ».
+
+    SOURCE UNIQUE partagée par le générateur et l'aperçu photo. Renvoie
+    (liste de `niveaux` valeurs de S, largeur_mini, largeur_maxi), ou None
+    si le matériau n'a pas de table de largeurs ou si le trait n'enfle pas
+    à cette vitesse.
+
+    Indexer plutôt qu'inverser à chaque pixel : la table de largeurs se lit
+    dans la config, une inversion par pixel coûterait aussi cher qu'une
+    lecture de config par pixel."""
+    table = burn_width_power_table(material, feed)
+    if not table:
+        return None
+    w_min_mes, w_max = table[0][1], table[-1][1]
+    if w_max - w_min_mes < 1e-9:
+        return None
+    w_min = min(max(float(line_min_mm), w_min_mes), w_max)
+    puissances = []
+    i = 0
+    for k in range(niveaux):
+        cible = w_min + (w_max - w_min) * (k / float(niveaux - 1))
+        while i < len(table) - 1 and table[i][1] < cible - 1e-9:
+            i += 1
+        puissances.append(int(round(table[i][0] / 5.0) * 5))
+    return puissances, w_min, w_max
+
+
+def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
+                                     material, line_min_mm=0.10,
+                                     pre_gcode="", post_gcode="",
+                                     frame_only=False, quiet=False):
+    """Photo en LIGNES GRAVÉES : chaque ligne est balayée en continu au
+    FOYER, faisceau jamais coupé, et c'est l'ÉPAISSEUR du trait qui rend le
+    gris -- fin dans les clairs, épais dans les foncés, comme une gravure
+    sur cuivre. Aucun nuancier n'est consulté : la puissance de chaque pixel
+    sort de la largeur brûlée MESURÉE (cf. swell_power_levels).
+
+    Le pas doit valoir au moins la largeur maximale, sinon les traits se
+    recouvrent dans les foncés et les lignes fondent en aplat -- le G-code
+    le signale en commentaire. Renvoie None si grille vide, pas de table de
+    largeurs, ou trait qui n'enfle plus (vitesse trop élevée)."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or pitch <= 0 or feed <= 0:
+        return None
+    niveaux = swell_power_levels(material, feed, line_min_mm)
+    if niveaux is None:
+        if not quiet:
+            FreeCAD.Console.PrintWarning(
+                "Lignes gravées : « {} » n'a pas de largeurs brûlées mesurées, "
+                "ou le trait n'enfle plus à F{:.0f} (au-delà de F1500 la "
+                "largeur ne dépend plus de la puissance).\n".format(
+                    material, feed))
+        return None
+    puissances, w_min, w_max = niveaux
+    n = len(puissances)
+    grid = [[puissances[max(0, min(n - 1, int(round(min(1.0, max(0.0, d))
+                                                    * (n - 1)))))]
+             for d in row] for row in darkness_rows]
+
+    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    lines = []
+    lines.append("(G-Code Laser - Photo : lignes gravees, trait qui enfle)")
+    lines.append("(Image : {} x {} px au pas {:.2f}mm, F{:.0f}, au foyer)".format(
+        w, h, pitch, feed))
+    lines.append("(Trait : {:.2f} a {:.2f} mm -- couverture {:.0f} a {:.0f} %)".format(
+        w_min, w_max, 100.0 * w_min / pitch, 100.0 * min(1.0, w_max / pitch)))
+    if w_max > pitch + 1e-9:
+        lines.append("(ATTENTION : trait maxi {:.2f}mm > pas {:.2f}mm -- les "
+                     "lignes se recouvrent dans les fonces)".format(w_max, pitch))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(0.0, w * pitch, 0.0, (h - 1) * pitch, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed)
+
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 # --- Similigravure : trame AM à 45 degrés ---------------------------------

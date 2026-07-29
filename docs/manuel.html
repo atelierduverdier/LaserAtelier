@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.95.0</span><br>
+      <span class="ver">Version 1.96.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.95.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.96.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -432,7 +432,7 @@
     <div class="row"><img src="../resources/icons/hatch.svg" alt=""><div><span class="nm">Hachures 2D</span> — <span class="ds">prépare un remplissage par hachures (objet), à graver ensuite. Aucun G-code ici.</span></div></div>
     <div class="row"><img src="../resources/icons/text.svg" alt=""><div><span class="nm">Texte (trait simple)</span> — <span class="ds">écrit un texte « bâton » monotrait, prêt à graver.</span></div></div>
     <div class="row"><img src="../resources/icons/filled.svg" alt=""><div><span class="nm">Gravure remplie</span> — <span class="ds">noircit une surface fermée (défocus calibré + contour repassé).</span></div></div>
-    <div class="row"><img src="../resources/icons/halftone.svg" alt=""><div><span class="nm">Gravure photo</span> — <span class="ds">reproduit une image en niveaux de gris (six tramages).</span></div></div>
+    <div class="row"><img src="../resources/icons/halftone.svg" alt=""><div><span class="nm">Gravure photo</span> — <span class="ds">reproduit une image en niveaux de gris (sept tramages).</span></div></div>
 
     <div class="fam">Sur surface 3D</div>
     <div class="row"><img src="../resources/icons/project.svg" alt=""><div><span class="nm">Projeter sur surface 3D</span> — <span class="ds">colle un motif 2D sur une surface courbe (préparation).</span></div></div>
@@ -543,7 +543,7 @@
     <img class="shot" src="manuel_img/halftone.png" alt="Panneau Gravure photo">
     <h4>Gravure photo (trame de points)</h4>
     <p class="quoi">Reproduire une image en niveaux de gris.</p>
-    <p>Six tramages : points façon Floyd-Steinberg, points à durée variable, <strong>lignes calibrées</strong> (puissance par pixel via la courbe du nuancier), lignes tramées, points par diamètre (Z), et <strong>similigravure</strong> (trame à 45°, sans calibration). Une mire compare les tramages d'un coup.</p>
+    <p>Sept tramages : points façon Floyd-Steinberg, points à durée variable, <strong>lignes calibrées</strong> (puissance par pixel via la courbe du nuancier), lignes tramées, points par diamètre (Z), <strong>similigravure</strong> (trame à 45°, sans calibration) et <strong>lignes gravées</strong> (trait continu dont l'épaisseur rend le gris). Une mire compare les tramages d'un coup.</p>
     <p class="meta"><b>Réglages clés :</b> image · pas de trame · tramage · gamma. <b>Fichier :</b> <code>gravure_photo.ngc</code></p>
   </div></div>
 
@@ -614,6 +614,19 @@
     <p>Quatre réglages du mode <b>Gravure photo</b> sont indissociables et tiennent désormais dans une seule section&nbsp;: le <b>matériau</b> (donc la calibration de référence), la <b>vitesse des lignes</b>, la <b>largeur du point</b> et le <b>pas de trame</b>. Ils étaient auparavant dispersés dans trois sections différentes, ce qui rendait leur incohérence invisible.</p>
     <p>Le piège&nbsp;: la «&nbsp;largeur du point&nbsp;» pilote en coulisses la <b>hauteur Z</b>, donc le défocus. Si elle ne correspond pas au défocus auquel vos tons ont été mesurés, la courbe ne s'applique plus. Et l'écart n'est pas proportionnel mais <b>en carré du rapport des diamètres</b>&nbsp;: un point 1,45&nbsp;fois plus serré concentre la même puissance sur une surface 2,1&nbsp;fois plus petite. Cas réellement rencontré&nbsp;: nuancier mesuré à défocus 15, panneau réglé sur 8,75 — toutes les photos calibrées sortaient uniformément noires, sans le moindre message.</p>
     <p>Un <b>verdict en direct</b> s'affiche maintenant sous les trois champs. Il compare le défocus ET la vitesse demandés à ceux de la calibration, signale le recouvrement (pas plus fin que le trait&nbsp;= chaque point repassé plusieurs fois, ou pas plus large&nbsp;= bois nu entre les lignes), et propose un bouton qui aligne largeur et vitesse d'un clic. Le volet «&nbsp;régime&nbsp;» ne concerne que le tramage «&nbsp;Lignes calibrées&nbsp;», seul à consulter la courbe.</p>
+
+    <h4>Lignes gravées&nbsp;: le trait enfle, et les gros traits ne servent à rien</h4>
+    <p>Une ligne continue par rangée, faisceau jamais coupé, dont l'<b>épaisseur</b> rend le gris&nbsp;: fine dans les clairs, épaisse dans les foncés, comme une gravure sur cuivre. Là encore le gris est une géométrie — mais lue cette fois sur les <b>largeurs brûlées mesurées</b>, pas sur le nuancier. Conséquence directe&nbsp;: plus jamais de bois nu, ce qui était le reproche fait au premier portrait calibré, dont 27&nbsp;% de la surface n'était pas gravée du tout.</p>
+    <p>Ce mode se grave <b>au foyer</b>, et c'est contre-intuitif&nbsp;: les gros traits relevés en défocus par la rampe puissance/vitesse — jusqu'à 2,60&nbsp;mm — n'y servent à rien. Ce qui fait le contraste n'est pas la largeur absolue mais le <b>rapport</b> entre le trait le plus fin et le plus épais. Le pas vaut au moins le trait le plus large, donc la couverture va de <code>fin/pas</code> à <code>épais/pas</code>, et le contraste plafonne à <code>1 − fin/épais</code>. Or en défocus le point est déjà large&nbsp;: sa taille est fixée par la géométrie du faisceau et la puissance n'y change presque rien.</p>
+    <table class="reglages">
+      <tr><th>Régime</th><th>Trait</th><th>Rapport</th><th>Contraste maximal</th></tr>
+      <tr><td><b>Au foyer</b></td><td>0,10 → 0,30&nbsp;mm</td><td><b>3,0×</b></td><td><b>67&nbsp;%</b></td></tr>
+      <tr><td>Défocus 15</td><td>0,80 → 1,30&nbsp;mm</td><td>1,6×</td><td>38&nbsp;%</td></tr>
+      <tr><td>Défocus 36</td><td>1,90 → 2,60&nbsp;mm</td><td>1,4×</td><td>27&nbsp;%</td></tr>
+    </table>
+    <p>Mesures relevées sur hêtre. Au foyer, la largeur brûlée n'est pas la taille du point&nbsp;: c'est <b>l'endroit où le profil du faisceau franchit le seuil de brûlure du bois</b> — et ce point-là se déplace beaucoup quand la puissance monte. D'où le 3×, là où le défocus plafonne à 1,4×.</p>
+    <p>Deuxième fait mesuré&nbsp;: la vitesse ne change rien tant qu'on reste dessous — 0,10 à 0,30&nbsp;mm à F200, F400 <em>et</em> F800, autant prendre la plus rapide — mais à partir de <b>F1500 la largeur est plate</b> à 0,10&nbsp;mm quelle que soit la puissance. Au-delà le trait n'enfle plus du tout, le mode n'a plus d'objet, et le panneau le dit franchement plutôt que de graver des lignes uniformes.</p>
+    <p>Un piège à connaître si ce code est repris&nbsp;: la table des largeurs brûlées <b>borne aux mesures</b>. Sous la plus faible puissance relevée, elle renvoie la largeur du bord — si bien que S0 semble donner un trait de 0,10&nbsp;mm alors qu'il ne grave rien. Un tramage qui promet une ligne jamais coupée ne doit donc jamais descendre sous la plage mesurée&nbsp;; les niveaux partent de la plus faible puissance <em>réellement mesurée</em>.</p>
 
     <h4>Similigravure&nbsp;: quand le gris cesse de dépendre du bois</h4>
     <p>Les cinq premiers tramages demandent au bois de <em>rendre</em> un gris — par la puissance, par la durée, ou par la densité de points identiques. Près du seuil de brûlure, le bois n'en fait qu'à sa tête&nbsp;: c'est le fil qui tranche, et les demi-teintes sortent irrégulières. Le sixième tramage supprime le problème à la racine.</p>
@@ -842,7 +855,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.95.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.96.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
