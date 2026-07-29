@@ -6919,50 +6919,11 @@ class TaskPanelHalftone:
                       "{} niveaux de gris.".format(
                           reel, (cols - 1) * pitch / reel if reel else 0,
                           2 * k * k))
-            # La similigravure ne tient sa promesse -- surface couverte =
-            # noirceur demandée -- que si les lignes de balayage se
-            # touchent. Un trait plus étroit que le pas laisse du bois nu
-            # ENTRE les lignes : les points sortent peignés et toute
-            # l'image s'éclaircit dans le même rapport, sans que rien ne le
-            # signale. Sur hêtre au foyer à F2000, le trait ne fait que
-            # 0,10 mm : le pas doit suivre.
-            brule = core.burn_width_at(self.spn_power.value(),
-                                       self.spn_line_feed.value(),
-                                       self.combo_photo_mat.currentData())
-            if brule and pitch > brule + 1e-9:
-                texte += (" ATTENTION : à S{:.0f} F{:.0f} le trait brûlé ne "
-                          "fait que {:.2f} mm, plus étroit que le pas de "
-                          "{:.2f} -- les points sortiront peignés et les gris "
-                          "environ {:.0f} % trop clairs. Descendre le pas à "
-                          "{:.2f} mm, ou ralentir.".format(
-                              self.spn_power.value(),
-                              self.spn_line_feed.value(), brule, pitch,
-                              100.0 * (1.0 - brule / pitch), brule))
-        if self.combo_mode.currentIndex() == 6:
-            mat = self.combo_photo_mat.currentData()
-            feed = self.spn_line_feed.value()
-            plage = core.burn_width_range(mat, feed)
-            if plage is None:
-                texte += (" Trait : aucune largeur brûlée mesurée pour ce "
-                          "matériau — passe par « Calibration du kerf ».")
-            elif plage[1] - plage[0] < 1e-9:
-                # Le seul cas où ce tramage ne veut rien dire : à vitesse
-                # élevée la largeur ne dépend plus de la puissance, le trait
-                # n'enfle plus et on grave des lignes uniformes.
-                texte += " ATTENTION : " + core.swell_refus_message(mat, feed)
-            else:
-                w_min = max(self.spn_line_min.value(), plage[0])
-                w_max = plage[1]
-                texte += (" Trait : {:.2f} → {:.2f} mm, couverture {:.0f} → "
-                          "{:.0f} %, contraste {:.0f} %.".format(
-                              w_min, w_max, 100.0 * w_min / pitch,
-                              100.0 * min(1.0, w_max / pitch),
-                              100.0 * (1.0 - w_min / w_max)))
-                if w_max > pitch + 1e-9:
-                    texte += (" Le trait maxi dépasse le pas : les lignes se "
-                              "recouvrent dans les foncés (pas ≥ {:.2f} mm "
-                              "pour les garder distinctes).".format(w_max))
+        # Tout ce qui concerne le TRAIT (largeurs mesurées, recouvrement,
+        # trait qui n'enfle plus) est dit une seule fois, sous « Trait &
+        # matière » -- cf. _verdict_au_foyer. Ici on s'en tient à la grille.
         self.lbl_grid.setText(texte)
+        self._maj_regime()
         self._update_halftone_preview()
 
     _PREVIEW_MAX_CELLS = 250000  # plafond du tramage d'APERÇU (coût borné)
@@ -7461,10 +7422,11 @@ class TaskPanelHalftone:
         # Le recouvrement se calcule sur « Largeur du point », qui pilote le
         # DÉFOCUS. Les deux tramages qui gravent au foyer n'ont pas de point
         # défocalisé : y appliquer ce verdict ferait raisonner sur 0,80 mm
-        # pendant que la machine trace 0,10 à 0,30. Leur propre verdict est
-        # sous la grille, calculé sur les largeurs brûlées mesurées.
+        # pendant que la machine trace 0,10 à 0,30. Ils ont le leur, bâti
+        # sur les largeurs brûlées MESURÉES -- et il a sa place ici, sous
+        # les trois réglages qu'il concerne (matériau, vitesse, pas).
         if self.combo_mode.currentIndex() in (5, 6):
-            pass
+            ok, bouton = self._verdict_au_foyer(msgs, pas)
         elif recouvre > 1.05:
             msgs.append("Pas {:.2f} mm pour un trait de {:.2f} : chaque point "
                         "est repassé {:.1f}×, l'atelier en tient compte.".format(
@@ -7477,6 +7439,57 @@ class TaskPanelHalftone:
                 "#2e7d32" if ok else "#c62828", "✓" if ok else "⚠",
                 " ".join(msgs)))
         self.btn_corriger_regime.setVisible(bouton)
+
+    def _verdict_au_foyer(self, msgs, pas):
+        """Verdict des deux tramages qui gravent AU FOYER, bâti sur les
+        largeurs brûlées mesurées. Renvoie (ok, bouton).
+
+        Ces tramages ne consultent pas le nuancier, mais ils dépendent
+        entièrement de la table de kerf : c'est elle qui dit si le trait
+        peut enfler (lignes gravées) et s'il tiendra dans le pas sans que
+        les lignes se recouvrent (les deux)."""
+        mat = self.combo_photo_mat.currentData()
+        feed = self.spn_line_feed.value()
+        enfle = self.combo_mode.currentIndex() == 6
+        plage = core.burn_width_range(mat, feed)
+        if plage is None:
+            msgs.append("Aucune largeur brûlée mesurée pour ce matériau : "
+                        "passe par « Calibration du kerf », ce tramage n'a "
+                        "que ça pour travailler.")
+            return False, False
+        if enfle and plage[1] - plage[0] < 1e-9:
+            # Majuscule sur la PREMIÈRE lettre seulement : capitalize()
+            # rabattrait « F800 » en « f800 » dans la suite du message.
+            m = core.swell_refus_message(mat, feed)
+            msgs.append(m[:1].upper() + m[1:])
+            return False, False
+        if enfle:
+            w_min = max(self.spn_line_min.value(), plage[0])
+            w_max = plage[1]
+            msgs.append(
+                "Trait <b>{:.2f} → {:.2f} mm</b> à F{:.0f} : couverture "
+                "{:.0f} → {:.0f} %, contraste <b>{:.0f} %</b>.".format(
+                    w_min, w_max, feed, 100.0 * w_min / pas,
+                    100.0 * min(1.0, w_max / pas),
+                    100.0 * (1.0 - w_min / w_max)))
+            trait = w_max
+        else:
+            # Similigravure : un point brûlé à fond, donc la largeur du haut.
+            trait = plage[1]
+            msgs.append("Points brûlés à {:.2f} mm à F{:.0f}.".format(
+                trait, feed))
+        if trait > pas + 1e-9:
+            msgs.append("Le trait dépasse le pas ({:.2f} mm) : les lignes se "
+                        "recouvrent dans les foncés. Pas ≥ <b>{:.2f} mm</b> "
+                        "pour les garder distinctes.".format(pas, trait))
+            return False, False
+        if not enfle and pas > trait + 1e-9:
+            msgs.append("Pas {:.2f} mm plus large que le trait : la trame "
+                        "sortira <b>{:.0f} % trop claire</b> (bois nu entre "
+                        "les lignes). Pas à viser : <b>{:.2f} mm</b>.".format(
+                            pas, 100.0 * (1.0 - trait / pas), trait))
+            return False, False
+        return True, False
 
     def _corriger_regime(self):
         """Aligne largeur du point ET vitesse sur la calibration -- les deux
