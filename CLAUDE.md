@@ -545,7 +545,15 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
   NOT evidence this works: check `len(darkness_fluence_curve(mat))` and the SPREAD of its darkness
   values, not the tone count. The Grille de test's `largeurs_defocus` objective (v1.87.0) exists to
   produce the missing pairing — measured width AND judged darkness, at the same defocus.
-  `largeurs_foyer` cannot: a width measured at focus is rejected by the `z_offset > 0` filter. Marquage also has style `"degrade"` (linear defocus along a
+  `largeurs_foyer` cannot: a width measured at focus is rejected by the `z_offset > 0` filter.
+  **Its feeds must stay SLOW (F200–2000, v1.87.2).** Defocused, the spot is ~4× wider than at focus,
+  so power density collapses and an ISOLATED line stops marking well before the feeds where light
+  tones live. Shipped first at F1000–4000 (the nuancier tones' range) → **18 of 25 cells came out
+  blank on beech**; the workshop's own measured defocus widths were all F200–800 and said so. The
+  deeper consequence is physical, not a tooling gap: on this material, "feeds slow enough for a
+  measurable line" and "feeds fast enough for a light tone" barely overlap — which is exactly why
+  every curve point ended up at 100 %. Expect the light end of the darkness scale to have no
+  measurable width, and do not widen the feeds to chase it. Marquage also has style `"degrade"` (linear defocus along a
   direction, `deg_angle`/`deg_z_min`/`deg_z_max` in style_params) — the offset is a projection over
   ALL chains together (not reset per chain, unlike `"vague"`'s explicit dz=0 at each chain's start),
   so `generate_gcode_curved` must approach each chain's first point ALREADY at its `deg_dz` offset

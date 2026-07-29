@@ -7028,8 +7028,15 @@ class TaskPanelTestGrid:
                         "LARGEUR de chaque case au pied à coulisse (section ②)."}),
             ("largeurs_defocus", {
                 "label": "Largeurs brûlées — grille en défocus",
-                "mode": 0, "power_min": 200, "power_max": 1000, "power_steps": 5,
-                "feed_min": 1000, "feed_max": 4000, "feed_steps": 5,
+                # Vitesses LENTES, et c'est tout l'enjeu : en défocus le point
+                # est ~4x plus large qu'au foyer, donc la densité de puissance
+                # chute d'autant et un trait ISOLÉ ne marque plus au-delà de
+                # ~F1000. Une première version visait F1000-4000 (la plage des
+                # tons du nuancier) : 18 cases sur 25 sont sorties vierges sur
+                # hêtre. Les largeurs déjà mesurées de l'atelier le disaient
+                # d'ailleurs -- toutes entre F200 et F800.
+                "mode": 0, "power_min": 400, "power_max": 1000, "power_steps": 5,
+                "feed_min": 200, "feed_max": 2000, "feed_steps": 5,
                 "filltype": 0, "hatch_spacing": 3.0, "border": True,
                 "z_defocus": 15.0, "cell_size": 16.0,
                 "note": "Traits ISOLÉS en défocus 15 mm : l'espacement de 3 mm "
@@ -7041,6 +7048,12 @@ class TaskPanelTestGrid:
                         "Un aplat ne se juge pas sur des traits espacés, et "
                         "une largeur ne se mesure pas sur un aplat -- il faut "
                         "les deux vues du même réglage.\n"
+                        "Vitesses volontairement LENTES : en défocus, un trait "
+                        "isolé cesse de marquer bien avant les vitesses où "
+                        "vivent les tons clairs. Le haut de l'échelle de "
+                        "noirceur restera donc peut-être sans largeur "
+                        "mesurable -- c'est une limite physique, pas un "
+                        "réglage à forcer. Mesure ce qui est lisible.\n"
                         "Reporte ensuite chaque case dans Nuancier « + Ajouter "
                         "un ton » avec SES DEUX mesures : c'est le couple "
                         "noirceur+largeur en défocus qui alimente la photo "
