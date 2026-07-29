@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.85.0</span><br>
+      <span class="ver">Version 1.86.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.85.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.86.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -298,6 +298,11 @@
   <div class="box pourquoi">
     <span class="t">Trois dialectes G-code</span>
     <p>Par défaut l'atelier écrit pour <strong>LinuxCNC</strong>. Deux autres dialectes existent pour d'autres contrôleurs (<strong>GRBL</strong> et <strong>grblHAL</strong>) : ils se choisissent par profil laser dans les Préférences, et l'atelier adapte automatiquement l'armement, la sélection de broche et le lissage de trajectoire. Vous n'avez jamais à écrire ces différences à la main.</p>
+
+    <h4>Lissage de trajectoire (G64)</h4>
+    <p>Chaque job laser LinuxCNC déclare sa propre tolérance d'angle : <code>G64 P0.05</code>. C'est l'écart maximal toléré <em>à l'intérieur</em> d'un virage pour ne pas avoir à s'y arrêter. Cinq centièmes sont très en dessous du trait brûlé le plus fin qu'on sache mesurer (0,10&nbsp;mm) et cinquante fois sous le plus large (2,60&nbsp;mm) : invisible sur la pièce, mais décisif sur la durée d'une gravure hachurée qui change de direction des dizaines de milliers de fois.</p>
+    <p>Deux pièges valent d'être connus, car les deux vont à l'envers de l'intuition. Un <code>G64</code> <b>nu</b> ne veut pas dire « pas de lissage » : il veut dire « lisse à la vitesse maximale, <em>sans</em> borne d'écart ». Ajouter un <code>P</code> ne relâche donc pas la machine, il l'encadre. Et surtout, un fichier qui n'écrit <b>aucun</b> <code>G64</code> n'est pas neutre : il hérite de la ligne de démarrage de la machine. Si celle-ci impose une tolérance très serrée — un micron, par exemple — la machine s'arrête net à chaque changement de direction, et la gravure traîne sans qu'on comprenne pourquoi.</p>
+    <p>Une exception assumée : le <strong>test des offsets X/Y</strong> n'émet aucun <code>G64</code>. Il grave une croix dont la géométrie d'angle <em>est</em> la mesure ; là, le lissage fausserait ce qu'on cherche à lire. Le principe général : lisser convient à ce qu'on brûle, jamais à ce qu'on mesure.</p>
   </div>
 
   <div class="box attention">
@@ -783,7 +788,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.85.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.86.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

@@ -325,6 +325,21 @@ string or `None`** (None = empty geometry). Shared conventions:
   job could impose too low a floor on the OTHER operations sharing that job.
 - **`TRAVEL_CLEARANCE_MM`** is the flyover margin over the work Z for transits. On flat work it should
   be small/0 — lifting per hatch line is the classic wasteful bug; transit at the working Z, laser off.
+- **Path blending / `PATH_BLEND_TOLERANCE_MM = 0.05`** (v1.86.0): `cmd_path_blend()` emits
+  `G64 P0.050` in every laser preamble (None in GRBL/grblHAL — they don't know G64 and blend natively
+  via `$11`). Two traps, both counter-intuitive:
+  (1) A BARE `G64` does not mean "no blending" — it means "blend at max speed with NO tolerance
+  bound". Adding `P` therefore CONSTRAINS the machine, it doesn't loosen it. Only 4 generators used to
+  emit the bare form.
+  (2) A job that emits no `G64` at all inherits the machine's `RS274NGC_STARTUP_CODE`. On the user's
+  PrintNC that is `G64 P0.001` — a 1 µm corner tolerance, which forces a near-full stop at every
+  direction change, tens of thousands of times in a hatched engraving. Emitting nothing is NOT a
+  neutral choice.
+  0.05 mm is far below the finest measured burn width (0.10 mm) and 50× below the widest (2.60 mm), so
+  it cannot show on the work. **`generate_gcode_offset_test` is deliberately excluded**: it engraves a
+  cross whose corner geometry IS the measurement, so it must keep the machine's tight tolerance. Any
+  new generator must make that same call consciously — blending is right for burning, wrong for
+  measuring geometry.
 - **Chain ordering** (v1.82.0): `generate_gcode_curved` runs `order_chains_by_proximity(chains)` right
   after `chain_edges`, so every mode built on it (Marquage AND the fill/contour bodies of Gravure
   remplie) visits disjoint chains nearest-first, reversing a chain's direction when that end is closer.

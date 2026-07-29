@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.85.0"
+VERSION = "1.86.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -559,6 +559,12 @@ ARM_DWELL_S = 2.0
 LASER_TOOL = 100     # numéro (tool.tbl) de l'outil laser -- réglable en Préférences
 S_MAX = 1000.0       # échelle de puissance max de la broche laser (valeur S pleine
                      # puissance) -- dépend de la config machine, réglable en Préférences
+# Tolérance de lissage de trajectoire (G64 P) des jobs laser, en mm : écart
+# maximal toléré à l'intérieur d'un angle pour ne pas avoir à s'y arrêter.
+# 0,05 mm est très en dessous du trait brûlé le plus fin mesuré (0,10 mm) et
+# 50 fois sous le plus large (2,60 mm) : invisible sur la pièce. Voir
+# cmd_path_blend() pour le piège du G64 nu et de l'héritage machine.
+PATH_BLEND_TOLERANCE_MM = 0.05
 
 
 def cmd_tool_comp():
@@ -579,10 +585,23 @@ def cmd_tool_comp():
 
 
 def cmd_path_blend():
-    """« G64 » (trajectoire continue LinuxCNC), ou None en dialecte
-    GRBL/grblHAL : ils ne connaissent pas G64 (erreur), leur planificateur
-    lisse nativement (réglage $11, junction deviation)."""
-    return None if GCODE_DIALECT in ("grbl", "grblhal") else "G64"
+    """« G64 P<tolérance> » (trajectoire continue LinuxCNC), ou None en
+    dialecte GRBL/grblHAL : ils ne connaissent pas G64 (erreur), leur
+    planificateur lisse nativement (réglage $11, junction deviation).
+
+    ATTENTION au sens du P, contre-intuitif : un G64 NU ne veut pas dire
+    « pas de lissage » mais « lisse à la vitesse maximale, SANS borne de
+    déviation ». Ajouter P ne relâche donc pas la machine, il la BORNE.
+    Et un job qui n'émet aucun G64 hérite de la ligne de démarrage de la
+    machine (RS274NGC_STARTUP_CODE) : sur la PrintNC c'est G64 P0.001,
+    soit 1 µm, ce qui force un quasi-arrêt à chaque changement de
+    direction -- des dizaines de milliers de fois sur une gravure hachurée.
+
+    D'où PATH_BLEND_TOLERANCE_MM : borné, mais à une valeur sans effet
+    visible sur une brûlure large de 0,10 à 2,60 mm."""
+    if GCODE_DIALECT in ("grbl", "grblhal"):
+        return None
+    return "G64 P{:.3f}".format(PATH_BLEND_TOLERANCE_MM)
 
 
 _CMD_ARM_LINUXCNC = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"
@@ -2962,6 +2981,8 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, 
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -3356,6 +3377,8 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe_start_end))
@@ -5251,6 +5274,8 @@ def generate_gcode_flat_multipass(edges, power, feed, thickness, n_passes,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -5496,6 +5521,8 @@ def generate_gcode_curved_cut(edges, power, feed, thickness, n_passes, z_focus, 
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -5781,6 +5808,8 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -6586,6 +6615,8 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
             lines.append("G21")
             lines.append("G90")
             lines.append("G94")
+            if cmd_path_blend():
+                lines.append(cmd_path_blend())
             lines.append(cmd_tool_comp())
             lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
         lines.append("G0 Z{:.4f}".format(global_min_safe_z))
@@ -6650,6 +6681,8 @@ def generate_gcode_filled_engraving(fill_edges, contour_edges, z_focus, defocus,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
         if pre_gcode.strip():
@@ -6853,6 +6886,8 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
 
@@ -7015,6 +7050,8 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
     lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -7298,6 +7335,8 @@ def generate_gcode_photo_zdots(darkness_rows, pitch, z_focus, power,
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
     lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -7795,6 +7834,8 @@ def generate_gcode_planche_focus(z_focus=None,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -7881,6 +7922,8 @@ def generate_gcode_planche_defocus(z_focus=None,
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
+        if cmd_path_blend():
+            lines.append(cmd_path_blend())
         lines.append(cmd_tool_comp())
         lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
@@ -7986,6 +8029,8 @@ def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="",
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
     lines.append(cmd_tool_comp())
     lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
     if pre_gcode.strip():
