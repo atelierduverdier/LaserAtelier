@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.91.0</span><br>
+      <span class="ver">Version 1.92.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.91.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.92.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -590,10 +590,15 @@
     <p class="quoi">Balayer une matrice de réglages sur une chute.</p>
     <p>Grave une grille où puissance et vitesse varient case par case. Un menu « Objectif » propose une recette de départ ; le style de remplissage est réglable. On lit la meilleure case à l'œil. Aucune sélection n'est requise&nbsp;: la grille fabrique ses propres cases, contrairement au mode <em>Gravure remplie</em> qui attend une face.</p>
 
+    <h4>La noirceur ne dépend pas que de l'énergie&nbsp;: la vitesse compte aussi</h4>
+    <p>Expérience faite&nbsp;: quatre bandes gravées à énergie par millimètre <em>rigoureusement identique</em> — à F650, F1000, F1500 et F2000 — ne rendent pas la même chose. <b>Plus c'est lent, plus c'est foncé.</b> La bande à F650 saturait au noir dès le deuxième palier là où celle à F2000 tenait jusqu'au sixième.</p>
+    <p>Le <b>temps d'exposition</b> intervient donc, en plus de l'énergie. Conséquence directe&nbsp;: une courbe noirceur→énergie n'est valable <b>qu'au voisinage de la vitesse à laquelle elle a été mesurée</b>. Et une courbe bâtie sur des tons relevés à des vitesses différentes — les clairs vite, les foncés lentement — est incohérente d'entrée, sans qu'aucune formule puisse la rattraper.</p>
+    <p>D'où la manière de calibrer&nbsp;: graver <b>une seule bande, à une seule vitesse</b>, dans les conditions exactes d'une photo (même défocus, même pas de balayage), en juger les paliers, et s'y tenir ensuite.</p>
+
     <h4>Section «&nbsp;Trait &amp; matière&nbsp;»&nbsp;: graver dans le régime de la calibration</h4>
-    <p>Trois réglages du mode <b>Gravure photo</b> sont indissociables et tiennent désormais dans une seule section&nbsp;: le <b>matériau</b> (donc la calibration de référence), la <b>largeur du point</b> et le <b>pas de trame</b>. Ils étaient auparavant dispersés dans trois sections différentes, ce qui rendait leur incohérence invisible.</p>
+    <p>Quatre réglages du mode <b>Gravure photo</b> sont indissociables et tiennent désormais dans une seule section&nbsp;: le <b>matériau</b> (donc la calibration de référence), la <b>vitesse des lignes</b>, la <b>largeur du point</b> et le <b>pas de trame</b>. Ils étaient auparavant dispersés dans trois sections différentes, ce qui rendait leur incohérence invisible.</p>
     <p>Le piège&nbsp;: la «&nbsp;largeur du point&nbsp;» pilote en coulisses la <b>hauteur Z</b>, donc le défocus. Si elle ne correspond pas au défocus auquel vos tons ont été mesurés, la courbe ne s'applique plus. Et l'écart n'est pas proportionnel mais <b>en carré du rapport des diamètres</b>&nbsp;: un point 1,45&nbsp;fois plus serré concentre la même puissance sur une surface 2,1&nbsp;fois plus petite. Cas réellement rencontré&nbsp;: nuancier mesuré à défocus 15, panneau réglé sur 8,75 — toutes les photos calibrées sortaient uniformément noires, sans le moindre message.</p>
-    <p>Un <b>verdict en direct</b> s'affiche maintenant sous les trois champs. Il compare le défocus demandé à celui de la calibration, signale le recouvrement (pas plus fin que le trait&nbsp;= chaque point repassé plusieurs fois, ou pas plus large&nbsp;= bois nu entre les lignes), et propose un bouton qui aligne la largeur d'un clic. Le volet «&nbsp;régime&nbsp;» ne concerne que le tramage «&nbsp;Lignes calibrées&nbsp;», seul à consulter la courbe.</p>
+    <p>Un <b>verdict en direct</b> s'affiche maintenant sous les trois champs. Il compare le défocus ET la vitesse demandés à ceux de la calibration, signale le recouvrement (pas plus fin que le trait&nbsp;= chaque point repassé plusieurs fois, ou pas plus large&nbsp;= bois nu entre les lignes), et propose un bouton qui aligne largeur et vitesse d'un clic. Le volet «&nbsp;régime&nbsp;» ne concerne que le tramage «&nbsp;Lignes calibrées&nbsp;», seul à consulter la courbe.</p>
 
     <h4>La puissance se calcule sur la largeur MESURÉE du ton visé</h4>
     <p>La fluence d'un ton vaut <code>P / (largeur × vitesse)</code>, où la largeur est celle du trait <em>réellement brûlé</em>, relevée au pied à coulisse. Elle varie beaucoup avec la puissance&nbsp;: sur le hêtre, de 0,40&nbsp;mm sur les tons clairs à 1,00&nbsp;mm sur les noirs, pour un point optique de 1,16&nbsp;mm — à faible puissance, seul le cœur du faisceau dépasse le seuil de brûlure.</p>
@@ -809,7 +814,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.91.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.92.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

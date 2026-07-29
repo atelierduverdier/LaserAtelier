@@ -6556,15 +6556,6 @@ class TaskPanelHalftone:
         form.addRow("Seuil blanc :", self.spn_white)
 
         # --- Vitesse de balayage des lignes calibrées ---
-        self.spn_line_feed = QtWidgets.QDoubleSpinBox()
-        self.spn_line_feed.setRange(1, 20000)
-        self.spn_line_feed.setValue(1000)
-        self.spn_line_feed.setSuffix(" mm/min")
-        self.spn_line_feed.setToolTip(
-            "Vitesse de balayage des lignes. La puissance de chaque pixel =\n"
-            "fluence(noirceur) x largeur x vitesse : si trop de pixels\n"
-            "saturent à S max (commentaire en tête du G-code), ralentir.")
-        form.addRow("Vitesse des lignes :", self.spn_line_feed)
 
         def _sync_mode():
             idx = self.combo_mode.currentIndex()
@@ -6602,6 +6593,19 @@ class TaskPanelHalftone:
             self.combo_photo_mat.addItem("-- (nuancier vide) --", None)
         form.addRow("Matériau (nuancier) :", self.combo_photo_mat)
 
+        self.spn_line_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_line_feed.setRange(1, 20000)
+        self.spn_line_feed.setValue(1000)
+        self.spn_line_feed.setSuffix(" mm/min")
+        self.spn_line_feed.setToolTip(
+            "Vitesse de balayage des lignes. Elle fait partie du RÉGIME :\n"
+            "à énergie identique, plus c'est lent, plus c'est foncé -- une\n"
+            "courbe n'est donc valable qu'à la vitesse où elle a été mesurée.\n"
+            "La puissance de chaque pixel =\n"
+            "fluence(noirceur) x largeur x vitesse : si trop de pixels\n"
+            "saturent à S max (commentaire en tête du G-code), ralentir.")
+        form.addRow("Vitesse des lignes :", self.spn_line_feed)
+
         self.spn_spot_width = QtWidgets.QDoubleSpinBox()
         self.spn_spot_width.setRange(0.0, 30.0)
         self.spn_spot_width.setDecimals(2)
@@ -6631,12 +6635,13 @@ class TaskPanelHalftone:
         self.lbl_regime = _WrapLabel("")
         form.addRow(self.lbl_regime)
         self.btn_corriger_regime = QtWidgets.QPushButton(
-            "Corriger : largeur du point = défocus de la calibration")
+            "Corriger : aligner sur la calibration (point et vitesse)")
         self.btn_corriger_regime.clicked.connect(self._corriger_regime)
         form.addRow(self.btn_corriger_regime)
-        for _w in (self.spn_spot_width, self.spn_pitch):
+        for _w in (self.spn_spot_width, self.spn_pitch, self.spn_line_feed):
             _w.valueChanged.connect(lambda _v: self._maj_regime())
         self.combo_photo_mat.currentIndexChanged.connect(lambda _i: self._maj_regime())
+        self.combo_mode.currentIndexChanged.connect(lambda _i: self._maj_regime())
         _sync_mode()
         self._maj_regime()      # verdict visible DÈS l'ouverture, pas seulement
         # après avoir touché un champ : c'est à l'ouverture qu'on hérite d'un
@@ -6948,6 +6953,25 @@ class TaskPanelHalftone:
               if (s.get("z_offset", 0) or 0) > 0 and (s.get("width", 0) or 0) > 0]
         return sum(zs) / len(zs) if zs else None
 
+    def _feeds_calibration(self):
+        """Vitesses auxquelles les tons EXPLOITABLES ont été jugés, triées.
+
+        La vitesse fait partie du régime, et ce n'est pas une subtilité :
+        quatre bandes gravées à énergie par millimètre RIGOUREUSEMENT
+        identique (S croît avec F, donc S/F reste constant) rendent des
+        noirceurs très différentes -- plus c'est lent, plus c'est foncé
+        (constaté le 29/07/2026 sur hêtre, F650 saturait dès le 2e palier
+        quand F2000 tenait jusqu'au 6e). La noirceur dépend donc aussi du
+        TEMPS d'exposition, que la fluence ignore. Une courbe n'est valable
+        qu'au voisinage de la vitesse où elle a été mesurée."""
+        mat = self.combo_photo_mat.currentData()
+        if not mat:
+            return []
+        return sorted({float(s.get("feed", 0) or 0) for s in core.load_shades(mat)
+                       if (s.get("z_offset", 0) or 0) > 0
+                       and (s.get("width", 0) or 0) > 0
+                       and (s.get("feed", 0) or 0) > 0})
+
     def _maj_regime(self):
         """Verdict en direct sur les trois réglages couplés de la section.
 
@@ -6997,6 +7021,22 @@ class TaskPanelHalftone:
                         largeur, z_photo, z_cal, max(ratio, 1.0 / max(ratio, 1e-9)),
                         "dense" if ratio > 1 else "diffuse",
                         "foncée" if ratio > 1 else "claire", l_cal))
+        # Vitesse : la courbe n'est valable qu'au voisinage de celle où elle
+        # a été mesurée (cf. _feeds_calibration).
+        if self.combo_mode.currentIndex() == 2:
+            fcal = self._feeds_calibration()
+            fphoto = self.spn_line_feed.value()
+            if fcal and not (min(fcal) * 0.9 <= fphoto <= max(fcal) * 1.1):
+                ok = False
+                bouton = True
+                cible = min(fcal, key=lambda f: abs(f - fphoto))
+                msgs.append(
+                    "Vitesse F{:.0f}, alors que les tons de ce matériau ont été "
+                    "jugés à {}. À énergie égale, plus c'est lent plus c'est "
+                    "foncé : hors de cette plage la courbe ne s'applique plus. "
+                    "Vitesse à viser : <b>F{:.0f}</b>.".format(
+                        fphoto, " ou ".join("F{:.0f}".format(f) for f in fcal),
+                        cible))
         if recouvre > 1.05:
             msgs.append("Pas {:.2f} mm pour un trait de {:.2f} : chaque point "
                         "est repassé {:.1f}×, l'atelier en tient compte.".format(
@@ -7011,12 +7051,18 @@ class TaskPanelHalftone:
         self.btn_corriger_regime.setVisible(bouton)
 
     def _corriger_regime(self):
-        """Aligne la largeur du point sur le défocus de la calibration."""
+        """Aligne largeur du point ET vitesse sur la calibration -- les deux
+        axes du régime, corrigés ensemble : n'en rattraper qu'un laisse la
+        courbe hors de son domaine tout autant."""
         z_cal = self._defocus_calibration()
-        if z_cal is None:
-            return
-        self.spn_spot_width.setValue(core.spot_diameter_at_defocus(
-            z_cal, core.SPOT_FOCUS_MM, core.calibrated_half_angle()))
+        if z_cal is not None:
+            self.spn_spot_width.setValue(core.spot_diameter_at_defocus(
+                z_cal, core.SPOT_FOCUS_MM, core.calibrated_half_angle()))
+        fcal = self._feeds_calibration()
+        if fcal:
+            f = self.spn_line_feed.value()
+            if not (min(fcal) * 0.9 <= f <= max(fcal) * 1.1):
+                self.spn_line_feed.setValue(min(fcal, key=lambda x: abs(x - f)))
 
     def _on_sampler(self):
         """Mire comparative : le même dégradé gravé par les 4 tramages

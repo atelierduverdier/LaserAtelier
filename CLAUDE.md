@@ -554,6 +554,16 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
   measurable line" and "feeds fast enough for a light tone" barely overlap — which is exactly why
   every curve point ended up at 100 %. Expect the light end of the darkness scale to have no
   measurable width, and do not widen the feeds to chase it.
+  **DARKNESS IS NOT A FUNCTION OF ENERGY ALONE — established experimentally 2026-07-29.** Four strips
+  engraved at rigorously identical energy per millimetre (F650/F1000/F1500/F2000 — S scales with F, so
+  S/F is constant) rendered visibly different darknesses: **slower is darker**. F650 saturated by the
+  2nd patch where F2000 held to the 6th. Dwell time matters, and `darkness_fluence_curve` — which
+  knows only fluence — is therefore structurally incomplete. Corollary: a curve built from tones
+  measured at MIXED feeds is incoherent by construction (the workshop's was: lights at F2000, darks at
+  F650), and no formula fix can rescue it. A curve is only valid near the feed it was measured at, so
+  `TaskPanelHalftone`'s verdict checks BOTH axes of the regime — defocus and feed — and the one-click
+  fix corrects both together. Do not "improve" the model by adding energy terms without confronting
+  this: the missing variable is time, not energy.
   **The photo panel must engrave at the SAME defocus the tones were measured at** (v1.90.0). The
   curve is a darkness↔fluence mapping valid only in its own regime: a tighter spot concentrates the
   same power on a smaller area, and the error goes as the SQUARE of the diameter ratio. Observed —
