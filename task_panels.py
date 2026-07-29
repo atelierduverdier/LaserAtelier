@@ -1809,33 +1809,46 @@ _COMBINED_OPS = []
 NUANCIER_COLONNES_DEFAUT = 10
 
 
-def _nuancier_geometrie(n_items, colonnes=None):
-    """Disposition de la planche nuancier pour `n_items` cercles : constantes
-    de dessin, nombre de colonnes/lignes retenu et encombrement du cadre.
+def _nuancier_geometrie(n_items, colonnes=None, n_lignes=1):
+    """Disposition de la planche nuancier pour `n_items` cercles dont
+    l'étiquette compte `n_lignes` lignes : constantes de dessin, nombre de
+    colonnes/lignes retenu et encombrement du cadre.
 
     SOURCE UNIQUE, appelée par le constructeur de la planche ET par l'aperçu
     de taille du panneau : une taille annoncée qui recalculerait la mise en
     page de son côté finirait par mentir dès qu'on touche une constante ici
-    (c'est exactement ce qui était arrivé aux graduations de la rampe)."""
+    (c'est exactement ce qui était arrivé aux graduations de la rampe).
+
+    Le cercle est passé de Ø20 à Ø14 : Ø20 était plus large que nécessaire
+    pour juger une teinte à l'œil, et c'est LUI qui fixait la largeur de
+    cellule (cell_w = DIAM + GAP_X), donc la place laissée à l'étiquette.
+    Combiné à l'étiquette empilée (cf. _nuancier_items), 83 tons de hêtre
+    passent de 292 x 348 mm -- avec 76 % des étiquettes qui débordaient sur
+    leur voisine -- à 243 x 328 mm, étiquettes lisibles et sans chevauchement."""
     n = max(int(n_items), 1)
-    DIAM = 20.0
+    nl = max(int(n_lignes), 1)
+    DIAM = 14.0
     GAP_X = 8.0            # espace horizontal entre cercles
     LABEL_GAP = 2.5        # cercle -> étiquette
-    LABEL_H = 4.0          # hauteur nominale des étiquettes
-    GAP_Y = 10.0           # espace vertical entre cellules
+    LABEL_H = 3.0          # hauteur nominale d'UNE ligne d'étiquette
+    LABEL_INTERLIGNE = 0.8
+    GAP_Y = 6.0            # espace vertical entre cellules
     MARGIN = 10.0          # marge intérieure au cadre
     TITLE_H = 5.0
     TITLE_GAP = 5.0
     cols = min(max(int(colonnes or NUANCIER_COLONNES_DEFAUT), 1), n)
+    bloc_h = nl * LABEL_H + (nl - 1) * LABEL_INTERLIGNE
     cell_w = DIAM + GAP_X
-    cell_h = DIAM + LABEL_GAP + LABEL_H + GAP_Y
+    cell_h = DIAM + LABEL_GAP + bloc_h + GAP_Y
     nrows = (n + cols - 1) // cols
     content_h = nrows * cell_h - GAP_Y
     board_w = 2 * MARGIN + cols * DIAM + (cols - 1) * GAP_X
     board_h = content_h + 2 * MARGIN + TITLE_H + TITLE_GAP
     return {"DIAM": DIAM, "GAP_X": GAP_X, "LABEL_GAP": LABEL_GAP,
-            "LABEL_H": LABEL_H, "GAP_Y": GAP_Y, "MARGIN": MARGIN,
+            "LABEL_H": LABEL_H, "LABEL_INTERLIGNE": LABEL_INTERLIGNE,
+            "GAP_Y": GAP_Y, "MARGIN": MARGIN,
             "TITLE_H": TITLE_H, "TITLE_GAP": TITLE_GAP,
+            "n_lignes": nl, "bloc_h": bloc_h,
             "cols": cols, "nrows": nrows, "cell_w": cell_w, "cell_h": cell_h,
             "board_w": board_w, "board_h": board_h,
             "y_sommet": board_h - MARGIN - TITLE_H - TITLE_GAP}
@@ -1899,9 +1912,18 @@ def _nuancier_items(source, material):
                        "fill_feed": float(s.get("feed", 800)),
                        "perimeter": True, "contour": False,
                        "fill_style": 0, "fluence_on": False}
-            grave = "{:g}% S{:g} F{:g}".format(
+            # Étiquette EMPILÉE, une donnée par ligne. Sur une seule ligne,
+            # « 100% S1000 F1000 » fait 58 mm de large pour une cellule qui en
+            # offrait 27 : 89 des 117 tons mesurés débordaient sur leur voisin,
+            # et le plancher de lisibilité (2,2 mm) interdisait de rétrécir
+            # davantage. Empilé, le bloc ne fait plus que 14 mm de large et le
+            # texte reprend sa taille nominale.
+            resume = "{:g}% S{:g} F{:g}".format(
                 s.get("darkness", 0), s.get("power", 0), s.get("feed", 0))
-            items.append(("{:02d} {}".format(i + 1, grave), grave, recette))
+            lignes = ["{:g}%".format(s.get("darkness", 0)),
+                      "S{:g}".format(s.get("power", 0)),
+                      "F{:g}".format(s.get("feed", 0))]
+            items.append(("{:02d} {}".format(i + 1, resume), lignes, recette))
         return items, None
     presets = core.load_presets("filled")
     if not presets:
@@ -1910,13 +1932,13 @@ def _nuancier_items(source, material):
 
     def _pn(v):
         return v.get("fill_power", 0.0) / max(v.get("fill_feed", 1.0), 1e-6)
-    return [(nom, nom, presets[nom])
+    return [(nom, [nom], presets[nom])
             for nom in sorted(presets, key=lambda n: (_pn(presets[n]), n))], None
 
 
 def _construire_nuancier_preregles(label_power=None, label_feed=None,
                                    source="tons", material="", colonnes=None):
-    """Construit un document « nuancier physique » : un cercle Ø20 (face) par
+    """Construit un document « nuancier physique » : un cercle Ø14 (face) par
     entrée (ton mesuré ou préréglage, cf. _nuancier_items), portant SA recette
     (LaserAtelierReglages) + un Job « filled » ; une étiquette gravée sous
     chaque cercle, un cadre et un titre daté regroupés en un objet Marquage +
@@ -1928,7 +1950,7 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
     plafonné à 5 : passé quelques dizaines de tons, la planche devenait une
     bande étroite et très haute (83 tons de hêtre = 152 x 640 mm), pénible à
     débiter dans une chute et à ranger. Les mêmes cercles sur 10 colonnes
-    tiennent en 292 x 348 mm. None = NUANCIER_COLONNES_DEFAUT."""
+    tiennent en 243 x 328 mm. None = NUANCIER_COLONNES_DEFAUT."""
     import Part
     import datetime
     import laser_jobs
@@ -1941,9 +1963,11 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
     if not items:
         return None, None, err
 
-    g = _nuancier_geometrie(len(items), colonnes)
+    g = _nuancier_geometrie(len(items), colonnes,
+                            max(len(l) for _lo, l, _r in items))
     DIAM, R = g["DIAM"], g["DIAM"] / 2.0
     GAP_X, LABEL_GAP, LABEL_H = g["GAP_X"], g["LABEL_GAP"], g["LABEL_H"]
+    LABEL_INTERLIGNE = g["LABEL_INTERLIGNE"]
     GAP_Y, MARGIN = g["GAP_Y"], g["MARGIN"]
     TITLE_H, TITLE_GAP = g["TITLE_H"], g["TITLE_GAP"]
     COLS, cell_w, cell_h = g["cols"], g["cell_w"], g["cell_h"]
@@ -2010,16 +2034,27 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
     deco += core.single_line_text_to_edges(
         titre, title_h, x0=MARGIN, y0=board_h - MARGIN - title_h)
     maxw = cell_w - 1.0
-    for i, (_label_obj, grave, _recette) in enumerate(items):
+    for i, (_label_obj, lignes, _recette) in enumerate(items):
         cx, cy = _centre(i)
-        txt = grave[:16]
-        h = LABEL_H
-        w, _h = core.single_line_text_extent(txt, h)
-        if w > maxw and w > 0:                     # trop long : on réduit
-            h = max(2.2, h * maxw / w)
+        y = cy - R - LABEL_GAP
+        for txt in lignes:
+            txt = txt[:40]
+            h = LABEL_H
             w, _h = core.single_line_text_extent(txt, h)
-        deco += core.single_line_text_to_edges(
-            txt, h, x0=cx - w / 2.0, y0=cy - R - LABEL_GAP - h)
+            if w > maxw and w > 0:                 # trop long : on réduit
+                h = max(2.2, h * maxw / w)
+                w, _h = core.single_line_text_extent(txt, h)
+            # Plancher de lisibilité atteint et ça déborde encore (nom de
+            # préréglage à rallonge) : on tronque. Laisser dépasser ferait
+            # se chevaucher deux étiquettes voisines, illisibles toutes les deux.
+            while w > maxw and len(txt) > 1:
+                txt = txt[:-1]
+                w, _h = core.single_line_text_extent(txt, h)
+            deco += core.single_line_text_to_edges(
+                txt, h, x0=cx - w / 2.0, y0=y - h)
+            y -= LABEL_H + LABEL_INTERLIGNE        # pas NOMINAL : les lignes
+            # restent alignées d'une cellule à l'autre même si l'une a rétréci,
+            # et le pas correspond au bloc_h qu'a compté _nuancier_geometrie.
     if deco:
         obj = doc.addObject("Part::Feature", "EtiquettesNuancier")
         obj.Shape = Part.Compound(deco)
@@ -2702,7 +2737,8 @@ class TaskPanelNuancier:
         if not items:
             self.lbl_nuancier_taille.setText("")
             return
-        g = _nuancier_geometrie(len(items), self.spn_nuancier_cols.value())
+        g = _nuancier_geometrie(len(items), self.spn_nuancier_cols.value(),
+                                max(len(l) for _lo, l, _r in items))
         self.lbl_nuancier_taille.setText(
             "Planche : <b>{:.0f} × {:.0f} mm</b> — {} cercles sur {} colonne(s), "
             "{} ligne(s).".format(g["board_w"], g["board_h"], len(items),

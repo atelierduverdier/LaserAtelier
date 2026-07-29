@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.84.0</span><br>
+      <span class="ver">Version 1.84.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.84.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.84.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -608,7 +608,9 @@
     <h4>Nuancier matériau</h4>
     <p class="quoi">Le registre des gris mesurés sur un matériau.</p>
     <p>Associe une teinte de gris à un réglage, pour la gravure photo calibrée et les « tons sur mesure ». Pas d'étape de gravure ici : c'est le carnet partagé où l'on note ce qu'on a observé. Le « ton sur mesure » (Marquage) a besoin d'au moins 2 tons EN DÉFOCUS avec largeur mesurée — voir Rampe puissance/vitesse ci-dessus.</p>
-    <p>La <b>planche physique</b> (section ②) se règle en <b>colonnes</b>, et l'encombrement s'affiche pendant qu'on règle. Passé quelques dizaines de tons, peu de colonnes donnent une bande étroite et très haute qui gaspille la chute&nbsp;: 83&nbsp;tons sur 5&nbsp;colonnes font 152&nbsp;×&nbsp;640&nbsp;mm, les mêmes sur 10&nbsp;colonnes font 292&nbsp;×&nbsp;348&nbsp;mm. Le nombre de cercles ne change pas, seule la forme de la planche.</p>
+    <p>La <b>planche physique</b> (section ②) se règle en <b>colonnes</b>, et l'encombrement s'affiche pendant qu'on règle. Passé quelques dizaines de tons, peu de colonnes donnent une bande étroite et très haute qui gaspille la chute&nbsp;: 83&nbsp;tons sur 5&nbsp;colonnes font 122&nbsp;×&nbsp;587&nbsp;mm, les mêmes sur 10&nbsp;colonnes font 232&nbsp;×&nbsp;322&nbsp;mm. Le nombre de cercles ne change pas, seule la forme de la planche.</p>
+
+    <p>Les cercles font <b>Ø14&nbsp;mm</b> et leur étiquette est <b>empilée sur trois lignes</b> (noirceur, puissance, vitesse). Sur une seule ligne, «&nbsp;100% S1000 F1000&nbsp;» réclamait 58&nbsp;mm de large pour une cellule qui en offrait 27&nbsp;: le texte était réduit jusqu'à son plancher de lisibilité (2,2&nbsp;mm) et débordait quand même sur la cellule voisine — 89&nbsp;des 117&nbsp;tons mesurés se chevauchaient. Empilé, le bloc ne fait plus que 14&nbsp;mm de large, le texte retrouve sa taille nominale de 3&nbsp;mm et il reste 8,6&nbsp;mm de jeu entre deux étiquettes voisines.</p>
     <p><b>Au moment de graver</b>, le bloc « Nuancier matériau » des modes Marquage et Gravure remplie ne se limite plus à ce carnet : il propose aussi les <strong>largeurs brûlées mesurées dans la Grille de test</strong>. Les deux tables restent séparées — le nuancier juge une noirceur à l'œil, la grille mesure une largeur au pied à coulisse — mais elles s'affichent ensemble, ce qui permet de choisir un réglage <em>par sa largeur de trait</em> et pas seulement par sa nuance. Rien n'est recopié : ajouter ou retirer une mesure se voit aussitôt dans la liste.</p>
     <p>Un menu « <b>Classer par</b> » (noirceur, largeur de trait, défocus) regroupe et trie la liste selon ce qu'on cherche, avec la valeur du critère en tête de chaque ligne : on ne parcourt plus une longue liste plate. Une valeur non mesurée s'affiche «&nbsp;--&nbsp;» plutôt qu'un zéro trompeur : un point de grille n'a pas de noirceur, et beaucoup de tons n'ont pas de largeur.</p>
   </div></div>
@@ -779,7 +781,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.84.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.84.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

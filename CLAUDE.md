@@ -146,14 +146,24 @@ Five modules, cleanly layered — keep the layering:
     hence calibrated photo engraving and "ton sur mesure"; it would also add ~50 rows to a beech
     nuancier of 83 that the user already finds unreadable. Reading both tables live also makes the
     sync free: adding or removing a measurement shows up immediately, with no copy code to drift.
-  - `_nuancier_geometrie(n_items, colonnes)` — layout of the PHYSICAL swatch board (Ø20 circle per
-    tone): drawing constants, chosen columns/rows, frame size. SINGLE SOURCE, called both by
-    `_construire_nuancier_preregles` (which builds the geometry) and by the panel's size preview —
+  - `_nuancier_geometrie(n_items, colonnes, n_lignes)` — layout of the PHYSICAL swatch board (Ø14
+    circle per tone): drawing constants, chosen columns/rows, frame size. SINGLE SOURCE, called both
+    by `_construire_nuancier_preregles` (which builds the geometry) and by the panel's size preview —
     a preview recomputing the layout on its own would start lying the moment a constant changes here
     (exactly what happened to the ramp graduations). Column count is a user setting since v1.84.0
     (`NUANCIER_COLONNES_DEFAUT = 10`, was hardcoded at 5): past a few dozen tones, 5 columns give a
-    narrow, very tall strip that wastes stock — 83 beech tones = 152 × 640 mm, versus 292 × 348 mm
-    on 10 columns for the same circles.
+    narrow, very tall strip that wastes stock.
+    `n_lignes` is the label's line count — both callers derive it from the items they already hold,
+    so the parameter can't silently disagree with what gets drawn. **The circle diameter is what
+    caps the label width** (`cell_w = DIAM + GAP_X`), so the two must be judged together: at Ø20 with
+    a one-line label, `"100% S1000 F1000"` needed 58 mm in a 27 mm cell, hit the 2.2 mm legibility
+    floor in `_construire_nuancier_preregles`, and **still overflowed onto its neighbour — 89 of the
+    117 measured tones collided** (v1.84.1). Fixed by stacking the label on 3 lines in
+    `_nuancier_items` (14 mm wide block) and dropping to Ø14: 83 beech tones went 292 × 348 mm →
+    232 × 322 mm with 8.6 mm of clearance between neighbouring labels. Below that floor the drawing
+    code truncates rather than overflowing — overlapping labels are worse than a clipped one.
+    Verify label changes on the BUILT board's edge bounding boxes, never on the layout formula: the
+    overflow existed for months precisely because nothing measured the geometry that came out.
   - `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat" section: a
     dropdown of ALL photos for the current `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`) +
     a clickable thumbnail (→ `_show_image_dialog`) + a free-text description field (e.g. the
