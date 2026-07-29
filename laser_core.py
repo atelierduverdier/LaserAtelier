@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.88.0"
+VERSION = "1.89.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4991,6 +4991,29 @@ def darkness_fluence_curve(material):
     return smoothed
 
 
+def _pas_surfacique(pitch, line_width):
+    """Distance qui gouverne l'énergie reçue PAR UNITÉ DE SURFACE en
+    balayage : min(pas, largeur du trait).
+
+    La courbe du nuancier est calibrée sur des traits ISOLÉS (fluence
+    = P/(largeur·vitesse) d'un trait seul, mesuré espacé de 3 mm). En
+    balayage, les lignes se recouvrent : avec un trait de 0,80 mm posé
+    tous les 0,30 mm, chaque point du bois est repassé 2,7 fois. Convertir
+    la fluence en S avec la LARGEUR délivre donc 2,7 fois trop d'énergie
+    et tout sature en noir -- c'est ce qu'a montré la mire des tramages du
+    29/07/2026, bande 3 entièrement noire alors que le G-code demandait
+    bien un dégradé de S345 à S740.
+
+    Ce qui compte n'est pas la largeur d'un trait mais de combien on
+    AVANCE entre deux lignes : l'énergie surfacique vaut P/(pas·vitesse).
+    D'où S = fluence · pas · vitesse, où la largeur disparaît d'elle-même.
+
+    Le min() traite le cas inverse : si le pas dépasse la largeur, il reste
+    du bois nu entre les lignes, la surface n'est plus couverte en continu
+    et c'est alors la largeur du trait qui gouverne ce qui brûle."""
+    return min(max(float(pitch), 1e-9), max(float(line_width), 1e-9))
+
+
 def fluence_for_darkness(material, target_pct):
     """Fluence interpolée pour viser une noirceur (%) sur le matériau, à
     partir de la courbe mesurée (interpolation LINÉAIRE entre les tons,
@@ -7219,7 +7242,9 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
     parcourue en continu (serpentin), la puissance S modulée pixel par
     pixel pour viser la noirceur du pixel via la courbe noirceur->fluence
     du NUANCIER du matériau (tons mesurés, cf. darkness_fluence_curve).
-    S = fluence(noirceur) · largeur · vitesse. Sous la noirceur minimale
+    S = fluence(noirceur) · min(pas, largeur) · vitesse -- c'est le PAS qui
+    gouverne l'énergie surfacique en balayage, pas la largeur du trait (cf.
+    _pas_surfacique). Sous la noirceur minimale
     mesurée, la fluence est prolongée linéairement vers 0 (hautes lumières
     progressives) ; les S au-delà de S_MAX sont plafonnés (compteur en
     commentaire -- ralentir la vitesse si trop nombreux). G64 + S en ligne
@@ -7259,7 +7284,7 @@ def generate_gcode_photo_lines(darkness_rows, pitch, z_work, feed, line_width,
                     break
             if fl is None:
                 fl = fmax
-        s = fl * line_width * feed
+        s = fl * _pas_surfacique(pitch, line_width) * feed
         if s > S_MAX:
             clamped[0] += 1
             s = S_MAX
@@ -7484,7 +7509,8 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
                 for d in row:
                     if d not in level_s:
                         res = fluence_for_darkness(material, d * 100.0)
-                        sval = min(S_MAX, res[0] * line_width * feed) if res else 0
+                        sval = (min(S_MAX, res[0] * _pas_surfacique(pitch, line_width) * feed)
+                                if res else 0)
                         level_s[d] = int(round(sval / 5.0) * 5)
                     srow.append(level_s[d])
                 sgrid.append(srow)

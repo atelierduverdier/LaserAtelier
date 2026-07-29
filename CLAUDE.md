@@ -554,6 +554,15 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
   measurable line" and "feeds fast enough for a light tone" barely overlap — which is exactly why
   every curve point ended up at 100 %. Expect the light end of the darkness scale to have no
   measurable width, and do not widen the feeds to chase it.
+  **Converting a curve fluence into S uses `_pas_surfacique(pitch, line_width)` — the PITCH, not the
+  burn width** (v1.89.0). The curve is calibrated on ISOLATED lines (3 mm apart, one pass). A raster
+  overlaps them: a 0.80 mm burn laid every 0.30 mm passes over each point 2.7×. Using the width
+  delivered 2.7× too much energy and every calibrated photo came out solid black —
+  `generate_gcode_photo_lines` AND `generate_gcode_photo_sampler` both did it, so the mire that was
+  supposed to validate the calibration was broken the same way. What governs areal energy is how far
+  you ADVANCE between lines: `P/(pitch·v)`, so `S = fluence · pitch · feed` and the width cancels
+  out. The `min()` covers pitch > width, where bare wood is left between lines and the width governs
+  what actually burns instead.
   **Defocus goes on `cell_z_offset` (the "Défocus des cellules" field), NEVER on `z_work`.**
   `generate_gcode_test_grid` engraves axis labels at `z_work` and the border at `z_border` precisely
   so they stay sharp while only the cells are defocused; raising `z_work` takes all three out of

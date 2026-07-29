@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.88.0</span><br>
+      <span class="ver">Version 1.89.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.88.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.89.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -590,6 +590,10 @@
     <p class="quoi">Balayer une matrice de réglages sur une chute.</p>
     <p>Grave une grille où puissance et vitesse varient case par case. Un menu « Objectif » propose une recette de départ ; le style de remplissage est réglable. On lit la meilleure case à l'œil. Aucune sélection n'est requise&nbsp;: la grille fabrique ses propres cases, contrairement au mode <em>Gravure remplie</em> qui attend une face.</p>
 
+    <h4>Ce qui gouverne la puissance en balayage&nbsp;: le pas, pas la largeur du trait</h4>
+    <p>La courbe du nuancier est calibrée sur des <b>traits isolés</b>, gravés espacés, en un seul passage. Une photo, elle, balaie des lignes qui <b>se recouvrent</b>&nbsp;: un trait de 0,80&nbsp;mm posé tous les 0,30&nbsp;mm repasse près de trois fois sur le même bois. Convertir la fluence en puissance avec la <em>largeur du trait</em> délivrait donc près du triple de l'énergie voulue, et toute gravure calibrée sortait noire — y compris la bande&nbsp;3 de la mire, censée justement valider la calibration.</p>
+    <p>Ce qui compte n'est pas la largeur d'un trait mais <b>de combien on avance entre deux lignes</b>&nbsp;: l'énergie reçue par unité de surface vaut <code>P / (pas × vitesse)</code>. La puissance se calcule donc sur le <b>pas</b>, et la largeur disparaît d'elle-même de la formule — signe qu'on tient la bonne grandeur. Cas inverse&nbsp;: si le pas dépasse la largeur, il reste du bois nu entre les lignes et c'est alors la largeur qui gouverne ce qui brûle.</p>
+
     <h4>Objectif «&nbsp;Largeurs brûlées — grille en défocus&nbsp;»</h4>
     <p>C'est celui qui débloque la <strong>gravure photo calibrée</strong> et le «&nbsp;ton sur mesure&nbsp;». Ces deux fonctions s'appuient sur une courbe noirceur → énergie qui n'accepte QUE les tons réunissant trois choses&nbsp;: un défocus, une <b>noirceur jugée</b> et une <b>largeur mesurée</b>. Un nuancier riche en noirceurs mais sans largeurs ne leur sert à rien — c'est le piège classique, et il est silencieux.</p>
     <p>L'objectif règle la grille à <b>défocus 15<p>L'objectif règle la grille à <b>défocus 15&nbsp;mm</b> avec un espacement de hachures de <b>3&nbsp;mm</b>.nbsp;mm</b>, en <b>vitesses lentes (F200 à F2000)</b>, avec un espacement de hachures de <b>3<p>L'objectif règle la grille à <b>défocus 15&nbsp;mm</b> avec un espacement de hachures de <b>3&nbsp;mm</b>.nbsp;mm</b>. Ce chiffre n'est pas arbitraire&nbsp;: à ce défocus le point fait environ 1,15&nbsp;mm, il reste donc près de 2&nbsp;mm de bois nu entre deux traits, et chaque trait se mesure seul au pied à coulisse. L'objectif voisin, «&nbsp;grille au foyer&nbsp;», ne convient pas ici&nbsp;: une largeur mesurée au foyer n'entre pas dans la courbe.</p>
@@ -795,7 +799,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.88.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.89.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
