@@ -340,6 +340,18 @@ string or `None`** (None = empty geometry). Shared conventions:
   cross whose corner geometry IS the measurement, so it must keep the machine's tight tolerance. Any
   new generator must make that same call consciously — blending is right for burning, wrong for
   measuring geometry.
+- **Dot halftones — `micro_trait_oriente(dots, i, half)`** (v1.93.0): each dot is a micro-line (never
+  a `G4` dwell), and it must be drawn IN the direction its row is being traversed. `halftone_dots`
+  already serpentines the point order, but both emitters drew every micro-line left→right, so on a
+  right-to-left row the head positioned at `x-half`, burned rightward, then backed up past the next
+  dot — one back-and-forth per dot, over tens of thousands of dots. Spotted by eye on the engraved
+  mire, not by any test. Measured on 2400 dots: 955 mm → 787 mm of beam-off travel (−18 %), with the
+  micro-lines landing at identical positions — only their direction changes. The direction is read
+  from the neighbour ON THE SAME ROW (compare `y`), never blindly from the previous entry.
+- **Sampler band labels are engraved at `Z_WORK_MM`, not `z_work`**: in that mire `z_work` is the
+  DEFOCUSED band height, so the digits came out fat and blurry. The bands that follow re-establish
+  their own Z, so no explicit return is needed. (`generate_gcode_test_grid` already had this right —
+  it is `generate_gcode_photo_sampler` that lacked the separation.)
 - **Chain ordering** (v1.82.0): `generate_gcode_curved` runs `order_chains_by_proximity(chains)` right
   after `chain_edges`, so every mode built on it (Marquage AND the fill/contour bodies of Gravure
   remplie) visits disjoint chains nearest-first, reversing a chain's direction when that end is closer.

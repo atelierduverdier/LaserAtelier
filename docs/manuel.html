@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.92.0</span><br>
+      <span class="ver">Version 1.93.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.92.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.93.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -590,6 +590,10 @@
     <p class="quoi">Balayer une matrice de réglages sur une chute.</p>
     <p>Grave une grille où puissance et vitesse varient case par case. Un menu « Objectif » propose une recette de départ ; le style de remplissage est réglable. On lit la meilleure case à l'œil. Aucune sélection n'est requise&nbsp;: la grille fabrique ses propres cases, contrairement au mode <em>Gravure remplie</em> qui attend une face.</p>
 
+    <h4>Trajet des tramages à points</h4>
+    <p>Dans les tramages à points, chaque point est gravé par un <b>micro-trait</b> — jamais par une pause faisceau allumé, qui ne graverait rien sur cette machine. Les points sont parcourus en serpentin, une ligne sur deux inversée, pour économiser du déplacement.</p>
+    <p>Encore faut-il que le micro-trait lui-même suive ce sens. Gravé toujours de gauche à droite, il obligeait la tête, sur une ligne parcourue vers la gauche, à se placer avant le point, brûler vers la droite, puis reculer au-delà du point suivant : un aller-retour par point. Sur 2400 points, corriger le sens ramène le déplacement à vide de 955 à 787&nbsp;mm — <b>18&nbsp;% de moins</b>, pour une gravure rigoureusement identique.</p>
+
     <h4>La noirceur ne dépend pas que de l'énergie&nbsp;: la vitesse compte aussi</h4>
     <p>Expérience faite&nbsp;: quatre bandes gravées à énergie par millimètre <em>rigoureusement identique</em> — à F650, F1000, F1500 et F2000 — ne rendent pas la même chose. <b>Plus c'est lent, plus c'est foncé.</b> La bande à F650 saturait au noir dès le deuxième palier là où celle à F2000 tenait jusqu'au sixième.</p>
     <p>Le <b>temps d'exposition</b> intervient donc, en plus de l'énergie. Conséquence directe&nbsp;: une courbe noirceur→énergie n'est valable <b>qu'au voisinage de la vitesse à laquelle elle a été mesurée</b>. Et une courbe bâtie sur des tons relevés à des vitesses différentes — les clairs vite, les foncés lentement — est incohérente d'entrée, sans qu'aucune formule puisse la rattraper.</p>
@@ -814,7 +818,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.92.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.93.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

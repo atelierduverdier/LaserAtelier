@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.92.0"
+VERSION = "1.93.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7101,6 +7101,26 @@ def halftone_dots(darkness_rows, pitch, dwell_min_s, dwell_max_s,
     return dots
 
 
+def micro_trait_oriente(dots, i, half):
+    """(x_depart, x_arrivee) du micro-trait du point `i`, ORIENTÉ dans le
+    sens de parcours de sa ligne.
+
+    `halftone_dots` range déjà les points en serpentin (une ligne sur deux
+    inversée) pour économiser du trajet. Mais graver chaque micro-trait
+    toujours de gauche à droite ruine ce gain sur les lignes parcourues
+    vers la gauche : la machine se place à x-half, brûle vers la droite,
+    puis recule au-delà du point suivant. Un aller-retour par point, sur
+    des dizaines de milliers de points."""
+    x = dots[i][0]
+    y = dots[i][1]
+    vers_droite = True
+    if i + 1 < len(dots) and abs(dots[i + 1][1] - y) < 1e-9:
+        vers_droite = dots[i + 1][0] > x
+    elif i > 0 and abs(dots[i - 1][1] - y) < 1e-9:
+        vers_droite = dots[i - 1][0] < x
+    return (x - half, x + half) if vers_droite else (x + half, x - half)
+
+
 def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
                             dwell_min_s, dwell_max_s,
                             mode="diffusion", white_threshold=0.08,
@@ -7165,13 +7185,14 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
     beam_off = CMD_BEAM_OFF.format(sel=SPINDLE_SELECT)
     sel = SPINDLE_SELECT
     first = True
-    for x, y, dwell in dots:
+    for i, (x, y, dwell) in enumerate(dots):
+        xa, xb = micro_trait_oriente(dots, i, half)
         if not first:
-            lines.append("G0 X{:.4f} Y{:.4f}".format(x - half, y))
+            lines.append("G0 X{:.4f} Y{:.4f}".format(xa, y))
         first = False
         f_dot = max(1.0, seg / max(dwell, 1e-3) * 60.0)
         lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-            x + half, y, f_dot, power, sel))
+            xb, y, f_dot, power, sel))
         lines.append(beam_off)
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -7527,23 +7548,28 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
         seg = max(0.05, min(0.3 * pitch, 0.2))
         half = seg / 2.0
         first = True
-        for x, y, dw in dots:
+        for i, (x, y, dw) in enumerate(dots):
+            xa, xb = micro_trait_oriente(dots, i, half)
             lines.append("G0 X{:.4f} Y{:.4f}{}".format(
-                x - half, y + y_off, " Z{:.4f}".format(z_work) if first else ""))
+                xa, y + y_off, " Z{:.4f}".format(z_work) if first else ""))
             first = False
             f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
             lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-                x + half, y + y_off, f_dot, power, sel))
+                xb, y + y_off, f_dot, power, sel))
             lines.append(CMD_BEAM_OFF.format(sel=sel))
 
     for b, kind in bands:
         y_off = (3 - b) * band_step        # bande 1 en haut
         lines.append("(===== Bande {} : {} =====)".format(b + 1, kind))
-        # étiquette (chiffre) à gauche, au foyer/label
+        # Étiquette (chiffre) à gauche, gravée AU FOYER et non à z_work :
+        # dans cette mire z_work est la hauteur DÉFOCALISÉE des bandes, un
+        # chiffre y sortait large et baveux. Les bandes qui suivent
+        # réimposent leur propre Z, le retour est donc implicite.
         for chain in chain_edges(text_to_edges(str(b + 1), -7.0,
                                                y_off + band_h_mm / 2.0 - 2.0, 4.0)):
             p0 = chain[0]
-            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(p0.x, p0.y, z_work))
+            lines.append("G0 Z{:.4f}".format(z_safe))
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(p0.x, p0.y, Z_WORK_MM))
             lines.append(CMD_BEAM_ON.format(sel=sel, power=label_power))
             for pt in chain[1:]:
                 lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}".format(pt.x, pt.y, label_feed))
