@@ -259,7 +259,7 @@
 
 <!-- ================= 2. PHILOSOPHIE ================= -->
 <section class="chap" id="c2">
-  <h2 class="titre"><span class="ttl">La philosophie</span><span class="sub">Deux principes tiennent tout l'atelier.</span></h2>
+  <h2 class="titre"><span class="ttl">La philosophie</span><span class="sub">Trois principes tiennent tout l'atelier.</span></h2>
 
   <h3><span class="n">1.</span> Mesurer plutôt que deviner</h3>
   <p>La divergence d'un faisceau, la largeur réellement brûlée, le trait de scie (kerf) d'une découpe, la teinte d'un gris sur du MDF : rien de tout cela ne se devine correctement. LaserAtelier part donc systématiquement de <strong>mesures réelles</strong> que vous faites une fois, au pied à coulisse ou à l'œil, et qu'il conserve.</p>
@@ -268,9 +268,20 @@
   <h3><span class="n">2.</span> Respecter la machine</h3>
   <p>Le laser n'est pas une broche comme les autres. Sur cette PrintNC, la puissance est asservie à la <em>vitesse réelle</em> par la couche HAL de LinuxCNC : à l'arrêt, la puissance retombe à zéro. Toute une famille de « pièges » en découle (on ne peut pas graver un point en restant immobile, par exemple), et l'atelier est construit pour les éviter d'office. Le chapitre <a href="#c9">Sécurité machine</a> y revient — c'est le seul passage vraiment important à lire avant de lancer un vrai travail.</p>
 
+  <h3><span class="n">3.</span> La pièce gravée est le juge</h3>
+  <p>Le troisième principe s'est imposé de lui-même, à l'usage. Les défauts les plus coûteux de cet atelier n'ont été trouvés ni par un test automatique, ni en relisant le code : ils ont été vus <strong>sur le bois, ou en regardant la machine travailler</strong>. Un logiciel ne vérifie que ce qu'il sait déjà mettre en doute ; la pièce, elle, ne ment pas.</p>
+  <p>Quelques exemples réels, tous repérés à l'œil :</p>
+  <ul>
+    <li>Une <b>planche nuancier</b> gravée a révélé que des tons portant la même noirceur rendaient très différemment, qu'un ton ne gravait rien du tout, et que les plus foncés laissaient des auréoles de roussi. Rien de cela n'apparaissait dans la table de mesures.</li>
+    <li>Un <b>dégradé sorti tout noir</b> a mis au jour une chaîne de calibration photo fausse de bout en bout — et le fichier de contrôle censé la valider était faussé exactement de la même manière qu'elle. Un outil de vérification qui partage le défaut de ce qu'il vérifie ne peut rien détecter.</li>
+    <li><b>Quatre bandes gravées à énergie identique mais à quatre vitesses</b> ont démontré que la noirceur dépend aussi du temps d'exposition. Le modèle interne, qui ne connaissait que l'énergie, était structurellement incomplet : aucune correction de formule n'aurait pu le sauver.</li>
+    <li>Le <b>mouvement de la tête</b>, simplement observé pendant un travail, a trahi des allers-retours inutiles dans les tramages à points — 18 % de déplacement à vide en trop, pour une gravure identique.</li>
+  </ul>
+  <p>D'où une manière de travailler : graver de petites planches de contrôle, les regarder vraiment, et faire remonter ce qui cloche. Une observation du type « cette case est plus foncée que l'autre alors qu'elle devrait être plus claire » vaut mieux qu'un long raisonnement — c'est une <em>mesure</em>, et elle tranche.</p>
+
   <div class="box astuce">
     <span class="t">💡 À retenir</span>
-    <p>Si un résultat vous surprend, la question n'est presque jamais « quel réglage magique ? » mais « qu'est-ce que je n'ai pas encore <em>mesuré</em> ? ». Calibrez d'abord, gravez ensuite.</p>
+    <p>Si un résultat vous surprend, la question n'est presque jamais « quel réglage magique ? » mais « qu'est-ce que je n'ai pas encore <em>mesuré</em> ? ». Calibrez d'abord, gravez ensuite. Et si la pièce contredit le calcul, c'est la pièce qui a raison.</p>
   </div>
 </section>
 

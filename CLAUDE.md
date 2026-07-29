@@ -32,6 +32,18 @@ the hero badge in `docs/index.html`, and the version line under the README logo.
 
 ## Working / verifying changes
 
+- **The engraved piece outranks every test you can write.** The costliest defects in this workbench
+  were found by the user looking at wood or watching the head move — never by a test, never by
+  re-reading code. A test only checks what someone already thought to doubt. Concretely: a nuancier
+  board exposed tones judged identical that render nothing alike, plus one that engraved nothing at
+  all; a gradient coming out solid black exposed a photo chain wrong end to end — and the mire meant
+  to validate it carried the *same* fault, so it could not possibly have caught it; four strips at
+  identical energy but four speeds proved darkness also depends on dwell time, which no formula fix
+  could have repaired; and the head's motion alone betrayed 18 % of wasted travel in the dot
+  halftones. Treat "this patch is darker than that one although it should be lighter" as a
+  measurement that settles the question — because it is one, and it outranks your reasoning. When a
+  hypothesis and the wood disagree, the wood is right. Ask for a small control board rather than
+  theorise; three wrong mechanisms were proposed in one afternoon before an engraving settled it.
 - **Syntax check** (do this after every edit — it's the only automated gate):
   ```bash
   python -c "import ast; [ast.parse(open(f).read()) for f in ('laser_core.py','task_panels.py','commands.py','InitGui.py')]"
