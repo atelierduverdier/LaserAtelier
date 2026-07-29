@@ -7026,6 +7026,27 @@ class TaskPanelTestGrid:
                 "filltype": 0, "hatch_spacing": 0.2, "border": True,
                 "note": "Traits nets au foyer sur toute la plage : mesure la "
                         "LARGEUR de chaque case au pied à coulisse (section ②)."}),
+            ("largeurs_defocus", {
+                "label": "Largeurs brûlées — grille en défocus",
+                "mode": 0, "power_min": 200, "power_max": 1000, "power_steps": 5,
+                "feed_min": 1000, "feed_max": 4000, "feed_steps": 5,
+                "filltype": 0, "hatch_spacing": 3.0, "border": True,
+                "z_defocus": 15.0, "cell_size": 16.0,
+                "note": "Traits ISOLÉS en défocus 15 mm : l'espacement de 3 mm "
+                        "dépasse largement le point élargi (~1,15 mm), donc "
+                        "chaque trait se mesure seul au pied à coulisse.\n"
+                        "Grave-la DEUX FOIS, en ne changeant que l'espacement "
+                        "des hachures : à 3 mm pour mesurer la LARGEUR d'un "
+                        "trait, puis à 1 mm pour juger la NOIRCEUR en aplat. "
+                        "Un aplat ne se juge pas sur des traits espacés, et "
+                        "une largeur ne se mesure pas sur un aplat -- il faut "
+                        "les deux vues du même réglage.\n"
+                        "Reporte ensuite chaque case dans Nuancier « + Ajouter "
+                        "un ton » avec SES DEUX mesures : c'est le couple "
+                        "noirceur+largeur en défocus qui alimente la photo "
+                        "calibrée et le « ton sur mesure ». Une largeur au "
+                        "foyer, ou une noirceur sans largeur, ne leur sert à "
+                        "rien."}),
             ("decoupe", {
                 "label": "Découpe — trouver le passage",
                 "mode": 1, "power_min": 400, "power_max": 1000, "power_steps": 4,
@@ -7783,6 +7804,13 @@ class TaskPanelTestGrid:
             self.combo_filltype.setCurrentIndex(r["filltype"])
         if "hatch_spacing" in r:
             self.spn_hatch_spacing.setValue(r["hatch_spacing"])
+        if "cell_size" in r:
+            self.spn_cell_size.setValue(r["cell_size"])
+        # `z_defocus` est un ÉCART au foyer, pas une hauteur absolue : la
+        # focale vient des Préférences et change d'un profil laser à l'autre,
+        # un objectif ne peut donc pas coder un Z en dur.
+        if "z_defocus" in r:
+            self.spn_zwork.setValue(core.Z_WORK_MM + r["z_defocus"])
         self.chk_border.setChecked(r.get("border", True))
         self.lbl_recipe_note.setText("\U0001f4a1 " + r["note"])
         self.lbl_recipe_note.setVisible(True)

@@ -536,7 +536,16 @@ their parseable subpaths — so they render as invisible blanks; not yet fixed.
   applied in `_build_rows`). `generate_gcode_photo_sampler` = comparison strip of all tramages.
 - Nuancier interpolation: `darkness_fluence_curve(material)` (defocused tones only, isotonic/PAVA
   smoothing), `fluence_for_darkness`, `feed_for_custom_shade` — used by Marquage's "ton sur mesure"
-  and the calibrated photo modes. Marquage also has style `"degrade"` (linear defocus along a
+  and the calibrated photo modes.
+  **A tone only feeds this curve if it has BOTH `z_offset > 0` AND `width > 0`** — the width being
+  the caliper-measured burn line width, which almost nothing sets. Observed on the user's real data
+  (2026-07-29): 83 beech tones, 57 defocused, but only **7 with any width**, so the curve ran on
+  6 points — and all 6 were judged 100 % darkness (one of them a tone that engraved nothing at all).
+  It therefore returned the 100 % recipe for every requested darkness, silently. A rich nuancier is
+  NOT evidence this works: check `len(darkness_fluence_curve(mat))` and the SPREAD of its darkness
+  values, not the tone count. The Grille de test's `largeurs_defocus` objective (v1.87.0) exists to
+  produce the missing pairing — measured width AND judged darkness, at the same defocus.
+  `largeurs_foyer` cannot: a width measured at focus is rejected by the `z_offset > 0` filter. Marquage also has style `"degrade"` (linear defocus along a
   direction, `deg_angle`/`deg_z_min`/`deg_z_max` in style_params) — the offset is a projection over
   ALL chains together (not reset per chain, unlike `"vague"`'s explicit dz=0 at each chain's start),
   so `generate_gcode_curved` must approach each chain's first point ALREADY at its `deg_dz` offset
