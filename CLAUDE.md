@@ -728,13 +728,20 @@ line_min_mm)` → `(256 S values, w_min, w_max)` is the shared source for both
 because the width table is a config read.
 
 Burns **at focus**, which is counter-intuitive — the fat lines the power/speed ramp records in
-defocus (up to 2.60 mm) are useless here. What sets the contrast is not absolute width but the
-**ratio** thinnest/thickest: pitch ≥ widest line, so coverage runs `w_min/pitch → w_max/pitch` and
-contrast caps at `1 - w_min/w_max`. In defocus the spot is already wide, its size is set by beam
-geometry and power barely moves it. Measured on Hêtre — defocus 36: 1.90→2.60 mm (1.4×, 27 %);
-defocus 15: 0.80→1.30 (1.6×, 38 %); **at focus: 0.10→0.30 (3.0×, 67 %)**. At focus the burn width
-isn't the spot size, it's *where the beam profile crosses the wood's burn threshold* — and that point
-moves a lot with power.
+defocus (up to 2.60 mm) are useless here. What matters is not absolute width but the **ratio**
+thinnest/thickest; in defocus the spot is already wide, its size is set by beam geometry and power
+barely moves it. Measured on Hêtre — defocus 36: 1.90→2.60 mm (1.4×); defocus 15: 0.80→1.30 (1.6×);
+**at focus: 0.10→0.30 (3.0×)**. At focus the burn width isn't the spot size, it's *where the beam
+profile crosses the wood's burn threshold* — and that point moves a lot with power.
+
+**Report the coverage SPREAD, not the ratio** — `min(1, w_max/pitch) - w_min/pitch`, not
+`1 - w_min/w_max`. The ratio is pitch-independent, so the verdict sat frozen at "56 %" while the
+preview visibly darkened as the pitch shrank (user caught it: *"malgré que je change le pas il est
+toujours à 56 %, pourtant je vois la photo noircir"*). The spread peaks **exactly at pitch =
+w_max** and falls off both sides: above it the darks never reach 100 %, below it they already are, so
+only the lights darken. Hêtre F800 (0.10→0.30): 67 points at pitch 0.30, but 50 at 0.40 *and* 50 at
+0.20. `_verdict_au_foyer` reports the real spread, names the optimal pitch, and only turns red when
+the loss exceeds 20 % of the achievable maximum — a suboptimal pitch is a trade-off, not an error.
 
 Two constraints the panel enforces:
 

@@ -7466,24 +7466,52 @@ class TaskPanelHalftone:
         if enfle:
             w_min = max(self.spn_line_min.value(), plage[0])
             w_max = plage[1]
+            # Le contraste, c'est l'ÉCART DE COUVERTURE réellement obtenu --
+            # de fin/pas à épais/pas, ce dernier plafonné à 100 %. Pas le
+            # rapport fin/épais : celui-là ne dépend pas du pas et reste
+            # obstinément le même pendant que l'image change à vue d'oeil
+            # (signalé le 29/07/2026, « toujours 56 % alors que la photo
+            # noircit quand je diminue le pas »).
+            #
+            # Cet écart passe par un MAXIMUM au pas qui vaut exactement le
+            # trait le plus épais, et redescend des deux côtés : au-dessus
+            # les noirs n'atteignent jamais 100 %, en dessous ils y sont
+            # déjà et seuls les clairs s'assombrissent. Sur hêtre à F800
+            # (0,10 → 0,30 mm) : 67 points au pas 0,30, mais 50 au pas 0,40
+            # comme au pas 0,20.
+            bas = w_min / pas
+            haut = min(1.0, w_max / pas)
+            ecart = haut - bas
+            ecart_max = 1.0 - w_min / w_max
             msgs.append(
                 "Trait <b>{:.2f} → {:.2f} mm</b> à F{:.0f} : couverture "
-                "{:.0f} → {:.0f} %, contraste <b>{:.0f} %</b>.".format(
-                    w_min, w_max, feed, 100.0 * w_min / pas,
-                    100.0 * min(1.0, w_max / pas),
-                    100.0 * (1.0 - w_min / w_max)))
-            trait = w_max
-        else:
-            # Similigravure : un point brûlé à fond, donc la largeur du haut.
-            trait = plage[1]
-            msgs.append("Points brûlés à {:.2f} mm à F{:.0f}.".format(
-                trait, feed))
+                "{:.0f} → {:.0f} %, contraste <b>{:.0f} points</b>.".format(
+                    w_min, w_max, feed, 100.0 * bas, 100.0 * haut,
+                    100.0 * ecart))
+            if abs(pas - w_max) > 0.005:
+                conseil = ("Contraste maximal ({:.0f} points) au pas "
+                           "<b>{:.2f} mm</b>, celui qui vaut le trait le plus "
+                           "épais.".format(100.0 * ecart_max, w_max))
+                if pas < w_max:
+                    conseil += (" Plus fin, les noirs saturent déjà : seuls "
+                                "les clairs s'assombrissent.")
+                msgs.append(conseil)
+                # Simple conseil tant que la perte reste modeste ; alerte
+                # quand on laisse vraiment du contraste sur la table.
+                if ecart < 0.8 * ecart_max:
+                    return False, False
+            return True, False
+        # À partir d'ici : similigravure seule (les lignes gravées ont rendu
+        # leur verdict au-dessus). Un point brûlé à fond, donc la largeur du
+        # haut de la plage.
+        trait = plage[1]
+        msgs.append("Points brûlés à {:.2f} mm à F{:.0f}.".format(trait, feed))
         if trait > pas + 1e-9:
             msgs.append("Le trait dépasse le pas ({:.2f} mm) : les lignes se "
                         "recouvrent dans les foncés. Pas ≥ <b>{:.2f} mm</b> "
                         "pour les garder distinctes.".format(pas, trait))
             return False, False
-        if not enfle and pas > trait + 1e-9:
+        if pas > trait + 1e-9:
             msgs.append("Pas {:.2f} mm plus large que le trait : la trame "
                         "sortira <b>{:.0f} % trop claire</b> (bois nu entre "
                         "les lignes). Pas à viser : <b>{:.2f} mm</b>.".format(
