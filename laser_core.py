@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.1.1"
+VERSION = "2.1.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -611,6 +611,13 @@ _CMD_ARM_GRBL = "S0\nM4 (armement mode laser GRBL)\nG4 P{dwell:.1f}"
 # M3/M5 restent dans tous les cas : c'est l'interlock du laser, pas la
 # puissance. Seul le canal de la VALEUR bascule.
 _CMD_DISARM_S = "S0 {sel}\nM67 E0 Q0\nM5 {sel}"
+# GRBL/grblHAL ne connaissent pas M67 : leur desarmement ne doit surtout pas
+# porter la ligne de neutralisation, sinon chaque job finit sur une erreur de
+# commande inconnue. Trouve le 30/07/2026 en RELISANT pour la premiere fois ce
+# que le dialecte GRBL emet vraiment -- la ligne avait ete ajoutee une heure
+# plus tot dans le desarmement PARTAGE, et rien ne l aurait signale : personne
+# n avait jamais lance ce dialecte.
+_CMD_DISARM_GRBL = "S0 {sel}\nM5 {sel}"
 # Les variantes M67 de l'armement et du desarmement sont RIGOUREUSEMENT les
 # memes que celles en S direct, et c'est le correctif : chacune neutralise LES
 # DEUX canaux, pas seulement le sien.
@@ -832,8 +839,10 @@ def _apply_settings_config():
     if GCODE_DIALECT in ("grbl", "grblhal"):
         SPINDLE_SELECT = ""
         CMD_ARM = _CMD_ARM_GRBL
-        # GRBL ne connaît pas M67 : la puissance y reste sur le mot S.
+        # GRBL ne connaît pas M67 : la puissance y reste sur le mot S, et son
+        # desarmement ne doit pas porter la ligne de neutralisation.
         POWER_M67 = False
+        CMD_DISARM = _CMD_DISARM_GRBL
     if POWER_M67:
         # L'armement garde M3 (interlock), mais la puissance passe par M67 :
         # un S0 résiduel serait inoffensif, il serait surtout MENSONGER.

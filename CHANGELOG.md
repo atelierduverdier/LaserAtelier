@@ -11,6 +11,34 @@ Les versions suivent `MAJEURE.MINEURE.CORRECTIF`. `VERSION` dans
 
 ---
 
+## v2.1.2 — 30 juillet 2026
+
+### Corrigé
+
+**Le désarmement GRBL portait un `M67`**, commande que GRBL ne connaît pas :
+chaque job y aurait fini sur une erreur. La ligne venait d'être ajoutée UNE
+HEURE plus tôt (v2.1.1) au désarmement PARTAGÉ entre dialectes, pour neutraliser
+le canal de puissance sous LinuxCNC. Rien ne l'aurait signalé — aucune machine
+GRBL n'avait jamais lancé une ligne de cet atelier.
+
+Trouvé en relisant, pour la première fois, ce que le dialecte GRBL émet
+vraiment. Le reste de cette relecture est rassurant : aucun `$n`, aucun
+`T`/`M6`/`G43`, aucun `G64`, tout en ASCII, et la ligne la plus longue fait
+86 caractères — bien sous le tampon de réception de 128 octets de GRBL.
+
+### Ajouté
+
+`tests/test_dialectes.py` fige ce contrôle. Il ne prétend pas que GRBL
+« marche » — seule une machine le dira. Il vérifie ce qui est vérifiable ici :
+qu'aucune commande inconnue du contrôleur visé n'est émise (M67/M68, G64, G10,
+`$n`), que tout est ASCII, qu'aucune ligne ne dépasse le tampon GRBL, que
+l'armement en mode laser (`M4`) et la fin de programme sont bien là — et que
+grblHAL garde sa table d'outils là où GRBL la commente. Le réglage
+« Puissance par M67 » est demandé explicitement dans le test : un dialecte qui
+ne connaît pas M67 doit l'ignorer, pas compter sur une case décochée.
+
+---
+
 ## v2.1.1 — 30 juillet 2026
 
 ### Corrigé
