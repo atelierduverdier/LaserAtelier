@@ -1,7 +1,7 @@
 # Atelier Laser
 
 <p align="center"><img src="resources/logo.svg" alt="Atelier Laser — PrintNC" width="360"></p>
-<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v1.96.3</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
+<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v1.96.4</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
 <p align="center"><a href="https://ko-fi.com/atelierduverdier"><b>☕ L'atelier vous est utile ? Soutenez-le sur Ko-fi</b></a></p>
 
 Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de marquage/découpe laser : gravure noir plein de textes/formes, suivi de surfaces 3D courbes, découpe multi-passes, grilles de test et de calibration, et jobs combinant plusieurs opérations en une seule passe.
@@ -207,7 +207,7 @@ Les réglages généraux de l'atelier s'éditent depuis la commande **Préféren
 | Point au foyer | `settings.spot_focus_mm` | `0.15` | **Calibration du point** (mesurée avec la Bande de calibration défocus) : diamètre du point au foyer. Utilisée par tous les modes à défocus — plus rien à resaisir dans les panneaux |
 | Défocus de test | `settings.spot_test_defocus_mm` | `3.0` | Calibration du point : hauteur au-dessus du foyer de la 2e mesure |
 | Point au défocus de test | `settings.spot_test_diameter_mm` | `1.0` | Calibration du point : diamètre mesuré à ce défocus |
-| Z de travail (foyer) par défaut | `settings.z_work_mm` | `8.5` | Z de travail **proposé par défaut** dans tous les panneaux (= focale du nez avec le zéro Z sur la surface). Chaque panneau reste modifiable et retient sa dernière valeur |
+| Z de travail (foyer) par défaut | `settings.z_work_mm` | `8.0` | Z de travail **proposé par défaut** dans tous les panneaux (= focale du nez avec le zéro Z sur la surface). Chaque panneau reste modifiable et retient sa dernière valeur |
 | Marge de survol (marquage) par défaut | `settings.transit_margin_mm` | `0.5` | Marge de transit proposée par défaut dans les modes de marquage (`0` recommandé sur pièce plate) |
 | Sélecteur broche | `settings.spindle_select` | `$1` | Sélecteur multi-broche ajouté aux commandes `S`/`M3`/`M5` (LinuxCNC : laser = spindle 1) |
 | Numéro d'outil laser | `settings.laser_tool` | `100` | Numéro (tool.tbl) de l'outil laser : compensation `G43 H<n>` en tête de job (prérequis `T<n> M6`) et Test des offsets X/Y |

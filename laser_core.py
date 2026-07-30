@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.96.3"
+VERSION = "1.96.4"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -680,7 +680,7 @@ Z_MAX_FEED_MM_MIN = 1500.0            # vitesse max supposée de l'axe Z (mm/min
                                       # la vraie limite machine, rien de dangereux)
 ACCEL_MM_S2 = 800.0                   # accélération machine supposée (mm/s2) pour
                                       # l'estimation de durée -- n'affecte jamais le G-code
-Z_WORK_MM = 8.5                       # Z de travail (foyer) proposé par défaut dans les
+Z_WORK_MM = 8.0                       # Z de travail (foyer) proposé par défaut dans les
                                       # panneaux -- propriété machine (focale du nez avec le
                                       # zéro Z sur la surface), une seule valeur à entretenir
 TRANSIT_MARGIN_MM = 0.5               # marge de survol par défaut des modes marquage (au-
@@ -2829,7 +2829,7 @@ def _apply_grid_line_style(chains, style, sp):
 def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, label_feed=None,
                               cell_z_offset=0.0, use_proximity=False,
                               line_style="plein", line_style_params=None,
-                              draw_border=False, z_border=8.5, border_power=300.0, border_feed=1000.0,
+                              draw_border=False, z_border=None, border_power=300.0, border_feed=1000.0,
                               pre_gcode="", post_gcode="", frame_only=False, quiet=False, body_only=False,
                               min_safe_z=None):
     """G-code de la grille de test : chaque cellule est chaînée et
@@ -2949,6 +2949,15 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, 
     # Cadre net (contour carré au foyer) : même ordre de cellules que la
     # bande de remplissage. Un seul commentaire d'en-tête pour toute la
     # bande (pas un par cellule -- 100 lignes de commentaire en trop).
+    #
+    # z_border par défaut = LE foyer, lu au moment de l'appel. Il valait
+    # 8.5 en dur dans la signature, une deuxième écriture de la même
+    # constante : le jour où la focale change (8,5 -> 8,0 le 30/07/2026),
+    # l'une bouge et l'autre reste. Un défaut d'argument ne peut pas
+    # référencer Z_WORK_MM directement -- il serait figé à l'import, avant
+    # que le profil du laser ne l'ait ajusté.
+    if z_border is None:
+        z_border = Z_WORK_MM
     border_band = []  # [(chain, power, feed, comment), ...] à z_border
     if draw_border:
         border_comment = "(-- Cadre net au foyer autour de chaque carré : S={:.0f} F={:.0f} Z={:.4f} --)".format(

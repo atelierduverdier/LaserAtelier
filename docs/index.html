@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>1.96.3</b></span>
+        <span class="badge">Version <b>1.96.4</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -847,7 +847,7 @@
         <tr><td>Point au foyer</td><td class="num">0,15</td><td>Calibration du point : diamètre au foyer (mesuré à la bande de défocus).</td></tr>
         <tr><td>Défocus de test</td><td class="num">3,0</td><td>Calibration du point : hauteur de la 2ᵉ mesure au-dessus du foyer.</td></tr>
         <tr><td>Point au défocus de test</td><td class="num">1,0</td><td>Calibration du point : diamètre mesuré à ce défocus.</td></tr>
-        <tr><td>Z de travail (foyer)</td><td class="num">8,5</td><td>Z de travail proposé par défaut dans tous les panneaux. Chaque panneau reste modifiable.</td></tr>
+        <tr><td>Z de travail (foyer)</td><td class="num">8,0</td><td>Z de travail proposé par défaut dans tous les panneaux. Chaque panneau reste modifiable.</td></tr>
         <tr><td>Marge de survol (marquage)</td><td class="num">0,5</td><td>Marge de transit proposée dans les modes de marquage (<code>0</code> recommandé sur pièce plate).</td></tr>
         <tr><td>Sélecteur broche</td><td class="num"><code>$1</code></td><td>Sélecteur multi-broche ajouté aux commandes S/M3/M5 (LinuxCNC : laser = spindle 1).</td></tr>
         <tr><td><b>Numéro d'outil laser</b></td><td class="num">100</td><td>Numéro (tool.tbl) de l'outil laser : compensation <code>G43 H&lt;n&gt;</code> et Test des offsets.</td></tr>
@@ -906,7 +906,7 @@
         <li>Armer / éteindre&nbsp;: <code>M3 $1 S0</code> / <code>M5 $1</code>. Puissance&nbsp;: <code>S0…1000</code>.</li>
         <li>Sortie <b>PWM directe</b> (<code>flexi.SP.SPINDLE_PWM</code>)&nbsp;: <code>duty% = S / 10</code>, rien à calibrer.</li>
         <li><b>Interlock AUX3</b>&nbsp;: <code>spindle.1.on</code> pilote un relais 24&nbsp;V. Seul <code>M5 $1</code> ouvre le relais — <b>la vraie coupure</b> (une pause programme ne coupe pas le faisceau).</li>
-        <li>Outil <code>T100</code>&nbsp;: offsets X&nbsp;+2 / Y&nbsp;−90 (<code>tool.tbl</code>, appliqués par <code>G43 H100</code>), foyer 8,5&nbsp;mm sous le nez.</li>
+        <li>Outil <code>T100</code>&nbsp;: offsets X&nbsp;0 / Y&nbsp;+88,75 (<code>tool.tbl</code>, appliqués par <code>G43 H100</code>), foyer 8,0&nbsp;mm sous le nez.</li>
       </ul>
     </div>
     <div class="panel">
