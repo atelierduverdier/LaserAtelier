@@ -6375,6 +6375,63 @@ class TaskPanelOffsetTest:
 # ==========================================================================
 # MODE : GRAVURE PHOTO (TRAME DE POINTS)
 # ==========================================================================
+# Un tramage = une ligne de ce tableau. AVANT, chacune de ces propriétés
+# était un test d'index EN DUR, dispersé sur un millier de lignes : vingt
+# comparaisons du genre `if idx in (5, 6)`. Ajouter un tramage obligeait à
+# les retrouver toutes, et les trois bugs livrés le 29/07/2026 viennent
+# exactement de là -- une coche verte sans texte, un réglage de défocus
+# affiché dans un tramage qui grave au foyer, et un tramage qui refusait
+# parce que la vitesse par défaut du panneau ne lui convenait pas. Trois
+# symptômes, une seule cause : la connaissance du tramage n'était écrite
+# nulle part, seulement recalculée site par site.
+#
+# Chaque champ est une propriété INTRINSÈQUE du tramage, pas un réglage
+# d'interface : ce qui doit être visible ou actif s'en déduit, jamais
+# l'inverse. L'ordre du tuple EST l'ordre de la liste déroulante.
+_TRAMAGES = (
+    # balayage      : ligne parcourue en continu (sinon : un point par case,
+    #                 donc des micro-traits dont la DURÉE fait le gris)
+    # duree_variable: la durée du point porte le gris (dwell mini utile)
+    # nuancier      : consulte la courbe noirceur->fluence des tons mesurés
+    # au_foyer      : grave au foyer, donc « largeur du point » (qui pilote
+    #                 le défocus) n'a aucun sens ici
+    # grain         : le gris est la FORME d'une marque visible à l'oeil nu
+    #                 -> demande de la place (cf. les 100 mm minimum)
+    # seuil_blanc   : sait laisser du bois nu sous un seuil de noirceur
+    # puissance     : S se règle à la main (sinon : calculée par pixel)
+    # reglage       : réglage supplémentaire propre à ce tramage
+    dict(cle="diffusion", nom="Diffusion (Floyd-Steinberg)",
+         balayage=False, duree_variable=False, nuancier=False, au_foyer=False,
+         grain=False, seuil_blanc=False, puissance=True, reglage=None),
+    dict(cle="duree", nom="Durée variable",
+         balayage=False, duree_variable=True, nuancier=False, au_foyer=False,
+         grain=False, seuil_blanc=True, puissance=True, reglage=None),
+    dict(cle="lignes", nom="Lignes calibrées (nuancier)",
+         balayage=True, duree_variable=False, nuancier=True, au_foyer=False,
+         grain=False, seuil_blanc=True, puissance=False, reglage=None),
+    dict(cle="dither", nom="Diffusion en lignes (points fins, rapide)",
+         balayage=True, duree_variable=False, nuancier=False, au_foyer=False,
+         grain=False, seuil_blanc=False, puissance=True, reglage=None),
+    dict(cle="zdots", nom="Gros points Z (taille variable, artistique)",
+         balayage=False, duree_variable=True, nuancier=False, au_foyer=False,
+         grain=True, seuil_blanc=True, puissance=True, reglage=None),
+    dict(cle="simili", nom="Similigravure (trame 45°, sans calibration)",
+         balayage=True, duree_variable=False, nuancier=False, au_foyer=True,
+         grain=True, seuil_blanc=False, puissance=True,
+         reglage="espacement"),
+    dict(cle="enfle", nom="Lignes gravées (trait qui enfle)",
+         balayage=True, duree_variable=False, nuancier=False, au_foyer=True,
+         grain=True, seuil_blanc=False, puissance=False,
+         reglage="trait_mini"),
+)
+
+# Le MATÉRIAU est demandé dès qu'une donnée mesurée entre en jeu : la courbe
+# du nuancier pour les lignes calibrées, la table des largeurs brûlées pour
+# les deux tramages au foyer (et la teinte de l'aperçu dans tous les cas).
+def _tramage_veut_materiau(t):
+    return bool(t["nuancier"] or t["au_foyer"])
+
+
 class TaskPanelHalftone:
     """Convertit une image en trame de points laser (cf.
     generate_gcode_halftone). La conversion image -> grille de noirceur se
@@ -6525,12 +6582,11 @@ class TaskPanelHalftone:
 
         _section(form, "Tramage & puissance", "sect_power.svg")
         self.combo_mode = QtWidgets.QComboBox()
-        self.combo_mode.addItems(["Diffusion (Floyd-Steinberg)", "Durée variable",
-                                  "Lignes calibrées (nuancier)",
-                                  "Diffusion en lignes (points fins, rapide)",
-                                  "Gros points Z (taille variable, artistique)",
-                                  "Similigravure (trame 45°, sans calibration)",
-                                  "Lignes gravées (trait qui enfle)"])
+        # Liste construite depuis _TRAMAGES : l'ordre affiché et la table qui
+        # décrit ces tramages ne peuvent plus diverger, c'est la même source.
+        # La donnée portée par chaque entrée est sa CLÉ, jamais son rang.
+        for _t in _TRAMAGES:
+            self.combo_mode.addItem(_t["nom"], _t["cle"])
         self.combo_mode.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_mode.setMinimumContentsLength(17)
         self.combo_mode.setToolTip(
@@ -6631,35 +6687,28 @@ class TaskPanelHalftone:
         # --- Vitesse de balayage des lignes calibrées ---
 
         def _sync_mode():
-            idx = self.combo_mode.currentIndex()
-            is_duree = idx == 1
-            is_lignes = idx == 2
-            is_dither_l = idx == 3
-            is_zdots = idx == 4
-            is_simili = idx == 5
-            is_enfle = idx == 6
-            self.spn_dwell_min.setEnabled(is_duree or is_zdots)
-            self.spn_dwell_max.setEnabled(idx in (0, 1, 4))
-            # Modes 2 et 6 : la puissance est calculée par pixel.
-            self.spn_power.setEnabled(not (is_lignes or is_enfle))
-            self.spn_white.setEnabled(is_duree or is_lignes or is_zdots)
-            # La similigravure et les lignes gravées ne consultent pas le
-            # nuancier, mais elles ont besoin du matériau pour les LARGEURS
-            # BRÛLÉES et pour la teinte de l'aperçu.
+            # TOUT vient de _TRAMAGES : aucun rang de liste n'apparaît ici.
+            t = self._tramage()
+            # Un point par case -> sa DURÉE fait le gris. En balayage continu,
+            # il n'y a pas de point, donc pas de durée à régler.
+            self.spn_dwell_max.setEnabled(not t["balayage"])
+            self.spn_dwell_min.setEnabled(t["duree_variable"])
+            self.spn_power.setEnabled(t["puissance"])
+            self.spn_white.setEnabled(t["seuil_blanc"])
             _set_row_visible(form, self.combo_photo_mat,
-                             is_lignes or is_simili or is_enfle)
-            _set_row_visible(form, self.spn_dot_spacing, is_simili)
-            _set_row_visible(form, self.spn_line_min, is_enfle)
+                             _tramage_veut_materiau(t))
+            _set_row_visible(form, self.spn_dot_spacing,
+                             t["reglage"] == "espacement")
+            _set_row_visible(form, self.spn_line_min,
+                             t["reglage"] == "trait_mini")
             # « Largeur du point » pilote le DÉFOCUS : elle n'a aucun sens
-            # pour les deux tramages qui gravent au foyer, où la largeur du
-            # trait vient de la puissance (lignes gravées) ou n'est qu'un
-            # grain de trame (similigravure). L'afficher laissait le verdict
-            # de recouvrement raisonner sur un point de 0,80 mm pendant que
-            # la machine en trace un de 0,10 à 0,30.
-            _set_row_visible(form, self.spn_spot_width,
-                             not (is_simili or is_enfle))
-            _set_row_visible(form, self.spn_line_feed,
-                             is_lignes or is_dither_l or is_simili or is_enfle)
+            # pour un tramage qui grave au foyer, où la largeur du trait vient
+            # de la puissance (lignes gravées) ou n'est qu'un grain de trame
+            # (similigravure). L'afficher laissait le verdict de recouvrement
+            # raisonner sur un point de 0,80 mm pendant que la machine en
+            # traçait un de 0,10 à 0,30.
+            _set_row_visible(form, self.spn_spot_width, not t["au_foyer"])
+            _set_row_visible(form, self.spn_line_feed, t["balayage"])
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
         # appel initial déplacé plus bas : _sync_mode touche combo_photo_mat,
         # désormais créé dans la section « Trait & matière » qui suit.
@@ -6910,7 +6959,8 @@ class TaskPanelHalftone:
                      "portrait" if img.height() > img.width() else "paysage",
                      cols, rows, (cols - 1) * pitch, (rows - 1) * pitch,
                      cols * rows))
-        if self.combo_mode.currentIndex() == 5:
+        t = self._tramage()
+        if t["cle"] == "simili":
             # L'espacement demandé est arrondi à la maille : autant montrer
             # ce qu'on aura VRAIMENT, et combien de gris il en reste.
             k = core.am_screen_k(self.spn_dot_spacing.value(), pitch)
@@ -6919,8 +6969,8 @@ class TaskPanelHalftone:
                       "{} niveaux de gris.".format(
                           reel, (cols - 1) * pitch / reel if reel else 0,
                           2 * k * k))
-        if self.combo_mode.currentIndex() in (4, 5, 6):
-            # Ces trois tramages rendent le gris par la FORME d'une marque
+        if t["grain"]:
+            # Ces tramages rendent le gris par la FORME d'une marque
             # visible à l'oeil nu (diamètre, point de trame, épaisseur du
             # trait). Il faut donc assez de marques en travers de l'image
             # pour que le motif s'effface derrière le sujet -- une affaire
@@ -6958,7 +7008,7 @@ class TaskPanelHalftone:
         pitch = self.spn_pitch.value()
         if h < 1 or w < 1 or pitch <= 0:
             return None, "grille vide"
-        idx = self.combo_mode.currentIndex()
+        t = self._tramage()
         material = self.combo_photo_mat.currentData()
         white = self.spn_white.value() / 100.0
         spot = self.spn_spot_width.value()
@@ -6966,7 +7016,7 @@ class TaskPanelHalftone:
         marge = self._MARGE_APERCU_MM
         sc = max(1.0, largeur_px / float(w * pitch + 2 * marge))
 
-        if idx == 2:
+        if t["nuancier"]:
             return self._apercu_lignes_calibrees(darkness, pitch, sc, marge)
 
         # Tramages à marques : on peint chaque marque à sa position, sa
@@ -6987,18 +7037,18 @@ class TaskPanelHalftone:
         # pourtant l'air d'une mesure. Repéré le 29/07/2026 sur Hêtre
         # (micro-traits F200-1200, tons mesurés F650-2000, tout à 22 %).
         # Règle : si le régime sort du domaine mesuré, TOUT le rendu passe
-        # au modèle théorique et l'aperçu l'annonce -- même règle pour les
-        # cinq tramages, qu'on le voie ou non à l'écran.
-        if idx in (3, 5, 6):
+        # au modèle théorique et l'aperçu l'annonce -- même règle pour tous
+        # les tramages, qu'on le voie ou non à l'écran.
+        if t["balayage"]:
             feeds = [self.spn_line_feed.value()]
         else:
             feeds = [max(1.0, seg / max(d / 1000.0, 1e-3) * 60.0)
                      for d in (self.spn_dwell_min.value(),
                                self.spn_dwell_max.value())]
-        # Similigravure et lignes gravées gravent AU FOYER : dans un cas le
-        # point doit rester net, dans l'autre c'est la largeur au foyer qui
-        # répond à la puissance.
-        z_ref = 0.0 if idx in (5, 6) else (core.defocus_for_spot_diameter(
+        # Un tramage AU FOYER ne défocalise pas : dans un cas le point doit
+        # rester net (similigravure), dans l'autre c'est la largeur brûlée au
+        # foyer qui répond à la puissance (lignes gravées).
+        z_ref = 0.0 if t["au_foyer"] else (core.defocus_for_spot_diameter(
             spot, core.SPOT_FOCUS_MM, half_angle) or 0.0)
         plage = core.shade_feed_range(material, z_ref)
         theorique = plage is None or not all(
@@ -7016,7 +7066,7 @@ class TaskPanelHalftone:
         dwell_min = self.spn_dwell_min.value() / 1000.0
         dwell_max = self.spn_dwell_max.value() / 1000.0
         largeur = spot if spot > 0 else core.SPOT_FOCUS_MM
-        if idx == 4:
+        if t["cle"] == "zdots":
             dot_max = spot if spot > core.SPOT_FOCUS_MM else max(
                 pitch * 0.9, core.SPOT_FOCUS_MM * 3)
             p_z = power or core.S_MAX
@@ -7032,7 +7082,7 @@ class TaskPanelHalftone:
                 f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
                 strokes.append(([(x, y)], dia,
                                 teinte(p_z, f_dot, dia, z_off)))
-        elif idx == 6:
+        elif t["cle"] == "enfle":
             # Lignes gravées : une case = un segment d'un PAS, dont la
             # LARGEUR porte le gris. On passe par la table du générateur,
             # et on fusionne les cases de même niveau exactement comme
@@ -7062,13 +7112,13 @@ class TaskPanelHalftone:
                     largeur_k = w_min + (w_max - w_min) * k0 / float(n - 1)
                     strokes.append(([(c0 * pitch, y), (col * pitch, y)],
                                     largeur_k, t))
-        elif idx in (3, 5):
+        elif t["cle"] in ("dither", "simili"):
             # Deux tramages BINAIRES balayés : chaque case allumée est
             # brûlée sur un PAS entier, à puissance et vitesse fixes. Seul
             # l'algorithme qui décide des cases change -- diffusion d'erreur
             # (densité de points) ou trame à 45° (diamètre des points).
             feed_l = self.spn_line_feed.value()
-            if idx == 5:
+            if t["cle"] == "simili":
                 # Au foyer, et à la largeur BRÛLÉE mesurée si on l'a : c'est
                 # elle qui donne l'engraissement des points, donc l'écart
                 # entre le gris demandé et celui qui sortira du bois.
@@ -7099,7 +7149,7 @@ class TaskPanelHalftone:
             # (donc la vitesse du micro-trait) qui porte le gris.
             for x, y, dw in core.halftone_dots(
                     darkness, pitch, dwell_min, dwell_max,
-                    mode="duree" if idx == 1 else "diffusion",
+                    mode="duree" if t["cle"] == "duree" else "diffusion",
                     white_threshold=white):
                 f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
                 strokes.append(([(x - demi, y), (x + demi, y)], largeur,
@@ -7247,6 +7297,14 @@ class TaskPanelHalftone:
             segs.append((FreeCAD.Vector(x, y - r, 0), FreeCAD.Vector(x, y + r, 0)))
         core.create_toolpath_preview_objects(doc, [], segs, name_prefix="Apercu_Photo")
 
+    def _tramage(self):
+        """La ligne de `_TRAMAGES` du tramage courant -- le SEUL endroit du
+        panneau qui traduit un rang de liste en propriétés. Tout le reste
+        interroge le dict, jamais l'index : c'est ce qui rend impossible
+        d'ajouter un tramage en oubliant l'un de ses vingt sites."""
+        idx = self.combo_mode.currentIndex()
+        return _TRAMAGES[idx if 0 <= idx < len(_TRAMAGES) else 0]
+
     def _gen_kwargs(self):
         return {
             "pitch": self.spn_pitch.value(),
@@ -7256,7 +7314,11 @@ class TaskPanelHalftone:
             "power": self.spn_power.value(),
             "dwell_min_s": self.spn_dwell_min.value() / 1000.0,
             "dwell_max_s": self.spn_dwell_max.value() / 1000.0,
-            "mode": "duree" if self.combo_mode.currentIndex() == 1 else "diffusion",
+            # `mode` ne concerne que generate_gcode_halftone (points, tramages
+            # « diffusion » et « durée variable ») : il se lit sur la CLÉ, pas
+            # sur `duree_variable` -- les gros points Z portent aussi ce
+            # drapeau et ne passent pas par ce générateur.
+            "mode": "duree" if self._tramage()["cle"] == "duree" else "diffusion",
             "white_threshold": self.spn_white.value() / 100.0,
         }
 
@@ -7264,8 +7326,8 @@ class TaskPanelHalftone:
         """Route vers le bon générateur selon le tramage : points
         (generate_gcode_halftone) ou lignes calibrées nuancier
         (generate_gcode_photo_lines)."""
-        idx = self.combo_mode.currentIndex()
-        if idx == 2:
+        cle = self._tramage()["cle"]
+        if cle == "lignes":
             k = self._gen_kwargs()
             width = self.spn_spot_width.value()
             if width <= 0:
@@ -7278,7 +7340,7 @@ class TaskPanelHalftone:
                 feed=self.spn_line_feed.value(), line_width=width,
                 material=self.combo_photo_mat.currentData(),
                 white_threshold=k["white_threshold"], **extra)
-        if idx == 4:
+        if cle == "zdots":
             k = self._gen_kwargs()
             dot_max = self.spn_spot_width.value()
             if dot_max <= core.SPOT_FOCUS_MM:
@@ -7289,13 +7351,13 @@ class TaskPanelHalftone:
                 dot_min_mm=core.SPOT_FOCUS_MM, dot_max_mm=dot_max,
                 dwell_min_s=k["dwell_min_s"], dwell_max_s=k["dwell_max_s"],
                 white_threshold=k["white_threshold"], **extra)
-        if idx == 3:
+        if cle == "dither":
             k = self._gen_kwargs()
             return core.generate_gcode_photo_dither_lines(
                 rows, pitch=k["pitch"], z_work=k["z_work"],
                 power=self.spn_power.value(), feed=self.spn_line_feed.value(),
                 **extra)
-        if idx == 5:
+        if cle == "simili":
             # Similigravure : le point doit être NET, c'est lui le grain de
             # la trame -- on grave au foyer, sans tenir compte de la
             # « largeur du point » (qui pilote le défocus des autres modes).
@@ -7304,7 +7366,7 @@ class TaskPanelHalftone:
                 rows, pitch=k["pitch"], z_work=core.Z_WORK_MM,
                 power=self.spn_power.value(), feed=self.spn_line_feed.value(),
                 dot_spacing_mm=self.spn_dot_spacing.value(), **extra)
-        if idx == 6:
+        if cle == "enfle":
             # Lignes gravées : au foyer aussi -- c'est la largeur brûlée au
             # foyer qui répond à la puissance (3x), pas celle du défocus.
             k = self._gen_kwargs()
@@ -7313,6 +7375,16 @@ class TaskPanelHalftone:
                 feed=self.spn_line_feed.value(),
                 material=self.combo_photo_mat.currentData(),
                 line_min_mm=self.spn_line_min.value(), **extra)
+        # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
+        # sans brancher son générateur tomberait ici et sortirait une trame
+        # de points, silencieusement -- du G-code valide pour le mauvais
+        # tramage, le pire des cas. On refuse en le disant.
+        if cle not in ("diffusion", "duree"):
+            FreeCAD.Console.PrintError(
+                "Tramage « {} » sans générateur : il est déclaré dans "
+                "_TRAMAGES mais _generate ne le route pas. Aucun G-code "
+                "produit (plutôt qu'une trame de points muette).\n".format(cle))
+            return None
         return core.generate_gcode_halftone(rows, **self._gen_kwargs(), **extra)
 
     def _update_duration_preview(self):
@@ -7392,7 +7464,7 @@ class TaskPanelHalftone:
         # tramages n'utilisent pas la courbe, les alarmer serait du bruit.
         # Le RECOUVREMENT, lui, est signalé dans tous les cas -- il tient à
         # la géométrie du balayage, pas à la calibration.
-        if self.combo_mode.currentIndex() != 2:
+        if not self._tramage()["nuancier"]:
             pass
         elif z_cal is None:
             msgs.append("Aucun ton mesuré en défocus AVEC sa largeur pour ce "
@@ -7418,7 +7490,7 @@ class TaskPanelHalftone:
                         "foncée" if ratio > 1 else "claire", l_cal))
         # Vitesse : la courbe n'est valable qu'au voisinage de celle où elle
         # a été mesurée (cf. _feeds_calibration).
-        if self.combo_mode.currentIndex() == 2:
+        if self._tramage()["nuancier"]:
             fcal = self._feeds_calibration()
             fphoto = self.spn_line_feed.value()
             if fcal and not (min(fcal) * 0.9 <= fphoto <= max(fcal) * 1.1):
@@ -7433,12 +7505,12 @@ class TaskPanelHalftone:
                         fphoto, " ou ".join("F{:.0f}".format(f) for f in fcal),
                         cible))
         # Le recouvrement se calcule sur « Largeur du point », qui pilote le
-        # DÉFOCUS. Les deux tramages qui gravent au foyer n'ont pas de point
+        # DÉFOCUS. Un tramage qui grave au foyer n'a pas de point
         # défocalisé : y appliquer ce verdict ferait raisonner sur 0,80 mm
         # pendant que la machine trace 0,10 à 0,30. Ils ont le leur, bâti
         # sur les largeurs brûlées MESURÉES -- et il a sa place ici, sous
         # les trois réglages qu'il concerne (matériau, vitesse, pas).
-        if self.combo_mode.currentIndex() in (5, 6):
+        if self._tramage()["au_foyer"]:
             ok, bouton = self._verdict_au_foyer(msgs, pas)
         elif recouvre > 1.05:
             msgs.append("Pas {:.2f} mm pour un trait de {:.2f} : chaque point "
@@ -7454,7 +7526,7 @@ class TaskPanelHalftone:
         self.btn_corriger_regime.setVisible(bouton)
 
     def _verdict_au_foyer(self, msgs, pas):
-        """Verdict des deux tramages qui gravent AU FOYER, bâti sur les
+        """Verdict des tramages qui gravent AU FOYER, bâti sur les
         largeurs brûlées mesurées. Renvoie (ok, bouton).
 
         Ces tramages ne consultent pas le nuancier, mais ils dépendent
@@ -7463,7 +7535,7 @@ class TaskPanelHalftone:
         les lignes se recouvrent (les deux)."""
         mat = self.combo_photo_mat.currentData()
         feed = self.spn_line_feed.value()
-        enfle = self.combo_mode.currentIndex() == 6
+        enfle = self._tramage()["reglage"] == "trait_mini"
         plage = core.burn_width_range(mat, feed)
         if plage is None:
             msgs.append("Aucune largeur brûlée mesurée pour ce matériau : "
