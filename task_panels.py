@@ -11347,6 +11347,31 @@ class TaskPanelSettings:
             "  (option N_TOOLS). Le numéro d'outil laser est utilisé.")
         form.addRow("Dialecte G-code :", self.combo_dialect)
 
+        self.chk_m67 = QtWidgets.QCheckBox(
+            "Puissance par M67 (sortie analogique synchronisée)")
+        self.chk_m67.setChecked(bool(settings.get("puissance_par_m67", False)))
+        self.chk_m67.setToolTip(
+            "LinuxCNC seulement. Envoie la puissance par « M67 E0 Q<valeur> »\n"
+            "au lieu du mot « S ». M67 est SYNCHRONISÉ avec le mouvement : la\n"
+            "valeur est appliquée au début du bloc suivant sans vider la file\n"
+            "de trajectoire.\n"
+            "\n"
+            "POURQUOI : sur la PrintNC, un mot S entre deux G1 fait ARRÊTER la\n"
+            "machine, même sur des segments parfaitement colinéaires. Prouvé\n"
+            "par deux fichiers de géométrie identique -- S constant fluide,\n"
+            "S variable saccadé. Un portrait de 172 614 blocs de 0,30 mm\n"
+            "annoncé 1h30 est parti pour 4 h, soit ~76 ms par bloc là où il en\n"
+            "faudrait 22 : le temps d'un aller-retour avec arrêt aux deux\n"
+            "bouts. Gain attendu ~3x sur tout tramage qui module la puissance.\n"
+            "\n"
+            "PRÉREQUIS CÔTÉ MACHINE : motion.analog-out-00 doit alimenter la\n"
+            "chaîne de puissance du laser dans le HAL. Sans ce câblage, le\n"
+            "laser ne tire PAS et le job sort blanc, sans erreur. Le HAL de la\n"
+            "PrintNC additionne les deux sources (sum2), donc les deux modes\n"
+            "fonctionnent et l'on peut basculer sans rien recâbler.\n"
+            "Ignoré en GRBL/grblHAL, qui ne connaissent pas M67.")
+        form.addRow(self.chk_m67)
+
         self.spn_laser_tool = QtWidgets.QSpinBox()
         self.spn_laser_tool.setRange(1, 999)
         self.spn_laser_tool.setValue(int(settings["laser_tool"]))
@@ -11592,6 +11617,7 @@ class TaskPanelSettings:
         n = core.current_nozzle()
         idx_d = self.combo_dialect.findData(s.get("gcode_dialect", "linuxcnc"))
         self.combo_dialect.setCurrentIndex(max(0, idx_d))
+        self.chk_m67.setChecked(bool(s.get("puissance_par_m67", False)))
         self.spn_laser_tool.setValue(int(s["laser_tool"]))
         self.spn_s_max.setValue(s["s_max"])
         self.spn_frame_power.setValue(s["frame_power"])
@@ -11705,6 +11731,7 @@ class TaskPanelSettings:
             return False
         core.save_settings({
             "gcode_dialect": self.combo_dialect.currentData(),
+            "puissance_par_m67": self.chk_m67.isChecked(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
             "gcode_origin_bbox": self.chk_origin_bbox.isChecked(),
             "sections_accordeon": self.chk_accordeon.isChecked(),

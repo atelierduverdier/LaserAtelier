@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.0.1"
+VERSION = "2.1.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -608,10 +608,59 @@ _CMD_ARM_LINUXCNC = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"
 # GRBL en mode laser ($32=1) : M4 = puissance asservie à la vitesse réelle
 # (S0 pendant l'armement -> faisceau éteint). {sel} vide en GRBL.
 _CMD_ARM_GRBL = "S0\nM4 (armement mode laser GRBL)\nG4 P{dwell:.1f}"
+# Variantes M67 : le mot S disparaît, M3/M5 restent (interlock du laser).
+_CMD_ARM_M67 = "M67 E0 Q0\nM3 {sel}\nG4 P{dwell:.1f}"
+_CMD_DISARM_S = "S0 {sel}\nM5 {sel}"
+_CMD_DISARM_M67 = "M67 E0 Q0\nM5 {sel}"
+_CMD_BEAM_ON_S = "S{power:.0f} {sel}"
+_CMD_BEAM_ON_M67 = "M67 E0 Q{power:.0f}"
+_CMD_BEAM_OFF_S = "S0 {sel}"
+_CMD_BEAM_OFF_M67 = "M67 E0 Q0"
+
 CMD_ARM = _CMD_ARM_LINUXCNC
-CMD_DISARM = "S0 {sel}\nM5 {sel}"
-CMD_BEAM_ON = "S{power:.0f} {sel}"
-CMD_BEAM_OFF = "S0 {sel}"
+CMD_DISARM = _CMD_DISARM_S
+CMD_BEAM_ON = _CMD_BEAM_ON_S
+CMD_BEAM_OFF = _CMD_BEAM_OFF_S
+
+# --- Canal de la PUISSANCE : S direct, ou M67 synchronisé -----------------
+# PROUVÉ le 30/07/2026 sur la PrintNC, par deux fichiers de géométrie
+# rigoureusement identique (200 segments de 0,30 mm en X à F800, G64 P0.050,
+# laser désarmé) : celui à `S` CONSTANT passe fluide, celui à `S` DIFFÉRENT à
+# chaque bloc SACCADE. Un mot `S` entre deux G1 fait donc arrêter la machine,
+# même sur des segments parfaitement colinéaires. Conséquence chiffrée : un
+# portrait de 172 614 blocs de 0,30 mm annoncé 1h30 et parti pour 4 h, soit
+# ~76 ms par bloc là où 0,30 mm à F800 en demande 22 -- et 55 ms est exactement
+# le temps d'un déplacement de 0,30 mm avec ARRÊT AUX DEUX BOUTS à 400 mm/s².
+#
+# `M67 E<n> Q<v>` est la sortie analogique SYNCHRONISÉE avec le mouvement : la
+# valeur est appliquée au début du bloc suivant sans vider la file de
+# trajectoire. (`M68` est la variante immédiate, et elle ARRÊTE le mouvement --
+# ne pas les confondre.) On garde un escalier de puissance, un palier par
+# segment, mais la machine ne s'arrête plus entre les paliers.
+#
+# `M3`/`M5` ne changent pas : c'est `spindle.1.on` qui ferme l'interlock du
+# laser. Seul le canal de la VALEUR bascule.
+POWER_M67 = False                     # False = S direct (défaut, inchangé)
+M67_ANALOG_INDEX = 0                  # E<n> de motion.analog-out-NN
+
+
+def cmd_power_prefix(power):
+    """Ligne(s) à émettre AVANT le mouvement pour poser la puissance.
+
+    Vide en mode S direct (la puissance voyage sur le G1 lui-même) ; un
+    `M67` en mode synchronisé, car M67 ne peut PAS tenir sur la ligne du G1 --
+    il s'applique au bloc suivant, il lui faut donc sa propre ligne."""
+    if POWER_M67:
+        return ["M67 E{:.0f} Q{:.0f}".format(M67_ANALOG_INDEX, power)]
+    return []
+
+
+def cmd_power_suffix(power):
+    """Ce qui s'ajoute au mouvement lui-même : « S<v> <sel> » en direct, rien
+    en M67. Toujours utilisé AVEC `cmd_power_prefix`, jamais seul."""
+    if POWER_M67:
+        return ""
+    return "S{:.0f} {}".format(power, SPINDLE_SELECT)
 
 # --- Réglages utilisateur -------------------------------------------------
 # Chaque réglage listé dans _USER_SETTINGS (plus bas) est surchargeable
@@ -706,6 +755,7 @@ LABEL_FEED = 800.0                    # ... et vitesse d'avance (mm/min) -- par 
 _USER_SETTINGS = (
     ("gcode_dialect", "GCODE_DIALECT", lambda v: str(v).strip().lower(),
      lambda v: v in ("linuxcnc", "grbl", "grblhal")),
+    ("puissance_par_m67", "POWER_M67", bool, lambda v: isinstance(v, bool)),
     ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
     ("gcode_origin_bbox", "GCODE_ORIGIN_BBOX", bool, lambda v: isinstance(v, bool)),
     ("sections_accordeon", "SECTIONS_ACCORDEON", bool, lambda v: isinstance(v, bool)),
@@ -740,10 +790,15 @@ def _apply_settings_config():
     conservée -- même politique que le profil de bec."""
     # Repartir des valeurs LinuxCNC par défaut pour ce que le dialecte
     # surcharge : une bascule grbl -> linuxcnc doit tout restaurer.
-    global SPINDLE_SELECT, CMD_ARM, GCODE_DIALECT
+    global SPINDLE_SELECT, CMD_ARM, CMD_BEAM_ON, CMD_BEAM_OFF, CMD_DISARM
+    global GCODE_DIALECT, POWER_M67
     GCODE_DIALECT = "linuxcnc"
     SPINDLE_SELECT = "$1"
     CMD_ARM = _CMD_ARM_LINUXCNC
+    CMD_BEAM_ON = _CMD_BEAM_ON_S
+    CMD_BEAM_OFF = _CMD_BEAM_OFF_S
+    CMD_DISARM = _CMD_DISARM_S
+    POWER_M67 = False
     settings = load_config().get("settings")
     if not isinstance(settings, dict):
         return
@@ -765,6 +820,15 @@ def _apply_settings_config():
     if GCODE_DIALECT in ("grbl", "grblhal"):
         SPINDLE_SELECT = ""
         CMD_ARM = _CMD_ARM_GRBL
+        # GRBL ne connaît pas M67 : la puissance y reste sur le mot S.
+        POWER_M67 = False
+    if POWER_M67:
+        # L'armement garde M3 (interlock), mais la puissance passe par M67 :
+        # un S0 résiduel serait inoffensif, il serait surtout MENSONGER.
+        CMD_ARM = _CMD_ARM_M67
+        CMD_BEAM_ON = _CMD_BEAM_ON_M67
+        CMD_BEAM_OFF = _CMD_BEAM_OFF_M67
+        CMD_DISARM = _CMD_DISARM_M67
 
 
 def current_settings():
@@ -3524,12 +3588,15 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         elif style == "vague":
             samples = wave_resample(chain, wave_period, wave_amp)
             s_wave = wave_fluence_powers(power, samples, wave_amp)
-            lines.append("S{:.0f} {}".format(s_wave[0], SPINDLE_SELECT))
+            lines.extend(cmd_power_prefix(s_wave[0]))
+            if cmd_power_suffix(s_wave[0]):
+                lines.append(cmd_power_suffix(s_wave[0]))
             for (p, dz), s_pt in zip(samples[1:], s_wave[1:]):
                 _mark_check(p)
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} S{:.0f} {}".format(
-                    p.x, p.y, to_machine_z(p.z) + dz, feed, s_pt,
-                    SPINDLE_SELECT))
+                lines.extend(cmd_power_prefix(s_pt))
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} {}".format(
+                    p.x, p.y, to_machine_z(p.z) + dz, feed,
+                    cmd_power_suffix(s_pt)))
             lines.append(beam_off)
         elif style == "degrade" and deg_dz is not None:
             samples = chain      # déjà discrétisé dense (DISCRETIZE_DISTANCE)
@@ -6319,11 +6386,13 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
             # -- pas de bloc « S seul » qui pourrait casser l'enchaînement.
             if z_ramp:
                 z_k = z_work + (z_end - z_work) * t
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} S{:.0f} {sel}".format(
-                    x1, y, z_k, feed, power, sel=SPINDLE_SELECT))
+                lines.extend(cmd_power_prefix(power))
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} {}".format(
+                    x1, y, z_k, feed, cmd_power_suffix(power)))
             else:
-                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {sel}".format(
-                    x1, y, feed, power, sel=SPINDLE_SELECT))
+                lines.extend(cmd_power_prefix(power))
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
+                    x1, y, feed, cmd_power_suffix(power)))
         lines.append(beam_off)
         if z_ramp:
             current_z[0] = z_end  # la ligne s'est terminée en haut (droite)
@@ -6606,10 +6675,13 @@ def generate_flat_styled_body(chains, power, feed, z_base, style="plein",
             s_wave = wave_fluence_powers(power, samples, wave_amplitude)
             p0, dz0 = samples[0]
             _goto(p0.x, p0.y, z_base + dz0)
-            lines.append("S{:.0f} {}".format(s_wave[0], SPINDLE_SELECT))
+            lines.extend(cmd_power_prefix(s_wave[0]))
+            if cmd_power_suffix(s_wave[0]):
+                lines.append(cmd_power_suffix(s_wave[0]))
             for (p, dz), s_pt in zip(samples[1:], s_wave[1:]):
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} S{:.0f} {}".format(
-                    p.x, p.y, z_base + dz, feed, s_pt, SPINDLE_SELECT))
+                lines.extend(cmd_power_prefix(s_pt))
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} {}".format(
+                    p.x, p.y, z_base + dz, feed, cmd_power_suffix(s_pt)))
             lines.append(beam_off)
     else:  # "plein"
         for chain in chains:
@@ -7317,8 +7389,9 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
             lines.append("G0 X{:.4f} Y{:.4f}".format(xa, y))
         first = False
         f_dot = max(1.0, seg / max(dwell, 1e-3) * 60.0)
-        lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-            xb, y, f_dot, power, sel))
+        lines.extend(cmd_power_prefix(power))
+        lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
+            xb, y, f_dot, cmd_power_suffix(power)))
         lines.append(beam_off)
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -7365,13 +7438,16 @@ def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed, y0=0.0):
             s = cells[c]
             edge = (c + 1) * pitch if not reverse else c * pitch
             if s != cur_s:
-                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-                    edge, y, feed, s, sel))
+                lines.extend(cmd_power_prefix(s))
+                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
+                    edge, y, feed, cmd_power_suffix(s)))
                 cur_s = s
             else:
-                lines[-1] = "G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-                    edge, y, feed, cur_s, sel)
-        lines.append("S0 {}".format(sel))
+                # Prolonge le G1 courant : c'est TOUJOURS lines[-1], le M67
+                # eventuel etant pose AVANT lui.
+                lines[-1] = "G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
+                    edge, y, feed, cmd_power_suffix(cur_s))
+        lines.append(CMD_BEAM_OFF.format(sel=sel))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
 
@@ -8035,7 +8111,9 @@ def generate_gcode_photo_zdots(darkness_rows, pitch, z_focus, power,
             lines.append("G0 Z{:.4f}".format(z))
             first = False
         f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
-        lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(xb, y, f_dot, power, sel))
+        lines.extend(cmd_power_prefix(power))
+        lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
+            xb, y, f_dot, cmd_power_suffix(power)))
         lines.append(CMD_BEAM_OFF.format(sel=sel))
     lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
@@ -8150,8 +8228,9 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
                 xa, y + y_off, " Z{:.4f}".format(z_work) if first else ""))
             first = False
             f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
-            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-                xb, y + y_off, f_dot, power, sel))
+            lines.extend(cmd_power_prefix(power))
+            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
+                xb, y + y_off, f_dot, cmd_power_suffix(power)))
             lines.append(CMD_BEAM_OFF.format(sel=sel))
 
     def _emit_zdots(marks, y_off):
@@ -8171,8 +8250,9 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
             xa, xb = micro_trait_oriente(dots, i, half)
             lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(xa, y, zz))
             f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
-            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
-                xb, y, f_dot, power, sel))
+            lines.extend(cmd_power_prefix(power))
+            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
+                xb, y, f_dot, cmd_power_suffix(power)))
             lines.append(CMD_BEAM_OFF.format(sel=sel))
 
     for b, kind in bands:

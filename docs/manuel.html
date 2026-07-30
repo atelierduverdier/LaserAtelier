@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.0.1</span><br>
+      <span class="ver">Version 2.1.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.0.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.1.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -314,6 +314,13 @@
     <p>Chaque job laser LinuxCNC déclare sa propre tolérance d'angle : <code>G64 P0.05</code>. C'est l'écart maximal toléré <em>à l'intérieur</em> d'un virage pour ne pas avoir à s'y arrêter. Cinq centièmes sont très en dessous du trait brûlé le plus fin qu'on sache mesurer (0,10&nbsp;mm) et cinquante fois sous le plus large (2,60&nbsp;mm) : invisible sur la pièce, mais décisif sur la durée d'une gravure hachurée qui change de direction des dizaines de milliers de fois.</p>
     <p>Deux pièges valent d'être connus, car les deux vont à l'envers de l'intuition. Un <code>G64</code> <b>nu</b> ne veut pas dire « pas de lissage » : il veut dire « lisse à la vitesse maximale, <em>sans</em> borne d'écart ». Ajouter un <code>P</code> ne relâche donc pas la machine, il l'encadre. Et surtout, un fichier qui n'écrit <b>aucun</b> <code>G64</code> n'est pas neutre : il hérite de la ligne de démarrage de la machine. Si celle-ci impose une tolérance très serrée — un micron, par exemple — la machine s'arrête net à chaque changement de direction, et la gravure traîne sans qu'on comprenne pourquoi.</p>
     <p>Une exception assumée : le <strong>test des offsets X/Y</strong> n'émet aucun <code>G64</code>. Il grave une croix dont la géométrie d'angle <em>est</em> la mesure ; là, le lissage fausserait ce qu'on cherche à lire. Le principe général : lisser convient à ce qu'on brûle, jamais à ce qu'on mesure.</p>
+
+    <h4>Le mot <code>S</code> arrête la machine — et <code>M67</code> ne l'arrête pas</h4>
+    <p>Le lissage ci-dessus ne suffit pas si quelque chose d'autre force l'arrêt. Sur la PrintNC, <b>un changement de puissance entre deux blocs arrête le mouvement</b>, même sur des segments parfaitement alignés. Ce n'est pas une déduction : deux fichiers de géométrie <em>rigoureusement identique</em> — 200 segments de 0,30&nbsp;mm à F800, laser désarmé — ont tranché. Celui à <code>S</code> constant passe fluide ; celui dont le <code>S</code> change à chaque bloc saccade, à l'oreille, sans ambiguïté.</p>
+    <p>La facture est lourde là où la puissance module à chaque pixel. Un portrait en lignes gravées de 120&nbsp;×&nbsp;180&nbsp;mm — <b>172&nbsp;614 blocs</b> de 0,30&nbsp;mm de médiane, 72,3&nbsp;m à F800, donc 1&nbsp;h&nbsp;30 de coupe pure — est parti pour <b>4&nbsp;heures</b>. Soit ~76&nbsp;ms par bloc là où 0,30&nbsp;mm à F800 en demande 22. Et 55&nbsp;ms est <em>exactement</em> le temps d'un déplacement de 0,30&nbsp;mm avec arrêt aux deux bouts à 400&nbsp;mm/s². Le chiffre a désigné le mécanisme avant l'expérience ne le confirme.</p>
+    <p>La sortie qu'il fallait s'appelle <code>M67 E0 Q&lt;valeur&gt;</code> : une sortie analogique <b>synchronisée avec le mouvement</b>. La valeur est appliquée au début du bloc suivant <em>sans vider la file de trajectoire</em>. Sa jumelle <code>M68</code> fait l'inverse — immédiate, et elle arrête le mouvement : ne pas les confondre. On garde donc un escalier de puissance, un palier par segment, mais la machine ne s'arrête plus entre les paliers.</p>
+    <p>La case <b>« Puissance par M67 »</b> des Préférences bascule les onze points du code qui émettent une puissance, dans les six familles de générateurs — tous ensemble, ce qui n'est pas un détail : le câblage machine étant commun, un générateur resté en <code>S</code> alors que la machine écoute l'autre canal graverait <b>blanc</b>, sans erreur, pendant des heures. Côté machine, le HAL <b>additionne les deux sources</b> : l'une vaut toujours zéro, donc les deux modes fonctionnent et les anciens fichiers restent valides. Aucun basculement coordonné à orchestrer.</p>
+    <p>Deux pistes ont été explorées et écartées avant celle-là, chacune par la mesure. Câbler <code>spindle.1.at-speed</code>, qui n'avait jamais été relié — les à-coups ont persisté ; la ligne reste, elle est juste, elle ne réglait pas ce problème. Et réduire le nombre de niveaux de puissance pour allonger les segments : de 161 à 8 niveaux, la longueur moyenne ne passe que de 0,36 à 0,73&nbsp;mm sur une photographie réelle. Un segment par pixel est structurel sur une image bruitée, et huit niveaux de gris auraient abîmé l'image pour rien.</p>
   </div>
 
   <div class="box attention">
@@ -882,7 +889,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.0.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.1.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

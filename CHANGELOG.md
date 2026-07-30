@@ -11,6 +11,51 @@ Les versions suivent `MAJEURE.MINEURE.CORRECTIF`. `VERSION` dans
 
 ---
 
+## v2.1.0 — 30 juillet 2026
+
+### Ajouté
+
+**La puissance peut passer par `M67` au lieu du mot `S`** (case « Puissance par
+M67 » des Préférences, LinuxCNC seulement). Gain attendu **~3x sur tout tramage
+qui module la puissance**, donc sur les jobs les plus longs.
+
+Le fait établi, et il l'est par l'expérience : **sur la PrintNC, un mot `S`
+entre deux G1 arrête le mouvement**, même sur des segments parfaitement
+colinéaires. Deux fichiers de géométrie rigoureusement identique (200 segments
+de 0,30 mm à F800, laser désarmé) ont tranché à l'oreille — `S` constant
+fluide, `S` variable saccadé. Ils restent sur le partage sous
+`test_accoup_S_{constant,variable}.ngc` pour revérifier si la config machine
+bouge.
+
+`M67 E0 Q<v>` est la sortie analogique **synchronisée avec le mouvement** : la
+valeur est appliquée au début du bloc suivant sans vider la file de
+trajectoire. (`M68` est la variante immédiate, et elle arrête le mouvement.)
+On garde un escalier de puissance, un palier par segment, mais plus d'arrêt
+entre les paliers.
+
+Onze points d'émission convertis dans six familles de générateurs, **tous
+ensemble** : le câblage machine étant commun, un générateur resté en `S` alors
+que la machine écoute l'autre canal graverait blanc, sans erreur, pendant des
+heures. Côté HAL, un `sum2` **additionne les deux sources** (l'une vaut toujours
+zéro) : les deux modes fonctionnent, les anciens `.ngc` restent valides, et il
+n'y a aucun basculement coordonné à orchestrer.
+
+Deux pistes écartées avant celle-là, chacune par la mesure : câbler
+`spindle.1.at-speed`, qui n'avait jamais été relié (les à-coups ont persisté —
+la ligne reste, elle est juste, elle ne réglait pas ça) ; et réduire le nombre
+de niveaux de puissance pour allonger les segments (de 161 à 8 niveaux, la
+longueur moyenne ne passe que de 0,36 à 0,73 mm sur une photo réelle — un
+segment par pixel est structurel sur une image bruitée).
+
+`tests/test_puissance_m67.py` tient deux promesses, et la première est la plus
+importante : en mode direct la sortie est **identique au bit** (vérifié MD5
+pour MD5 contre le code d'avant la conversion, sur huit générateurs) ; en mode
+M67, aucun `S` ne subsiste sur un mouvement, `M3`/`M5` sont conservés (c'est
+l'interlock, pas la puissance), aucun `M68` n'est émis, et la géométrie est
+rigoureusement identique dans les deux modes.
+
+---
+
 ## v2.0.1 — 30 juillet 2026
 
 ### Corrigé
