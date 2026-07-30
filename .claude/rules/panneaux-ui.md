@@ -64,6 +64,26 @@ Nuancier is the shared ledger (no burn step), so its flow is its own: ① Saisir
 lock-by-default) → ② Photo → ③ Graver ce nuancier (planche physique). **Follow this for any new test
 mode.**
 
+### ② must never delete what it cannot display (v2.4.0)
+
+`_MesuresPlanchesControleur._on_save` rebuilt the material's whole table from its grids, and
+`save_burn_widths` **replaces**. Everything outside the grids was therefore erased on a click of
+"Enregistrer les mesures": on the workshop's beech, **27 of 54** defocus measurements — every point
+whose power, feed or level fell outside POWERS × FEEDS_DEFOCUS × {15, 36}. Hours of calliper work,
+silently, from a button that promises to save. It now merges: only the cells the grids **own** are
+replaced, the rest is copied through, and the confirmation says how many off-grid measurements were
+kept. Same rule as `_make_largeurs_libres` — **any writer onto `save_burn_widths` must merge.**
+
+`reload` also mapped a point to the *nearest* level grid with **no distance limit**, so a 60 mm
+measurement displayed in the "36 mm" grid and the next save rewrote it as 36. Bounded by
+`core.SNAP_DEFOCUS_TOLERANCE_MM` now.
+
+The defocus level is free: grids are rebuilt on every `reload()` from
+`core.niveaux_defocus_mesures(material)` **plus** the level the host is about to burn
+(`get_niveau_cible`, wired to the test grid's "Défocus des cellules"), falling back to
+`DEFOCUS_LEVELS_MM` for an unmeasured material. Rebuilding is skipped when the level list is
+unchanged — otherwise a refresh would wipe a half-typed row.
+
 ### An objective must burn what ② can accept (v2.3.1)
 
 `TaskPanelTestGrid._recipes` drives the burn through min/max/count spin boxes, and those spread

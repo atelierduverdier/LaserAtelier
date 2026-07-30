@@ -522,36 +522,87 @@ class _MesuresPlanchesControleur:
     # planches).
     FEEDS_DEFOCUS = (200, 400, 600, 800)
 
-    def __init__(self, form, parent, get_material, on_saved=None):
+    def __init__(self, form, parent, get_material, on_saved=None,
+                 get_niveau_cible=None):
         self._parent = parent
         self._get_material = get_material
         self._on_saved = on_saved
-        self._levels = [round(float(dz), 3) for dz in core.DEFOCUS_LEVELS_MM]
+        # Défocus que le panneau hôte s'apprête à graver, s'il en connaît un
+        # (« Défocus des cellules » de la Grille de test) : une planche
+        # gravée à un niveau choisi doit avoir une grille où être saisie,
+        # même si ce niveau n'a encore aucune mesure.
+        self._get_niveau_cible = get_niveau_cible
+        self._levels = []
         self.grille_focus = _GrilleResultats(
             "Traits au FOYER : largeur (mm)",
             rows=self.POWERS, cols=self.FEEDS_FOCUS)
         form.addRow(self.grille_focus)
+        # Les grilles de défocus sont RECONSTRUITES à chaque reload() : leurs
+        # niveaux suivent les mesures du matériau courant, qui change quand
+        # on change de matériau ou qu'on grave un nouveau niveau.
         self.grilles_defocus = {}
-        for dz in self._levels:
-            gr = _GrilleResultats(
-                "Défocus {:.0f} mm : largeur (mm)".format(dz),
-                rows=self.POWERS, cols=self.FEEDS_DEFOCUS)
-            self.grilles_defocus[dz] = gr
-            form.addRow(gr)
+        self._boite_niveaux = QtWidgets.QWidget()
+        self._pile_niveaux = QtWidgets.QVBoxLayout(self._boite_niveaux)
+        self._pile_niveaux.setContentsMargins(0, 0, 0, 0)
+        form.addRow(self._boite_niveaux)
         self.btn_save = QtWidgets.QPushButton("Enregistrer les mesures")
         self.btn_save.setToolTip(
             "Range ces largeurs pour le matériau indiqué. Indépendant de "
-            "l'OK du panneau.")
+            "l'OK du panneau.\n"
+            "Les mesures que ces grilles n'affichent pas (puissance, vitesse "
+            "ou\ndéfocus hors grille) sont CONSERVÉES telles quelles.")
         self.btn_save.clicked.connect(self._on_save)
         form.addRow(self.btn_save)
 
     def _boite(self):
         return getattr(self._parent, "form", None)
 
+    def _niveaux_a_afficher(self, mat):
+        """Niveaux de défocus méritant une grille : ceux réellement mesurés
+        sur le matériau, celui que l'hôte s'apprête à graver, et à défaut
+        les niveaux standard (matériau neuf, rien de mesuré)."""
+        niveaux = set(core.niveaux_defocus_mesures(mat) if mat else [])
+        if self._get_niveau_cible:
+            try:
+                cible = float(self._get_niveau_cible() or 0.0)
+            except (TypeError, ValueError):
+                cible = 0.0
+            if cible > 0:
+                # Range la cible sur un niveau existant s'il est à portée,
+                # pour ne pas créer une grille jumelle à 0,2 mm près.
+                proche = min(niveaux, key=lambda L: abs(L - cible), default=None)
+                if proche is None or abs(proche - cible) > core.SNAP_DEFOCUS_TOLERANCE_MM:
+                    niveaux.add(round(cible, 3))
+        if not niveaux:
+            niveaux = {round(float(dz), 3) for dz in core.DEFOCUS_LEVELS_MM}
+        return sorted(niveaux)
+
+    def _reconstruire_niveaux(self, niveaux):
+        """Refait les grilles de défocus pour la liste de niveaux donnée.
+        Ne touche à rien si la liste n'a pas bougé -- reconstruire à chaque
+        rafraîchissement effacerait une saisie en cours."""
+        if niveaux == self._levels:
+            return
+        while self._pile_niveaux.count():
+            item = self._pile_niveaux.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self.grilles_defocus = {}
+        for dz in niveaux:
+            gr = _GrilleResultats(
+                "Défocus {:g} mm : largeur (mm)".format(dz),
+                rows=self.POWERS, cols=self.FEEDS_DEFOCUS)
+            self.grilles_defocus[dz] = gr
+            self._pile_niveaux.addWidget(gr)
+        self._levels = list(niveaux)
+
     def reload(self):
         """Pré-remplit les grilles depuis les mesures déjà enregistrées pour
         le matériau courant (0 / « — » = non mesuré)."""
         mat = (self._get_material() or "").strip()
+        self._reconstruire_niveaux(self._niveaux_a_afficher(mat))
         data = core.load_burn_widths(mat) if mat else {}
         self.grille_focus.set_values(
             {(float(pt.get("power", 0)), float(pt.get("feed", 0))):
@@ -562,27 +613,70 @@ class _MesuresPlanchesControleur:
             if not self._levels:
                 continue
             zk = min(self._levels, key=lambda L: abs(L - z))
+            # BORNÉ : sans cette limite, un point mesuré à un défocus sans
+            # grille s'affichait dans la grille du niveau le plus proche,
+            # si loin fût-il -- et l'enregistrement le réécrivait ensuite
+            # AU NIVEAU DE CETTE GRILLE. Une mesure à 60 mm rangée en 36.
+            if abs(zk - z) > core.SNAP_DEFOCUS_TOLERANCE_MM:
+                continue
             par_niveau[zk][(float(pt.get("power", 0)),
                             float(pt.get("feed", 800)))] = float(pt.get("width", 0.0))
         for dz, gr in self.grilles_defocus.items():
             gr.set_values(par_niveau.get(dz, {}))
 
+    def _cellules_possedees(self):
+        """(cases foyer, cases défocus) que ces grilles OCCUPENT, sous forme
+        de clés. Tout ce qui n'y est pas appartient à quelqu'un d'autre et
+        doit survivre à un enregistrement."""
+        foyer = {(float(s), float(f))
+                 for s in self.POWERS for f in self.FEEDS_FOCUS}
+        defocus = {(float(s), float(f), float(dz))
+                   for dz in self._levels
+                   for s in self.POWERS for f in self.FEEDS_DEFOCUS}
+        return foyer, defocus
+
     def _on_save(self):
+        """Enregistre en FUSIONNANT.
+
+        `save_burn_widths` REMPLACE la table du matériau : écrire seulement
+        le contenu des grilles effaçait tout le reste. Sur le hêtre du
+        30/07/2026, un clic sur ce bouton aurait supprimé **27 des 54**
+        mesures en défocus -- toutes celles dont la puissance, la vitesse
+        ou le niveau sortaient des grilles (S550, F650, défocus 30/55/60...).
+        Des heures de pied à coulisse, sans un mot.
+
+        On ne retire donc que les cases que ces grilles POSSÈDENT, et on y
+        remet ce qu'elles affichent ; le reste est recopié tel quel."""
         mat = (self._get_material() or "").strip()
         if not mat:
             QtWidgets.QMessageBox.warning(
                 self._boite(), "Mesures", "Indiquer un nom de matériau.")
             return
+        # Lecture BRUTE : load_burn_widths range les défocus sur les niveaux
+        # standard, et réécrire ces valeurs rangées déplacerait des mesures.
+        brut = (core.load_config().get("burn_widths", {}) or {}).get(mat, {}) or {}
+        cases_foyer, cases_defocus = self._cellules_possedees()
+        conserves_f = [pt for pt in (brut.get("focus") or [])
+                       if (float(pt.get("power", 0)), float(pt.get("feed", 0)))
+                       not in cases_foyer]
+        conserves_d = [pt for pt in (brut.get("defocus") or [])
+                       if (float(pt.get("power", 0)), float(pt.get("feed", 0)),
+                           float(pt.get("z_offset", 0) or 0)) not in cases_defocus]
         focus = [{"power": p, "feed": f, "width": round(w, 2)}
                  for (p, f), w in self.grille_focus.values().items()]
         defocus = [{"power": p, "feed": f, "width": round(w, 2), "z_offset": dz}
                    for dz, gr in self.grilles_defocus.items()
                    for (p, f), w in gr.values().items()]
-        core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
+        core.save_burn_widths(mat, {"focus": conserves_f + focus,
+                                    "defocus": conserves_d + defocus})
+        garde = len(conserves_f) + len(conserves_d)
         QtWidgets.QMessageBox.information(
             self._boite(), "Mesures",
-            "{} mesure(s) foyer + {} défocus enregistrées pour « {} ».".format(
-                len(focus), len(defocus), mat))
+            "{} mesure(s) foyer + {} défocus enregistrées pour « {} ».{}".format(
+                len(focus), len(defocus), mat,
+                "\n{} mesure(s) hors grille conservée(s).".format(garde)
+                if garde else ""))
+        self.reload()
         if self._on_saved:
             self._on_saved()
 
@@ -8409,6 +8503,11 @@ class TaskPanelTestGrid:
             "0 = tout au foyer. Ignoré en remplissage « Défocus (noir) »,\n"
             "où le défocus est déduit de l'espacement des hachures.")
         form.addRow("Défocus des cellules :", self.spn_cell_defocus)
+        # Changer le niveau qu'on va graver ouvre sa grille de saisie dans
+        # ② : sans ça, on grave une planche à 25 mm et il n'existe nulle
+        # part où en noter les largeurs.
+        self.spn_cell_defocus.valueChanged.connect(
+            lambda _v: self._mesures.reload())
 
         _section(form, "Remplissage", "sect_fill.svg")
         self.combo_filltype = QtWidgets.QComboBox()
@@ -9095,7 +9194,14 @@ class TaskPanelTestGrid:
         # défaut) et la neutralisation de la molette.
         self._mesures = _MesuresPlanchesControleur(
             form, self, lambda: self.edt_measure_mat.currentText(),
-            on_saved=self._maj_liste_materiaux)
+            on_saved=self._maj_liste_materiaux,
+            # Le défocus que ① va graver : ② lui ouvre une grille même si
+            # ce niveau n'a encore jamais été mesuré. `getattr` parce que
+            # cette section se construit AVANT le champ « Défocus des
+            # cellules » -- l'ordre de lecture du panneau est la procédure
+            # (① graver, ② mesurer), pas l'ordre des dépendances.
+            get_niveau_cible=lambda: getattr(
+                getattr(self, "spn_cell_defocus", None), "value", lambda: 0.0)())
         self._mesures.reload()
 
     def _reload_measures(self):

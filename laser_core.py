@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.3.1"
+VERSION = "2.4.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4591,16 +4591,74 @@ def shade_materials():
 DEFOCUS_LEVELS_MM = (15.0, 36.0)
 
 
+# Tolérance de rangement d'un défocus mesuré sur un niveau standard.
+#
+# Elle valait 5 mm, à une époque où seuls deux niveaux existaient et où
+# toute mesure était censée venir de la Planche 2. Trop large dès que le
+# niveau devient libre : un défocus 40 délibérément gravé et mesuré était
+# rangé en 36, en silence, et allait polluer une grille où il n'avait rien
+# à faire (c'est arrivé -- la mesure S716/F600 à 40 mm de la rampe du
+# 30/07/2026 était relue comme une mesure à 36).
+#
+# 2 mm absorbent ce pour quoi le rangement existe -- l'imprécision d'une
+# mesure ou d'un héritage (15,34 -> 15) -- sans jamais pouvoir confondre
+# deux graduations de la rampe Z, espacées de 5 mm.
+SNAP_DEFOCUS_TOLERANCE_MM = 2.0
+
+
 def _snap_defocus_level(z):
     """Ramène un z_offset mesuré au niveau standard le plus proche
-    (DEFOCUS_LEVELS_MM) s'il en est à moins de 5 mm -- absorbe l'imprécision de
-    mesure (ex. 15,34 -> 15) et aligne les données sur les colonnes de la grille
-    de saisie. Laisse tel quel un z volontairement hors niveaux."""
+    (DEFOCUS_LEVELS_MM) s'il en est à moins de SNAP_DEFOCUS_TOLERANCE_MM --
+    absorbe l'imprécision de mesure (ex. 15,34 -> 15) et aligne les données
+    sur les colonnes de la grille de saisie. Laisse tel quel un z
+    volontairement hors niveaux."""
     z = float(z or 0.0)
     if not DEFOCUS_LEVELS_MM:
         return z
     proche = min(DEFOCUS_LEVELS_MM, key=lambda lv: abs(lv - z))
-    return float(proche) if abs(proche - z) <= 5.0 else z
+    return (float(proche) if abs(proche - z) <= SNAP_DEFOCUS_TOLERANCE_MM
+            else z)
+
+
+def niveaux_defocus_mesures(material=None):
+    """Niveaux de défocus réellement mesurés pour ce matériau, triés.
+
+    La grille de saisie ② s'y accorde, au lieu des deux constantes
+    historiques : une planche gravée à un défocus choisi doit avoir une
+    grille où être saisie, sinon la mesure n'a nulle part où aller."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return []
+    return sorted({round(float(p.get("z_offset", 0) or 0), 3)
+                   for p in (load_burn_widths(mat).get("defocus") or [])
+                   if float(p.get("z_offset", 0) or 0) > 0})
+
+
+def _niveaux_exploitables(levels):
+    """Parmi des niveaux {z: [points]}, ceux qui peuvent ANCRER
+    l'interpolation : au moins deux puissances distinctes.
+
+    Un niveau réduit à une seule puissance ne dit rien de la variation en
+    S, et `_bilinear_burn` y renvoie donc la même largeur pour toutes les
+    puissances -- ce qui APLATIT le modèle sur toute la plage qu'il borne.
+    Mesuré sur le hêtre : les quatre points isolés relevés à la rampe Z
+    (défocus 30, 40, 55, 60, une puissance chacun) faisaient tomber la
+    largeur prédite à S1000/F200 de 2,26 à 1,50 mm à défocus 30 et de 3,80
+    à 3,00 à défocus 55 ; deux pas de hachure (1,50 et 1,70 mm) n'avaient
+    du coup plus AUCUN réglage mesuré capable de les couvrir.
+
+    Ces mêmes points ont pourtant confirmé le modèle : au point exact
+    mesuré, il annonçait 1,61 / 2,08 / 3,29 / 4,10 mm pour 1,50 / 2,00 /
+    3,00 / 4,00 mesurés, soit +2 à +10 %. Ils ne sont donc pas faux, ils
+    sont INCOMPLETS -- une mesure ne devient un niveau qu'à partir de deux
+    puissances. Mesurer une deuxième puissance au même défocus suffit à
+    faire compter le niveau pleinement.
+
+    Repli : si AUCUN niveau n'est exploitable, on garde tout -- un modèle
+    approximatif vaut mieux que pas de modèle."""
+    riches = {z: pts for z, pts in levels.items()
+              if len({round(float(p["power"]), 3) for p in pts}) >= 2}
+    return riches or levels
 
 
 def load_burn_widths(material):
@@ -4766,12 +4824,16 @@ def burn_width_defocus_scaled(power, feed, defocus, material=None):
     pts = table.get("defocus") or []
     if not pts:
         return None
-    # Regroupe les mesures par niveau de défocus (z_offset).
+    # Regroupe les mesures par niveau de défocus (z_offset), puis ne garde
+    # que les niveaux capables d'ANCRER l'interpolation (cf.
+    # _niveaux_exploitables : un niveau à une seule puissance aplatirait
+    # toute la plage qu'il borne).
     levels = {}
     for p in pts:
         z = round(float(p.get("z_offset", 0.0) or 0.0), 3)
         if z > 0 and p.get("width"):
             levels.setdefault(z, []).append(p)
+    levels = _niveaux_exploitables(levels)
     zs = sorted(levels)
     if not zs:
         return None

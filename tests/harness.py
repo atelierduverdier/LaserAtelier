@@ -102,6 +102,35 @@ def canal_puissance(core, m67):
         core.CMD_DISARM = core._CMD_DISARM_S
 
 
+def sans_dialogues():
+    """Neutralise les boîtes modales et renvoie la liste de ce qu'elles
+    auraient affiché : `[(genre, titre, texte), ...]`, remplie au fil du test.
+
+    Indispensable dès qu'un test CLIQUE un bouton : `QMessageBox.information`
+    attend un clic humain, et en mode offscreen elle attend simplement pour
+    toujours. Un test qui appuie sur « Enregistrer les mesures » se fige sans
+    afficher la moindre ligne (les prints sont encore dans le tampon) -- rien
+    ne ressemble plus à une boucle infinie.
+
+    La liste est renvoyée plutôt que les dialogues purement supprimés : ce
+    qu'un panneau annonce à l'utilisateur fait partie de son comportement, et
+    un test a le droit de le vérifier."""
+    from PySide6 import QtWidgets
+    appels = []
+
+    def _faux(genre, retour):
+        def _f(_parent, titre="", texte_="", *a, **k):
+            appels.append((genre, titre, texte_))
+            return retour
+        return staticmethod(_f)
+
+    QtWidgets.QMessageBox.information = _faux("info", QtWidgets.QMessageBox.Ok)
+    QtWidgets.QMessageBox.warning = _faux("avertissement", QtWidgets.QMessageBox.Ok)
+    QtWidgets.QMessageBox.critical = _faux("erreur", QtWidgets.QMessageBox.Ok)
+    QtWidgets.QMessageBox.question = _faux("question", QtWidgets.QMessageBox.Yes)
+    return appels
+
+
 # --- Utilitaires partagés --------------------------------------------------
 
 def texte(widget_ou_html):

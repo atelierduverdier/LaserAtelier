@@ -129,20 +129,30 @@ assert len(encore.get("defocus", [])) == n_apres, (
 print("4. deuxième enregistrement : {} points, inchangé -- remplacement, pas "
       "duplication OK".format(n_apres))
 
-# --- 5. Le défocus 40 est bien RELU à 36, et c'était le piège ----------
-# `_snap_defocus_level` ramène au niveau standard à moins de 5 mm. On ne le
-# corrige pas -- il protège les mesures héritées (15,34 -> 15) -- mais la
-# table doit le DIRE, sinon un 40 saisi devient un 36 sans un mot.
-assert abs(core._snap_defocus_level(40.0) - 36.0) < 1e-9, "le 40 ne snappe plus"
-assert abs(core._snap_defocus_level(30.0) - 30.0) < 1e-9, "le 30 ne doit PAS snapper"
-assert abs(core._snap_defocus_level(60.0) - 60.0) < 1e-9, "le 60 ne doit PAS snapper"
+# --- 5. Un défocus CHOISI survit à la relecture -------------------------
+# `_snap_defocus_level` range une mesure sur un niveau standard proche. La
+# tolérance valait 5 mm, du temps où il n'existait que deux niveaux et où
+# toute mesure venait de la Planche 2 : un défocus 40 délibérément gravé
+# était alors relu comme 36, en silence, et allait polluer une grille où
+# il n'avait rien à faire. Depuis que le niveau est libre (v2.4.0), la
+# tolérance est ramenée à 2 mm -- de quoi absorber l'imprécision d'une
+# mesure ou d'un héritage, jamais de confondre deux graduations de la
+# rampe Z, espacées de 5 mm.
+assert core.SNAP_DEFOCUS_TOLERANCE_MM <= 2.0, (
+    "la tolérance de rangement est redevenue assez large pour avaler un "
+    "niveau choisi", core.SNAP_DEFOCUS_TOLERANCE_MM)
+for z in (30.0, 40.0, 55.0, 60.0):
+    assert abs(core._snap_defocus_level(z) - z) < 1e-9, (
+        "un défocus choisi est rangé ailleurs", z, core._snap_defocus_level(z))
+# Ce pour quoi le rangement existe, et qui doit continuer de marcher.
+assert abs(core._snap_defocus_level(15.34) - 15.0) < 1e-9, (
+    "l'imprécision de mesure n'est plus absorbée (15,34 doit donner 15)")
 lus = core.load_burn_widths(MAT).get("defocus", [])
 niveaux = sorted({round(float(pt.get("z_offset", 0) or 0), 1) for pt in lus})
-assert 40.0 not in niveaux and 36.0 in niveaux, (
-    "le 40 devrait être relu comme 36", niveaux)
-assert 30.0 in niveaux and 55.0 in niveaux and 60.0 in niveaux, niveaux
-print("5. relecture : 30/55/60 conservés, 40 rangé en 36 comme annoncé — "
-      "niveaux présents {} OK".format(niveaux))
+for z in (30.0, 40.0, 55.0, 60.0):
+    assert z in niveaux, ("niveau perdu à la relecture", z, niveaux)
+print("5. relecture : les 4 niveaux choisis (30/40/55/60) survivent, et "
+      "15,34 se range toujours en 15 — niveaux présents {} OK".format(niveaux))
 
 # --- 6. Une ligne incomplète est ignorée, pas devinée ------------------
 r_vide = premiere_vide()

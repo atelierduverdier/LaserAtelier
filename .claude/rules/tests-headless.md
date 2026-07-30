@@ -41,6 +41,12 @@ Shared helpers in `harness.py`: `texte` (strips HTML from a verdict label — ve
 HTML, so a test grepping the raw markup misses the moment something gets bolded), `mouvements`,
 `trajet_a_vide`, `demi_tours_x`, `hauteurs_z`, `puissances(gcode, gravure_seule=)`, `image_demo`.
 
+**`sans_dialogues()` before any test that CLICKS a button.** `QMessageBox.information` waits for a
+human click, and offscreen it simply waits forever — the test freezes with **no output at all**
+(prints are still buffered), which looks exactly like an infinite loop in your own code. It returns
+the list of `(genre, titre, texte)` the panel would have shown, so a test may also assert on what
+was announced.
+
 ## Why they live in the repo
 
 These tests lived in `/tmp` until the v2 work started, and vanished when the tmpfs was cleared.

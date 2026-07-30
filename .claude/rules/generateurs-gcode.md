@@ -183,6 +183,22 @@ per plank/level, lock-by-default; stored with each point's `z_offset`, snapped t
 standard level by `_snap_defocus_level` on read — legacy 15.34 → 15; legacy single-feed data lands in
 the F800 column).
 
+### The level is free, but a level must be measured as a level (v2.4.0)
+
+`SNAP_DEFOCUS_TOLERANCE_MM` was **5 mm**, sized when only two levels existed: a deliberately burned
+defocus 40 was read back as 36 and poured into a grid it did not belong to (that happened — the
+ramp's S716/F600 at 40 mm). Now **2 mm** — enough for measurement noise, never enough to merge two
+ramp graduations (5 mm apart). `niveaux_defocus_mesures(material)` reports what actually exists.
+
+`_niveaux_exploitables` then keeps, as interpolation anchors, only levels holding **at least two
+distinct powers**. A one-power level makes `_bilinear_burn` return the same width for every power and
+therefore **flattens the whole span it bounds**: the four lone ramp points dropped the predicted
+S1000/F200 width from 2.26 to 1.50 mm at defocus 30 and from 3.80 to 3.00 at defocus 55, and two
+hatch pitches (1.50 and 1.70 mm) lost every covering setting. Those same points *confirmed* the
+model — at the exact measured point it predicted 1.61/2.08/3.29/4.10 for 1.50/2.00/3.00/4.00, i.e.
++2 to +10 % — so they are not wrong, they are **incomplete**. Measuring a second power at the same
+defocus promotes the level to a full anchor. Fallback: if no level qualifies, keep them all.
+
 ### Always pass `material` to the burn-width functions
 
 `_burn_width_material(None)` only guesses when *exactly one* material has been measured; with two or
