@@ -16,7 +16,8 @@ Les versions suivent `MAJEURE.MINEURE.CORRECTIF`. `VERSION` dans
 ### Ajouté
 
 **La puissance peut passer par `M67` au lieu du mot `S`** (case « Puissance par
-M67 » des Préférences, LinuxCNC seulement). Gain attendu **~3x sur tout tramage
+M67 » des Préférences, LinuxCNC seulement, réglage machine-GLOBAL et non par
+profil laser : c'est le câblage HAL qui décide, et il est commun aux deux têtes). Gain attendu **~3x sur tout tramage
 qui module la puissance**, donc sur les jobs les plus longs.
 
 Le fait établi, et il l'est par l'expérience : **sur la PrintNC, un mot `S`
