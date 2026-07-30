@@ -3289,7 +3289,19 @@ def _make_shade_quick_add(form, get_material, titre=None, on_added=None):
     spn_width.setRange(0.0, 10.0)
     spn_width.setDecimals(2)
     spn_width.setSuffix(" mm")
-    spn_width.setToolTip("Largeur du trait au pied à coulisse, si mesurée (sinon laisser 0).")
+    spn_width.setToolTip(
+        "Ce que « largeur » veut dire dépend de la planche, et c'est le\n"
+        "piège de cette saisie :\n"
+        "  - traits ISOLÉS (planche de calibration) : la largeur brûlée,\n"
+        "    mesurée au pied à coulisse ;\n"
+        "  - APLAT en balayage (bande de noirceur) : l'ESPACEMENT DES\n"
+        "    HACHURES. En balayage, ce qui gouverne l'énergie reçue n'est\n"
+        "    pas la largeur d'un trait mais de combien on avance entre\n"
+        "    deux passes -- s'y tromper fausse la courbe d'un facteur qui\n"
+        "    peut atteindre 8.\n"
+        "0 = non renseignée (le ton reste choisissable, mais n'alimente\n"
+        "ni la photo calibrée ni « ton sur mesure », qui exigent un\n"
+        "défocus ET une largeur).")
     lay.addRow("Largeur mesurée :", spn_width)
 
     edt_label = QtWidgets.QLineEdit()
@@ -3337,8 +3349,22 @@ def _make_shade_quick_add(form, get_material, titre=None, on_added=None):
         if on_added:
             on_added()
 
+    def appliquer(valeurs):
+        """Pré-remplit les champs depuis ce que le panneau vient de graver.
+
+        Appelé sur une action EXPLICITE (choisir un objectif), jamais depuis
+        reload() : écraser une saisie en cours parce qu'on a changé de
+        matériau serait une trahison de ce qui est tapé."""
+        for cle, widget in (("darkness", spn_darkness), ("power", spn_power),
+                            ("feed", spn_feed), ("z_offset", spn_defocus),
+                            ("width", spn_width)):
+            if valeurs.get(cle) is not None:
+                widget.setValue(float(valeurs[cle]))
+        if valeurs.get("label") is not None:
+            edt_label.setText(str(valeurs["label"]))
+
     btn_add.clicked.connect(_on_add)
-    return {"reload": reload}
+    return {"reload": reload, "appliquer": appliquer}
 
 
 def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
@@ -8295,6 +8321,59 @@ class TaskPanelTestGrid:
                         "calibrée et le « ton sur mesure ». Une largeur au "
                         "foyer, ou une noirceur sans largeur, ne leur sert à "
                         "rien."}),
+            ("noirceur_balayage", {
+                "label": "Noirceur — bande en balayage (photo calibrée)",
+                "mode": 0,
+                # UNE SEULE vitesse, et c'est toute la raison d'être de cet
+                # objectif. La noirceur ne dépend pas que de l'énergie : à
+                # énergie par millimètre rigoureusement égale, plus c'est
+                # lent, plus c'est foncé (établi le 29/07/2026 sur quatre
+                # bandes). Une courbe bâtie sur des tons mesurés à des
+                # vitesses mélangées est donc incohérente par construction
+                # -- c'était le cas, clairs à F2000 et foncés à F650, et
+                # aucune correction de formule ne pouvait la sauver.
+                "feeds": [2000.0],
+                # Puissances réparties de 200 à 1000... puis DÉLIBÉRÉMENT
+                # mélangées. Alignées par ordre croissant, les cases se
+                # jugent les unes par rapport aux autres et l'oeil
+                # reconstruit une progression régulière sans qu'on s'en
+                # aperçoive : une première série ainsi jugée est sortie en
+                # progressions arithmétiques exactes, avec 11 % de paires
+                # inversées par rapport à l'ordre des énergies. Chaque case
+                # porte sa puissance gravée sous elle, la lecture reste
+                # directe.
+                "powers": [200.0, 644.0, 378.0, 822.0, 556.0,
+                           1000.0, 289.0, 733.0, 467.0, 911.0],
+                "filltype": 0, "hatch_spacing": 0.80, "cell_size": 16.0,
+                "cell_defocus": 15.0, "border": True,
+                # Pré-remplit « + Ajouter ce ton » avec la vitesse, le
+                # défocus et surtout la LARGEUR = le pas de hachure.
+                "ton_balayage": True,
+                "note": "Bande d'APLATS gravés comme une photo : même "
+                        "vitesse, même défocus, même pas que la gravure "
+                        "visée. C'est elle qui alimente la courbe "
+                        "noirceur → énergie, donc la photo calibrée et le "
+                        "« ton sur mesure ».\n"
+                        "Juge la noirceur de chaque case (0 = bois intact, "
+                        "100 = noir max) et reporte-la dans « + Ajouter ce "
+                        "ton » ci-dessous — les champs sont déjà remplis, "
+                        "il ne reste que la noirceur et la puissance de la "
+                        "case.\n"
+                        "La LARGEUR à saisir est l'ESPACEMENT DES HACHURES, "
+                        "pas une mesure au pied à coulisse : en balayage, "
+                        "ce qui gouverne l'énergie reçue par le bois est de "
+                        "combien on avance entre deux passes. C'est "
+                        "pré-rempli pour cette raison.\n"
+                        "Les puissances sont volontairement dans le "
+                        "désordre : rangées par ordre croissant, les cases "
+                        "se jugent les unes par rapport aux autres et l'œil "
+                        "fabrique une progression régulière qui n'existe "
+                        "pas. Chaque case porte sa puissance gravée "
+                        "en dessous.\n"
+                        "Cette calibration ne vaut QUE pour la vitesse, le "
+                        "défocus et le pas gravés ici. Changer l'un des "
+                        "trois pour la gravure finale la sort de son "
+                        "régime."}),
             ("decoupe", {
                 "label": "Découpe — trouver le passage",
                 "mode": 1, "power_min": 400, "power_max": 1000, "power_steps": 4,
@@ -9118,6 +9197,19 @@ class TaskPanelTestGrid:
         self.chk_border.setChecked(r.get("border", True))
         self.lbl_recipe_note.setText("\U0001f4a1 " + r["note"])
         self.lbl_recipe_note.setVisible(True)
+        # Objectif jugé à l'œil : on prépare la saisie du ton avec ce qui
+        # vient d'être gravé. Surtout la LARGEUR, qui vaut ici le PAS de
+        # hachure et non une mesure au pied à coulisse -- pré-remplir vaut
+        # mieux qu'avertir.
+        ton = getattr(self, "_ton_rapide", None)
+        if r.get("ton_balayage") and ton:
+            ton["appliquer"]({
+                "feed": self.spn_feed_min.value(),
+                "z_offset": self.spn_cell_defocus.value(),
+                "width": self.spn_hatch_spacing.value(),
+                "label": "balayage F{:.0f} pas {:.2f}".format(
+                    self.spn_feed_min.value(), self.spn_hatch_spacing.value()),
+            })
 
     def _appliquer_paliers(self, powers, feeds):
         """Fixe (ou libère) les paliers imposés par un objectif.
@@ -9168,13 +9260,13 @@ class TaskPanelTestGrid:
         planche/grille (foyer + défocus), qui alimentent l'interpolation
         largeur(S, F). Remplace l'ancien dialogue séparé « Saisir les
         mesures… » -- on grave au-dessus, on mesure ici, juste en dessous."""
-        _section(form, "② Entrer les mesures (largeurs brûlées)", "sect_measure.svg")
+        _section(form, "② Entrer les mesures", "sect_measure.svg")
         form.addRow(_WrapLabel(
             "Une fois la planche/grille gravée : mesure la LARGEUR brûlée de "
             "chaque trait au pied à coulisse (1/10 mm) et saisis-la ici. "
             "Laisse « — » pour un trait non mesuré ou vierge. Ces valeurs "
             "servent au bouton « Auto (½ point) » des Hachures et au calage du "
-            "remplissage. (Pour la NOIRCEUR d'un ton, vois le mode Nuancier.)"))
+            "remplissage."))
 
         self.edt_measure_mat = QtWidgets.QComboBox()
         self.edt_measure_mat.setEditable(True)
@@ -9203,6 +9295,21 @@ class TaskPanelTestGrid:
             get_niveau_cible=lambda: getattr(
                 getattr(self, "spn_cell_defocus", None), "value", lambda: 0.0)())
         self._mesures.reload()
+
+        # Une grille de test se lit AUSSI à l'œil -- c'est même son usage
+        # premier (« on lit la meilleure case »). Le jugement se saisit donc
+        # ici, dans le même ②, au lieu d'un aller-retour vers le Nuancier
+        # avec les valeurs retenues de mémoire. L'objectif « Noirceur —
+        # bande en balayage » y pré-remplit vitesse, défocus et pas.
+        self._ton_rapide = _make_shade_quick_add(
+            form, lambda: self.edt_measure_mat.currentText(),
+            titre="Noirceur jugée à l'œil (nuancier)",
+            on_added=self._maj_liste_materiaux)
+        self.edt_measure_mat.currentIndexChanged.connect(
+            lambda _i: self._ton_rapide["reload"]())
+        self.edt_measure_mat.lineEdit().editingFinished.connect(
+            lambda: self._ton_rapide["reload"]())
+        self._ton_rapide["reload"]()
 
     def _reload_measures(self):
         self._mesures.reload()

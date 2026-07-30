@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.4.0</span><br>
+      <span class="ver">Version 2.5.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.4.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.5.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -700,7 +700,14 @@
     <p>Le défocus s'applique aux <b>cellules seules</b>, via le champ «&nbsp;Défocus des cellules&nbsp;». Les <b>étiquettes d'axe et le cadre restent au foyer</b>, donc nets et lisibles. Écarter tout le job en montant la «&nbsp;Hauteur (Z) de test&nbsp;» défocaliserait aussi les chiffres, qui baveraient — et cette hauteur, mémorisée d'une session à l'autre, resterait ensuite collée dans tous les jobs suivants. Choisir un objectif remet toujours la hauteur de test au foyer.</p>
     <p>Pourquoi si lent&nbsp;? En défocus, le point est environ quatre fois plus large qu'au foyer, donc la densité de puissance chute d'autant&nbsp;: un trait <em>isolé</em> cesse de marquer bien avant les vitesses où vivent les tons clairs. Une première version de cet objectif visait F1000 à F4000 — la plage des tons du nuancier — et 18 cases sur 25 sont sorties vierges sur du hêtre. Conséquence à accepter&nbsp;: le haut de l'échelle de noirceur restera peut-être sans largeur mesurable. C'est une limite physique, pas un réglage à forcer&nbsp;; mesurez ce qui est lisible.</p>
     <p><b>Gravez la même grille deux fois</b>, en ne changeant que l'espacement des hachures&nbsp;: à 3&nbsp;mm pour mesurer la largeur d'un trait, puis à 1&nbsp;mm pour juger la noirceur en aplat. Un aplat ne se juge pas sur des traits espacés, et une largeur ne se mesure pas sur un aplat. Reportez ensuite chaque case dans <b>Nuancier → «&nbsp;+ Ajouter un ton&nbsp;»</b> avec ses deux mesures. Une dizaine de cases bien réparties du clair au foncé suffisent à faire repartir la courbe.</p>
+    <p>Depuis la v2.5.0, la deuxième gravure a son propre objectif — voyez «&nbsp;Noirceur — bande en balayage&nbsp;» juste en dessous, qui la prépare entièrement et pré-remplit la saisie du ton.</p>
     <p><b>Attention à ce que « largeur » veut dire pour la version en aplat</b>&nbsp;: c'est <em>l'espacement des hachures</em> qu'il faut saisir, pas une mesure au pied à coulisse. En balayage, ce qui gouverne l'énergie reçue par le bois n'est pas la largeur d'un trait mais <b>de combien on avance entre deux passes</b>. Saisir la largeur du trait à la place fausse le calcul d'un facteur qui peut atteindre 8. Les deux gravures de la même grille ne se saisissent donc pas de la même façon&nbsp;: à 3&nbsp;mm on note la <em>largeur brûlée</em>, à 1&nbsp;mm on note la <em>noirceur</em> et l'espacement comme largeur.</p>
+
+    <h4>Objectif «&nbsp;Noirceur — bande en balayage&nbsp;»</h4>
+    <p>C'est l'objectif qui alimente la <strong>courbe noirceur → énergie</strong>, donc la photo calibrée et le «&nbsp;ton sur mesure&nbsp;». Il grave une bande d'<b>aplats</b> — pas des traits isolés — dans les conditions exactes d'une photo&nbsp;: même vitesse, même défocus, même pas de hachure que la gravure visée.</p>
+    <p><b>Une seule vitesse</b>, et c'est toute sa raison d'être. La noirceur ne dépend pas que de l'énergie&nbsp;: à énergie par millimètre rigoureusement égale, plus c'est lent, plus c'est foncé. Une courbe bâtie sur des tons mesurés à des vitesses mélangées est donc incohérente par construction — c'était le cas, les clairs à F2000 et les foncés à F650, et aucune correction de formule ne pouvait la sauver. Corollaire à accepter&nbsp;: cette calibration ne vaut que pour la vitesse, le défocus et le pas gravés. Changer l'un des trois pour la gravure finale la sort de son régime.</p>
+    <p><b>Les puissances sont volontairement dans le désordre.</b> Rangées par ordre croissant, les cases se jugent les unes par rapport aux autres et l'œil reconstruit une progression régulière qui n'existe pas&nbsp;: une première série ainsi jugée est ressortie en progressions arithmétiques exactes, avec 11&nbsp;% de paires inversées par rapport à l'ordre réel des énergies. Chaque case porte sa puissance gravée en dessous, la lecture reste directe.</p>
+    <p>Le report se fait <b>sur place</b>, dans «&nbsp;Noirceur jugée à l'œil&nbsp;» au bas de la section ②&nbsp;: plus d'aller-retour vers le mode Nuancier avec les valeurs retenues de mémoire. Choisir cet objectif <b>pré-remplit la vitesse, le défocus et la largeur</b> — cette dernière valant l'espacement des hachures, comme expliqué plus haut. Pré-remplir vaut mieux qu'avertir&nbsp;: c'est l'erreur qui fausse la courbe d'un facteur 8. Il ne reste à saisir que la noirceur jugée et la puissance de la case.</p>
 
     <h4>Le défocus de la planche est libre</h4>
     <p>Le champ «&nbsp;Défocus des cellules&nbsp;» accepte n'importe quelle hauteur, et la saisie ② <b>ouvre une grille pour celle-là</b> — même si ce niveau n'a jamais été mesuré. Elle en ouvre une aussi pour chaque niveau déjà mesuré sur le matériau. Auparavant il n'existait que deux grilles, 15 et 36&nbsp;mm&nbsp;: graver à 25&nbsp;mm ne menait nulle part, la mesure n'avait aucune case où aller. Une hauteur à moins de 2&nbsp;mm d'un niveau existant réutilise sa grille plutôt que d'en créer une jumelle.</p>
@@ -910,7 +917,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.4.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.5.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

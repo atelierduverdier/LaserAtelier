@@ -39,6 +39,16 @@ calliper-measured burn line width, which almost nothing sets. Observed on real d
 100 % recipe for every requested darkness, silently. **A rich nuancier is NOT evidence this works**:
 check `len(darkness_fluence_curve(mat))` and the SPREAD of its darkness values, not the tone count.
 
+**The board that actually feeds this curve is the `noirceur_balayage` objective (v2.5.0)** — flats,
+not isolated traces, at ONE feed, one defocus, one pitch, judged by eye. Two design points carry
+hard-won lessons: the recorded `width` is **the hatch pitch**, not a calliper reading (in a raster
+what governs the energy is how far you advance between passes — getting it wrong is the factor-8
+error), and the powers are **deliberately shuffled** on the board, because patches in increasing
+order get judged against their neighbours and the eye rebuilds a regular progression that isn't
+there (a first series judged that way came back as exact arithmetic progressions with 11 % of pairs
+inverted against the real energy order). Selecting the objective pre-fills feed/defocus/width in the
+Test-grid panel's own "+ Ajouter ce ton" block — pre-filling beats warning.
+
 The Grille de test's `largeurs_defocus` objective (v1.87.0) exists to produce the missing pairing —
 measured width AND judged darkness, at the same defocus. `largeurs_foyer` cannot: a width measured
 at focus is rejected by the `z_offset > 0` filter. **Its feeds must stay SLOW (F200–2000, v1.87.2).**

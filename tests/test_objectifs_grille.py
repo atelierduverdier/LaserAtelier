@@ -19,10 +19,15 @@ progression géométrique. Aucune plage ne peut les décrire. D'où les listes
 explicites, tirées des MÊMES constantes que la grille de saisie, pour que
 l'alignement soit structurel et non une coïncidence à entretenir.
 """
-from harness import preparer, texte
+from PySide6 import QtWidgets
+
+from harness import preparer, sans_dialogues, texte
 
 h = preparer()
 core, tp = h.core, h.tp
+# Ce test CLIQUE « + Ajouter ce ton » : une boîte modale
+# attendrait un clic humain pour toujours.
+sans_dialogues()
 G = tp._MesuresPlanchesControleur
 
 CIBLES = {
@@ -142,5 +147,76 @@ for cle in ("nuancier_clair", "decoupe"):
         "un objectif de jugement s'est vu imposer des paliers", cle)
     assert "power_min" in r and "feed_min" in r, (cle, "plage manquante")
 print("6. « nuancier clair » et « découpe » gardent leurs plages libres OK")
+
+# --- 7. La bande de noirceur en balayage -------------------------------
+# C'est elle qui alimente `darkness_fluence_curve`, donc la photo calibrée
+# et le « ton sur mesure ». Cette courbe n'accepte QUE les tons réunissant
+# un défocus > 0 ET une largeur > 0 : un nuancier riche en noirceurs mais
+# sans largeur ne lui sert à rien, et c'est un piège silencieux.
+r = recettes["noirceur_balayage"]
+idx = [i for i in range(p.combo_recipe.count())
+       if p.combo_recipe.itemData(i) == "noirceur_balayage"][0]
+p.combo_recipe.setCurrentIndex(idx)
+_m, _f, cellules, dz = p._build_cells()
+vitesses = {round(float(c["feed"]), 3) for c in cellules}
+assert len(vitesses) == 1, (
+    "la bande doit tenir sur UNE vitesse : à énergie égale, plus c'est "
+    "lent plus c'est foncé, et une courbe à vitesses mélangées est "
+    "incohérente par construction", sorted(vitesses))
+assert dz > 0, ("la bande doit être gravée en défocus", dz)
+
+# Les puissances couvrent la plage, mais PAS dans l'ordre : rangées par
+# ordre croissant, les cases se jugent les unes par rapport aux autres.
+ordre = [float(c["power"]) for c in sorted(cellules, key=lambda c: c["col"])]
+assert len(ordre) >= 8, ("trop peu de paliers pour juger une échelle", ordre)
+assert ordre != sorted(ordre) and ordre != sorted(ordre, reverse=True), (
+    "les puissances sont rangées dans l'ordre : l'œil reconstruira une "
+    "progression régulière qui n'existe pas", ordre)
+voisins_consecutifs = [
+    (a, b) for a, b in zip(ordre, ordre[1:])
+    if abs(sorted(ordre).index(a) - sorted(ordre).index(b)) == 1]
+assert not voisins_consecutifs, (
+    "deux paliers consécutifs en énergie sont côte à côte sur la planche",
+    voisins_consecutifs)
+print("7. bande : {} cases sur la SEULE vitesse F{:.0f}, défocus {:g} mm, "
+      "puissances mélangées OK".format(
+          len(cellules), sorted(vitesses)[0], dz))
+
+# --- 8. La saisie du ton est pré-remplie, largeur = LE PAS -------------
+# Pré-remplir plutôt qu'avertir : c'est l'erreur qui coûte un facteur 8.
+champs = p._ton_rapide
+MAT_TEST = u"Test balayage"
+p.edt_measure_mat.setCurrentText(MAT_TEST)
+p.combo_recipe.setCurrentIndex(0)
+p.combo_recipe.setCurrentIndex(idx)          # rejoue l'application
+# On relit par le comportement plutôt que par les widgets : ajouter le ton
+# et vérifier ce qui a été ENREGISTRÉ est la seule preuve qui compte.
+for b in p.form.findChildren(QtWidgets.QPushButton):
+    if b.text() == "+ Ajouter ce ton":
+        b.click()
+        break
+else:
+    raise AssertionError("bouton « + Ajouter ce ton » absent de la Grille de test")
+tons = core.load_shades(MAT_TEST)
+assert len(tons) == 1, ("le ton n'a pas été enregistré", tons)
+t = tons[0]
+assert abs(float(t["feed"]) - sorted(vitesses)[0]) < 1e-6, (
+    "vitesse non pré-remplie", t)
+assert abs(float(t["z_offset"]) - dz) < 1e-6, ("défocus non pré-rempli", t)
+assert abs(float(t["width"]) - r["hatch_spacing"]) < 1e-9, (
+    "la largeur pré-remplie n'est pas le PAS de hachure -- c'est "
+    "exactement l'erreur qui fausse la courbe d'un facteur 8",
+    t.get("width"), r["hatch_spacing"])
+print("8. « + Ajouter ce ton » pré-rempli : F{:.0f}, défocus {:g}, largeur "
+      "{:.2f} = le pas de hachure OK".format(
+          float(t["feed"]), float(t["z_offset"]), float(t["width"])))
+
+# --- 9. Le ton produit est EXPLOITABLE par la courbe -------------------
+# Le seul contrôle qui dise que cet objectif sert à quelque chose.
+assert float(t.get("z_offset", 0) or 0) > 0 and float(t.get("width", 0) or 0) > 0, (
+    "le ton produit n'a pas le couple défocus+largeur qu'exige "
+    "darkness_fluence_curve", t)
+print("9. le ton porte le couple défocus>0 ET largeur>0 qu'exige la courbe "
+      "noirceur → énergie OK")
 
 print("\nTOUS LES TESTS objectifs_grille PASSENT")
