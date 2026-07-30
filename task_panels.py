@@ -3299,6 +3299,11 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
         "toucher aux mesures déjà enregistrées. Indépendant de l'OK du panneau.")
     form.addRow(btn)
 
+    # Ce que le dernier reload() a AFFICHÉ. Une ligne vidée par l'utilisateur
+    # ne peut supprimer que parmi ces points-là : on ne retire jamais une
+    # mesure qu'on ne lui a pas montrée.
+    _affiches = []
+
     def _nombre(r, c):
         it = table.item(r, c)
         txt = (it.text() if it else "").strip().replace(",", ".")
@@ -3344,6 +3349,18 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
             liste.append(neuf)
             return True
 
+        # SUPPRESSION : un point qui avait été affiché et qui ne figure plus
+        # dans la table a été effacé volontairement. Sans ça, corriger le
+        # DÉFOCUS d'une mesure en créerait une seconde au lieu de la déplacer.
+        # On ne retire QUE parmi ce que reload() a montré -- jamais une mesure
+        # restée invisible à l'utilisateur.
+        presents = {(s, f, dz) for s, f, dz, _w in points}
+        retires = [cle for cle in _affiches if cle not in presents]
+        if retires:
+            defocus = [pt for pt in defocus
+                       if (float(pt.get("power", 0)), float(pt.get("feed", 0)),
+                           float(pt.get("z_offset", 0) or 0)) not in retires]
+
         ajouts = remplaces = 0
         arrondis = []
         for s, f, dz, w in points:
@@ -3370,9 +3387,12 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
             ajouts += 1 if nouveau else 0
             remplaces += 0 if nouveau else 1
         core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
-        msg = ("{} point(s) ajouté(s), {} remplacé(s) pour « {} » — la table "
-               "compte maintenant {} mesure(s) au foyer et {} en défocus."
-               .format(ajouts, remplaces, mat, len(focus), len(defocus)))
+        msg = ("{} point(s) ajouté(s), {} remplacé(s){} pour « {} » — la "
+               "table compte maintenant {} mesure(s) au foyer et {} en "
+               "défocus.".format(
+                   ajouts, remplaces,
+                   ", {} supprimé(s)".format(len(retires)) if retires else "",
+                   mat, len(focus), len(defocus)))
         if incomplets:
             msg += (" {} ligne(s) ignorée(s), incomplète(s)."
                     .format(incomplets))
@@ -3397,14 +3417,57 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
                                   for a, b in arrondis),
                         ", ".join("{:.0f}".format(lv)
                                   for lv in core.DEFOCUS_LEVELS_MM)))
-        lbl.setText("<span style=\"color:{}\">{}</span>".format(couleur, msg))
+        garde = msg, couleur
+        reload()          # la table remontre l'état RÉEL, pas la saisie
+        lbl.setText("<span style=\"color:{}\">{}</span>".format(garde[1],
+                                                                garde[0]))
         if on_saved:
             on_saved()
 
     btn.clicked.connect(_on_save)
 
+    def _hors_grille(pt):
+        """Un point que la grille figée ne sait PAS exprimer -- donc que
+        cette table est seule à pouvoir relire et corriger."""
+        G = _MesuresPlanchesControleur
+        return (float(pt.get("power", 0)) not in G.POWERS
+                or float(pt.get("feed", 0)) not in G.FEEDS_DEFOCUS
+                or float(pt.get("z_offset", 0) or 0) not in core.DEFOCUS_LEVELS_MM)
+
     def reload():
+        """Réaffiche les points HORS GRILLE déjà enregistrés.
+
+        Sans ça la table est en écriture seule : Christophe a saisi ses cinq
+        relevés de rampe, puis a voulu les corriger -- ils n'étaient plus là
+        (30/07/2026). Une mesure qu'on ne peut pas relire ne peut pas être
+        vérifiée, et c'est justement la donnée la plus chère du projet.
+
+        On n'affiche QUE les points hors grille : les autres appartiennent à
+        la grille de la Planche 2, qui les montre déjà et sait les corriger.
+        Les rendre modifiables ici aussi ferait deux vérités pour une mesure."""
         lbl.setText("")
+        mat = (get_material() or "").strip()
+        pts = []
+        if mat:
+            brut = (core.load_config().get("burn_widths", {}).get(mat, {})
+                    or {})
+            pts = [pt for pt in (brut.get("defocus", []) or [])
+                   if _hors_grille(pt)]
+            pts.sort(key=lambda pt: (float(pt.get("z_offset", 0) or 0),
+                                     float(pt.get("power", 0))))
+        table.clearContents()
+        table.setRowCount(max(lignes, len(pts) + 3))
+        for r, pt in enumerate(pts):
+            for c, v in enumerate((pt.get("power"), pt.get("feed"),
+                                   pt.get("z_offset"), pt.get("width"))):
+                txt = ("{:g}".format(float(v)) if v is not None else "")
+                table.setItem(r, c, QtWidgets.QTableWidgetItem(txt))
+        _affiches[:] = [(float(pt.get("power", 0)), float(pt.get("feed", 0)),
+                         float(pt.get("z_offset", 0) or 0)) for pt in pts]
+        if pts:
+            lbl.setText("{} mesure(s) hors grille déjà enregistrée(s) pour "
+                        "« {} » — corrige une valeur, ou vide une ligne pour "
+                        "la supprimer, puis réenregistre.".format(len(pts), mat))
 
     return {"reload": reload, "table": table}
 

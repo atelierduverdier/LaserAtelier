@@ -11,6 +11,38 @@ Les versions suivent `MAJEURE.MINEURE.CORRECTIF`. `VERSION` dans
 
 ---
 
+## v2.2.2 — 30 juillet 2026
+
+### Corrigé
+
+**La table des largeurs libres était en écriture seule.** Christophe a saisi
+ses cinq relevés de rampe, a voulu les corriger — et la table était vide. Son
+`reload()` ne faisait qu'effacer le message ; rien ne réaffichait jamais
+l'existant. Une mesure qu'on ne peut pas relire ne peut pas être vérifiée, et
+c'est la donnée la plus chère du projet.
+
+Elle réaffiche maintenant les points **hors grille** déjà enregistrés pour le
+matériau — et seulement ceux-là : les autres appartiennent à la grille de la
+Planche 2, qui les montre déjà et sait les corriger. Les rendre modifiables
+aux deux endroits ferait deux vérités pour une mesure.
+
+**Vider une ligne supprime la mesure**, ce qui manquait aussi : sans ça,
+corriger le DÉFOCUS d'un point en créait un second au lieu de le déplacer. La
+suppression ne porte que sur les points que la table a réellement AFFICHÉS —
+jamais sur une mesure restée invisible.
+
+Après enregistrement, la table se recharge : elle montre l'état réel de la
+table, pas la saisie qu'on vient de taper.
+
+Le test a lui-même dû être corrigé deux fois, et chaque correction disait
+quelque chose : il écrivait en ligne 0 (écrasant les points désormais
+réaffichés — le comportement était juste, le test naïf), et il comptait des
+points au lieu de raisonner en ensembles, ce qui échouait dès que les relevés
+étaient déjà enregistrés. Il vérifie maintenant qu'aucune mesure existante ne
+disparaît, quel que soit l'état de départ.
+
+---
+
 ## v2.2.1 — 30 juillet 2026
 
 ### Corrigé

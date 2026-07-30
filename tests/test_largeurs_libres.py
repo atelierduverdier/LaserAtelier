@@ -50,27 +50,65 @@ p = tp.TaskPanelPowerRamp()
 p.combo_mat.setCurrentText(MAT)
 table = p._largeurs["table"]
 from PySide6 import QtWidgets
-for r, (s, f, dz, w) in enumerate(RELEVES):
-    for c, v in enumerate((s, f, dz, w)):
-        table.setItem(r, c, QtWidgets.QTableWidgetItem(str(v)))
-p._largeurs["table"].parentWidget()      # (le widget est bien monté)
-# Déclencher l'enregistrement comme le ferait le bouton.
-for b in p.form.findChildren(QtWidgets.QPushButton):
-    if b.text() == "Enregistrer ces largeurs":
-        b.click()
-        break
-else:
+
+
+def enregistrer():
+    for b in p.form.findChildren(QtWidgets.QPushButton):
+        if b.text() == "Enregistrer ces largeurs":
+            b.click()
+            return
     raise AssertionError("bouton « Enregistrer ces largeurs » introuvable")
 
+
+def premiere_vide():
+    """La première ligne libre : la table est PRÉ-REMPLIE avec les points
+    déjà enregistrés, écrire par-dessus les remplacerait."""
+    for r in range(table.rowCount()):
+        if all((table.item(r, c) is None or not table.item(r, c).text().strip())
+               for c in range(4)):
+            return r
+    raise AssertionError("aucune ligne libre")
+
+
+# La table doit MONTRER ce qui est déjà enregistré hors grille -- c'est le
+# bug du 30/07/2026 : Christophe a saisi ses relevés, a voulu les corriger,
+# et la table était vide. Une mesure qu'on ne peut pas relire ne peut pas
+# être vérifiée.
+p._largeurs["reload"]()
+deja = premiere_vide()
+assert deja > 0, ("la table ne réaffiche AUCUNE mesure déjà enregistrée : "
+                  "elle est en écriture seule")
+print("   la table réaffiche {} mesure(s) hors grille déjà enregistrée(s)"
+      .format(deja))
+
+base = premiere_vide()
+for i, (s, f, dz, w) in enumerate(RELEVES):
+    for c, v in enumerate((s, f, dz, w)):
+        table.setItem(base + i, c, QtWidgets.QTableWidgetItem(str(v)))
+enregistrer()
+
+def cles(d):
+    return {(float(pt.get("power", 0)), float(pt.get("feed", 0)),
+             float(pt.get("z_offset", 0) or 0)) for pt in d.get("defocus", [])}
+
+
+# Raisonner en ENSEMBLES, pas en compteurs : les relevés sont peut-être déjà
+# enregistrés (Christophe les a saisis avant ce test), auquel cas la fusion
+# les REMPLACE et le total ne bouge pas. Ce qui doit être vrai dans les deux
+# cas : rien de l'existant n'a disparu, et les cinq points sont là.
+avant_cles = cles(avant)
 apres = core.load_config().get("burn_widths", {}).get(MAT, {})
 assert len(apres.get("focus", [])) == n_focus_avant, (
     "des mesures AU FOYER ont disparu", n_focus_avant,
     len(apres.get("focus", [])))
-assert len(apres.get("defocus", [])) == n_defoc_avant + len(RELEVES), (
-    "les 5 points n'ont pas tous été ajoutés, ou d'anciens ont disparu",
-    n_defoc_avant, len(apres.get("defocus", [])))
-print("2. fusion : {} -> {} points en défocus, et les {} du foyer intacts OK"
-      .format(n_defoc_avant, len(apres.get("defocus", [])), n_focus_avant))
+perdus = avant_cles - cles(apres)
+assert not perdus, ("des mesures en défocus ont DISPARU", sorted(perdus)[:3])
+for s, f, dz, _w in RELEVES:
+    assert (s, f, dz) in cles(apres), ("relevé absent après enregistrement",
+                                       s, f, dz)
+print("2. fusion : {} -> {} points en défocus, aucun perdu, les 5 relevés "
+      "présents, et les {} du foyer intacts OK".format(
+          n_defoc_avant, len(apres.get("defocus", [])), n_focus_avant))
 
 # --- 3. Les valeurs stockées sont EXACTEMENT celles saisies -------------
 # Lecture brute : `load_burn_widths` arrondirait les défocus.
@@ -82,15 +120,14 @@ for s, f, dz, w in RELEVES:
 print("3. les 5 points sont stockés à leur défocus EXACT (30, 40, 55, 60...) OK")
 
 # --- 4. Réenregistrer ne duplique pas ----------------------------------
-for b in p.form.findChildren(QtWidgets.QPushButton):
-    if b.text() == "Enregistrer ces largeurs":
-        b.click()
-        break
+n_apres = len(apres.get("defocus", []))
+enregistrer()
 encore = core.load_config().get("burn_widths", {}).get(MAT, {})
-assert len(encore.get("defocus", [])) == n_defoc_avant + len(RELEVES), (
-    "un second enregistrement a dupliqué les points",
+assert len(encore.get("defocus", [])) == n_apres, (
+    "un second enregistrement a dupliqué les points", n_apres,
     len(encore.get("defocus", [])))
-print("4. deuxième enregistrement : remplacement, pas duplication OK")
+print("4. deuxième enregistrement : {} points, inchangé -- remplacement, pas "
+      "duplication OK".format(n_apres))
 
 # --- 5. Le défocus 40 est bien RELU à 36, et c'était le piège ----------
 # `_snap_defocus_level` ramène au niveau standard à moins de 5 mm. On ne le
@@ -108,16 +145,38 @@ print("5. relecture : 30/55/60 conservés, 40 rangé en 36 comme annoncé — "
       "niveaux présents {} OK".format(niveaux))
 
 # --- 6. Une ligne incomplète est ignorée, pas devinée ------------------
-table.setItem(6, 0, QtWidgets.QTableWidgetItem("500"))   # S seul, sans F ni largeur
+r_vide = premiere_vide()
+table.setItem(r_vide, 0, QtWidgets.QTableWidgetItem("500"))  # S seul, sans F ni largeur
 avant6 = len(core.load_config().get("burn_widths", {}).get(MAT, {})
              .get("defocus", []))
-for b in p.form.findChildren(QtWidgets.QPushButton):
-    if b.text() == "Enregistrer ces largeurs":
-        b.click()
-        break
+enregistrer()
 apres6 = len(core.load_config().get("burn_widths", {}).get(MAT, {})
              .get("defocus", []))
 assert apres6 == avant6, ("une ligne incomplète a été enregistrée", avant6, apres6)
 print("6. ligne incomplète ignorée, aucune valeur devinée OK")
+
+# --- 7. Vider une ligne SUPPRIME la mesure -----------------------------
+# Sans ça, corriger le DÉFOCUS d'un point en créerait un second au lieu de le
+# déplacer. La suppression ne porte que sur ce que la table a AFFICHÉ.
+p._largeurs["reload"]()
+cible = None
+for r in range(table.rowCount()):
+    it = table.item(r, 2)
+    if it and it.text().strip() in ("60", "60.0"):
+        cible = r
+        break
+assert cible is not None, "le point à défocus 60 n'est pas réaffiché"
+for c in range(4):
+    table.setItem(cible, c, QtWidgets.QTableWidgetItem(""))
+avant7 = len(core.load_config().get("burn_widths", {}).get(MAT, {})
+             .get("defocus", []))
+enregistrer()
+apres7 = core.load_config().get("burn_widths", {}).get(MAT, {}).get("defocus", [])
+assert len(apres7) == avant7 - 1, ("une ligne vidée n'a pas supprimé la mesure",
+                                   avant7, len(apres7))
+assert not [pt for pt in apres7
+            if abs(float(pt.get("z_offset", 0) or 0) - 60.0) < 1e-9], \
+    "le point à défocus 60 est encore là"
+print("7. ligne vidée : la mesure est supprimée, et seulement celle-là OK")
 
 print("\nTOUS LES TESTS largeurs_libres PASSENT")
