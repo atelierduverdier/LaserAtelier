@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.97.1</span><br>
+      <span class="ver">Version 2.0.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.97.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.0.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -543,7 +543,7 @@
     <img class="shot" src="manuel_img/halftone.png" alt="Panneau Gravure photo">
     <h4>Gravure photo (trame de points)</h4>
     <p class="quoi">Reproduire une image en niveaux de gris.</p>
-    <p>Sept tramages : points façon Floyd-Steinberg, points à durée variable, <strong>lignes calibrées</strong> (puissance par pixel via la courbe du nuancier), lignes tramées, points par diamètre (Z), <strong>similigravure</strong> (trame à 45°, sans calibration) et <strong>lignes gravées</strong> (trait continu dont l'épaisseur rend le gris). Une mire compare les tramages d'un coup.</p>
+    <p>Sept tramages : points façon Floyd-Steinberg, points à durée variable, <strong>lignes calibrées</strong> (puissance par pixel via la courbe du nuancier), lignes tramées, points par diamètre (Z), <strong>similigravure</strong> (trame à 45°, sans calibration) et <strong>lignes gravées</strong> (trait continu dont l'épaisseur rend le gris). Une <strong>mire</strong> grave le même dégradé par les <b>sept</b> tramages, en bandes numérotées, pour les comparer d'un coup sur une chute — chaque bande dans <em>son</em> régime, faute de quoi la comparaison mentirait&nbsp;: les deux tramages à grain au foyer, et les lignes gravées à la vitesse où leur trait enfle encore.</p>
     <p class="meta"><b>Réglages clés :</b> image · pas de trame · tramage · gamma. <b>Fichier :</b> <code>gravure_photo.ngc</code></p>
   </div></div>
 
@@ -661,6 +661,12 @@
     <h4>À défaut de largeur mesurée&nbsp;: le pas, pas la largeur du trait</h4>
     <p>La courbe du nuancier est calibrée sur des <b>traits isolés</b>, gravés espacés, en un seul passage. Une photo, elle, balaie des lignes qui <b>se recouvrent</b>&nbsp;: un trait de 0,80&nbsp;mm posé tous les 0,30&nbsp;mm repasse près de trois fois sur le même bois. Convertir la fluence en puissance avec la <em>largeur du trait</em> délivrait donc près du triple de l'énergie voulue, et toute gravure calibrée sortait noire — y compris la bande&nbsp;3 de la mire, censée justement valider la calibration.</p>
     <p>Ce qui compte n'est pas la largeur d'un trait mais <b>de combien on avance entre deux lignes</b>&nbsp;: l'énergie reçue par unité de surface vaut <code>P / (pas × vitesse)</code>. La puissance se calcule donc sur le <b>pas</b>, et la largeur disparaît d'elle-même de la formule — signe qu'on tient la bonne grandeur. Cas inverse&nbsp;: si le pas dépasse la largeur, il reste du bois nu entre les lignes et c'est alors la largeur qui gouverne ce qui brûle.</p>
+
+    <h4>Les recettes photo&nbsp;: une affirmation, pas un raccourci</h4>
+    <p>Une recette n'est pas un confort d'ergonomie, c'est une <b>affirmation</b>&nbsp;: «&nbsp;avec ces réglages, ce matériau rend ces gris&nbsp;». Les quatre recettes livrées jusqu'à la v2 visaient toutes le MDF, aucune ne couvrait les deux tramages sans calibration — et la recette calibrée MDF demandait un point de <b>0,80&nbsp;mm</b>, soit un défocus de 8,75, alors que son propre nuancier est mesuré à <b>12,20</b>. L'erreur allant comme le <em>carré</em> du rapport des diamètres, cela faisait <b>1,56&nbsp;fois</b> trop de densité de puissance. Et le <code>gamma&nbsp;1,5</code> de ces recettes, justifié par un commentaire «&nbsp;photos saturées&nbsp;», ne faisait que compenser ce mauvais régime au lieu de le corriger.</p>
+    <p>Les six recettes de la v2 sont chacune adossée à une mesure relevée dans la configuration, et le gamma est revenu à <b>1,0</b>&nbsp;: le régime remis d'aplomb, un gamma neutre redevient le bon point de départ. Un test refuse désormais toute recette calibrée hors du régime de ses propres tons — défocus, vitesse dans la plage mesurée, et pas qui ne dépasse pas la largeur brûlée du ton le plus <em>foncé</em>. Ce dernier critère mérite sa nuance&nbsp;: un ton clair brûle forcément plus fin, et le bois nu qu'il laisse est précisément ce qui le rend clair. Exiger la couverture sur le ton le plus clair ferait resserrer le pas pour rien.</p>
+    <p>Le test applique aussi chaque recette pour de vrai et exige que le panneau rende un verdict <b>vert</b> dessus. Une recette qui ne passe pas son propre verdict n'est pas une recette.</p>
+    <p>Deux choses que ces recettes ont obligé à réparer, et qui valent pour tout l'atelier&nbsp;: un préréglage désignait son tramage par son <b>rang</b> dans la liste (réorganiser la liste l'aurait retourné sur un autre tramage, en silence — il porte maintenant une clé), et le <b>matériau n'était pas mémorisé du tout</b> alors que tout le régime en dépend, si bien qu'une session repartait sur le premier matériau du nuancier sans le dire.</p>
 
     <h4>Objectif «&nbsp;Largeurs brûlées — grille en défocus&nbsp;»</h4>
     <p>C'est celui qui débloque la <strong>gravure photo calibrée</strong> et le «&nbsp;ton sur mesure&nbsp;». Ces deux fonctions s'appuient sur une courbe noirceur → énergie qui n'accepte QUE les tons réunissant trois choses&nbsp;: un défocus, une <b>noirceur jugée</b> et une <b>largeur mesurée</b>. Un nuancier riche en noirceurs mais sans largeurs ne leur sert à rien — c'est le piège classique, et il est silencieux.</p>
@@ -867,7 +873,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.97.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.0.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
