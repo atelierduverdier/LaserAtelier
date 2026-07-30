@@ -41,6 +41,20 @@ heures. Côté HAL, un `sum2` **additionne les deux sources** (l'une vaut toujou
 zéro) : les deux modes fonctionnent, les anciens `.ngc` restent valides, et il
 n'y a aucun basculement coordonné à orchestrer.
 
+**GRBL et grblHAL ne sont pas concernés, et ce n'est pas une limitation.**
+`M67` est un code LinuxCNC. Mais le mode laser de GRBL (`$32=1`, armement `M4`)
+traverse les `G1` consécutifs sans s'arrêter quand seule la puissance change :
+il résout la même difficulté autrement. La case est donc ignorée sur ces
+dialectes, comme le vérifie le test.
+
+**Confusion de vocabulaire, à ne pas refaire** : `motion.analog-out-00` porte le
+nom « analogique » dans LinuxCNC, mais c'est un simple pin numérique, et il
+alimente ici le RAPPORT CYCLIQUE du PWM. L'intuition de départ — « faire varier
+le PWM pendant un déplacement linéaire » — était donc juste, et formulée bien
+avant qu'on trouve `M67` ; le mot « analogique » a fait croire qu'il fallait du
+matériel analogique. Le PWM n'a jamais été la limite, c'est le canal du G-code
+qui l'était.
+
 Deux pistes écartées avant celle-là, chacune par la mesure : câbler
 `spindle.1.at-speed`, qui n'avait jamais été relié (les à-coups ont persisté —
 la ligne reste, elle est juste, elle ne réglait pas ça) ; et réduire le nombre
