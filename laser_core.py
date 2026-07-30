@@ -4195,25 +4195,83 @@ _FACTORY_PRESETS = {
             "mill_feed": 600.0, "depth": 0.4, "zfocus": 8.0, "power": 300.0, "laser_feed": 1000.0},
     },
     "photo": {
-        # Bases : nuancier MDF mesuré (juillet 2026), foyer 0,30 mm.
-        # 1er essai lignes calibrées : trait 0,4 trop fin/foncé -> 0,8/0,8/F600.
-        # Gamma 1,5 : photos saturées (gris moyens trop foncés sinon).
-        "Portrait MDF -- lignes calibrées (qualité)": {
-            "mode": 2, "width": 80.0, "pitch": 0.8, "spot_width": 0.8,
-            "line_feed": 600.0, "gamma": 1.5, "white": 8.0, "invert": False,
-            "power": 500.0, "dwell_min": 10.0, "dwell_max": 60.0},
-        "Essai rapide MDF -- points fins (brouillon)": {
-            "mode": 3, "width": 40.0, "pitch": 0.5, "spot_width": 0.3,
-            "line_feed": 1500.0, "gamma": 1.5, "white": 8.0, "invert": False,
-            "power": 350.0, "dwell_min": 10.0, "dwell_max": 60.0},
-        "Photo MDF -- points fins (équilibré)": {
-            "mode": 3, "width": 60.0, "pitch": 0.4, "spot_width": 0.3,
-            "line_feed": 1000.0, "gamma": 1.5, "white": 8.0, "invert": False,
-            "power": 350.0, "dwell_min": 10.0, "dwell_max": 60.0},
-        "Artistique MDF -- gros points Z (vu de loin)": {
-            "mode": 4, "width": 100.0, "pitch": 3.0, "power": 600.0,
-            "dwell_min": 10.0, "dwell_max": 60.0, "gamma": 1.3, "white": 8.0,
-            "invert": False, "spot_width": 0.3, "line_feed": 1000.0},
+        # Chaque recette est ancrée sur une MESURE, jamais sur un essai
+        # heureux. `mode` porte la CLÉ du tramage (cf. _TRAMAGES) et non son
+        # rang : réorganiser la liste ne peut plus retourner une recette sur
+        # un autre tramage, en silence.
+        #
+        # LA RÈGLE QUI LES GOUVERNE TOUTES : « largeur du point » pilote le
+        # DÉFOCUS. Une recette CALIBRÉE doit donc se poser sur le défocus où
+        # les tons du matériau ont été jugés, sinon la courbe ne s'applique
+        # plus -- et l'erreur va comme le CARRÉ du rapport des diamètres.
+        #   Hêtre : 10 tons à défocus 15,00 mm, F2000       -> point 1,16 mm
+        #   MDF   : 34 tons à défocus 12,20 mm, F200 à 2000 -> point 1,00 mm
+        # Le pas ne dépasse pas la largeur BRÛLÉE (0,80 mm mesuré aux deux
+        # régimes), sans quoi il reste du bois nu entre les lignes.
+        #
+        # Gamma ramené à 1,0 partout. Le 1,5 hérité corrigeait des « photos
+        # saturées » -- mais la recette MDF demandait un point de 0,80 mm,
+        # soit un défocus de 8,75 quand son nuancier est mesuré à 12,20 :
+        # 1,56x de densité de puissance en trop. Le gamma compensait le
+        # mauvais régime au lieu de le corriger. Régime remis d'aplomb, un
+        # gamma neutre redevient le bon point de départ -- à confirmer sur
+        # une chute, comme toujours ici.
+        "Portrait Hêtre -- lignes gravées (le plus sûr)": {
+            # Le tramage retenu à l'atelier : le gris est une LARGEUR lue sur
+            # les largeurs brûlées mesurées, sans nuancier, sans bois nu.
+            # F800 = la plus rapide où le trait enfle encore à fond (au-delà
+            # il plafonne : 0,23 mm à F1000, plat dès F1500). Pas 0,30 = le
+            # trait le plus épais, donc le contraste MAXIMAL (67 points).
+            # 120 mm de large : sous 100 mm le grain se voit plus que le sujet.
+            "mode": "enfle", "material": u"Hêtre", "width": 120.0,
+            "pitch": 0.30, "line_feed": 800.0, "line_min": 0.10,
+            "spot_width": 0.0, "gamma": 1.0, "white": 5.0, "invert": False,
+            "power": 1000.0, "dwell_min": 10.0, "dwell_max": 60.0,
+            "dot_spacing": 1.27},
+        "Portrait Hêtre -- lignes calibrées (nuancier)": {
+            # Le régime EXACT des 10 tons Hêtre : défocus 15 (point 1,16) et
+            # F2000. Changer l'un des deux sort de la courbe.
+            "mode": "lignes", "material": u"Hêtre", "width": 120.0,
+            "pitch": 0.80, "spot_width": 1.16, "line_feed": 2000.0,
+            "gamma": 1.0, "white": 8.0, "invert": False, "power": 500.0,
+            "dwell_min": 10.0, "dwell_max": 60.0, "line_min": 0.10,
+            "dot_spacing": 1.27},
+        "Similigravure Hêtre -- trame 45° (sans calibration)": {
+            # Aucune calibration : le gris est une SURFACE. Mais la promesse
+            # « couverture = noirceur » suppose que les lignes se TOUCHENT :
+            # à S1000/F800 le trait brûlé mesure 0,30 mm, d'où le pas 0,30.
+            # Espacement 1,27 mm -> maille k=3, soit 18 niveaux de gris.
+            "mode": "simili", "material": u"Hêtre", "width": 120.0,
+            "pitch": 0.30, "line_feed": 800.0, "power": 1000.0,
+            "dot_spacing": 1.27, "spot_width": 0.0, "gamma": 1.0,
+            "white": 5.0, "invert": False, "dwell_min": 10.0,
+            "dwell_max": 60.0, "line_min": 0.10},
+        "Artistique Hêtre -- gros points Z (vu de loin)": {
+            # Le diamètre porte le gris, via la hauteur du point. Réglages de
+            # la planche gravée le 30/07/2026 : pas 0,75, points 0,30 à 0,60.
+            "mode": "zdots", "material": u"Hêtre", "width": 120.0,
+            "pitch": 0.75, "spot_width": 0.60, "power": 300.0,
+            "dwell_min": 10.0, "dwell_max": 60.0, "gamma": 1.0, "white": 5.0,
+            "invert": False, "line_feed": 800.0, "line_min": 0.10,
+            "dot_spacing": 1.27},
+        "Portrait MDF -- lignes calibrées (nuancier)": {
+            # Point 1,00 mm = défocus 12,20, le régime des 34 tons MDF
+            # (c'était 0,80, donc 8,75 : hors domaine). F600 est dans leur
+            # plage mesurée F200-2000.
+            "mode": "lignes", "material": "MDF", "width": 80.0,
+            "pitch": 0.80, "spot_width": 1.00, "line_feed": 600.0,
+            "gamma": 1.0, "white": 8.0, "invert": False, "power": 500.0,
+            "dwell_min": 10.0, "dwell_max": 60.0, "line_min": 0.10,
+            "dot_spacing": 1.27},
+        "Essai rapide -- points fins (brouillon)": {
+            # Sans calibration ni matériau : pour dégrossir un cadrage ou un
+            # gamma en quelques minutes. Une seule recette de brouillon --
+            # les deux d'avant ne différaient que par la taille.
+            "mode": "dither", "width": 60.0, "pitch": 0.40,
+            "spot_width": 0.30, "line_feed": 1500.0, "gamma": 1.0,
+            "white": 8.0, "invert": False, "power": 350.0,
+            "dwell_min": 10.0, "dwell_max": 60.0, "line_min": 0.10,
+            "dot_spacing": 1.27},
     },
     "kerf": {
         "Petit (10 mm)": {"size": 10.0},

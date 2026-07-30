@@ -1659,7 +1659,13 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path, recadrer_origin
 # "last_<panneau>" du même laser_atelier_config.json).
 def _widget_get(w):
     if isinstance(w, QtWidgets.QComboBox):
-        return w.currentIndex()
+        # Quand l'entrée porte une donnée TEXTUELLE (nom de matériau, clé de
+        # tramage), c'est elle qu'on enregistre : elle survit à une
+        # réorganisation de la liste, un rang non. Les combos sans donnée, et
+        # celles dont la donnée est un dict de réglage (cf. _make_shade_picker,
+        # qu'il ne faut surtout pas recopier dans la config), gardent leur rang.
+        d = w.currentData()
+        return d if isinstance(d, str) else w.currentIndex()
     if isinstance(w, QtWidgets.QCheckBox):
         return w.isChecked()
     if isinstance(w, (QtWidgets.QDoubleSpinBox, QtWidgets.QSpinBox)):
@@ -1672,6 +1678,19 @@ def _widget_get(w):
 def _widget_set(w, v):
     try:
         if isinstance(w, QtWidgets.QComboBox):
+            # Une valeur TEXTUELLE désigne l'entrée par sa donnée (ou, à
+            # défaut, par son libellé) : un préréglage ou un réglage d'objet
+            # survit alors à une réorganisation de la liste, ce qu'un rang ne
+            # fait pas -- il désignerait silencieusement autre chose. Les
+            # configs déjà écrites stockent des rangs, les deux formes restent
+            # donc acceptées. Une chaîne qui ne correspond à rien ne change
+            # rien : le défaut du widget vaut mieux qu'une entrée au hasard.
+            if isinstance(v, str):
+                for i in range(w.count()):
+                    if w.itemData(i) == v or w.itemText(i) == v:
+                        w.setCurrentIndex(i)
+                        break
+                return
             idx = int(v)
             if 0 <= idx < w.count():
                 w.setCurrentIndex(idx)
@@ -6832,6 +6851,12 @@ class TaskPanelHalftone:
             "line_feed": self.spn_line_feed, "gamma": self.spn_gamma,
             "dot_spacing": self.spn_dot_spacing,
             "line_min": self.spn_line_min,
+            # Le MATÉRIAU manquait, et c'est le réglage dont tout le régime
+            # dépend : sans lui une recette « Hêtre » ne pouvait pas
+            # sélectionner le Hêtre, et une session repartait sur le premier
+            # matériau de la liste sans le dire. Stocké par son NOM (la donnée
+            # de l'entrée), donc insensible à l'ordre du nuancier.
+            "material": self.combo_photo_mat,
         }
         _restore_last_values("halftone", self._last_fields)
 
