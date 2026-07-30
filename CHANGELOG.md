@@ -11,6 +11,38 @@ Les versions suivent `MAJEURE.MINEURE.CORRECTIF`. `VERSION` dans
 
 ---
 
+## v2.0.1 — 30 juillet 2026
+
+### Corrigé
+
+**L'estimation de durée était optimiste d'un facteur 3 sur les tramages qui
+modulent la puissance par pixel** — exactement les jobs les plus longs, ceux
+où l'estimation sert à décider si on lance. Deux causes, toutes deux mesurées
+sur un portrait en lignes gravées de 120 × 180 mm annoncé 1h30 et parti pour
+4 h (172 614 blocs G1, longueur médiane 0,30 mm) :
+
+- `ACCEL_MM_S2` valait **800** quand la machine tourne à **400**. Une donnée
+  machine simplement fausse, et d'autant plus coûteuse que le job est fait de
+  segments courts, là où l'accélération fait tout le temps. Elle doit valoir le
+  `MAX_ACCELERATION` du `.ini` LinuxCNC.
+- **Un changement de puissance rompt la course.** L'estimateur fusionnait les
+  segments colinéaires de même avance, supposant que LinuxCNC les enchaîne. Le
+  temps réel par bloc (~76 ms) correspond à un déplacement de 0,30 mm avec
+  ARRÊT AUX DEUX BOUTS à 400 mm/s² (55 ms) : la machine ne relie pas deux
+  segments dont le S diffère, même parfaitement colinéaires.
+
+Estimation de ce portrait : 1h30 → **3h05**, contre ~4 h observées. Le reste
+est du temps de traitement par bloc, non mesuré : aucune constante n'a été
+inventée pour le combler. Les jobs à puissance constante (découpe, marquage,
+remplissage) ne changent pas d'une seconde.
+
+Piste explorée et écartée, mesurée : réduire le nombre de niveaux de S pour
+allonger les segments. De 161 à 8 niveaux, la longueur moyenne ne passe que de
+0,36 à 0,73 mm sur une photo réelle — un segment par pixel est structurel sur
+une image bruitée. Le seul vrai levier reste le **pas de trame**.
+
+---
+
 ## v2.0.0 — 30 juillet 2026
 
 Version de consolidation. Aucune fonctionnalité spectaculaire : une passe sur
@@ -105,10 +137,9 @@ machine, un test qui ne redérive que sa propre formule passe en étant faux.
 
 ### Reste à faire
 
-- Les **19 captures d'écran** du manuel datent du 24 au 28 juillet.
-  `halftone.png` précède les trois tramages ajoutés depuis, et l'import SVG
-  n'a jamais eu la sienne. À régénérer via la session FreeCAD (grab avec
-  `WA_DontShowOnScreen` + autocrop).
+- Les **20 captures** ont été régénérées juste après (`tests/captures.py`, hors
+  session FreeCAD) et l'import SVG, mode livré en v1.78.0 et documenté nulle
+  part, a enfin sa fiche.
 - Les mesures d'établi qui débloquent du code : une bande S1000/F800 sur hêtre
   (seule case manquante du tableau), la Planche 2 en multi-feed (sans quoi le
   modèle feed-aware n'a aucun effet mesurable), et une rampe Z pour obtenir

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -678,8 +678,14 @@ Z_MAX_FEED_MM_MIN = 1500.0            # vitesse max supposée de l'axe Z (mm/min
                                       # uniquement à AVERTIR quand un trait en vague demande
                                       # plus vite (LinuxCNC ralentira le trajet pour respecter
                                       # la vraie limite machine, rien de dangereux)
-ACCEL_MM_S2 = 800.0                   # accélération machine supposée (mm/s2) pour
-                                      # l'estimation de durée -- n'affecte jamais le G-code
+ACCEL_MM_S2 = 400.0                   # accélération machine RÉELLE (mm/s2) pour l'estimation
+                                      # de durée -- n'affecte jamais le G-code. Doit valoir le
+                                      # MAX_ACCELERATION du .ini LinuxCNC : à 800 alors que la
+                                      # PrintNC tourne à 400, toute estimation sortait deux fois
+                                      # trop optimiste, et d'autant plus que le job est fait de
+                                      # segments courts (là où l'accélération fait tout le
+                                      # temps). Relevé le 30/07/2026. À remonter à 600 dans les
+                                      # Préférences une fois le Pi passé à 600.
 Z_WORK_MM = 8.0                       # Z de travail (foyer) proposé par défaut dans les
                                       # panneaux -- propriété machine (focale du nez avec le
                                       # zéro Z sur la surface), une seule valeur à entretenir
@@ -5225,17 +5231,19 @@ def estimate_job_time_seconds(gcode_text, rapid_feed=None, accel=None):
     total_seconds = 0.0
     last_x = last_y = last_z = 0.0
     current_feed = 1000.0
-    # Course en cours : (is_g0, feed, distance cumulée, direction unitaire)
+    puissance = 0.0
+    # Course en cours : (is_g0, feed, S, distance cumulée, direction unitaire)
     run_is_g0 = None
     run_feed = None
+    run_s = None
     run_dist = 0.0
     run_dir = None
 
     def flush_run():
-        nonlocal total_seconds, run_is_g0, run_dist, run_dir, run_feed
+        nonlocal total_seconds, run_is_g0, run_dist, run_dir, run_feed, run_s
         if run_dist > 0:
             total_seconds += run_time(run_dist, rapid_feed if run_is_g0 else run_feed)
-        run_is_g0, run_feed, run_dist, run_dir = None, None, 0.0, None
+        run_is_g0, run_feed, run_s, run_dist, run_dir = None, None, None, 0.0, None
 
     for line in gcode_text.split("\n"):
         line = line.strip()
@@ -5269,6 +5277,8 @@ def estimate_job_time_seconds(gcode_text, rapid_feed=None, accel=None):
                 z = val
             elif token[0] == 'F':
                 current_feed = val
+            elif token[0] == 'S':
+                puissance = val
         dx, dy, dz = x - last_x, y - last_y, z - last_z
         dist = math.sqrt(dx * dx + dy * dy + dz * dz)
         last_x, last_y, last_z = x, y, z
@@ -5276,13 +5286,23 @@ def estimate_job_time_seconds(gcode_text, rapid_feed=None, accel=None):
             continue
         direction = (dx / dist, dy / dist, dz / dist)
         feed = rapid_feed if is_g0 else current_feed
+        # Un CHANGEMENT DE PUISSANCE rompt la course. Mesuré le 30/07/2026
+        # sur un portrait en lignes gravées : 172 614 blocs G1 de 0,30 mm de
+        # médiane, gravés à F800, annoncés 1h30 et partis pour 4 h. Soit
+        # ~76 ms par bloc là où 0,30 mm à F800 en demande 22 -- et 55 ms est
+        # exactement le temps d'un déplacement de 0,30 mm avec ARRÊT AUX DEUX
+        # BOUTS à 400 mm/s². La machine ne relie donc pas deux segments dont
+        # le S diffère, même parfaitement colinéaires. Les supposer enchaînés
+        # rendait l'estimation optimiste d'un facteur 3 sur tout tramage qui
+        # module la puissance par pixel -- exactement les jobs les plus longs,
+        # ceux où l'estimation sert à décider si on lance.
         cont = (run_dir is not None and run_is_g0 == is_g0
-                and (is_g0 or run_feed == feed)
+                and (is_g0 or (run_feed == feed and run_s == puissance))
                 and (run_dir[0] * direction[0] + run_dir[1] * direction[1]
                      + run_dir[2] * direction[2]) > 0.87)
         if not cont:
             flush_run()
-            run_is_g0, run_feed = is_g0, feed
+            run_is_g0, run_feed, run_s = is_g0, feed, puissance
         run_dist += dist
         run_dir = direction
     flush_run()
