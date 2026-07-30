@@ -26,7 +26,7 @@ Ce test tient deux promesses, et la PREMIÈRE est la plus importante :
 """
 import re
 
-from harness import preparer, image_demo
+from harness import preparer, canal_puissance, image_demo
 
 h = preparer()
 core, tp = h.core, h.tp
@@ -66,7 +66,10 @@ def tous_les_gcodes():
 
 
 # --- 1. Mode direct : IDENTIQUE AU BIT ----------------------------------
-assert core.POWER_M67 is False, "le mode S direct doit rester le défaut"
+# Le harnais force le canal DIRECT, quoi que dise la config de la machine
+# (cf. harness.canal_puissance) : sinon cocher « Puissance par M67 » dans les
+# Préférences ferait échouer ce test et deux autres, comme le 30/07/2026.
+assert core.POWER_M67 is False, "le harnais doit forcer le canal direct"
 direct = tous_les_gcodes()
 assert len(direct) >= 8, sorted(direct)
 for nom, g in sorted(direct.items()):
@@ -89,11 +92,7 @@ print("2. cmd_power_suffix rend « S<v> {} » et le préfixe est vide : le texte
       "émis est inchangé OK".format(core.SPINDLE_SELECT))
 
 # --- 3. Mode M67 : plus aucun S sur un mouvement ------------------------
-core.POWER_M67 = True
-core.CMD_ARM = core._CMD_ARM_M67
-core.CMD_BEAM_ON = core._CMD_BEAM_ON_M67
-core.CMD_BEAM_OFF = core._CMD_BEAM_OFF_M67
-core.CMD_DISARM = core._CMD_DISARM_M67
+canal_puissance(core, m67=True)
 try:
     m67 = tous_les_gcodes()
     assert set(m67) == set(direct), (sorted(m67), sorted(direct))
@@ -144,11 +143,7 @@ try:
     print("5. lignes gravées {} M67 contre {} pour la trame binaire : le canal "
           "suit bien la modulation OK".format(n_enfle, n_am))
 finally:
-    core.POWER_M67 = False
-    core.CMD_ARM = core._CMD_ARM_LINUXCNC
-    core.CMD_BEAM_ON = core._CMD_BEAM_ON_S
-    core.CMD_BEAM_OFF = core._CMD_BEAM_OFF_S
-    core.CMD_DISARM = core._CMD_DISARM_S
+    canal_puissance(core, m67=False)
 
 # --- 6. GRBL ne connaît pas M67 : le réglage doit être ignoré -----------
 cfg = core.load_config()

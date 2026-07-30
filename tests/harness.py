@@ -61,9 +61,45 @@ def preparer(config_reelle=True):
     core.CONFIG_FILE = copie
     core._WORKBENCH_DIR = bac
 
+    # Le CANAL DE PUISSANCE part toujours de l'état connu : « S » direct.
+    #
+    # `laser_core` applique les réglages utilisateur à l'import, donc depuis la
+    # VRAIE config -- avant que la redirection ci-dessus n'ait lieu. C'est sans
+    # conséquence pour les données mesurées (nuancier, largeurs brûlées), que
+    # les tests veulent justement lire. Mais « Puissance par M67 » change le
+    # FORMAT du G-code émis : le jour où Christophe a coché la case dans ses
+    # Préférences (30/07/2026), trois suites sont passées au rouge d'un coup,
+    # à chercher des mots `S` qui n'existaient plus. Un test ne doit pas
+    # dépendre d'une case cochée sur la machine.
+    #
+    # La ligne est tirée là, et pas ailleurs : on neutralise ce qui change la
+    # FORME de la sortie, jamais un paramètre physique (l'accélération reste
+    # celle de la machine -- un test qui juge une durée doit la juger sur la
+    # vraie valeur).
+    canal_puissance(core, m67=False)
+
     import task_panels as tp
     return types.SimpleNamespace(core=core, tp=tp, app=app, bac=bac,
                                  FreeCAD=FreeCAD, FreeCADGui=FreeCADGui)
+
+
+def canal_puissance(core, m67):
+    """Bascule le canal de puissance : `M67` synchronisé, ou mot `S` direct.
+
+    Les constantes de commande en découlent toutes -- les changer une par une
+    dans un test, c'est en oublier une. `_apply_settings_config` fait le même
+    travail depuis la config ; ceci le fait sans y toucher."""
+    core.POWER_M67 = bool(m67)
+    if m67:
+        core.CMD_ARM = core._CMD_ARM_M67
+        core.CMD_BEAM_ON = core._CMD_BEAM_ON_M67
+        core.CMD_BEAM_OFF = core._CMD_BEAM_OFF_M67
+        core.CMD_DISARM = core._CMD_DISARM_M67
+    else:
+        core.CMD_ARM = core._CMD_ARM_LINUXCNC
+        core.CMD_BEAM_ON = core._CMD_BEAM_ON_S
+        core.CMD_BEAM_OFF = core._CMD_BEAM_OFF_S
+        core.CMD_DISARM = core._CMD_DISARM_S
 
 
 # --- Utilitaires partagés --------------------------------------------------
