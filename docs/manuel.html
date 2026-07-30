@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.96.4</span><br>
+      <span class="ver">Version 1.97.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.96.4</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.97.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -604,6 +604,7 @@
     <h4>Trajet des tramages à points</h4>
     <p>Dans les tramages à points, chaque point est gravé par un <b>micro-trait</b> — jamais par une pause faisceau allumé, qui ne graverait rien sur cette machine. Les points sont parcourus en serpentin, une ligne sur deux inversée, pour économiser du déplacement.</p>
     <p>Encore faut-il que le micro-trait lui-même suive ce sens. Gravé toujours de gauche à droite, il obligeait la tête, sur une ligne parcourue vers la gauche, à se placer avant le point, brûler vers la droite, puis reculer au-delà du point suivant : un aller-retour par point. Sur 2400 points, corriger le sens ramène le déplacement à vide de 955 à 787&nbsp;mm — <b>18&nbsp;% de moins</b>, pour une gravure rigoureusement identique.</p>
+    <p>Ce correctif avait été appliqué à la trame de points et à la mire, mais <b>pas au tramage «&nbsp;Gros points&nbsp;Z&nbsp;»</b>, qui a gardé le défaut un mois de plus. Rien ne pouvait le signaler&nbsp;: le G-code était valide et l'image gravée juste — seul le <em>bruit</em> de la machine trahissait le va-et-vient, et c'est ainsi qu'il a été retrouvé. Sur un portrait de 134&nbsp;×&nbsp;201&nbsp;points, cela faisait <b>26&nbsp;600 changements de sens</b> et 5,3&nbsp;mètres de déplacement inutile. Un test interroge maintenant les <b>sept</b> tramages, et non celui qu'on vient de réparer&nbsp;: il compte les inversions de sens à l'intérieur d'une même ligne, et la réponse attendue est zéro.</p>
 
     <h4>La noirceur ne dépend pas que de l'énergie&nbsp;: la vitesse compte aussi</h4>
     <p>Expérience faite&nbsp;: quatre bandes gravées à énergie par millimètre <em>rigoureusement identique</em> — à F650, F1000, F1500 et F2000 — ne rendent pas la même chose. <b>Plus c'est lent, plus c'est foncé.</b> La bande à F650 saturait au noir dès le deuxième palier là où celle à F2000 tenait jusqu'au sixième.</p>
@@ -627,6 +628,16 @@
     </table>
     <p>Mesures relevées sur hêtre. Au foyer, la largeur brûlée n'est pas la taille du point&nbsp;: c'est <b>l'endroit où le profil du faisceau franchit le seuil de brûlure du bois</b> — et ce point-là se déplace beaucoup quand la puissance monte. D'où le 3×, là où le défocus plafonne à 1,4×.</p>
     <p>Deuxième fait mesuré&nbsp;: la vitesse ne change rien tant qu'on reste dessous — 0,10 à 0,30&nbsp;mm à F200, F400 <em>et</em> F800, autant prendre la plus rapide — mais à partir de <b>F1500 la largeur est plate</b> à 0,10&nbsp;mm quelle que soit la puissance. Au-delà le trait n'enfle plus du tout, le mode n'a plus d'objet, et le panneau le dit franchement plutôt que de graver des lignes uniformes.</p>
+    <p>Entre les deux, rien n'est plat&nbsp;: le haut de la plage <b>s'effondre progressivement</b>, et c'est le piège de ce mode. Le trait le plus épais tombe à 0,23&nbsp;mm à F1000 et à 0,17&nbsp;mm à F1200, quand le plus fin ne bouge pas. Le premier portrait gravé dans ce tramage l'a été à <b>F1000&nbsp;au pas 0,30</b>&nbsp;: 43 points de contraste au lieu de 67, soit un tiers de la gamme perdu — et le résultat, sans surprise, «&nbsp;pas concluant du tout&nbsp;».</p>
+    <table class="reglages">
+      <tr><th>Vitesse</th><th>Trait</th><th>Rapport</th><th>Contraste au pas 0,30</th></tr>
+      <tr><td><b>F200 à F800</b></td><td>0,10 → 0,30&nbsp;mm</td><td><b>3,0×</b></td><td><b>67 points</b></td></tr>
+      <tr><td>F1000</td><td>0,10 → 0,23&nbsp;mm</td><td>2,3×</td><td>43 points</td></tr>
+      <tr><td>F1200</td><td>0,10 → 0,17&nbsp;mm</td><td>1,7×</td><td>24 points</td></tr>
+      <tr><td>F1500 et au-delà</td><td>0,10&nbsp;mm, plat</td><td>1,0×</td><td>aucun</td></tr>
+    </table>
+    <p>Le panneau ne refusait alors rien — la plage n'était pas plate — et son conseil visait <em>le pas</em>&nbsp;: «&nbsp;contraste maximal au pas 0,23&nbsp;mm&nbsp;». Conseil exact et pourtant trompeur, car il se calcule sur la plage mesurée <b>à la vitesse demandée</b>&nbsp;: le suivre aurait aligné le pas sur une plage déjà amputée, alors que le pas était bon et qu'il suffisait de ralentir. La règle est donc <b>la vitesse d'abord, le pas ensuite</b>&nbsp;: au-delà de la plus rapide utile, le panneau nomme cette vitesse et chiffre ce qu'on récupérerait, avant tout conseil sur le pas.</p>
+    <p>Troisième fait, celui-là relevé à l'œil et non au pied à coulisse&nbsp;: ces tramages ont besoin de <b>place</b>. Le gris y est rendu par la forme d'une marque visible à l'œil nu — épaisseur du trait, diamètre du point — et il faut assez de marques en travers du sujet pour que le motif s'effface derrière lui. Le portrait raté mesurait 80&nbsp;mm de large&nbsp;: le grain se voyait plus que le visage. <b>Viser 100&nbsp;mm au minimum</b>, et le panneau le rappelle sous la grille pour les trois tramages concernés (gros points&nbsp;Z, similigravure, lignes gravées). Ce n'est pas une mesure, c'est un jugement d'atelier&nbsp;— mais il vient d'une planche gravée.</p>
     <p>Un piège à connaître si ce code est repris&nbsp;: la table des largeurs brûlées <b>borne aux mesures</b>. Sous la plus faible puissance relevée, elle renvoie la largeur du bord — si bien que S0 semble donner un trait de 0,10&nbsp;mm alors qu'il ne grave rien. Un tramage qui promet une ligne jamais coupée ne doit donc jamais descendre sous la plage mesurée&nbsp;; les niveaux partent de la plus faible puissance <em>réellement mesurée</em>.</p>
 
     <h4>Similigravure&nbsp;: quand le gris cesse de dépendre du bois</h4>
@@ -653,7 +664,7 @@
 
     <h4>Objectif «&nbsp;Largeurs brûlées — grille en défocus&nbsp;»</h4>
     <p>C'est celui qui débloque la <strong>gravure photo calibrée</strong> et le «&nbsp;ton sur mesure&nbsp;». Ces deux fonctions s'appuient sur une courbe noirceur → énergie qui n'accepte QUE les tons réunissant trois choses&nbsp;: un défocus, une <b>noirceur jugée</b> et une <b>largeur mesurée</b>. Un nuancier riche en noirceurs mais sans largeurs ne leur sert à rien — c'est le piège classique, et il est silencieux.</p>
-    <p>L'objectif règle la grille à <b>défocus 15<p>L'objectif règle la grille à <b>défocus 15&nbsp;mm</b> avec un espacement de hachures de <b>3&nbsp;mm</b>.nbsp;mm</b>, en <b>vitesses lentes (F200 à F2000)</b>, avec un espacement de hachures de <b>3<p>L'objectif règle la grille à <b>défocus 15&nbsp;mm</b> avec un espacement de hachures de <b>3&nbsp;mm</b>.nbsp;mm</b>. Ce chiffre n'est pas arbitraire&nbsp;: à ce défocus le point fait environ 1,15&nbsp;mm, il reste donc près de 2&nbsp;mm de bois nu entre deux traits, et chaque trait se mesure seul au pied à coulisse. L'objectif voisin, «&nbsp;grille au foyer&nbsp;», ne convient pas ici&nbsp;: une largeur mesurée au foyer n'entre pas dans la courbe.</p>
+    <p>L'objectif règle la grille à <b>défocus 15&nbsp;mm</b>, en <b>vitesses lentes (F200 à F2000)</b>, avec un espacement de hachures de <b>3&nbsp;mm</b>. Ce chiffre n'est pas arbitraire&nbsp;: à ce défocus le point fait environ 1,15&nbsp;mm, il reste donc près de 2&nbsp;mm de bois nu entre deux traits, et chaque trait se mesure seul au pied à coulisse. L'objectif voisin, «&nbsp;grille au foyer&nbsp;», ne convient pas ici&nbsp;: une largeur mesurée au foyer n'entre pas dans la courbe.</p>
     <p>Le défocus s'applique aux <b>cellules seules</b>, via le champ «&nbsp;Défocus des cellules&nbsp;». Les <b>étiquettes d'axe et le cadre restent au foyer</b>, donc nets et lisibles. Écarter tout le job en montant la «&nbsp;Hauteur (Z) de test&nbsp;» défocaliserait aussi les chiffres, qui baveraient — et cette hauteur, mémorisée d'une session à l'autre, resterait ensuite collée dans tous les jobs suivants. Choisir un objectif remet toujours la hauteur de test au foyer.</p>
     <p>Pourquoi si lent&nbsp;? En défocus, le point est environ quatre fois plus large qu'au foyer, donc la densité de puissance chute d'autant&nbsp;: un trait <em>isolé</em> cesse de marquer bien avant les vitesses où vivent les tons clairs. Une première version de cet objectif visait F1000 à F4000 — la plage des tons du nuancier — et 18 cases sur 25 sont sorties vierges sur du hêtre. Conséquence à accepter&nbsp;: le haut de l'échelle de noirceur restera peut-être sans largeur mesurable. C'est une limite physique, pas un réglage à forcer&nbsp;; mesurez ce qui est lisible.</p>
     <p><b>Gravez la même grille deux fois</b>, en ne changeant que l'espacement des hachures&nbsp;: à 3&nbsp;mm pour mesurer la largeur d'un trait, puis à 1&nbsp;mm pour juger la noirceur en aplat. Un aplat ne se juge pas sur des traits espacés, et une largeur ne se mesure pas sur un aplat. Reportez ensuite chaque case dans <b>Nuancier → «&nbsp;+ Ajouter un ton&nbsp;»</b> avec ses deux mesures. Une dizaine de cases bien réparties du clair au foncé suffisent à faire repartir la courbe.</p>
@@ -856,7 +867,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.96.4 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.97.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

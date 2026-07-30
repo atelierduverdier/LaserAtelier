@@ -103,4 +103,62 @@ assert "contraste" in re.sub(r"<[^>]+>", "", p.lbl_regime.text()), \
     p.lbl_regime.text()
 print("7. l'information sur le trait n'est dite QUE sous « Trait & matière » OK")
 
+# --- 8. Trop vite : c'est la VITESSE qu'il faut corriger, pas le pas ----
+# Le conseil « resserre le pas » se calcule sur la plage MESURÉE À CETTE
+# VITESSE. Au-delà de la plus rapide utile cette plage est déjà amputée :
+# suivre le conseil aligne le pas sur l'amputation au lieu de la réparer.
+# Vécu le 30/07/2026 -- premier portrait gravé, F1000 au pas 0,30, panneau
+# conseillant le pas 0,23, résultat « pas concluant du tout ».
+_, t1000 = verdict(0.30, 1000.0)
+assert "F800" in t1000, ("le verdict doit nommer la vitesse à retrouver",
+                         t1000)
+assert "Contraste maximal" not in t1000, (
+    "il conseille encore de resserrer le pas sur une plage amputée", t1000)
+assert "0.10 → 0.23 mm à F1000" in t1000, ("le constat doit rester exact : "
+                                           "c'est bien ce qu'on obtient", t1000)
+assert "0.30 mm" in t1000, ("le trait qu'on récupérerait n'est pas chiffré",
+                            t1000)
+assert "67 points" in t1000, ("le gain n'est pas chiffré", t1000)
+assert "#c62828" in p.lbl_regime.text(), ("perdre un tiers du contraste "
+                                          "mérite le rouge", p.lbl_regime.text())
+print("8. F1000 au pas 0.30 : le verdict nomme F800 et 67 points, et ne "
+      "conseille plus le pas 0.23 OK")
+
+# --- 9. Pas de faux positif quand la vitesse est bonne ------------------
+_, t800 = verdict(0.30, 800.0)
+assert "la plus rapide" not in t800, ("conseil de vitesse alors qu'on y est",
+                                      t800)
+# Et là où ralentir ne rapporte VRAIMENT rien, il se tait aussi : au pas
+# 0,20 les noirs saturent déjà à F1000 comme à F800.
+_, t_fin = verdict(0.20, 1000.0)
+assert "la plus rapide" not in t_fin, ("conseil de ralentir sans gain", t_fin)
+print("9. à F800, et au pas fin où ralentir ne rapporte rien, le conseil de "
+      "vitesse se tait OK")
+
+# --- 10. La TAILLE gravée : le grain a besoin de place ------------------
+# Conclusion d'atelier du 30/07/2026, après le portrait raté : « je pense
+# que pour ces modes il faut une grande image, 100 de largeur minimum ».
+p.edt_image.setText("/home/christophe/Images/Moi-laser/moi_gravure_contraste.png")
+p.spn_pitch.setValue(0.30)
+
+
+def note_taille(idx, largeur):
+    p.combo_mode.setCurrentIndex(idx)
+    p.spn_width.setValue(largeur)
+    p._update_grid_info()
+    return texte(p.lbl_grid)
+
+
+GRAIN = (4, 5, 6)
+for idx in GRAIN:
+    petit = note_taille(idx, 80.0)
+    grand = note_taille(idx, 140.0)
+    assert "100 mm au minimum" in petit, (idx, petit)
+    assert "100 mm au minimum" not in grand, (idx, grand)
+# Les tramages en balayage continu ne portent pas ce grain-là.
+for idx in (0, 1, 2, 3):
+    assert "100 mm au minimum" not in note_taille(idx, 80.0), idx
+print("10. sous 100 mm de large, les 3 tramages à grain le disent ; les 4 "
+      "autres se taisent OK")
+
 print("\nTOUS LES TESTS contraste_pas PASSENT")

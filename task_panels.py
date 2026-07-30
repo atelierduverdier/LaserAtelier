@@ -6919,6 +6919,19 @@ class TaskPanelHalftone:
                       "{} niveaux de gris.".format(
                           reel, (cols - 1) * pitch / reel if reel else 0,
                           2 * k * k))
+        if self.combo_mode.currentIndex() in (4, 5, 6):
+            # Ces trois tramages rendent le gris par la FORME d'une marque
+            # visible à l'oeil nu (diamètre, point de trame, épaisseur du
+            # trait). Il faut donc assez de marques en travers de l'image
+            # pour que le motif s'effface derrière le sujet -- une affaire
+            # de TAILLE gravée, que le pas seul ne dit pas. Constaté à
+            # l'atelier le 30/07/2026 : un portrait en lignes gravées sur
+            # 80 mm de large, le grain se voyait plus que le visage.
+            large = (cols - 1) * pitch
+            if large < 100.0:
+                texte += (" Ce tramage a besoin de place : à {:.0f} mm de "
+                          "large le grain se voit plus que le sujet, viser "
+                          "<b>100 mm au minimum</b>.".format(large))
         # Tout ce qui concerne le TRAIT (largeurs mesurées, recouvrement,
         # trait qui n'enfle plus) est dit une seule fois, sous « Trait &
         # matière » -- cf. _verdict_au_foyer. Ici on s'en tient à la grille.
@@ -7488,6 +7501,27 @@ class TaskPanelHalftone:
                 "{:.0f} → {:.0f} %, contraste <b>{:.0f} points</b>.".format(
                     w_min, w_max, feed, 100.0 * bas, 100.0 * haut,
                     100.0 * ecart))
+            # LA VITESSE D'ABORD, LE PAS ENSUITE. Au-delà de la plus rapide
+            # utile, le trait cesse d'enfler jusqu'au bout : c'est toute la
+            # plage qui rétrécit. Conseiller alors de resserrer le pas
+            # revient à s'aligner sur une plage déjà amputée -- alors qu'il
+            # suffit de ralentir, et le pas était bon. Relevé sur la
+            # première photo gravée dans ce tramage (30/07/2026) : F1000 au
+            # pas 0,30 mm, trait plafonné à 0,23 au lieu de 0,30, et le
+            # panneau conseillait le pas 0,23. 43 points au lieu de 67.
+            rapide = core.swell_max_feed(mat)
+            lente = core.burn_width_range(mat, rapide) if rapide else None
+            if lente and feed > rapide + 1e-9:
+                w_lent = max(self.spn_line_min.value(), lente[0])
+                ecart_lent = min(1.0, lente[1] / pas) - w_lent / pas
+                if ecart_lent > ecart + 0.01:
+                    msgs.append(
+                        "À <b>F{:.0f}</b> — la plus rapide où le trait enfle "
+                        "encore à fond — il irait jusqu'à {:.2f} mm : "
+                        "<b>{:.0f} points</b> de contraste au même pas. "
+                        "Ralentir rapporte plus que resserrer le pas.".format(
+                            rapide, lente[1], 100.0 * ecart_lent))
+                    return False, False
             if abs(pas - w_max) > 0.005:
                 conseil = ("Contraste maximal ({:.0f} points) au pas "
                            "<b>{:.2f} mm</b>, celui qui vaut le trait le plus "

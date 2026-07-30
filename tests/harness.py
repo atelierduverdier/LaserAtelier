@@ -99,6 +99,37 @@ def trajet_a_vide(gcode):
     return sum(d for d, _x, _y, grave in mouvements(gcode) if not grave)
 
 
+def demi_tours_x(gcode):
+    """Nombre de CHANGEMENTS DE SENS en X à l'intérieur d'une même ligne
+    (Y constant).
+
+    Un tramage à points pose un micro-trait par case. S'il le grave
+    toujours vers la droite, la machine doit RECULER avant chaque point des
+    lignes parcourues vers la gauche : un aller-retour par point, des
+    dizaines de milliers de fois. Rien dans le G-code ne le signale -- ni
+    erreur, ni avertissement, et le résultat gravé est le même. Ce qui
+    change, c'est ce qu'on entend à l'atelier. Il faut donc compter les
+    inversions : sur une image balayée, la réponse attendue est ZÉRO.
+    """
+    n = 0
+    x = y = sens = None
+    for l in gcode.split("\n"):
+        mx = re.search(r"\bX(-?\d+\.?\d*)", l)
+        my = re.search(r"\bY(-?\d+\.?\d*)", l)
+        nx = float(mx.group(1)) if mx else x
+        ny = float(my.group(1)) if my else y
+        if l.startswith(("G0 ", "G1 ")) and None not in (x, y, nx, ny):
+            if abs(ny - y) > 1e-9:
+                sens = None            # changement de ligne : on repart à zéro
+            elif abs(nx - x) > 1e-9:
+                s = 1 if nx > x else -1
+                if sens is not None and s != sens:
+                    n += 1
+                sens = s
+        x, y = nx, ny
+    return n
+
+
 def hauteurs_z(gcode):
     """Ensemble des Z rencontrés."""
     return {float(v) for v in re.findall(r"Z(-?\d+\.?\d*)", gcode)}

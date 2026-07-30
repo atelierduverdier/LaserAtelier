@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.96.4"
+VERSION = "1.97.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7930,16 +7930,21 @@ def generate_gcode_photo_zdots(darkness_rows, pitch, z_focus, power,
         lines.append(pre_gcode.strip())
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     sel = SPINDLE_SELECT
+    # Micro-trait ORIENTÉ dans le sens de la ligne (cf. micro_trait_oriente) :
+    # graver toujours vers la droite obligeait la machine à reculer avant
+    # chaque point des lignes parcourues vers la gauche -- un aller-retour
+    # par point, des dizaines de milliers de fois.
     seg = max(0.05, min(0.3 * pitch, 0.2))
     halfs = seg / 2.0
     first = True
-    for x, y, z, dw in dots:
-        lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(x - halfs, y, z_safe if first else z))
+    for i, (x, y, z, dw) in enumerate(dots):
+        xa, xb = micro_trait_oriente(dots, i, halfs)
+        lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(xa, y, z_safe if first else z))
         if first:
             lines.append("G0 Z{:.4f}".format(z))
             first = False
         f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
-        lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(x + halfs, y, f_dot, power, sel))
+        lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(xb, y, f_dot, power, sel))
         lines.append(CMD_BEAM_OFF.format(sel=sel))
     lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
