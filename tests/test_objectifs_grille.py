@@ -219,4 +219,32 @@ assert float(t.get("z_offset", 0) or 0) > 0 and float(t.get("width", 0) or 0) > 
 print("9. le ton porte le couple défocus>0 ET largeur>0 qu'exige la courbe "
       "noirceur → énergie OK")
 
+# --- 10. Le parcours ★ nomme des objectifs qui EXISTENT ----------------
+# Le parcours de première calibration (CALIBRATION_JOURNEY) est ce que
+# suit quelqu'un qui n'a rien de mesuré : il alimente le Guide rapide ET
+# le bandeau ★ en tête de chaque panneau de calibration. Il cite les
+# objectifs par leur libellé -- donc en toutes lettres, sans que rien ne
+# vérifie qu'ils existent. Ajouter un objectif sans l'y inscrire, ou en
+# renommer un, laisse un parcours qui envoie dans le vide, en silence.
+libelles = {r["label"] for _cle, r in p._recipes}
+cites = []
+for etape in core.CALIBRATION_JOURNEY:
+    for action in etape["action"]:
+        for lib in libelles:
+            if lib in action:
+                cites.append(lib)
+assert cites, "le parcours ne cite plus aucun objectif"
+# Tout objectif cité doit exister : c'est garanti par construction
+# ci-dessus. L'inverse est le vrai contrôle -- les objectifs de MESURE
+# doivent tous être dans le parcours, sinon on grave sans savoir pourquoi.
+mesure = {"largeurs_foyer", "largeurs_defocus", "noirceur_balayage"}
+manquants = [cle for cle in mesure
+             if dict(p._recipes)[cle]["label"] not in cites]
+assert not manquants, (
+    "des objectifs de mesure ne sont dans AUCUNE étape du parcours : un "
+    "atelier qui suit le guide à la lettre finira sans ces données",
+    manquants)
+print("10. le parcours ★ cite les {} objectifs de mesure, tous existants "
+      "OK".format(len(mesure)))
+
 print("\nTOUS LES TESTS objectifs_grille PASSENT")

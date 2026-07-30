@@ -18,7 +18,7 @@ git clone <repo> ~/.local/share/FreeCAD/<version>/Mod/LaserAtelier   # e.g. v1-1
 ```
 
 No build system, no linter, no CI. FreeCAD loads the `.py` files at startup; a **restart**
-picks up changes. Version at time of writing: **2.5.0** (`VERSION` in `laser_core.py`).
+picks up changes. Version at time of writing: **2.5.1** (`VERSION` in `laser_core.py`).
 
 ## Non-negotiables
 

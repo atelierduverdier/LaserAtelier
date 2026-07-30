@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.5.0"
+VERSION = "2.5.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4462,18 +4462,30 @@ CALIBRATION_JOURNEY = [
         # se retrouve avec une photo calibrée et un « ton sur mesure » muets,
         # sans que rien ne le signale -- c'est arrivé (83 tons de hêtre, 6
         # points de courbe tous à 100 %).
+        # TROIS planches, et l'ordre compte. La version d'avant en demandait
+        # deux et faisait juger la noirceur sur la planche en DÉFOCUS -- or
+        # celle-ci grave des traits ISOLÉS espacés de 3 mm : on n'y juge pas
+        # un aplat, et la largeur qu'on y mesure est celle d'un trait, pas
+        # le pas d'un balayage. Un atelier qui suivait le parcours à la
+        # lettre finissait donc sans un seul ton exploitable par
+        # `darkness_fluence_curve`, sans que rien ne le signale.
         "action": [
             "choisis l'Objectif « Largeurs brûlées — grille au foyer » : ces "
-            "largeurs-là calent le remplissage et le bouton « Auto (½ point) » "
-            "des Hachures",
-            "puis l'Objectif « Largeurs brûlées — grille en défocus », en "
-            "relevant cette fois la NOIRCEUR de chaque case en plus de sa "
-            "largeur : ce couple-là, et lui seul, fait marcher la gravure "
-            "photo calibrée et le « ton sur mesure »",
+            "largeurs-là calent le remplissage, le bouton « Auto (½ point) » "
+            "des Hachures et le tramage « Lignes gravées »",
+            "puis l'Objectif « Largeurs brûlées — grille en défocus » : les "
+            "mêmes mesures au pied à coulisse, bec remonté -- c'est ce "
+            "niveau qui cale un remplissage large",
+            "puis l'Objectif « Noirceur — bande en balayage (photo "
+            "calibrée) » : là on ne mesure plus, on JUGE la noirceur de "
+            "chaque aplat. C'est ce "
+            "couple noirceur + défocus + largeur qui, seul, fait marcher la "
+            "gravure photo calibrée et le « ton sur mesure »",
         ],
-        "reporter": "« ② Entrer les mesures » ci-dessous pour les largeurs, "
-                    "mode Nuancier matériaux pour les tons -- en leur donnant "
-                    "leur largeur ET leur noirceur (pas dans les Préférences)",
+        "reporter": "« ② Entrer les mesures » ci-dessous -- les largeurs dans "
+                    "les grilles, les noirceurs dans « Noirceur jugée à "
+                    "l'œil » juste en dessous (le mode Nuancier reste "
+                    "l'endroit pour tout revoir et corriger)",
     },
     {
         "n": 4,
