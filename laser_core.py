@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2580,7 +2580,8 @@ def build_test_grid_cells(mode, power_min, power_max, n_power,
                            cell_size, gap,
                            fill_type="paralleles",
                            hatch_spacing=0.2, hatch_angle=45.0,
-                           fill_inset=0.0):
+                           fill_inset=0.0,
+                           powers=None, feeds=None):
     """Construit la grille de cellules de test. mode: "gravure" (contour
     rempli, réutilise generate_hatch_edges sans rien changer -- 3 types
     de remplissage possibles comme le mode Hachures 2D : "paralleles",
@@ -2599,17 +2600,38 @@ def build_test_grid_cells(mode, power_min, power_max, n_power,
     du carré / du cadre. N'affecte QUE le remplissage : le contour
     (border_edges, et le tracé de découpe) reste le carré plein.
 
+    `powers` / `feeds` : listes EXPLICITES de paliers, qui remplacent alors
+    le triplet min/max/nombre correspondant. Les paliers calculés sont
+    répartis LINÉAIREMENT, ce qui ne sait pas produire une progression
+    géométrique -- or les colonnes de saisie des largeurs brûlées en sont
+    une (200, 400, 800, 1500, 3000). Sans ces listes, l'objectif « Largeurs
+    brûlées — grille au foyer » gravait 400/1800/3200/4600/6000 : quatre
+    vitesses sur cinq n'avaient AUCUNE colonne où être saisies, et la
+    planche était donc inexploitable par le chemin prévu pour elle.
+
     Renvoie une liste de dicts :
     {row, col, power, feed, x0, y0, edges, border_edges}."""
+    if powers:
+        powers = [float(p) for p in powers]
+        n_power = len(powers)
+    if feeds:
+        feeds = [float(f) for f in feeds]
+        n_feed = len(feeds)
     n_power = max(1, int(n_power))
     n_feed = max(1, int(n_feed))
     step = cell_size + gap
 
     cells = []
     for row in range(n_feed):
-        feed = feed_min if n_feed == 1 else feed_min + (feed_max - feed_min) * row / float(n_feed - 1)
+        if feeds:
+            feed = feeds[row]
+        else:
+            feed = feed_min if n_feed == 1 else feed_min + (feed_max - feed_min) * row / float(n_feed - 1)
         for col in range(n_power):
-            power = power_min if n_power == 1 else power_min + (power_max - power_min) * col / float(n_power - 1)
+            if powers:
+                power = powers[col]
+            else:
+                power = power_min if n_power == 1 else power_min + (power_max - power_min) * col / float(n_power - 1)
             x0 = col * step
             y0 = row * step
 

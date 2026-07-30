@@ -8133,15 +8133,38 @@ class TaskPanelTestGrid:
                 "note": "16 cases du clair (S200/F4000 ≈ 5 %) au foncé "
                         "(S600/F1000 ≈ 74 %, raccord avec le nuancier mesuré). "
                         "Point élargi ≈ 1 mm : complète le bas du nuancier."}),
+            # Les deux objectifs « largeurs » gravent EXACTEMENT les lignes et
+            # colonnes de la grille de saisie ② -- listes tirées des mêmes
+            # constantes, pour que l'alignement soit structurel et non une
+            # coïncidence à entretenir. Il ne l'était pas : cet objectif-ci
+            # gravait 400/1800/3200/4600/6000 quand ② n'accepte que
+            # 200/400/800/1500/3000, soit quatre vitesses sur cinq sans
+            # aucune case où être saisies -- et F6000 ne marque plus depuis
+            # le changement de lentille du 27 juil. 2026.
             ("largeurs_foyer", {
                 "label": "Largeurs brûlées — grille au foyer",
-                "mode": 0, "power_min": 200, "power_max": 1000, "power_steps": 5,
-                "feed_min": 400, "feed_max": 6000, "feed_steps": 5,
-                "filltype": 0, "hatch_spacing": 0.2, "border": True,
-                "note": "Traits nets au foyer sur toute la plage : mesure la "
-                        "LARGEUR de chaque case au pied à coulisse (section ②)."}),
+                "mode": 0,
+                "powers": sorted(_MesuresPlanchesControleur.POWERS),
+                "feeds": list(_MesuresPlanchesControleur.FEEDS_FOCUS),
+                # 2 mm entre traits, pour des traits ISOLÉS mesurables un
+                # par un. À 0,20 mm -- la valeur d'avant -- les cases lentes
+                # et puissantes sortaient en APLAT, où la largeur d'un trait
+                # ne se mesure pas, alors que c'est précisément ce que la
+                # note demande de faire.
+                # Pourquoi 2 et pas 1 : le hêtre et le MDF plafonnent à
+                # 0,30/0,34 mm au foyer, mais le SAPIN est mesuré à 1,00 mm
+                # (S1000/F400) -- un résineux brûle bien plus large. Un
+                # espacement calé sur les feuillus aurait rendu la planche
+                # illisible sur résineux, en silence.
+                "filltype": 0, "hatch_spacing": 2.0, "cell_size": 16.0,
+                "border": True,
+                "note": "Traits ISOLÉS au foyer, aux puissances et vitesses "
+                        "exactes de la grille de saisie ② : mesure la LARGEUR "
+                        "d'un trait au pied à coulisse, case par case."}),
             ("largeurs_defocus", {
                 "label": "Largeurs brûlées — grille en défocus",
+                "powers": sorted(_MesuresPlanchesControleur.POWERS),
+                "feeds": list(_MesuresPlanchesControleur.FEEDS_DEFOCUS),
                 # Vitesses LENTES, et c'est tout l'enjeu : en défocus le point
                 # est ~4x plus large qu'au foyer, donc la densité de puissance
                 # chute d'autant et un trait ISOLÉ ne marque plus au-delà de
@@ -8149,8 +8172,12 @@ class TaskPanelTestGrid:
                 # tons du nuancier) : 18 cases sur 25 sont sorties vierges sur
                 # hêtre. Les largeurs déjà mesurées de l'atelier le disaient
                 # d'ailleurs -- toutes entre F200 et F800.
-                "mode": 0, "power_min": 400, "power_max": 1000, "power_steps": 5,
-                "feed_min": 200, "feed_max": 2000, "feed_steps": 5,
+                #
+                # Les paliers viennent maintenant des constantes de ② : la
+                # version d'avant gravait S400/550/700/850/1000 et
+                # F200/650/1100/1550/2000, dont trois puissances et quatre
+                # vitesses n'avaient aucune case de saisie.
+                "mode": 0,
                 "filltype": 0, "hatch_spacing": 3.0, "border": True,
                 "cell_defocus": 15.0, "cell_size": 16.0,
                 "note": "Traits ISOLÉS en défocus 15 mm : l'espacement de 3 mm "
@@ -8315,6 +8342,21 @@ class TaskPanelTestGrid:
             "régulièrement entre min et max. 1 = une seule ligne, à la\n"
             "valeur min.")
         form.addRow("Nombre de vitesses :", self.spn_feed_steps)
+
+        # Un objectif peut FIXER les paliers au lieu d'une plage : les
+        # champs ci-dessus deviennent alors incapables de les décrire (une
+        # plage répartit linéairement, et les colonnes de saisie des
+        # largeurs sont géométriques). On les verrouille et on affiche les
+        # valeurs réellement gravées -- afficher une plage qui ne
+        # correspond pas au job serait pire que ne rien afficher.
+        self.lbl_paliers = _WrapLabel("")
+        self.lbl_paliers.setVisible(False)
+        self.lbl_paliers.setStyleSheet("color: #2e7d32;")
+        form.addRow(self.lbl_paliers)
+        self._paliers_objectif = (None, None)
+        self._champs_plages = (
+            self.spn_power_min, self.spn_power_max, self.spn_power_steps,
+            self.spn_feed_min, self.spn_feed_max, self.spn_feed_steps)
 
         _section(form, "Cellules", "sect_contour.svg")
         self.spn_cell_size = QtWidgets.QDoubleSpinBox()
@@ -8847,6 +8889,7 @@ class TaskPanelTestGrid:
                 cell_z_offset, core.SPOT_FOCUS_MM, core.calibrated_half_angle())
             fill_inset = spot / 2.0
 
+        powers, feeds = getattr(self, "_paliers_objectif", (None, None))
         cells = core.build_test_grid_cells(
             mode,
             self.spn_power_min.value(), self.spn_power_max.value(), self.spn_power_steps.value(),
@@ -8855,6 +8898,7 @@ class TaskPanelTestGrid:
             fill_type=fill_type,
             hatch_spacing=self.spn_hatch_spacing.value(), hatch_angle=self.spn_hatch_angle.value(),
             fill_inset=fill_inset,
+            powers=powers, feeds=feeds,
         )
         return mode, fill_type, cells, cell_z_offset
 
@@ -8944,14 +8988,18 @@ class TaskPanelTestGrid:
             self.lbl_preset_summary.setVisible(False)
         if not r:
             self.lbl_recipe_note.setVisible(False)
+            self._appliquer_paliers(None, None)
             return
         self.combo_mode.setCurrentIndex(r.get("mode", 0))
-        self.spn_power_min.setValue(r["power_min"])
-        self.spn_power_max.setValue(r["power_max"])
-        self.spn_power_steps.setValue(r["power_steps"])
-        self.spn_feed_min.setValue(r["feed_min"])
-        self.spn_feed_max.setValue(r["feed_max"])
-        self.spn_feed_steps.setValue(r["feed_steps"])
+        self._appliquer_paliers(r.get("powers"), r.get("feeds"))
+        if "power_min" in r:
+            self.spn_power_min.setValue(r["power_min"])
+            self.spn_power_max.setValue(r["power_max"])
+            self.spn_power_steps.setValue(r["power_steps"])
+        if "feed_min" in r:
+            self.spn_feed_min.setValue(r["feed_min"])
+            self.spn_feed_max.setValue(r["feed_max"])
+            self.spn_feed_steps.setValue(r["feed_steps"])
         if "filltype" in r:
             self.combo_filltype.setCurrentIndex(r["filltype"])
         if "hatch_spacing" in r:
@@ -8971,6 +9019,50 @@ class TaskPanelTestGrid:
         self.chk_border.setChecked(r.get("border", True))
         self.lbl_recipe_note.setText("\U0001f4a1 " + r["note"])
         self.lbl_recipe_note.setVisible(True)
+
+    def _appliquer_paliers(self, powers, feeds):
+        """Fixe (ou libère) les paliers imposés par un objectif.
+
+        Quand ils sont imposés, les champs de plage sont VERROUILLÉS et les
+        valeurs réellement gravées affichées : une plage min/max/nombre
+        répartit linéairement et ne sait donc pas décrire les colonnes de
+        la grille de saisie, qui sont géométriques (200, 400, 800, 1500,
+        3000). Laisser les champs modifiables afficherait une plage que le
+        job n'utilise pas -- une interface qui ment sur ce qu'elle grave.
+
+        Les champs restent RENSEIGNÉS (min, max, nombre du palier réel)
+        pour que les préréglages sauvegardés et la restauration de session
+        continuent de fonctionner à l'identique."""
+        self._paliers_objectif = (list(powers) if powers else None,
+                                  list(feeds) if feeds else None)
+        impose = bool(powers or feeds)
+        for champ in self._champs_plages:
+            champ.setEnabled(not impose)
+        if not impose:
+            self.lbl_paliers.setVisible(False)
+            return
+        if powers:
+            self.spn_power_min.setValue(min(powers))
+            self.spn_power_max.setValue(max(powers))
+            self.spn_power_steps.setValue(len(powers))
+        if feeds:
+            self.spn_feed_min.setValue(min(feeds))
+            self.spn_feed_max.setValue(max(feeds))
+            self.spn_feed_steps.setValue(len(feeds))
+
+        def _liste(vals):
+            return ", ".join("{:g}".format(v) for v in vals)
+
+        morceaux = []
+        if powers:
+            morceaux.append("Puissances gravées : S{}".format(_liste(powers)))
+        if feeds:
+            morceaux.append("Vitesses gravées : F{}".format(_liste(feeds)))
+        self.lbl_paliers.setText(
+            " — ".join(morceaux) + ". Ce sont exactement les lignes et "
+            "colonnes de la grille de saisie ② : chaque case gravée aura "
+            "une case où être saisie.")
+        self.lbl_paliers.setVisible(True)
 
     def _build_measures_section(self, form):
         """Section ② : saisie INLINE des largeurs brûlées mesurées sur la

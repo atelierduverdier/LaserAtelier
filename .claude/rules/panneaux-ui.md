@@ -64,6 +64,29 @@ Nuancier is the shared ledger (no burn step), so its flow is its own: ① Saisir
 lock-by-default) → ② Photo → ③ Graver ce nuancier (planche physique). **Follow this for any new test
 mode.**
 
+### An objective must burn what ② can accept (v2.3.1)
+
+`TaskPanelTestGrid._recipes` drives the burn through min/max/count spin boxes, and those spread
+their steps **linearly**. The ② entry columns are **geometric** (200, 400, 800, 1500, 3000), so no
+range can describe them — and nothing checked. `largeurs_foyer` burned F400/1800/3200/4600/6000
+against columns 200/400/800/1500/3000 (4 of 5 feeds with nowhere to be typed) and `largeurs_defocus`
+burned S400/550/700/850/1000 × F200/650/1100/1550/2000 (3 powers and 4 feeds orphaned). The workshop
+had you burn a board and then refused its results.
+
+A recipe may now carry explicit `"powers"` / `"feeds"` lists (passed through to
+`build_test_grid_cells`, which uses them instead of the triplet), and **both width objectives derive
+theirs from `_MesuresPlanchesControleur.POWERS` / `FEEDS_FOCUS` / `FEEDS_DEFOCUS`** — the alignment
+is structural, not a coincidence to maintain. `_appliquer_paliers` locks the six range fields while
+such an objective is active and prints the exact values, because a range the job doesn't use is an
+interface that lies. Objectives judged by eye (`nuancier_clair`, `decoupe`) keep free ranges: nothing
+to align.
+
+Two things the fix's own test caught, both worth keeping in mind: `largeurs_foyer` burned at 0.20 mm
+hatch spacing while telling you to measure a single trace with a calliper (the slow/powerful cells
+came out as a **solid fill**); and the isolated-trace spacing must clear **1.00 mm**, not the 0.30 of
+beech — Sapin is measured at 1.00 mm at focus, softwoods burn far wider, and a spacing tuned on
+hardwoods would silently produce an unreadable board on resinous stock.
+
 `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat": a dropdown of ALL
 photos for the current `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`) + a clickable thumbnail
 (→ `_show_image_dialog`) + **a free-text description field** (e.g. the defocus/focus level used,
