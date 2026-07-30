@@ -4351,6 +4351,27 @@ class TaskPanelFilledEngraving:
         _mise_en_page_recouvrement.addWidget(self.btn_corriger_recouvrement, 0)
         form.addRow(_ligne_recouvrement)
 
+        # Deuxième verdict, l'autre façon de rater un aplat : non plus le
+        # bois nu, mais l'énergie déposée pour rien. « Alléger » et non
+        # « Corriger » -- deux échecs opposés (rayé / trop cuit), deux
+        # gestes opposés, le libellé doit les distinguer d'un coup d'oeil.
+        _ligne_energie = QtWidgets.QWidget()
+        _mise_en_page_energie = QtWidgets.QHBoxLayout(_ligne_energie)
+        _mise_en_page_energie.setContentsMargins(0, 0, 0, 0)
+        self.lbl_energie = _WrapLabel("")
+        self.lbl_energie.setToolTip(
+            "Énergie déposée par mm² d'aplat -- S / (pas x vitesse) --\n"
+            "comparée au réglage NOIR le plus économe que tu aies mesuré\n"
+            "sur ce matériau. Au-delà du noir, l'énergie en trop ne fait\n"
+            "que creuser et roussir ; et à puissance égale elle se paie\n"
+            "aussi en temps, exactement dans le même rapport.")
+        self.btn_alleger = QtWidgets.QPushButton("Alléger")
+        self.btn_alleger.setVisible(False)
+        self.btn_alleger.clicked.connect(self._on_alleger)
+        _mise_en_page_energie.addWidget(self.lbl_energie, 1)
+        _mise_en_page_energie.addWidget(self.btn_alleger, 0)
+        form.addRow(_ligne_energie)
+
         _section(form, "Contour", "sect_contour.svg")
         self.chk_contour = QtWidgets.QCheckBox("Graver le contour (repassé après le remplissage)")
         self.chk_contour.setChecked(True)
@@ -4847,6 +4868,9 @@ class TaskPanelFilledEngraving:
         lbl = self.lbl_recouvrement
         btn = self.btn_corriger_recouvrement
         self._reglage_recouvrement_suggere = None
+        # L'autre verdict en premier, pour qu'aucun des retours anticipés
+        # ci-dessous ne le laisse afficher un état périmé.
+        self._maj_energie(power, spacing, decoratif)
         if decoratif:
             # Tirets, pointillé, vague : les vides sont voulus.
             lbl.setText("")
@@ -4918,6 +4942,102 @@ class TaskPanelFilledEngraving:
             return
         self.spn_fill_power.setValue(sugg["power"])
         self.spn_fill_feed.setValue(sugg["feed"])
+        self._update_defocus_preview()
+
+    def _reference_noire(self, mat):
+        """Le remplissage NOIR le plus économe mesuré sur ce matériau,
+        mémorisé le temps du panneau : la recherche bissecte une fois par
+        ton candidat (~12 ms chacun) alors que l'aperçu se rafraîchit à
+        chaque frappe. Un ton mesuré dans un autre panneau pendant ce
+        temps-là n'apparaîtra qu'à la réouverture -- c'est le rythme réel
+        de l'établi, on grave avant de ressaisir."""
+        if not mat:
+            return None
+        cache = getattr(self, "_cache_reference_noire", None)
+        if cache is None:
+            cache = self._cache_reference_noire = {}
+        if mat not in cache:
+            cache[mat] = core.remplissage_noir_le_plus_econome(mat)
+        return cache[mat]
+
+    def _maj_energie(self, power, spacing, decoratif=False):
+        """Verdict « ce remplissage coûte-t-il plus que nécessaire ? ».
+
+        Le pendant du verdict de recouvrement : celui-là dit s'il restera
+        du bois nu, celui-ci ce qu'on dépense au-delà du noir. Les deux
+        échecs sont opposés et ne se voient pas au même endroit -- un aplat
+        peut être parfaitement PLEIN et complètement surcuit. C'est
+        exactement ce qui est arrivé le 30/07/2026 : un carré S1000/F800 au
+        foyer au pas 0,26 (trait mesuré 0,30, donc verdict vert « plein »)
+        est sorti carbonisé, et rien dans le panneau n'en disait un mot.
+
+        Ce que la ligne annonce est un COÛT, pas un dommage : l'atelier ne
+        sait pas prédire la carbonisation (sur MDF des tons jugés 97 %
+        tiennent à 4x le plus économe). Elle compare deux remplissages
+        calculés de la même façon et laisse trancher."""
+        lbl = self.lbl_energie
+        btn = self.btn_alleger
+        self._reglage_allege = None
+        btn.setVisible(False)
+        mat = self._materiau()
+        feed = self.spn_fill_feed.value()
+        e = None if (decoratif or power is None) else core.energie_surfacique(
+            power, feed, spacing)
+        ref = None if e is None else self._reference_noire(mat)
+        if ref is None:
+            # Rien de mesuré à quoi se comparer : se taire plutôt que
+            # d'afficher un chiffre sans référence.
+            lbl.setText("")
+            lbl.setVisible(False)
+            return
+        lbl.setVisible(True)
+        rapport = e / ref["energie"]
+        # La durée se calcule à part : elle ne suit l'énergie que si les
+        # deux réglages ont la MÊME puissance (les deux varient en
+        # 1/(pas x vitesse), l'énergie porte S en plus).
+        duree = (ref["spacing"] * ref["feed"]) / max(spacing * feed, 1e-9)
+        detail = (
+            "Ce remplissage : S{:.0f} / F{:.0f} / pas {:.2f} mm.\n"
+            "Le plus économe mesuré noir ({:.0f} %) : S{:.0f} / F{:.0f} /\n"
+            "pas {:.2f} mm{}.\n"
+            "Énergie par mm² : {:.2f} contre {:.2f} (indice S/(pas x F),\n"
+            "pas des joules -- seul le rapport a un sens).".format(
+                power, feed, spacing, ref["darkness"], ref["power"],
+                ref["feed"], ref["spacing"],
+                " en défocus {:.0f} mm".format(ref["z_offset"])
+                if ref["z_offset"] else " au foyer",
+                e, ref["energie"]))
+        if rapport <= core.SEUIL_ENERGIE_REMPLISSAGE:
+            lbl.setText("Énergie mesurée : {:.1f}x le noir le plus économe.".format(
+                rapport))
+            lbl.setStyleSheet("color: #2e7d32;")
+            lbl.setToolTip(detail)
+            return
+        lbl.setText("Énergie EXCESSIVE : {:.1f}x le noir le plus économe, "
+                    "et {:.1f}x plus long.".format(rapport, duree))
+        lbl.setStyleSheet("color: #b0740a;")
+        self._reglage_allege = ref
+        btn.setText("Alléger : S{:.0f} / F{:.0f} / pas {:.2f}".format(
+            ref["power"], ref["feed"], ref["spacing"]))
+        btn.setToolTip(
+            detail + "\n\nLe bouton applique ce réglage MESURÉ noir, pas et\n"
+            "tout : même noir jugé, {:.1f}x moins d'énergie, {:.1f}x plus\n"
+            "vite. Au-delà du noir l'énergie en trop ne fait que creuser.".format(
+                rapport, duree))
+        btn.setVisible(True)
+        lbl.setToolTip(detail)
+
+    def _on_alleger(self):
+        """Bouton « Alléger » : applique le remplissage noir mesuré le plus
+        économe -- puissance, vitesse ET pas, comme le fait déjà le clic
+        sur un ton du nuancier. Le pas fait partie du réglage : c'est lui
+        qui fixe le défocus, donc la largeur du trait, donc l'énergie."""
+        ref = getattr(self, "_reglage_allege", None)
+        if not ref:
+            return
+        self.spn_fill_power.setValue(ref["power"])
+        self.spn_fill_feed.setValue(ref["feed"])
+        self.spn_spacing.setValue(ref["spacing"])
         self._update_defocus_preview()
 
     def _effective_fill_power(self, defocus, half_angle):

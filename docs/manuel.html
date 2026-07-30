@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.2.3</span><br>
+      <span class="ver">Version 2.3.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.2.3</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.3.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -536,6 +536,7 @@
     <p>Utilise le <strong>défocus calibré</strong> pour élargir le point et remplir vite, avec un contour repassé net par-dessus. Le remplissage se glisse volontairement <em>sous</em> le contour pour éviter le liseré pâle sur les bords.</p>
     <p>Le parcours est <strong>optimisé</strong> : les traits de remplissage sont gravés de proche en proche plutôt que dans l'ordre où les hachures sont calculées. Sur une forme à trous (orbites, cavités, contre-formes de lettres), chaque ligne de hachure est coupée en un nombre de morceaux différent de sa voisine, et sans ce tri la tête traverse la pièce d'un bout à l'autre entre deux traits. Mesuré sur un crâne réel : <strong>56 m de déplacements à vide ramenés à 5 m</strong>, pour une gravure rigoureusement identique — juste beaucoup moins d'allers-retours.</p>
     <p>Le panneau annonce si le remplissage sera <strong>plein ou rayé</strong> : il compare le trait réellement <em>brûlé</em> (mesuré avec la planche de calibration, pour le matériau du bloc « Nuancier matériau ») au pas de hachure demandé. Trop étroit, il reste du bois nu entre deux passes et la gravure sort grise ; l'atelier resserre alors les hachures, mais rallonge le job d'autant — d'où la suggestion d'un réglage mesuré qui couvre le pas d'un seul coup, plus noir et plus vite. Choisir un ton dans « Nuancier matériau » (style de trait <strong>plein</strong>) propose du même coup l'espacement qui donne un remplissage plein avec ce ton précis — une seule décision au lieu de deux ; l'espacement reste modifiable ensuite pour aller plus vite sur un aplat, au prix d'un remplissage moins net.</p>
+    <p>Une seconde ligne annonce l'<strong>énergie</strong>, parce qu'un aplat peut être parfaitement plein et complètement <em>surcuit</em> — les deux échecs sont opposés et vérifier l'un ne dit rien de l'autre. Elle compare l'énergie déposée par mm² (<code>S / (pas × vitesse)</code>) à celle du réglage <strong>noir le plus économe</strong> que vous ayez mesuré sur ce matériau, les deux calculés de la même façon. Au-delà du double, le bouton «&nbsp;Alléger&nbsp;» applique ce réglage-là — puissance, vitesse <em>et</em> pas —&nbsp;: même noir jugé, moins d'énergie, et d'autant moins de temps. C'est un coût qui est annoncé, pas un dommage : l'atelier ne sait pas prédire la carbonisation, qui dépend du matériau. Ce garde-fou vient d'un carré S1000/F800 au foyer, au pas 0,26&nbsp;: trait brûlé 0,30&nbsp;mm, donc verdict «&nbsp;plein&nbsp;» parfaitement exact — et sorti carbonisé.</p>
     <p class="meta"><b>Réglages clés :</b> puissance · vitesse · défocus · contour. <b>Fichier :</b> <code>gravure_remplie.ngc</code></p>
   </div></div>
 
@@ -898,7 +899,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.2.3 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.3.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

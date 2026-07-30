@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.2.3"
+VERSION = "2.3.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4912,6 +4912,72 @@ def espacement_pour_reglage(power, feed, material=None, borne_haute=None):
         else:
             haut = milieu
     return bas
+
+
+# Au-delà de ce rapport, le panneau de Gravure remplie signale que le
+# remplissage coûte nettement plus que le noir mesuré le plus économe.
+# Ce n'est PAS un seuil de carbonisation : rien ici ne prédit la brûlure.
+# C'est un seuil de GASPILLAGE -- à puissance égale, le rapport d'énergie
+# et le rapport de durée sont le même nombre (les deux valent 1/(pas x F)),
+# donc doubler l'énergie double aussi le temps de gravure. Les mesures de
+# l'atelier ne permettent pas mieux : sur MDF, des tons jugés 97 % tiennent
+# à 4x le plus économe sans rien signaler, alors que sur Hêtre 2,8x a
+# carbonisé -- le seuil de dommage dépend du matériau, pas ce rapport-ci.
+SEUIL_ENERGIE_REMPLISSAGE = 2.0
+
+
+def energie_surfacique(power, feed, spacing):
+    """Énergie déposée par mm² d'aplat : `S / (pas x vitesse)`.
+
+    INDICE, pas des joules -- `S` n'a pas d'unité physique (0..S_MAX). Seuls
+    les RAPPORTS entre deux réglages du même laser ont un sens. C'est la
+    même grandeur que la fluence surfacique utilisée par les tramages
+    calibrés : ce qui gouverne l'énergie reçue par le bois n'est pas la
+    largeur du trait mais de combien on AVANCE entre deux passes. None si
+    un terme est nul."""
+    if not spacing or not feed:
+        return None
+    return float(power) / (float(spacing) * float(feed))
+
+
+def remplissage_noir_le_plus_econome(material, noirceur_min=95.0):
+    """Parmi les tons MESURÉS jugés noirs (>= `noirceur_min` %), celui qui
+    remplit un aplat avec le moins d'énergie par mm² -- donc aussi, à
+    puissance égale, le plus rapide.
+
+    Les deux côtés de la comparaison sont calculés de la MÊME façon : le
+    pas retenu pour chaque ton est celui que `espacement_pour_reglage` lui
+    donne, c'est-à-dire exactement le remplissage qu'on obtient en cliquant
+    ce ton dans « Nuancier matériau ». Sans ça la comparaison n'aurait pas
+    de sens -- la largeur stockée sur un ton est tantôt une largeur brûlée
+    au pied à coulisse, tantôt le PAS d'une bande de calibration en
+    balayage, et diviser par l'une puis par l'autre compare deux grandeurs
+    différentes.
+
+    Renvoie {"power", "feed", "spacing", "energie", "darkness", "z_offset"}
+    ou None si le matériau n'a aucun ton noir dont le pas soit calculable.
+
+    Coûteux (une bissection par candidat, ~12 ms) : à appeler une fois par
+    matériau, pas dans un rafraîchissement d'aperçu."""
+    meilleur = None
+    for ton in load_shades(material):
+        d = ton.get("darkness")
+        s = float(ton.get("power", 0) or 0)
+        f = float(ton.get("feed", 0) or 0)
+        if d is None or float(d) < noirceur_min or s <= 0 or f <= 0:
+            continue
+        pas = espacement_pour_reglage(s, f, material,
+                                      borne_haute=ton.get("width") or None)
+        if not pas:
+            continue
+        e = energie_surfacique(s, f, pas)
+        if e is None:
+            continue
+        if meilleur is None or e < meilleur["energie"]:
+            meilleur = {"power": s, "feed": f, "spacing": pas, "energie": e,
+                        "darkness": float(d),
+                        "z_offset": float(ton.get("z_offset", 0) or 0)}
+    return meilleur
 
 
 def shade_for_darkness(material, target_pct):

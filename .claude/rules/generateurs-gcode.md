@@ -213,6 +213,33 @@ focus-width). Verified zero undercoverage across all 41 tones, ~0.1 ms/call. An 
 `borne_haute` is honored exactly as given, however tight; the fallback-only safeguard must never leak
 onto a caller-supplied bound (a real bug its own test suite caught before shipping).
 
+### Coverage is only half the question — `remplissage_noir_le_plus_econome` (v2.3.0)
+
+A fill can be perfectly **solid and completely overcooked**; the two failures are opposite and
+checking one says nothing about the other. Proved on wood: a beech square at S1000/F800 at focus,
+pitch 0.26, burn 0.30 mm → the panel's coverage verdict read green "Remplissage plein", exactly
+right, and the square came off **carbonized**. Nothing else in the panel said a word.
+
+`energie_surfacique(power, feed, spacing)` = `S/(pitch·v)` — an **index, not joules** (S has no
+physical unit); only ratios between two settings of the same laser mean anything. It's the same
+quantity the calibrated tramages call areal fluence: what the wood receives is governed by how far
+you ADVANCE between passes, not by the trace width.
+
+`remplissage_noir_le_plus_econome(material)` returns the cheapest measured tone judged ≥ 95 % black.
+**Both sides must be computed the same way** — the pitch for each candidate comes from
+`espacement_pour_reglage`, i.e. exactly the fill you get by clicking that tone. This is not
+fastidiousness: a tone's stored `width` is sometimes a calliper-measured burn width and sometimes the
+PITCH of a raster calibration band, and dividing by one then by the other compares two different
+quantities. On the workshop's beech data the naive reading makes `S1000/F2000` look like 0.625 when
+its real fill costs 5.000 — **8× off, and it would have stolen the reference slot** (asserted in
+`tests/test_energie_remplissage.py`).
+
+`SEUIL_ENERGIE_REMPLISSAGE = 2.0` gates the panel's warning. It is a **waste** threshold, never a
+carbonization threshold — at equal power the energy ratio and the duration ratio are the same number
+(both go as `1/(pitch·F)`). The data does not support predicting damage: on MDF, tones judged 97 %
+sit at 4× the cheapest without complaint, while on beech 2.8× charred. **The damage threshold is
+material-dependent; this ratio is not it.**
+
 ## Vector fonts
 
 **7-segment label font** — `text_to_edges` / `_char_to_edges` / `_FONT_GLYPHS`: digits `0-9`, `S`,
