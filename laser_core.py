@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -604,14 +604,26 @@ def cmd_path_blend():
     return "G64 P{:.3f}".format(PATH_BLEND_TOLERANCE_MM)
 
 
-_CMD_ARM_LINUXCNC = "S0 {sel}\nM3 {sel}\nG4 P{dwell:.1f}"
+_CMD_ARM_LINUXCNC = "S0 {sel}\nM67 E0 Q0\nM3 {sel}\nG4 P{dwell:.1f}"
 # GRBL en mode laser ($32=1) : M4 = puissance asservie à la vitesse réelle
 # (S0 pendant l'armement -> faisceau éteint). {sel} vide en GRBL.
 _CMD_ARM_GRBL = "S0\nM4 (armement mode laser GRBL)\nG4 P{dwell:.1f}"
-# Variantes M67 : le mot S disparaît, M3/M5 restent (interlock du laser).
-_CMD_ARM_M67 = "M67 E0 Q0\nM3 {sel}\nG4 P{dwell:.1f}"
-_CMD_DISARM_S = "S0 {sel}\nM5 {sel}"
-_CMD_DISARM_M67 = "M67 E0 Q0\nM5 {sel}"
+# M3/M5 restent dans tous les cas : c'est l'interlock du laser, pas la
+# puissance. Seul le canal de la VALEUR bascule.
+_CMD_DISARM_S = "S0 {sel}\nM67 E0 Q0\nM5 {sel}"
+# Les variantes M67 de l'armement et du desarmement sont RIGOUREUSEMENT les
+# memes que celles en S direct, et c'est le correctif : chacune neutralise LES
+# DEUX canaux, pas seulement le sien.
+#
+# Le HAL de la PrintNC ADDITIONNE `spindle.1.speed-out` et
+# `motion.analog-out-00` (un sum2), ce qui permet de basculer le reglage sans
+# recabler. Mais les deux canaux PERSISTENT : un job interrompu en plein vol
+# laisse SA valeur en place. Un job M67 avorte a S..Q600, suivi d'un job en S
+# direct, aurait donc grave a S+600 partout -- trop fort, et sans un mot. La
+# reciproque etait vraie aussi. Chaque job part maintenant des deux canaux a
+# zero, quoi qu'ait laisse le precedent.
+_CMD_ARM_M67 = _CMD_ARM_LINUXCNC
+_CMD_DISARM_M67 = _CMD_DISARM_S
 _CMD_BEAM_ON_S = "S{power:.0f} {sel}"
 _CMD_BEAM_ON_M67 = "M67 E0 Q{power:.0f}"
 _CMD_BEAM_OFF_S = "S0 {sel}"

@@ -78,7 +78,14 @@ for nom, g in sorted(direct.items()):
     assert g1, nom
     print("   {:<10} {:>6} lignes, {:>5} G1".format(nom, len(g.split("\n")),
                                                     len(g1)))
-assert "M67" not in "".join(direct.values()), "un M67 en mode direct"
+# En mode direct, le SEUL M67 tolere est la remise a zero de l'autre canal
+# (armement et desarmement) : aucun M67 ne doit porter une puissance.
+for nom, g in direct.items():
+    m67s = [l for l in g.split("\n") if l.startswith("M67 ")]
+    assert m67s, (nom, "le canal M67 n'est pas neutralise en mode direct")
+    assert all(l == "M67 E0 Q0" for l in m67s), (nom, "M67 porteur en direct",
+                                                 [l for l in m67s
+                                                  if l != "M67 E0 Q0"][:3])
 print("1. les {} générateurs produisent du G-code en mode S direct OK".format(
     len(direct)))
 
@@ -98,10 +105,16 @@ try:
     assert set(m67) == set(direct), (sorted(m67), sorted(direct))
     for nom, g in sorted(m67.items()):
         lignes = g.split("\n")
-        # (a) aucun mot S sur un mouvement, ni ailleurs qu'en commentaire
-        fautifs = [l for l in lignes
-                   if re.match(r"^(G[01]|S\d)", l) and re.search(r"\bS\d", l)]
-        assert not fautifs, (nom, "S résiduel", fautifs[:3])
+        # (a) AUCUNE PUISSANCE ne voyage par le mot S. Formulé exactement :
+        # pas de S sur un mouvement, et un S isolé ne peut valoir que 0 --
+        # c'est la neutralisation de l'autre canal (cf. l'armement), pas une
+        # consigne. Dire « aucun mot S » serait plus court et faux.
+        sur_mouvement = [l for l in lignes
+                         if l.startswith(("G0 ", "G1 ")) and re.search(r"\bS\d", l)]
+        assert not sur_mouvement, (nom, "S sur un mouvement", sur_mouvement[:3])
+        porteurs = [l for l in lignes
+                    if re.match(r"^S\d", l) and not re.match(r"^S0\b", l)]
+        assert not porteurs, (nom, "S porteur de puissance", porteurs[:3])
         # (b) un M67 avant chaque changement de puissance
         m67s = [l for l in lignes if l.startswith("M67 ")]
         assert m67s, (nom, "aucun M67")
@@ -109,6 +122,14 @@ try:
             nom, [l for l in m67s if not re.match(r"^M67 E\d+ Q\d+$", l)][:3])
         # (c) M3/M5 conservés : c'est l'interlock du laser, pas la puissance
         assert "M3" in g and "M5" in g, (nom, "armement/désarmement perdu")
+        # (e) l'armement neutralise LES DEUX canaux. Le HAL les additionne,
+        # et ils PERSISTENT : un job avorté laisse sa valeur en place, et le
+        # job suivant de l'autre mode graverait à la somme des deux -- trop
+        # fort, sans un mot. Chaque job doit partir de zéro des deux côtés.
+        tete = "\n".join(lignes[:20])
+        assert re.search(r"^S0\b", tete, re.M), (nom, "canal S non neutralisé")
+        assert re.search(r"^M67 E0 Q0$", tete, re.M), (
+            nom, "canal M67 non neutralisé")
         # (d) jamais M68 : elle vide la file et arrête le mouvement
         assert "M68" not in g, (nom, "M68 émis")
         print("   {:<10} {:>5} M67, aucun S sur un mouvement OK".format(

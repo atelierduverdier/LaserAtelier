@@ -11,6 +11,33 @@ Les versions suivent `MAJEURE.MINEURE.CORRECTIF`. `VERSION` dans
 
 ---
 
+## v2.1.1 — 30 juillet 2026
+
+### Corrigé
+
+**Chaque job neutralise maintenant LES DEUX canaux de puissance à
+l'armement**, pas seulement le sien. Trouvé en répondant à une question de
+Christophe (« ces G-codes ne sont plus bons ? »), pas par un test.
+
+Le HAL additionne `spindle.1.speed-out` et `motion.analog-out-00`, ce qui permet
+de basculer le réglage sans recâbler. Mais **les deux canaux persistent** : un
+job interrompu en plein vol laisse SA valeur en place. Un job M67 avorté à Q600,
+suivi d'un job en `S` direct, aurait donc gravé à `S+600` partout — trop fort,
+et sans un mot. La réciproque était vraie aussi.
+
+L'armement et le désarmement des deux modes sont désormais rigoureusement
+identiques et remettent les deux canaux à zéro. Le test dit exactement ce qu'il
+garantit : aucune PUISSANCE ne voyage par le mot `S` en mode M67 — pas de `S`
+sur un mouvement, et un `S` isolé ne peut valoir que 0. Formuler « aucun mot
+`S` » aurait été plus court et faux.
+
+Les G-codes déjà écrits en `S` direct restent valides ; c'est précisément ce que
+la somme garantit. Ils n'ont simplement pas la ligne de neutralisation : après
+un job M67 interrompu, les régénérer (ou passer un `M67 E0 Q0` en MDI) est plus
+sûr.
+
+---
+
 ## v2.1.0 — 30 juillet 2026
 
 ### Ajouté
