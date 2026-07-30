@@ -168,10 +168,22 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
   compensation `T`/`M6` + `G43 H` comme LinuxCNC. Nécessite un firmware
   compilé avec la table d'outils (option `N_TOOLS`) ; le numéro d'outil laser
   des Préférences est alors utilisé.
-- ⚠️ **Les dialectes GRBL et grblHAL ne sont pas encore testés sur machine
-  réelle** (la machine de développement tourne sous LinuxCNC) — le G-code
-  généré est validé par tests automatiques uniquement. Retours bienvenus via
-  les issues GitHub.
+- ⚠️ **Les dialectes GRBL et grblHAL n'ont jamais fait tourner une ligne sur
+  une machine réelle** (la machine de développement tourne sous LinuxCNC).
+  Ce qui EST garanti, et vérifié à chaque exécution des tests
+  (`tests/test_dialectes.py`, quatre familles de jobs) : aucune commande
+  inconnue de GRBL (ni `M67`/`M68`, ni `G64`, ni `G10`, ni sélecteur `$n`) ;
+  tout en ASCII ; aucune ligne au-delà des 128 octets du tampon de réception
+  de GRBL (la plus longue mesurée : 86 caractères) ; `M4`/`M5`/`M2` présents ;
+  grblHAL qui garde sa table d'outils là où GRBL la commente.
+  Reste à vérifier sur une vraie carte : que le contrôleur accepte le fichier,
+  que le laser tire à la bonne puissance, et que `$32=1` + `$30` suffisent.
+  Retours bienvenus via les issues GitHub.
+- ⚠️ **Densité des jobs photo sur GRBL** : un portrait de 120 × 180 mm au pas
+  0,30 fait ~172 000 blocs pour près de 6 Mo. Une carte alimentée *en série*
+  devient le goulot d'étranglement ; celles qui lisent une carte SD ou du WiFi
+  (ESP32) n'ont pas ce souci. Dans le doute, privilégier les modes
+  géométriques ou un pas de trame plus grand.
 
 ## Installation
 
