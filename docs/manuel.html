@@ -531,6 +531,15 @@
     <p class="meta"><b>Réglages clés :</b> espacement · angle · type. <b>Sortie :</b> objet « Hachures_… »</p>
   </div></div>
 
+  <div class="mode"><img class="ic" src="../resources/icons/import_svg.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/importsvg.png" alt="Panneau Importer un dessin SVG">
+    <h4>Importer un dessin SVG</h4>
+    <p class="quoi">Faire entrer un dessin vectoriel dans le document, proprement.</p>
+    <p>Lit le <code>.svg</code> directement et crée <b>un objet par tracé d'origine</b>, sélectionnable individuellement, prêt pour Hachures, Gravure remplie ou Marquage. Sans le détour par le DXF, qui émiettait un crâne de 23&nbsp;tracés en plus de <b>210 fragments</b> et sa plomberie de calques&nbsp;: ici, 23&nbsp;tracés donnent 23&nbsp;objets. La couleur de remplissage de chaque tracé est reprise sur l'objet, simplement pour les distinguer à l'œil sans rouvrir Inkscape.</p>
+    <p>Les courbes sont converties en petits segments — comme partout ailleurs dans l'atelier — avec une <b>flèche de 0,02&nbsp;mm</b>, très en dessous de la largeur brûlée&nbsp;: aucun facettage visible, même sur une grande courbe douce. Hors périmètre, annoncé et non silencieux&nbsp;: <code>&lt;use&gt;</code>, dégradés, masques et images bitmap embarquées — chacun produit un avertissement en console, jamais un échec.</p>
+    <p class="meta"><b>Réglages clés :</b> fichier. <b>Sortie :</b> un objet « Tracé SVG&nbsp;… » par tracé</p>
+  </div></div>
+
   <div class="mode"><img class="ic" src="../resources/icons/text.svg" alt=""><div class="body">
     <img class="shot" src="manuel_img/text.png" alt="Panneau Texte (trait simple)">
     <h4>Texte (trait simple)</h4>

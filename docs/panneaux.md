@@ -11,6 +11,13 @@ Le point d'entrée : flux de travail en 6 étapes, « quel mode pour quoi ? », 
 
 ![Guide rapide](screenshots/panneaux/01_guide.png)
 
+## Import de dessins
+
+### Importer un dessin SVG
+Lit le `.svg` directement et crée **un objet par tracé d'origine**, sélectionnable individuellement — sans le détour par le DXF, qui émiettait un crâne de 23 tracés en plus de 210 fragments. La couleur de remplissage est reprise sur l'objet, pour les distinguer à l'œil.
+
+![Importer un dessin SVG](screenshots/panneaux/20_import_svg.png)
+
 ## Gravure à plat
 
 ### Hachures 2D (géométrie)
