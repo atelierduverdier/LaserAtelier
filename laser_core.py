@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "1.97.0"
+VERSION = "1.97.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -6138,16 +6138,29 @@ def generate_gcode_power_ramp_lines(line_length, n_lines, feed_min, feed_max,
             max_digits = max((len(str(int(round(p)))) for p in uniq), default=1)
             z_row_bas = tick_top - tick_len - grad_h * (1.3 * max_digits + 1.0)
             y_haut_rampe = (n_lines - 1) * line_gap
-            z_lo, z_hi = sorted((z_work, z_end))
-            for cm in range(math.ceil(z_lo / 5.0), math.floor(z_hi / 5.0) + 1):
-                z_val = cm * 5.0
-                x_tick = _x_pour_z(z_val)
+            # Le chiffre gravé est le DÉFOCUS (z - z_work), pas la cote
+            # machine, et les graduations tombent sur des défocus RONDS.
+            # C'est le défocus que l'atelier demande partout ailleurs
+            # (`z_offset` des tons et des largeurs brûlées,
+            # `DEFOCUS_LEVELS_MM`, « Défocus des cellules ») ; la hauteur Z
+            # absolue n'est saisie nulle part. Graduer tous les 5 mm de
+            # HAUTEUR faisait tomber les traits sur les défocus 2, 7, 12,
+            # 17 avec un foyer à 8 mm -- et le chiffre gravé « 15 »
+            # désignait un défocus de 7. Reporté tel quel dans
+            # « + Ajouter ce ton », `_snap_defocus_level` l'aurait rangé au
+            # niveau 15 : des largeurs mesurées à 7 mm de défocus mélangées
+            # à celles de 15, sans le moindre signe.
+            sens = 1.0 if z_end >= z_work else -1.0
+            for cm in range(1, int(math.floor(abs(z_end - z_work) / 5.0)) + 1):
+                defocus = cm * 5.0
+                x_tick = _x_pour_z(z_work + sens * defocus)
                 if x_tick is None:
                     continue
                 label_chains.append([FreeCAD.Vector(x_tick, y_haut_rampe, 0.0),
                                      FreeCAD.Vector(x_tick, z_row_bas - tick_len, 0.0)])
                 label_chains.extend(chain_edges(text_to_edges_vertical(
-                    "{:.0f}".format(z_val), x_tick, z_row_bas - tick_len - grad_h * 0.4, grad_h)))
+                    "{:.0f}".format(defocus), x_tick,
+                    z_row_bas - tick_len - grad_h * 0.4, grad_h)))
 
     all_pts = []
     for y, _ in lines_geo:

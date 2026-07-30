@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 1.97.0</span><br>
+      <span class="ver">Version 1.97.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.97.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>1.97.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -675,7 +675,7 @@
     <img class="shot" src="manuel_img/powerramp.png" alt="Panneau Rampe puissance">
     <h4>Test rampe puissance/vitesse (lignes)</h4>
     <p class="quoi">Une série de lignes à réglages croissants.</p>
-    <p>Plus rapide qu'une grille pour dégrossir un seuil (à partir de quand ça marque, à partir de quand ça traverse). L'option <strong>Rampe Z</strong> fait aussi monter le défocus le long de chaque ligne (graduations tous les 5&nbsp;mm) : le moyen le plus simple de mesurer un ton EN DÉFOCUS avec sa largeur, à reporter d'un clic (« + Ajouter ce ton ») dans le Nuancier — ce qu'exige le « ton sur mesure » pour interpoler.</p>
+    <p>Plus rapide qu'une grille pour dégrossir un seuil (à partir de quand ça marque, à partir de quand ça traverse). L'option <strong>Rampe Z</strong> fait aussi monter le défocus le long de chaque ligne : le moyen le plus simple de mesurer un ton EN DÉFOCUS avec sa largeur, à reporter d'un clic (« + Ajouter ce ton ») dans le Nuancier — ce qu'exige le « ton sur mesure » pour interpoler. Des traits verticaux continus traversent toutes les lignes tous les <b>5&nbsp;mm de défocus</b>, chiffrés au pied&nbsp;: le nombre gravé <b>est le défocus</b>, celui qu'on retape dans le champ — pas la cote machine. La nuance n'est pas cosmétique&nbsp;: avec un foyer à 8&nbsp;mm, graduer tous les 5&nbsp;mm de <em>hauteur</em> gravait « 10 15 20 25 » pour des défocus de 2, 7, 12 et 17, si bien qu'un « 15 » lu sur la planche désignait un défocus de 7 — et le rangement automatique au niveau standard le plus proche l'aurait mélangé aux mesures faites à 15, sans un mot (corrigé en v1.97.1).</p>
     <p class="meta"><b>Fichier :</b> <code>test_rampe_puissance.ngc</code></p>
   </div></div>
 
@@ -867,7 +867,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v1.97.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v1.97.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
