@@ -761,6 +761,37 @@ result where ten marks land on the same pixel. `_teinte_gravure(..., cache)` mem
 args — `darkness_at` re-reads the config on every call, so an un-memoised tone lookup inside a
 per-mark loop is the same catastrophe as a per-pixel config read in a generator.
 
+## Tests (`tests/`)
+
+```bash
+python3 tests/lancer.py            # everything
+python3 tests/lancer.py lignes am  # only names containing these
+```
+
+Run it with the **system** python — the runner only delegates. It rediscovers FreeCAD's interpreter
+under `/tmp/.mount_FreeCA*` on every run, because that mount path changes each time FreeCAD is
+relaunched and a stale path looks exactly like a broken environment. Each test runs in its **own
+subprocess**, so a Qt panel that crashes or a global it mutated can't contaminate the next one.
+
+Tests start with `from harness import preparer` → `h = preparer()`, then use `h.core` / `h.tp`. The
+harness sets Qt offscreen, stubs `FreeCADGui.Selection` (several panels read the 3D selection at
+construction and it doesn't exist headless), and — **the rule that matters most here** — redirects
+`core.CONFIG_FILE` and `core._WORKBENCH_DIR` to a throwaway **copy**. A test must never write to the
+workshop config: it holds calliper measurements taken on real wood, hours of bench time that no
+computation can reproduce. The copy keeps the same data, so tests read the real nuancier and the real
+kerf table, but every write goes to the bin. Verify after touching the harness: the live config's md5
+and mtime must be unchanged by a full run.
+
+These tests lived in `/tmp` until v2 work started, and vanished when the tmpfs was cleared. That's
+why they're in the repo now — a cleanup pass over 12 000 lines without a net is a gamble.
+
+`test_panneaux.py` is the broad one and earns its keep: it constructs every argument-free panel, then
+walks the photo panel's 7 tramages **one at a time** — G-code produced, `M2` present, G64 present, no
+`G4` while the beam is on, preview renders, note non-empty, verdict non-empty, and the visible
+settings are the ones that actually apply to that tramage. Three bugs shipped on 29/07/2026 (an empty
+green tick, a defocus setting shown in a focus-only tramage, a tramage refusing because the panel's
+default feed didn't suit it) all had the same cause — nothing checked each tramage individually.
+
 ## Hardware context
 
 Default profile is the **LT-80W-AA-PRO** diode module with the square shroud removed (so it can
