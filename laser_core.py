@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.2.2"
+VERSION = "2.2.3"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4628,7 +4628,21 @@ def _bilinear_burn(pts, power, feed, key="width"):
     S linéaire, F logarithmique (c'est le temps de chauffe qui pilote),
     bornée aux mesures. Dégénère proprement si un seul S ou un seul F
     mesuré (l'axe non couvert retombe sur la valeur mesurée). None si
-    `pts` est vide."""
+    `pts` est vide.
+
+    Le repli « plus proche voisin » sur les cases NON mesurées compare les
+    deux axes dans la même géométrie que l'interpolation elle-même : S
+    linéaire et F logarithmique, chacun rapporté à son étendue mesurée. Il
+    comparait auparavant le couple `(|ΔS|, |ΔF|)` en LEXICOGRAPHIQUE, ce
+    qui rend la puissance infiniment prioritaire sur la vitesse : un ton
+    isolé au bout de l'axe des vitesses répondait alors pour TOUTE sa
+    colonne de puissance. Sur le nuancier Hêtre au foyer (14 tons, 44 % de
+    trous) le seul S1000 mesuré l'était à F6000 → `darkness_at` rendait
+    **42 % à toutes les vitesses**, de F400 à F6000, et S1000 ressortait
+    plus CLAIR que S800. Démenti à l'établi le 30/07/2026 : le carré plein
+    S1000/F800 au foyer au pas 0,26 est sorti carbonisé, là où l'atelier
+    annonçait 42 %. Sur les tables de largeurs (grilles quasi pleines : 1
+    trou sur Hêtre, 0 sur MDF) la normalisation ne change aucune valeur."""
     if not pts:
         return None
     svals = sorted({float(p["power"]) for p in pts})
@@ -4643,12 +4657,21 @@ def _bilinear_burn(pts, power, feed, key="width"):
                 return a, b, x
         return vals[-1], vals[-1], x
 
+    def _logf(f):
+        return math.log(max(float(f), 1e-6))
+
+    # Étendues mesurées, pour que les deux axes pèsent pareil dans le repli.
+    etendue_s = (svals[-1] - svals[0]) or 1.0
+    etendue_f = (_logf(fvals[-1]) - _logf(fvals[0])) or 1.0
+
     def _g(sv, fv):
         w = grid.get((sv, fv))
-        if w is None:      # grille incomplète : plus proche voisin
-            best = min(pts, key=lambda p: (abs(float(p["power"]) - sv),
-                                           abs(float(p["feed"]) - fv)))
-            w = float(best[key])
+        if w is None:      # grille incomplète : plus proche voisin normalisé
+            def _distance2(p):
+                ds = (float(p["power"]) - sv) / etendue_s
+                df = (_logf(p["feed"]) - _logf(fv)) / etendue_f
+                return ds * ds + df * df
+            w = float(min(pts, key=_distance2)[key])
         return w
 
     s1, s2, sx = _bracket(svals, float(power))

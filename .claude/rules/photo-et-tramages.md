@@ -240,6 +240,22 @@ Two rules make this preview trustworthy, both worth preserving:
   WHOLE render switches to `_tone_burn` and the note says so — same rule for every tramage, whether
   or not the flatness would have been visible.
 
+### `_bilinear_burn`'s hole-filling must weigh both axes (v2.2.3)
+
+Shared by widths and darkness. On a cell with no measurement it falls back to the nearest neighbour,
+and that comparison used the tuple `(|ΔS|, |ΔF|)` — **lexicographic, so power outranked feed by any
+margin whatsoever**. Widths barely noticed (their grids are near-complete: 1 hole on beech, 0 on MDF
+— the fix moves no width at all). The nuancier fills in tone by tone and is 44 % holes at focus on
+beech, where the *only* S1000 tone was measured at F6000: `darkness_at` answered **42 % at every feed
+from F400 to F6000**, and S1000 came out lighter than S800. The user's S1000/F800 focus square at
+pitch 0.26 came off the machine **carbonized** against that announced 42 %. Both axes are now
+normalised by their measured span, in the interpolation's own geometry (S linear, F log).
+
+The wider lesson: a ragged grid is not the same object as a sparse one. `shade_feed_range` reports
+the min/max feed over **all** tones, so it called F800 "inside the measured span" while the answer was
+a nearest-neighbour guess borrowed from a point 7.5× away in feed. **Coverage per power column is what
+matters, and nothing measures it yet.**
+
 Perf: two cell caps, because the surfaces have different budgets. `_VIGNETTE_MAX_CELLS = 20000` for
 the thumbnail (recomputed on every settings change) vs `_PREVIEW_MAX_CELLS = 250000` for the button
 (explicit click, wait cursor). Painting 250k marks into a 240 px thumbnail cost up to 1.8 s for a
