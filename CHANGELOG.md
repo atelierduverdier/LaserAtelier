@@ -11,6 +11,50 @@ Les versions suivent `MAJEURE.MINEURE.CORRECTIF`. `VERSION` dans
 
 ---
 
+## v2.2.0 — 30 juillet 2026
+
+### Ajouté
+
+**Saisie LIBRE des largeurs brûlées**, dans le ② du panneau Rampe
+puissance/vitesse : une table (puissance, vitesse, défocus, largeur) sans
+grille imposée, à côté du « + Ajouter ce ton » déjà présent. L'un enregistre le
+ton que rend le bois, l'autre l'épaisseur que brûle le laser — la rampe donne
+les deux, et jusqu'ici seule la première avait où aller.
+
+La grille de saisie existante est le MIROIR de la Planche 2 : puissances
+1000..200, vitesses 200..800, défocus 15 et 36. Juste pour une planche, qui
+grave une grille discrète. Mais la rampe mesure un CONTINUUM — la puissance et
+la hauteur montent ensemble le long de chaque ligne. La première rampe Z gravée
+a donné cinq points du genre **S980 / F200 / défocus 60 / 4,00 mm** : aucun
+n'entrait dans la grille, et il n'existait nulle part où les mettre.
+
+Ces mesures étendent la couverture bien au-delà de ce qui existait (rien
+n'allait plus loin que défocus 36), ce qui sert directement aux traits épais
+décoratifs, du foyer au grand défocus.
+
+Deux précautions, chacune payée par une leçon de ce projet :
+
+- **Fusion, jamais remplacement.** `save_burn_widths` écrase la table du
+  matériau : on relit l'existant et on ne remplace que les points de même
+  (S, F, défocus). Un enregistrement ne doit jamais faire disparaître des
+  heures de pied à coulisse — c'est la donnée la plus irremplaçable du projet.
+- **Lecture brute de la config** pour fusionner, pas via `load_burn_widths`,
+  qui ramène les défocus au niveau standard proche : passer par elle
+  réécrirait les valeurs déjà stockées au passage.
+
+Et le défocus saisi n'est pas arrondi en silence. À moins de 5 mm d'un niveau
+standard il sera relu là (un **40 devient 36**) : la table le dit après
+l'enregistrement, en rouge, avec les valeurs concernées. Une valeur tapée à la
+main est délibérée — elle mérite qu'on prévienne plutôt qu'on corrige.
+
+`tests/test_largeurs_libres.py` prouve d'abord qu'aucun des cinq relevés
+n'entre dans la grille figée (plutôt que de l'affirmer), puis que la fusion
+n'efface rien, que les défocus exacts sont conservés, qu'un second
+enregistrement remplace au lieu de dupliquer, que le 40 est bien relu en 36, et
+qu'une ligne incomplète est ignorée sans rien deviner.
+
+---
+
 ## v2.1.2 — 30 juillet 2026
 
 ### Corrigé

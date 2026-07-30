@@ -3247,6 +3247,155 @@ def _make_shade_quick_add(form, get_material, titre=None, on_added=None):
     return {"reload": reload}
 
 
+def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
+    """Table LIBRE de largeurs brûlées : (S, F, défocus, largeur) sans grille
+    imposée -- le pendant de `_make_shade_quick_add`, pour la mesure et non
+    pour le ton.
+
+    Pourquoi elle existe. La saisie des largeurs passait uniquement par
+    `_MesuresPlanchesControleur`, dont la grille est le MIROIR de la Planche 2 :
+    puissances 1000..200, vitesses 200..800, niveaux de défocus 15 et 36. C'est
+    juste pour une planche, qui grave une grille discrète. Mais la RAMPE mesure
+    un CONTINUUM -- la puissance et la hauteur montent ensemble le long de
+    chaque ligne, si bien qu'un point relevé vaut par exemple S980/F200 à
+    défocus 60. Aucune de ces valeurs n'entre dans la grille. Relevé le
+    30/07/2026 sur la première rampe Z gravée : cinq mesures exploitables, et
+    nulle part où les mettre.
+
+    Deux précautions, chacune payée par une leçon de ce projet :
+
+    - **Fusion, jamais remplacement.** `save_burn_widths` ÉCRASE la table du
+      matériau. On relit donc l'existant et on n'y remplace que les points de
+      même (S, F, défocus). Un enregistrement ne doit jamais faire disparaître
+      des mesures au pied à coulisse.
+    - **Lecture BRUTE de la config**, pas via `load_burn_widths` : celle-ci
+      ramène les défocus au niveau standard proche (15,34 -> 15). Passer par
+      elle pour fusionner réécrirait les valeurs stockées de Christophe au
+      passage. On ne touche que ce qu'on ajoute.
+
+    Et le défocus tapé n'est PAS arrondi en silence : s'il tombe à moins de 5 mm
+    d'un niveau standard, `load_burn_widths` le rangera là (un 40 devient 36).
+    La table le dit avant d'enregistrer -- une valeur saisie à la main est
+    délibérée, elle mérite qu'on prévienne plutôt qu'on corrige."""
+    form.addRow(_WrapLabel(
+        "<b>Largeurs mesurées au pied à coulisse</b> — une ligne par point "
+        "relevé. La rampe fait monter la puissance ET la hauteur ensemble : "
+        "relève donc la puissance qui correspond à l'endroit mesuré (elle est "
+        "graduée sous la première ligne), pas celle du réglage. Défocus 0 = au "
+        "foyer. Ces largeurs nourrissent le modèle de trait brûlé (remplissage, "
+        "lignes gravées, traits épais décoratifs)."))
+    table = QtWidgets.QTableWidget(lignes, 4)
+    table.setHorizontalHeaderLabels(["Puissance S", "Vitesse F",
+                                     "Défocus (mm)", "Largeur (mm)"])
+    table.verticalHeader().setVisible(False)
+    table.horizontalHeader().setStretchLastSection(True)
+    table.setMinimumHeight(26 * (lignes + 1))
+    form.addRow(table)
+    lbl = _WrapLabel("")
+    form.addRow(lbl)
+    btn = QtWidgets.QPushButton("Enregistrer ces largeurs")
+    btn.setToolTip(
+        "Ajoute ces points à la table des largeurs brûlées du matériau, sans "
+        "toucher aux mesures déjà enregistrées. Indépendant de l'OK du panneau.")
+    form.addRow(btn)
+
+    def _nombre(r, c):
+        it = table.item(r, c)
+        txt = (it.text() if it else "").strip().replace(",", ".")
+        if not txt:
+            return None
+        try:
+            return float(txt)
+        except ValueError:
+            return None
+
+    def _on_save():
+        mat = (get_material() or "").strip()
+        if not mat:
+            QtWidgets.QMessageBox.warning(form.parentWidget(), "Largeurs",
+                                          "Indiquer un nom de matériau.")
+            return
+        points, incomplets = [], 0
+        for r in range(table.rowCount()):
+            vals = [_nombre(r, c) for c in range(4)]
+            if all(v is None for v in vals):
+                continue
+            s, f, dz, w = vals
+            if None in (s, f, w) or s <= 0 or f <= 0 or w <= 0:
+                incomplets += 1
+                continue
+            points.append((s, f, float(dz or 0.0), w))
+        if not points:
+            lbl.setText("<span style=\"color:#c62828\">Rien à enregistrer "
+                        "(il faut au moins puissance, vitesse et largeur).</span>")
+            return
+        # Lecture BRUTE : ne pas passer par load_burn_widths, qui arrondit les
+        # défocus au niveau standard et réécrirait l'existant (cf. docstring).
+        table_mat = (core.load_config().get("burn_widths", {})
+                     .get(mat, {}) or {})
+        focus = list(table_mat.get("focus", []) or [])
+        defocus = list(table_mat.get("defocus", []) or [])
+
+        def _remplace(liste, cle, neuf):
+            for i, pt in enumerate(liste):
+                if cle(pt):
+                    liste[i] = neuf
+                    return False
+            liste.append(neuf)
+            return True
+
+        ajouts = remplaces = 0
+        arrondis = []
+        for s, f, dz, w in points:
+            if dz <= 1e-9:
+                neuf = {"power": s, "feed": f, "width": round(w, 3)}
+                nouveau = _remplace(
+                    focus,
+                    lambda pt, s=s, f=f: (abs(float(pt.get("power", 0)) - s) < 1e-6
+                                          and abs(float(pt.get("feed", 0)) - f) < 1e-6),
+                    neuf)
+            else:
+                neuf = {"power": s, "feed": f, "width": round(w, 3),
+                        "z_offset": dz}
+                nouveau = _remplace(
+                    defocus,
+                    lambda pt, s=s, f=f, dz=dz: (
+                        abs(float(pt.get("power", 0)) - s) < 1e-6
+                        and abs(float(pt.get("feed", 0)) - f) < 1e-6
+                        and abs(float(pt.get("z_offset", 0) or 0) - dz) < 1e-6),
+                    neuf)
+                range_a = core._snap_defocus_level(dz)
+                if abs(range_a - dz) > 1e-9:
+                    arrondis.append((dz, range_a))
+            ajouts += 1 if nouveau else 0
+            remplaces += 0 if nouveau else 1
+        core.save_burn_widths(mat, {"focus": focus, "defocus": defocus})
+        msg = ("{} point(s) ajouté(s), {} remplacé(s) pour « {} » — la table "
+               "compte maintenant {} mesure(s) au foyer et {} en défocus."
+               .format(ajouts, remplaces, mat, len(focus), len(defocus)))
+        if incomplets:
+            msg += (" {} ligne(s) ignorée(s), incomplète(s)."
+                    .format(incomplets))
+        couleur = "#2e7d32"
+        if arrondis:
+            couleur = "#c62828"
+            msg += (" <b>Attention</b> : {} seront relus au niveau standard "
+                    "le plus proche ({}) — un défocus à moins de 5 mm d'un "
+                    "niveau y est rangé.".format(
+                        ", ".join("{:.0f} mm".format(a) for a, _b in arrondis),
+                        ", ".join("{:.0f}".format(b) for _a, b in arrondis)))
+        lbl.setText("<span style=\"color:{}\">{}</span>".format(couleur, msg))
+        if on_saved:
+            on_saved()
+
+    btn.clicked.connect(_on_save)
+
+    def reload():
+        lbl.setText("")
+
+    return {"reload": reload, "table": table}
+
+
 # ==========================================================================
 # MODE : TEXTE TRAIT SIMPLE (police mono-trait Hershey)
 # ==========================================================================
@@ -6014,6 +6163,7 @@ class TaskPanelPowerRamp:
         self._update_duration_preview()
         self._photo["reload"]()
         self._ton_rapide["reload"]()
+        self._largeurs["reload"]()
 
     def _build_ramp_next(self, form):
         """Section ② : la rampe ne donne pas une mesure chiffrée mais un
@@ -6046,6 +6196,14 @@ class TaskPanelPowerRamp:
         self._ton_rapide = _make_shade_quick_add(
             form, lambda: self.combo_mat.currentText(),
             on_added=self._maj_liste_materiaux)
+
+        # Le ton et la LARGEUR sont deux mesures distinctes de la même
+        # planche : l'un dit quel gris rend le bois, l'autre quelle épaisseur
+        # le laser brûle. La rampe donne les deux, et jusqu'ici seule la
+        # première avait où aller.
+        self._largeurs = _make_largeurs_libres(
+            form, lambda: self.combo_mat.currentText(),
+            on_saved=self._maj_liste_materiaux)
 
     def _maj_liste_materiaux(self):
         """Après un ajout : rafraîchit la liste des matériaux du sélecteur
