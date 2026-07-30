@@ -5353,6 +5353,14 @@ def estimate_job_time_seconds(gcode_text, rapid_feed=None, accel=None):
             continue
         direction = (dx / dist, dy / dist, dz / dist)
         feed = rapid_feed if is_g0 else current_feed
+        # Les lignes `M67 E0 Q<v>` ne sont PAS lues ici, et c'est VOULU :
+        # M67 est synchronisé avec le mouvement, il ne rompt donc pas la
+        # course. Le résultat est juste dans les deux modes -- 1h31 en M67
+        # contre 3h41 en S direct sur le même portrait -- mais il l'est par
+        # OMISSION. Quiconque « améliorerait » cet estimateur en lui faisant
+        # lire les M67 comme des changements de puissance casserait
+        # l'estimation du mode rapide sans s'en apercevoir. Ne pas le faire.
+        #
         # Un CHANGEMENT DE PUISSANCE rompt la course. Mesuré le 30/07/2026
         # sur un portrait en lignes gravées : 172 614 blocs G1 de 0,30 mm de
         # médiane, gravés à F800, annoncés 1h30 et partis pour 4 h. Soit
