@@ -11,6 +11,26 @@ Les versions suivent `MAJEURE.MINEURE.CORRECTIF`. `VERSION` dans
 
 ---
 
+## v2.2.1 — 30 juillet 2026
+
+### Corrigé
+
+**L'avertissement d'arrondi du défocus était incompréhensible.** Il disait
+« seront relus au niveau standard le plus proche (36) ». Christophe n'a pas
+compris, et il avait raison : « niveau standard » n'est expliqué nulle part
+dans l'interface, et « relu » décrit un détail d'implémentation, pas ce qui
+arrive à sa mesure.
+
+Reformulé en CONSÉQUENCE : « le défocus 40 mm comptera comme 36 mm. L'atelier
+regroupe les mesures en défocus autour de hauteurs de référence (15, 36) et y
+rattache tout ce qui en est à moins de 5 mm. La mesure reste juste, mais elle
+servira comme si elle avait été faite à cette hauteur — saisir cette valeur
+directement revient au même. »
+
+Un message que l'utilisateur ne comprend pas ne l'avertit de rien.
+
+---
+
 ## v2.2.0 — 30 juillet 2026
 
 ### Ajouté

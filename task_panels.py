@@ -3379,11 +3379,24 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
         couleur = "#2e7d32"
         if arrondis:
             couleur = "#c62828"
-            msg += (" <b>Attention</b> : {} seront relus au niveau standard "
-                    "le plus proche ({}) — un défocus à moins de 5 mm d'un "
-                    "niveau y est rangé.".format(
-                        ", ".join("{:.0f} mm".format(a) for a, _b in arrondis),
-                        ", ".join("{:.0f}".format(b) for _a, b in arrondis)))
+            # Formulé en CONSÉQUENCE, pas en mécanisme. La première version
+            # disait « seront relus au niveau standard le plus proche » :
+            # Christophe n'a pas compris, et il avait raison -- « niveau
+            # standard » n'est expliqué nulle part dans l'interface, et
+            # « relu » décrit un détail d'implémentation. Ce qu'il faut
+            # savoir tient en une phrase : cette mesure comptera comme si
+            # elle avait été faite à telle hauteur.
+            msg += (" <b>Attention</b> : {}. L'atelier regroupe les mesures "
+                    "en défocus autour de hauteurs de référence ({}) et y "
+                    "rattache tout ce qui en est à moins de 5 mm. La mesure "
+                    "reste juste, mais elle servira comme si elle avait été "
+                    "faite à cette hauteur — saisir cette valeur directement "
+                    "revient au même.".format(
+                        ", ".join("le défocus <b>{:.0f} mm</b> comptera comme "
+                                  "<b>{:.0f} mm</b>".format(a, b)
+                                  for a, b in arrondis),
+                        ", ".join("{:.0f}".format(lv)
+                                  for lv in core.DEFOCUS_LEVELS_MM)))
         lbl.setText("<span style=\"color:{}\">{}</span>".format(couleur, msg))
         if on_saved:
             on_saved()
