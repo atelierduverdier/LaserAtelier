@@ -7973,16 +7973,30 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
                                  white_threshold=0.05, n_levels=10,
                                  patch_mm=8.0, band_h_mm=8.0, gap_mm=5.0,
                                  label_power=None, label_feed=None,
+                                 dot_spacing_mm=1.27, line_min_mm=0.10,
                                  pre_gcode="", post_gcode="", frame_only=False,
                                  quiet=False):
     """MIRE COMPARATIVE des tramages photo : le même dégradé en paliers
-    (n_levels patchs de patch_mm, 10%..100%) gravé par chaque tramage, en
-    bandes empilées étiquetées 1..4 :
-      1 = Diffusion (points G4)   2 = Durée variable
-      3 = Lignes calibrées (nuancier)   4 = Diffusion en lignes
-    Un seul test pour comparer les styles et lire quels gris chaque
-    tramage rend réellement sur le matériau. La bande 3 est sautée (avec
-    avertissement) si le nuancier n'a pas 2 tons en défocus."""
+    (n_levels patchs de patch_mm, 10%..100%) gravé par CHACUN des sept
+    tramages, en bandes empilées étiquetées 1..7 :
+      1 = Diffusion (points identiques)   2 = Durée variable
+      3 = Lignes calibrées (nuancier)     4 = Diffusion en lignes
+      5 = Gros points Z                   6 = Similigravure 45°
+      7 = Lignes gravées (trait qui enfle)
+    Un seul test pour comparer les styles et lire quels gris chaque tramage
+    rend réellement sur le matériau.
+
+    Chaque bande est gravée DANS SON PROPRE RÉGIME, ce qui est le seul moyen
+    de comparer honnêtement : les bandes 6 et 7 au FOYER (leur grain doit
+    être net, cf. les tramages correspondants), la bande 5 avec son Z par
+    point, et la bande 7 à la vitesse la plus rapide où son trait enfle
+    encore (`swell_max_feed`) plutôt qu'à la vitesse demandée -- au-delà,
+    son trait est plat et la bande ne montrerait qu'un aplat, ou serait
+    sautée. La vitesse réellement employée est écrite en tête.
+
+    Les bandes 3 et 7 sont sautées, avec avertissement, si la donnée mesurée
+    leur manque : 2 tons en défocus pour la première, une table de largeurs
+    brûlées pour la seconde."""
     if label_power is None:
         label_power = LABEL_POWER
     if label_feed is None:
@@ -7994,15 +8008,38 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
 
     curve = darkness_fluence_curve(material) if material else []
     wpts = darkness_width_points(material) if material else []
-    bands = [(0, "diffusion"), (1, "duree"), (2, "calibre"), (3, "dither_lignes")]
+    bands = [(0, "diffusion"), (1, "duree"), (2, "calibre"),
+             (3, "dither_lignes"), (4, "zdots"), (5, "simili"), (6, "enfle")]
     band_step = band_h_mm + gap_mm
-    z_safe = z_work + TRAVEL_CLEARANCE_MM
-    total_h = 4 * band_step - gap_mm
+    total_h = len(bands) * band_step - gap_mm
+
+    # Gros points Z : le diamètre porte le gris, via la hauteur du point.
+    # Même repli que le panneau quand aucune largeur n'est demandée.
+    dot_max = max(pitch * 0.9, SPOT_FOCUS_MM * 3)
+    half_angle = calibrated_half_angle()
+    # Lignes gravées : au foyer, et à la vitesse où le trait enfle encore.
+    feed_enfle = swell_max_feed(material) if material else None
+    if feed_enfle:
+        feed_enfle = min(feed, feed_enfle)
+    niveaux_enfle = (swell_power_levels(material, feed_enfle, line_min_mm)
+                     if feed_enfle else None)
+
+    # Le dégagement doit couvrir la bande la PLUS HAUTE, or les gros points Z
+    # montent bien au-dessus de z_work (leur défocus fait leur diamètre) : le
+    # calculer sur z_work seul ferait transiter le bec dans les points déjà
+    # gravés.
+    z_max = max(z_work, Z_WORK_MM)
+    z_pt_max = Z_WORK_MM + (defocus_for_spot_diameter(
+        dot_max, SPOT_FOCUS_MM, half_angle) or 0.0)
+    z_safe = max(z_max, z_pt_max) + TRAVEL_CLEARANCE_MM
 
     lines = []
     lines.append("(G-Code Laser - Mire des tramages photo : degrade {}%..100%)".format(
         int(100.0 / n_levels)))
     lines.append("(1=Diffusion points  2=Duree variable  3=Lignes calibrees {}  4=Diffusion en lignes)".format(material or "-"))
+    lines.append("(5=Gros points Z  6=Similigravure 45 deg  7=Lignes gravees [trait qui enfle])")
+    lines.append("(Bandes 6 et 7 au foyer Z{:.2f} ; bande 7 a F{} au lieu de F{:.0f})".format(
+        Z_WORK_MM, "{:.0f}".format(feed_enfle) if feed_enfle else "-", feed))
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
@@ -8039,8 +8076,29 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
                 xb, y + y_off, f_dot, power, sel))
             lines.append(CMD_BEAM_OFF.format(sel=sel))
 
+    def _emit_zdots(marks, y_off):
+        # Gros points Z : le Z bouge ENTRE les points (jamais pendant le
+        # tir), et le micro-trait suit le sens du parcours -- exactement
+        # generate_gcode_photo_zdots, dont c'est la seule copie tolérée
+        # parce que la mire décale tout en Y.
+        seg = max(0.05, min(0.3 * pitch, 0.2))
+        half = seg / 2.0
+        dots = [(x, y + y_off,
+                 Z_WORK_MM + (defocus_for_spot_diameter(
+                     dia, SPOT_FOCUS_MM, half_angle) or 0.0),
+                 dwell_min_s + (dwell_max_s - dwell_min_s)
+                 * (dia / dot_max) ** 2)
+                for x, y, dia in marks]
+        for i, (x, y, zz, dw) in enumerate(dots):
+            xa, xb = micro_trait_oriente(dots, i, half)
+            lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(xa, y, zz))
+            f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
+            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} S{:.0f} {}".format(
+                xb, y, f_dot, power, sel))
+            lines.append(CMD_BEAM_OFF.format(sel=sel))
+
     for b, kind in bands:
-        y_off = (3 - b) * band_step        # bande 1 en haut
+        y_off = (len(bands) - 1 - b) * band_step   # bande 1 en haut
         lines.append("(===== Bande {} : {} =====)".format(b + 1, kind))
         # Étiquette (chiffre) à gauche, gravée AU FOYER et non à z_work :
         # dans cette mire z_work est la hauteur DÉFOCALISÉE des bandes, un
@@ -8084,10 +8142,37 @@ def generate_gcode_photo_sampler(pitch, z_work, dwell_min_s, dwell_max_s, power,
                     srow.append(level_s[d])
                 sgrid.append(srow)
             _emit_raster_rows(lines, sgrid, pitch, z_work, z_safe, feed, y0=y_off)
-        else:                              # dither_lignes
+        elif kind == "dither_lignes":
             binary = floyd_steinberg_dither(grid)
             dgrid = [[int(power) if v else 0 for v in row] for row in binary]
             _emit_raster_rows(lines, dgrid, pitch, z_work, z_safe, feed, y0=y_off)
+        elif kind == "zdots":
+            _emit_zdots(zdots_marks(grid, pitch, SPOT_FOCUS_MM, dot_max,
+                                    white_threshold), y_off)
+        elif kind == "simili":
+            # AU FOYER : c'est le point net qui fait le grain de la trame.
+            binaire = am_halftone_screen(
+                grid, am_screen_k(dot_spacing_mm, pitch))
+            sgrid = [[int(power) if v else 0 for v in row] for row in binaire]
+            _emit_raster_rows(lines, sgrid, pitch, Z_WORK_MM, z_safe, feed,
+                              y0=y_off)
+        else:                              # enfle
+            if niveaux_enfle is None:
+                if not quiet:
+                    FreeCAD.Console.PrintWarning(
+                        "Mire : bande Lignes gravées sautée -- {}\n".format(
+                            swell_refus_message(material, feed)
+                            if material else
+                            "aucun matériau, donc aucune largeur brûlée mesurée."))
+                continue
+            puiss, _w_min, _w_max = niveaux_enfle
+            n = len(puiss)
+            sgrid = [[puiss[max(0, min(n - 1, int(round(
+                min(1.0, max(0.0, d)) * (n - 1)))))] for d in row]
+                for row in grid]
+            # AU FOYER, et à la vitesse où le trait enfle encore.
+            _emit_raster_rows(lines, sgrid, pitch, Z_WORK_MM, z_safe,
+                              feed_enfle, y0=y_off)
 
     lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():

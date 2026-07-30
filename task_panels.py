@@ -6573,9 +6573,13 @@ class TaskPanelHalftone:
         self.btn_sampler = QtWidgets.QPushButton("Mire des tramages (comparatif sur chute)")
         self.btn_sampler.setToolTip(
             "Génère un fichier de TEST : le même dégradé de gris (10 patchs,\n"
-            "10 à 100 %) gravé par CHAQUE tramage, en 4 bandes étiquetées\n"
+            "10 à 100 %) gravé par LES SEPT tramages, en bandes étiquetées\n"
             "1=Diffusion points, 2=Durée variable, 3=Lignes calibrées,\n"
-            "4=Diffusion en lignes -- avec les réglages courants du panneau.\n"
+            "4=Diffusion en lignes, 5=Gros points Z, 6=Similigravure 45°,\n"
+            "7=Lignes gravées -- avec les réglages courants du panneau.\n"
+            "Chaque bande est gravée DANS SON RÉGIME : les bandes 6 et 7 au\n"
+            "foyer (leur grain doit être net), et la 7 à la vitesse où son\n"
+            "trait enfle encore, sinon elle ne montrerait qu'un aplat.\n"
             "À graver sur une chute pour comparer les styles et choisir.")
         self.btn_sampler.clicked.connect(self._on_sampler)
         form.addRow(self.btn_sampler)
@@ -7640,8 +7644,13 @@ class TaskPanelHalftone:
                 self.spn_line_feed.setValue(min(fcal, key=lambda x: abs(x - f)))
 
     def _on_sampler(self):
-        """Mire comparative : le même dégradé gravé par les 4 tramages
-        (bandes étiquetées 1-4), avec les réglages courants du panneau."""
+        """Mire comparative : le même dégradé gravé par les SEPT tramages
+        (bandes étiquetées 1-7), avec les réglages courants du panneau.
+
+        Les réglages propres aux tramages 6 et 7 (espacement de trame, trait
+        mini) sont passés même quand leurs champs sont masqués : la mire les
+        grave TOUS, quel que soit le tramage sélectionné -- c'est justement à
+        ça qu'elle sert."""
         k = self._gen_kwargs()
         width = self.spn_spot_width.value()
         if width <= 0:
@@ -7654,6 +7663,8 @@ class TaskPanelHalftone:
             power=self.spn_power.value() or core.S_MAX / 2.0,
             feed=self.spn_line_feed.value(), line_width=width,
             material=self.combo_photo_mat.currentData(),
+            dot_spacing_mm=self.spn_dot_spacing.value(),
+            line_min_mm=self.spn_line_min.value(),
             white_threshold=k["white_threshold"])
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code de mire généré.")
