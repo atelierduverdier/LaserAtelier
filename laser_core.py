@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.9.0"
+VERSION = "2.9.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3580,16 +3580,10 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     # pixel. Projection normalisée sur l'emprise réelle des chaînes.
     deg_dz = None
     if style == "degrade" and chains:
-        ang = math.radians(style_params.get("deg_angle", 0.0))
-        ux, uy = math.cos(ang), math.sin(ang)
-        projs = [p.x * ux + p.y * uy for c in chains for p in c]
-        pmin, pmax = min(projs), max(projs)
-        span = max(pmax - pmin, 1e-9)
-        z0 = style_params.get("deg_z_min", 0.0)
-        z1 = style_params.get("deg_z_max", 0.0)
-        def deg_dz(p):
-            t = (p.x * ux + p.y * uy - pmin) / span
-            return z0 + (z1 - z0) * t
+        deg_dz = rampe_direction_dz(
+            chains, style_params.get("deg_angle", 0.0),
+            style_params.get("deg_z_min", 0.0),
+            style_params.get("deg_z_max", 0.0))
 
     for chain in chains:
         p0 = chain[0]
@@ -6803,6 +6797,30 @@ def chaine_fermee(chain, tol=1e-6):
     return (len(chain) > 2
             and math.hypot(chain[0].x - chain[-1].x,
                            chain[0].y - chain[-1].y) < tol)
+
+
+def rampe_direction_dz(chains, angle_deg, dz_debut, dz_fin):
+    """Fonction dz(point) du style « dégradé dans une DIRECTION » : le
+    défocus suit la position projetée sur `angle_deg`, normalisée sur
+    l'emprise de TOUTES les chaînes.
+
+    SOURCE UNIQUE, comme `rampe_trace_dz` : le générateur ET l'aperçu
+    photo passent par ici. L'aperçu peignait auparavant la MOYENNE des
+    deux largeurs sur tout le tracé -- une ligne d'épaisseur constante là
+    où la machine trace un dégradé, donc un aperçu qui ne montrait pas ce
+    qu'on allait obtenir."""
+    if not chains:
+        return lambda p: dz_debut
+    ang = math.radians(angle_deg or 0.0)
+    ux, uy = math.cos(ang), math.sin(ang)
+    projs = [p.x * ux + p.y * uy for c in chains for p in c]
+    pmin = min(projs)
+    span = max(max(projs) - pmin, 1e-9)
+
+    def dz(p):
+        return dz_debut + (dz_fin - dz_debut) * (
+            (p.x * ux + p.y * uy - pmin) / span)
+    return dz
 
 
 def rampe_trace_dz(chain, dz_debut, dz_fin, aller_retour=False):

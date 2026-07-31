@@ -158,4 +158,54 @@ for cle in ("deg_angle", "deg_w0", "deg_w1", "deg_boucle"):
 print("8. panneau : 7 styles, champs du fuseau visibles sur le bon, angle "
       "réservé au dégradé spatial, 4 réglages mémorisés OK")
 
+
+# --- 9. L'APERÇU doit montrer le fuseau, pas une largeur moyenne -------
+# Signalé le 31/07/2026 sur un 0,3 -> 3 mm rendu en trait fin uniforme :
+# l'aperçu calculait UNE largeur pour tout le dessin. Le style « le long
+# du tracé » tombait même dans le repli « plein » (largeur au foyer), et
+# le dégradé directionnel peignait la MOYENNE des deux valeurs. Un aperçu
+# qui ne montre pas ce qu'on va obtenir est pire qu'aucun aperçu.
+p._edges = [seg(V(0, 0, 0), V(120, 0, 0))]
+p.spn_power.setValue(800)
+p.spn_feed.setValue(400)
+p.spn_deg_w0.setValue(0.3)
+p.spn_deg_w1.setValue(3.0)
+for idx in (5, 6):
+    p.combo_style.setCurrentIndex(idx)
+    st = p._strokes_degrade(idx, 800.0, 400.0, 0.85)
+    assert len(st) > 50, ("l'aperçu doit découper le tracé pour varier la "
+                          "largeur", idx, len(st))
+    larg = [w for _pts, w, _t in st]
+    assert abs(larg[0] - 0.30) < 0.05, (idx, larg[0])
+    assert abs(larg[-1] - 3.00) < 0.05, (idx, larg[-1])
+    assert all(b >= a - 1e-9 for a, b in zip(larg, larg[1:])), (
+        "la largeur peinte doit croître comme la rampe", idx)
+    # Le défaut d'origine : une seule largeur constante partout.
+    assert max(larg) - min(larg) > 2.0, (
+        "l'aperçu peint une largeur quasi constante", idx, min(larg), max(larg))
+print("9. aperçu des deux dégradés : {} morceaux, largeur peinte 0.30 -> 3.00 "
+      "mm et croissante -- plus de trait uniforme OK".format(len(st)))
+
+# --- 10. Aperçu et G-code sortent des MÊMES rampes ---------------------
+# `rampe_direction_dz` était une fermeture interne au générateur : l'aperçu
+# ne pouvait que la ré-inventer. Elle est désormais partagée, comme
+# `rampe_trace_dz`. On vérifie que l'aperçu passe bien par les deux.
+vraies = (core.rampe_direction_dz, core.rampe_trace_dz)
+appels = {"dir": 0, "trace": 0}
+core.rampe_direction_dz = lambda *a, **k: (
+    appels.__setitem__("dir", appels["dir"] + 1) or vraies[0](*a, **k))
+core.rampe_trace_dz = lambda *a, **k: (
+    appels.__setitem__("trace", appels["trace"] + 1) or vraies[1](*a, **k))
+try:
+    p.combo_style.setCurrentIndex(5)
+    p._strokes_degrade(5, 800.0, 400.0, 0.85)
+    p.combo_style.setCurrentIndex(6)
+    p._strokes_degrade(6, 800.0, 400.0, 0.85)
+finally:
+    core.rampe_direction_dz, core.rampe_trace_dz = vraies
+assert appels["dir"] >= 1 and appels["trace"] >= 1, appels
+print("10. l'aperçu appelle rampe_direction_dz ({}) et rampe_trace_dz ({}) : "
+      "il ne peut pas dessiner une autre rampe que le G-code OK".format(
+          appels["dir"], appels["trace"]))
+
 print("\nTOUS LES TESTS fuseau PASSENT")

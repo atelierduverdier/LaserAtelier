@@ -21,6 +21,13 @@ core, tp = h.core, h.tp
 
 MAT = u"Hêtre"
 p = tp.TaskPanelHalftone()
+
+# Le panneau restaure les DERNIERS réglages de Christophe : son plafond de
+# puissance (v2.8.0) rognerait la plage et ferait tomber le contraste de 67
+# à 58 points. Un test ne doit pas dépendre de ce qu'il a réglé hier -- même
+# leçon que la démonstration de test_interpolation_mesures, éteinte le jour
+# où il a saisi un ton. On repart donc sans plafond, explicitement.
+p.spn_power_max.setValue(core.S_MAX)
 mats = [p.combo_photo_mat.itemText(i) for i in range(p.combo_photo_mat.count())]
 p.combo_photo_mat.setCurrentIndex(mats.index(MAT))
 p.combo_mode.setCurrentIndex(6)

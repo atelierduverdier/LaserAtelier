@@ -10136,6 +10136,53 @@ class TaskPanelCurved:
                 return p_eff
         return self.spn_power.value()
 
+    def _strokes_degrade(self, idx, power, feed, tone):
+        """Traits de l'aperçu pour les deux styles à largeur VARIABLE.
+
+        Un `stroke` porte UNE largeur : pour montrer un fuseau il faut donc
+        découper le tracé et donner à chaque morceau la largeur qu'il aura
+        vraiment. Les dz viennent des mêmes fonctions que le générateur
+        (`rampe_direction_dz` / `rampe_trace_dz`), et la largeur de la même
+        `burn_width_defocus_scaled` que le reste de l'aperçu : l'image ne
+        peut donc pas raconter autre chose que le G-code.
+
+        On chaîne les arêtes comme le générateur, parce que la rampe « le
+        long du tracé » court sur une CHAÎNE et non sur une arête isolée.
+        """
+        sp = self._style_kwargs()["style_params"]
+        chains = core.chain_edges(self._edges)
+        if not chains:
+            return []
+        half = core.calibrated_half_angle()
+        dz_dir = (core.rampe_direction_dz(
+            chains, sp.get("deg_angle", 0.0),
+            sp.get("deg_z_min", 0.0), sp.get("deg_z_max", 0.0))
+            if idx == 5 else None)
+
+        def largeur(dz):
+            # Largeur BRÛLÉE mesurée si on l'a, sinon le point optique --
+            # même repli que les autres branches de l'aperçu.
+            return (core.burn_width_defocus_scaled(power, feed, dz)
+                    or core.spot_diameter_at_defocus(
+                        dz, core.SPOT_FOCUS_MM, half)
+                    or core.SPOT_FOCUS_MM)
+
+        strokes = []
+        for chain in chains:
+            if len(chain) < 2:
+                continue
+            if dz_dir is not None:
+                dzs = [dz_dir(p) for p in chain]
+            else:
+                dzs = core.rampe_trace_dz(
+                    chain, sp.get("deg_z_min", 0.0), sp.get("deg_z_max", 0.0),
+                    bool(sp.get("deg_aller_retour", False)))
+            for i in range(len(chain) - 1):
+                a_, b_ = chain[i], chain[i + 1]
+                w = largeur((dzs[i] + dzs[i + 1]) / 2.0)
+                strokes.append(([(a_.x, a_.y), (b_.x, b_.y)], w, tone))
+        return strokes
+
     def _style_kwargs(self):
         # Le style « Défocus » (index 4) est un trait PLEIN gravé plus haut
         # (cf. _z_focus) : le point élargi fait le noir, le tracé reste
@@ -10292,7 +10339,12 @@ class TaskPanelCurved:
             z_tone = defocus
         elif idx == 3:                                 # Vague : moyenne foyer/max
             width = (w_focus + self.spn_wave_width.value()) / 2.0
-        elif idx == 5:                                 # Dégradé : moyenne des deux
+        elif idx in (5, 6):
+            # Les deux dégradés ont une largeur qui VARIE : la peindre
+            # constante (l'ancienne moyenne des deux valeurs) montrait une
+            # ligne uniforme là où la machine trace un fuseau -- signalé
+            # le 31/07/2026 sur un 0,3 -> 3 mm rendu en trait fin. On sort
+            # donc par un chemin dédié qui découpe le tracé.
             width = (self.spn_deg_w0.value() + self.spn_deg_w1.value()) / 2.0
         else:                                          # plein / tirets / pointillé
             width = w_focus
@@ -10303,11 +10355,14 @@ class TaskPanelCurved:
         tone = _tone_measured(mat_nuancier, pw, fd, z_tone)
         if tone is None:
             tone = _tone_burn(pw, fd, width)
-        strokes = []
-        for e in self._edges:
-            pts = _discretize_edge(e)
-            if pts:
-                strokes.append((pts, width, tone))
+        if idx in (5, 6):
+            strokes = self._strokes_degrade(idx, pw, fd, tone)
+        else:
+            strokes = []
+            for e in self._edges:
+                pts = _discretize_edge(e)
+                if pts:
+                    strokes.append((pts, width, tone))
         if not strokes:
             QtWidgets.QMessageBox.information(
                 self.form, "Aperçu photo", "Rien à afficher (aucun trait).")

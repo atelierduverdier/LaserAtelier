@@ -134,6 +134,20 @@ user decisions from 2026-07-31:
   both ignore the gradient lift, and are therefore consistent with each other — don't "fix" one
   alone.
 
+### The preview must show the taper, not its average (v2.9.1)
+
+`TaskPanelCurved`'s photo preview computed **one** width for the whole drawing, per style: the
+directional gradient painted the *mean* of the two widths, and `degrade_trace` fell through to the
+`plein` branch — the focus width. A 0.3 → 3 mm taper rendered as a uniform thin line, reported the
+day it shipped. A preview that doesn't show what you'll get is worse than none.
+
+`_strokes_degrade` now chains the edges like the generator does (the along-path ramp runs over a
+CHAIN, not a lone edge) and emits one stroke per segment, its width from
+`burn_width_defocus_scaled` at that point's dz. Both dz sources are the generator's own
+(`rampe_direction_dz`, extracted from an inline closure for exactly this reason, and
+`rampe_trace_dz`), so preview and G-code cannot disagree — §10 of `test_fuseau.py` asserts both are
+called.
+
 ## Chain ordering (v1.82.0)
 
 `generate_gcode_curved` runs `order_chains_by_proximity(chains)` right after `chain_edges`, so every
