@@ -7135,6 +7135,32 @@ class TaskPanelHalftone:
             "s'affiche sous la grille.")
         form.addRow("Épaisseur mini du trait :", self.spn_line_min)
 
+        # Ce qu'on fait de ce qui passe SOUS le seuil de blanc. Deux
+        # réponses honnêtes, pas une bonne et une mauvaise : « Bois nu »
+        # est franc mais crée une marche (rien, puis d'un coup 33 % de
+        # couverture) ; « Pointillé » comble justement cette marche, seul
+        # moyen de descendre sous le plancher du mode puisque la largeur,
+        # elle, s'arrête à la puissance la plus basse mesurée.
+        self.combo_fond = QtWidgets.QComboBox()
+        self.combo_fond.addItem("Bois nu (net)", "nu")
+        self.combo_fond.addItem("Pointillé dégressif (dégradé doux)", "pointille")
+        self.combo_fond.setToolTip(
+            "Lignes gravées : ce que devient une case SOUS le seuil blanc.\n"
+            "\n"
+            "Bois nu : rien n'est gravé. Net, mais c'est une MARCHE --\n"
+            "  au-dessus du seuil le trait apparaît d'un coup à ~33 % de\n"
+            "  couverture. Idéal sur un fond blanc franc.\n"
+            "\n"
+            "Pointillé dégressif : le trait le plus fin, mais intermittent,\n"
+            "  de plus en plus clairsemé vers le blanc pur. La couverture\n"
+            "  descend continûment de 33 % à 0 au lieu de sauter : pas de\n"
+            "  contour visible sur un dégradé doux. C'est le SEUL moyen\n"
+            "  d'aller sous le plancher du mode -- la largeur, elle, ne\n"
+            "  descend pas plus bas que la puissance la plus faible mesurée.\n"
+            "\n"
+            "Sans effet si le seuil blanc vaut 0.")
+        form.addRow("Sous le seuil :", self.combo_fond)
+
         self.spn_dot_spacing = QtWidgets.QDoubleSpinBox()
         self.spn_dot_spacing.setRange(0.3, 5.0)
         self.spn_dot_spacing.setDecimals(2)
@@ -7211,6 +7237,12 @@ class TaskPanelHalftone:
                              t["reglage"] == "espacement")
             _set_row_visible(form, self.spn_line_min,
                              t["reglage"] == "trait_mini")
+            # Le choix du fond n'a de sens que pour les lignes gravées (les
+            # autres tramages à seuil coupent, point), et seulement si un
+            # seuil est effectivement demandé.
+            _set_row_visible(form, self.combo_fond,
+                             t["reglage"] == "trait_mini")
+            self.combo_fond.setEnabled(self.spn_white.value() > 0.0)
             # « Largeur du point » pilote le DÉFOCUS : elle n'a aucun sens
             # pour un tramage qui grave au foyer, où la largeur du trait vient
             # de la puissance (lignes gravées) ou n'est qu'un grain de trame
@@ -7220,6 +7252,9 @@ class TaskPanelHalftone:
             _set_row_visible(form, self.spn_spot_width, not t["au_foyer"])
             _set_row_visible(form, self.spn_line_feed, t["balayage"])
         self.combo_mode.currentIndexChanged.connect(lambda _i: _sync_mode())
+        # Le sélecteur de fond se grise quand le seuil retombe à 0 : sans
+        # seuil, rien ne passe dessous, il n'y a rien à choisir.
+        self.spn_white.valueChanged.connect(lambda _v: _sync_mode())
         # appel initial déplacé plus bas : _sync_mode touche combo_photo_mat,
         # désormais créé dans la section « Trait & matière » qui suit.
 
@@ -7338,6 +7373,7 @@ class TaskPanelHalftone:
             "line_feed": self.spn_line_feed, "gamma": self.spn_gamma,
             "dot_spacing": self.spn_dot_spacing,
             "line_min": self.spn_line_min,
+            "fond_clair": self.combo_fond,
             # Le MATÉRIAU manquait, et c'est le réglage dont tout le régime
             # dépend : sans lui une recette « Hêtre » ne pouvait pas
             # sélectionner le Hêtre, et une session repartait sur le premier
@@ -7611,21 +7647,22 @@ class TaskPanelHalftone:
                 return None, core.swell_refus_message(material, feed_l)
             puissances, w_min, w_max = niv
             n = len(puissances)
-            # Même seuil de blanc que le générateur, via la MÊME fonction :
-            # sans ça l'aperçu montrerait un fond blanc que la machine
-            # graverait quand même (ou l'inverse).
-            seuil = self.spn_white.value() / 100.0
+            # Seuil de blanc ET fond pointillé viennent de la MÊME grille
+            # que le générateur : sans ça l'aperçu montrerait un fond blanc
+            # que la machine graverait quand même (ou l'inverse), et le
+            # pointillé — qui dépend de la POSITION de la case — serait
+            # forcément dessiné ailleurs.
+            grille = core.swell_niveaux_grille(
+                darkness, n, self.spn_white.value() / 100.0,
+                self.combo_fond.currentData())
             t = teinte(puissances[-1], feed_l, w_max, 0.0)
             for row in range(h):
                 y = (h - 1 - row) * pitch
                 col = 0
                 while col < w:
-                    k0 = core.swell_niveau(darkness[row][col], n, seuil)
+                    k0 = grille[row][col]
                     c0 = col
-                    while col < w:
-                        k = core.swell_niveau(darkness[row][col], n, seuil)
-                        if k != k0:
-                            break
+                    while col < w and grille[row][col] == k0:
                         col += 1
                     if k0 is None:      # bois nu : rien à peindre
                         continue
@@ -7895,7 +7932,8 @@ class TaskPanelHalftone:
                 feed=self.spn_line_feed.value(),
                 material=self.combo_photo_mat.currentData(),
                 line_min_mm=self.spn_line_min.value(),
-                white_threshold=self.spn_white.value() / 100.0, **extra)
+                white_threshold=self.spn_white.value() / 100.0,
+                fond_clair=self.combo_fond.currentData(), **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame
         # de points, silencieusement -- du G-code valide pour le mauvais
@@ -8116,10 +8154,20 @@ class TaskPanelHalftone:
                     "— un fond blanc sortira gris uni. Monte «&nbsp;Seuil "
                     "blanc&nbsp;» pour le laisser en bois nu.".format(
                         w_min, 100.0 * bas))
+            elif seuil > 0.0 and self.combo_fond.currentData() == "pointille":
+                msgs.append(
+                    "Seuil blanc {:.0f} %, fond <b>pointillé</b> : sous cette "
+                    "noirceur le trait le plus fin s'espace, donc la "
+                    "couverture descend continûment de {:.0f} % à 0 — pas de "
+                    "marche dans les dégradés.".format(100.0 * seuil,
+                                                       100.0 * bas))
             elif seuil > 0.0:
                 msgs.append(
                     "Seuil blanc {:.0f} % : sous cette noirceur, bois nu "
-                    "(faisceau coupé, mouvement continu).".format(100.0 * seuil))
+                    "(faisceau coupé, mouvement continu). Le passage au-dessus "
+                    "du seuil est une <b>marche</b> à {:.0f} % de couverture ; "
+                    "le fond «&nbsp;pointillé&nbsp;» l'adoucit.".format(
+                        100.0 * seuil, 100.0 * bas))
             # LA VITESSE D'ABORD, LE PAS ENSUITE. Au-delà de la plus rapide
             # utile, le trait cesse d'enfler jusqu'au bout : c'est toute la
             # plage qui rétrécit. Conseiller alors de resserrer le pas

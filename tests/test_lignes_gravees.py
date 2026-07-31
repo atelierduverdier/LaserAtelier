@@ -228,4 +228,90 @@ assert core.swell_niveau(1.0, n_niv, 0.08) == n_niv - 1, "le noir reste au max"
 print("12. swell_niveau, source unique du générateur ET de l'aperçu : "
       "blanc -> bois nu, gris et noir inchangés OK")
 
+
+# --- 13. Fond pointillé : une rampe continue, sans marche ---------------
+# Le seuil « bois nu » règle le fond blanc mais laisse une MARCHE : rien,
+# puis d'un coup w_min/pas de couverture. Le fond pointillé comble
+# exactement cet intervalle en espaçant le trait le plus fin. C'est le
+# seul moyen de descendre sous le plancher du mode : la largeur, elle,
+# s'arrête à la puissance la plus basse mesurée.
+puiss13, w_min13, w_max13 = core.swell_power_levels(MAT, 800.0, 0.10)
+n13, PAS, SEUIL = len(puiss13), 0.30, 0.08
+plancher = w_min13 / PAS
+
+
+def couverture(d, fond, seuil=SEUIL, cote=24):
+    """Part de bois brûlé pour une plage uniforme de noirceur `d`."""
+    g = core.swell_niveaux_grille([[d] * cote for _ in range(cote)],
+                                  n13, seuil, fond)
+    allumes = [k for ligne in g for k in ligne if k is not None]
+    if not allumes:
+        return 0.0
+    largeur = sum(w_min13 + (w_max13 - w_min13) * k / float(n13 - 1)
+                  for k in allumes) / len(allumes)
+    return (len(allumes) / float(cote * cote)) * largeur / PAS
+
+
+rampe = [couverture(d / 1000.0, "pointille")
+         for d in range(0, int(SEUIL * 1000), 5)]
+assert rampe[0] == 0.0, ("le blanc PUR doit rester nu même en pointillé",
+                         rampe[0])
+assert all(b >= a - 1e-9 for a, b in zip(rampe, rampe[1:])), (
+    "la couverture du pointillé n'est pas monotone", rampe)
+assert rampe[-1] > 0.9 * plancher, (
+    "le pointillé ne rejoint pas le plancher du mode", rampe[-1], plancher)
+# Le raccord doit être franc-bord : juste sous le seuil et juste dessus,
+# la même couverture. C'est ce que le remappage de la branche continue
+# rend possible -- sans lui il restait 5 points d'écart.
+dessous = couverture(SEUIL - 0.001, "pointille")
+dessus = couverture(SEUIL, "pointille")
+assert abs(dessous - dessus) < 0.02, (
+    "marche résiduelle au seuil", dessous, dessus)
+assert abs(dessus - plancher) < 1e-6, (
+    "la branche continue ne repart pas du trait le plus fin",
+    dessus, plancher)
+# Et le fond « nu » reste franc : rien du tout sous le seuil.
+assert couverture(SEUIL - 0.001, "nu") == 0.0, "le fond nu grave sous le seuil"
+print("13. fond pointillé : couverture 0 → {:.0f} % continue et monotone, "
+      "raccord exact au seuil ({:.1f} % des deux côtés) ; le fond nu reste "
+      "à 0 OK".format(100.0 * plancher, 100.0 * dessus))
+
+# --- 14. Sans seuil, RIEN ne change (non-régression) --------------------
+# Le remappage [seuil, 1] -> [0, n-1] ne doit toucher personne quand il
+# n'y a pas de seuil : c'est l'identité, et les fichiers déjà gravés
+# doivent rester reproductibles.
+for d in (0.0, 0.25, 0.5, 0.75, 1.0):
+    attendu = max(0, min(n13 - 1, int(round(d * (n13 - 1)))))
+    assert core.swell_niveau(d, n13, 0.0) == attendu, (d, attendu)
+g_sans = core.generate_gcode_photo_swell_lines(
+    [[0.0] * 6, [0.5] * 6, [1.0] * 6], pitch=PAS, z_work=core.Z_WORK_MM,
+    feed=800.0, material=MAT, line_min_mm=0.10, quiet=True)
+assert 0 not in puissances(g_sans, gravure_seule=True), (
+    "sans seuil, le faisceau ne doit jamais être coupé")
+print("14. sans seuil : paliers identiques à l'ancienne formule et aucun "
+      "G1 à S0 -- le comportement d'origine est intact OK")
+
+# --- 15. L'aperçu passe par la MÊME grille que le G-code ---------------
+# Le pointillé dépend de la POSITION de la case : un aperçu qui le
+# recalculerait de son côté dessinerait des points ailleurs que la
+# machine, et personne ne le verrait avant le bois.
+vraie_grille = core.swell_niveaux_grille
+appels = {"n": 0}
+core.swell_niveaux_grille = lambda *a, **k: (
+    appels.__setitem__("n", appels["n"] + 1) or vraie_grille(*a, **k))
+try:
+    p.spn_white.setValue(8.0)
+    idx = p.combo_fond.findData("pointille")
+    assert idx >= 0, "le sélecteur de fond n'a pas d'entrée « pointille »"
+    p.combo_fond.setCurrentIndex(idx)
+    rows15 = p._build_rows(silent=True, max_cells=20000)
+    im15, note15 = p._render_photo_preview(rows15, largeur_px=160)
+finally:
+    core.swell_niveaux_grille = vraie_grille
+assert im15 is not None, note15
+assert appels["n"] > 0, ("l'aperçu recalcule le pointillé au lieu de passer "
+                         "par swell_niveaux_grille")
+print("15. l'aperçu appelle swell_niveaux_grille ({} fois) : il ne peut pas "
+      "dessiner un pointillé différent de celui gravé OK".format(appels["n"]))
+
 print("\nTOUS LES TESTS lignes_gravees PASSENT")

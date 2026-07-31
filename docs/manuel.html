@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.6.0</span><br>
+      <span class="ver">Version 2.7.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.6.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.7.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -690,8 +690,19 @@
     <p>Le champ <b>«&nbsp;Seuil blanc&nbsp;»</b> est donc actif pour ce tramage aussi. Sous cette noirceur, le bois reste nu. Deux points valent d'être connus&nbsp;:</p>
     <ul class="puces">
       <li><b>Le mouvement reste continu.</b> Le faisceau s'éteint, la tête ne s'arrête pas&nbsp;: une plage blanche à l'intérieur d'une rangée est traversée par un <code>G1</code> à la même avance, puissance nulle — jamais un <code>G0</code>. Le seuil <em>diminue</em> même le nombre de changements de puissance, donc il ne peut qu'aider le problème décrit au chapitre&nbsp;3.</li>
-      <li><b>C'est une marche, et c'est le compromis assumé.</b> Sous le seuil, bois nu&nbsp;; au-dessus, le trait apparaît d'un coup à 33&nbsp;% de couverture. Sur un fond blanc franc c'est précisément ce qu'on veut&nbsp;; sur un dégradé doux vers le blanc, cela pose un contour visible. C'est le même compromis que les trois autres tramages qui ont ce seuil depuis toujours.</li>
+      <li><b>C'est une marche</b>&nbsp;: sous le seuil, bois nu&nbsp;; au-dessus, le trait apparaît d'un coup à 33&nbsp;% de couverture. Sur un fond blanc franc c'est précisément ce qu'on veut&nbsp;; sur un dégradé doux vers le blanc, cela pose un contour visible. D'où la deuxième option ci-dessous.</li>
     </ul>
+
+    <h4>Fond pointillé&nbsp;: combler la marche</h4>
+    <p>Le sélecteur <b>«&nbsp;Sous le seuil&nbsp;»</b> décide ce que devient une case passée sous le seuil de blanc&nbsp;:</p>
+    <table class="reglages">
+      <tr><th>Choix</th><th>Ce qui est gravé</th><th>Quand</th></tr>
+      <tr><td><b>Bois nu</b></td><td>Rien du tout. Net et franc.</td><td>Fond blanc franc, dessin encré, logo — le cas le plus courant.</td></tr>
+      <tr><td><b>Pointillé dégressif</b></td><td>Le trait le <em>plus fin</em>, mais <b>intermittent</b>, de plus en plus clairsemé vers le blanc pur.</td><td>Photographie, dégradé doux vers le blanc, ciel.</td></tr>
+    </table>
+    <p>L'intérêt du pointillé est qu'il fait ce que la <em>largeur</em> ne peut pas faire. La table des largeurs s'arrête à la puissance la plus basse mesurée&nbsp;: en dessous de 0,10&nbsp;mm de trait, il n'y a rien. Espacer ce trait le plus fin est donc le <b>seul moyen de descendre sous le plancher du mode</b>. La couverture balaie alors continûment 0&nbsp;→&nbsp;33&nbsp;% au lieu de sauter, et la marche disparaît.</p>
+    <p>La trame employée est <b>ordonnée</b> (matrice de Bayer 4×4), pas une diffusion d'erreur&nbsp;: déterministe, elle ne bave pas d'une ligne sur l'autre et ne coûte rien par pixel — et ce tramage tient à ne faire aucune diffusion, ce qu'un test vérifie.</p>
+    <p><b>Un réglage a dû être corrigé pour que le raccord soit exact.</b> Au-dessus du seuil, la plage de noirceur restante est désormais <b>remise à l'échelle</b> sur toute la plage de largeurs. Sans cela, un seuil à 8&nbsp;% rendait les paliers les plus fins inutilisables&nbsp;: la case la plus claire encore gravée sortait à 0,116&nbsp;mm au lieu de 0,10 — une partie de la plage mesurée gâchée, et 5 points de couverture d'écart entre les deux branches. Mesuré après correction&nbsp;: <b>33,3&nbsp;% de part et d'autre du seuil</b>, le raccord est franc-bord. À seuil nul le remappage est l'identité, donc les fichiers déjà gravés restent reproductibles.</p>
     <p>Le verdict «&nbsp;Trait &amp; matière&nbsp;» le dit maintenant <em>avant</em> de graver&nbsp;: à seuil nul, il annonce en toutes lettres que le blanc pur gravera tant de pour cent de couverture. À 0, le comportement d'origine est conservé à l'identique — faisceau jamais coupé.</p>
 
     <h4>Similigravure&nbsp;: quand le gris cesse de dépendre du bois</h4>
@@ -951,7 +962,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.6.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.7.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

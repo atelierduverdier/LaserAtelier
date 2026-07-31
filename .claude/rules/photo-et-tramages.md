@@ -220,11 +220,33 @@ Two things worth knowing before touching this:
   white gap inside a row becomes `G1 … S0` at the same feed — no `G0`, no stop. With M67 on (the
   user's config) it is `M67 E0 Q0` + `G1`, and the queue is never drained. The threshold *reduces*
   the number of power changes, so it can only help the M67 problem, never worsen it.
-- **The threshold is a step, and that is the honest trade.** Below it, bare wood; above it, the line
-  appears at once at `w_min/pitch` coverage. On a pure-white background that is exactly right; on a
-  soft gradient into the whites it puts a visible contour. Same trade the three other `seuil_blanc`
-  tramages already carry. If continuous tone into the whites is ever wanted, the answer is to make
-  the line **dashed** in the lightest tones rather than cutting it — not attempted, deliberately.
+- **The threshold is a step.** Below it, bare wood; above it, the line appears at once at
+  `w_min/pitch` coverage. On a pure-white background that is exactly right; on a soft gradient into
+  the whites it puts a visible contour. Hence the second option below.
+
+### `fond_clair` — filling the step with a dotted line (v2.7.0)
+
+`swell_niveaux_grille(darkness_rows, n, white_threshold, fond_clair)` is the shared grid builder
+(generator AND preview) — the dotted decision depends on the cell's **position**, so it cannot be
+taken cell-by-cell outside the grid, which is why this replaced the per-cell call.
+
+- `"nu"` — bare wood below the threshold (the v2.6.0 behaviour).
+- `"pointille"` — the **thinnest** line (level 0), made intermittent with a duty ratio of
+  `d / seuil`, ordered-dithered through a Bayer 4×4. Coverage then sweeps continuously from 0 to
+  `w_min/pitch` instead of jumping. **This is the only way below the mode's floor**: the width
+  cannot go lower, since the width table stops at the lowest measured power.
+
+Deliberately **ordered**, not error-diffused: `tests/test_lignes_gravees.py` §10 asserts this tramage
+never calls `floyd_steinberg_dither`, and an ordered matrix is deterministic, doesn't bleed between
+rows, and costs nothing per pixel.
+
+**The remap that makes the join exact.** `swell_niveau` now maps `[seuil, 1] → [0, n-1]` instead of
+`[0, 1] → [0, n-1]`. Without it a threshold of 8 % left levels 0–19 unusable: the lightest engraved
+cell came out at 0.116 mm instead of 0.10, wasting part of the measured width range *and* leaving
+5 points of coverage between the dotted branch (which tops out at `w_min/pitch` = 33.3 %) and the
+continuous one (which restarted at 38.6 %). Measured after the fix: 33.3 % on both sides of the
+threshold. At `seuil = 0` the remap is the identity, so files engraved before it stay reproducible —
+§14 asserts exactly that.
 
 ### Size matters too — a bench judgement, not a measurement
 

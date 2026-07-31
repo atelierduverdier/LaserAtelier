@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.6.0"
+VERSION = "2.7.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7838,30 +7838,107 @@ def swell_niveau(darkness, n, white_threshold=0.0):
     planche vierge du portrait calibré. Mais ces trous-là étaient des
     MANQUES dans les demi-teintes ; laisser le fond blanc intact est
     l'inverse, c'est ce que « blanc » veut dire. À 0 (défaut), le
-    comportement d'origine est conservé à l'identique."""
+    comportement d'origine est conservé à l'identique.
+
+    Au-dessus du seuil, la plage [seuil, 1] est REMAPPÉE sur les paliers
+    [0, n-1]. Sans ça, un seuil à 8 % rendait les paliers 0 à 19
+    inutilisables : la case la plus claire encore gravée sortait à
+    0,116 mm au lieu de 0,10, soit 5 points de couverture gâchés et une
+    partie de la plage de largeurs jamais employée. C'est aussi ce qui
+    permet au fond « pointillé » de se RACCORDER exactement -- il plafonne
+    à `w_min/pas`, et la branche continue repart de là. À seuil nul le
+    remappage est l'identité, donc rien ne bouge."""
     d = min(1.0, max(0.0, float(darkness)))
-    if white_threshold > 0.0 and d < white_threshold:
+    seuil = max(0.0, float(white_threshold))
+    if seuil > 0.0 and d < seuil:
         return None
-    return max(0, min(n - 1, int(round(d * (n - 1)))))
+    t = (d - seuil) / (1.0 - seuil) if seuil < 1.0 else 1.0
+    return max(0, min(n - 1, int(round(t * (n - 1)))))
+
+
+# Matrice de Bayer 4x4, pour le fond « pointillé ». ORDONNÉE et non
+# diffusion d'erreur : ce tramage n'en fait pas (un test le vérifie), une
+# trame ordonnée est déterministe, ne bave pas d'une ligne sur l'autre et
+# ne coûte rien par pixel.
+_BAYER4 = ((0, 8, 2, 10),
+           (12, 4, 14, 6),
+           (3, 11, 1, 9),
+           (15, 7, 13, 5))
+
+FONDS_CLAIRS = ("nu", "pointille")
+
+
+def swell_niveaux_grille(darkness_rows, n, white_threshold=0.0,
+                         fond_clair="nu"):
+    """Grille d'indices de palier (None = bois nu) pour « lignes gravées ».
+
+    SOURCE UNIQUE du générateur ET de l'aperçu : le fond pointillé dépend
+    de la POSITION de la case, donc il ne peut pas se décider case par case
+    hors de la grille -- d'où cette fonction plutôt qu'un simple appel à
+    `swell_niveau` de chaque côté.
+
+    Deux façons de traiter ce qui passe sous le seuil de blanc :
+
+    - `"nu"` : bois intact. Franc, mais c'est une MARCHE -- sous le seuil
+      rien, au-dessus le trait apparaît d'un coup à `w_min/pas` de
+      couverture (33 % sur hêtre au pas 0,30). Parfait sur un fond blanc
+      franc, visible comme un contour sur un dégradé doux.
+    - `"pointille"` : le trait le plus fin, mais INTERMITTENT, avec un
+      rapport cyclique qui va de 0 au blanc pur à 1 juste sous le seuil.
+      La couverture balaie alors continûment 0 → `w_min/pas` au lieu de
+      sauter, ce qui rend la marche invisible. C'est le seul moyen de
+      descendre sous le plancher du mode : la largeur ne peut pas, la
+      table des largeurs s'arrêtant à la puissance la plus basse mesurée.
+
+    À `white_threshold = 0` les deux se valent : rien ne passe sous le
+    seuil, le faisceau n'est jamais coupé (comportement d'origine)."""
+    seuil = max(0.0, float(white_threshold))
+    pointille = (fond_clair == "pointille") and seuil > 0.0
+    grille = []
+    for y, row in enumerate(darkness_rows):
+        ligne = []
+        for x, d in enumerate(row):
+            k = swell_niveau(d, n, seuil)
+            if k is not None:
+                ligne.append(k)
+            elif pointille:
+                # Rapport cyclique local, tramé par une matrice ordonnée :
+                # la case est allumée au trait le PLUS FIN (palier 0) ou
+                # laissée nue. La moyenne locale reproduit la noirceur.
+                duty = min(1.0, max(0.0, float(d))) / seuil
+                if duty > (_BAYER4[y % 4][x % 4] + 0.5) / 16.0:
+                    ligne.append(0)
+                else:
+                    ligne.append(None)
+            else:
+                ligne.append(None)
+        grille.append(ligne)
+    return grille
 
 
 def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
                                      material, line_min_mm=0.10,
                                      pre_gcode="", post_gcode="",
                                      frame_only=False, quiet=False,
-                                     white_threshold=0.0):
+                                     white_threshold=0.0, fond_clair="nu"):
     """Photo en LIGNES GRAVÉES : chaque ligne est balayée en continu au
     FOYER, et c'est l'ÉPAISSEUR du trait qui rend le gris -- fin dans les
     clairs, épais dans les foncés, comme une gravure sur cuivre. Aucun
     nuancier n'est consulté : la puissance de chaque pixel sort de la
     largeur brûlée MESURÉE (cf. swell_power_levels).
 
-    `white_threshold` : sous cette noirceur, la case reste du BOIS NU. À 0
-    (défaut) le faisceau n'est jamais coupé, comportement d'origine. Au-delà,
-    le faisceau s'éteint sur les plages claires -- mais le MOUVEMENT reste
-    continu, `_emit_raster_rows` fusionnant les S0 dans le même balayage :
-    la tête ne s'arrête pas, seule la lumière s'éteint. Cf. `swell_niveau`
-    pour la raison (le palier 0 grave 33 % du bois au pas 0,30).
+    `white_threshold` : sous cette noirceur, la case n'est plus gravée en
+    continu. À 0 (défaut) le faisceau n'est jamais coupé, comportement
+    d'origine. Au-delà, le faisceau s'éteint sur les plages claires -- mais
+    le MOUVEMENT reste continu, `_emit_raster_rows` fusionnant les S0 dans
+    le même balayage : la tête ne s'arrête pas, seule la lumière s'éteint.
+    Cf. `swell_niveau` pour la raison (le palier 0 grave 33 % du bois au
+    pas 0,30).
+
+    `fond_clair` : ce qu'on fait de ce qui passe sous le seuil -- `"nu"`
+    (bois intact, franc mais en marche) ou `"pointille"` (trait le plus fin
+    en intermittence, la couverture balayant continûment 0 → w_min/pas).
+    Cf. `swell_niveaux_grille`.
 
     Le pas doit valoir au moins la largeur maximale, sinon les traits se
     recouvrent dans les foncés et les lignes fondent en aplat -- le G-code
@@ -7880,13 +7957,9 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
         return None
     puissances, w_min, w_max = niveaux
     n = len(puissances)
-    grid = []
-    for row in darkness_rows:
-        cells = []
-        for d in row:
-            k = swell_niveau(d, n, white_threshold)
-            cells.append(0 if k is None else puissances[k])
-        grid.append(cells)
+    grid = [[0 if k is None else puissances[k] for k in ligne]
+            for ligne in swell_niveaux_grille(darkness_rows, n,
+                                              white_threshold, fond_clair)]
 
     z_safe = z_work + TRAVEL_CLEARANCE_MM
     lines = []
@@ -7899,7 +7972,12 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
     # noircit deja 33 % du bois au pas 0,30. Sans seuil, une case BLANCHE le
     # grave quand meme -- le dire dans le fichier, puisque c'est la que ca se
     # verifie.
-    if white_threshold > 0.0:
+    if white_threshold > 0.0 and fond_clair == "pointille":
+        lines.append("(Seuil blanc {:.0f} % : sous cette noirceur, trait le "
+                     "plus fin en POINTILLE degressif -- couverture continue "
+                     "de 0 a {:.0f} %)".format(
+                         100.0 * white_threshold, 100.0 * w_min / pitch))
+    elif white_threshold > 0.0:
         lines.append("(Seuil blanc {:.0f} % : sous cette noirceur, bois NU "
                      "(faisceau coupe, mouvement continu))".format(
                          100.0 * white_threshold))

@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>2.6.0</b></span>
+        <span class="badge">Version <b>2.7.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -495,6 +495,7 @@
             <li>Régler la <b>largeur</b>, le <b>pas de trame</b> (finesse ET durée), l'angle et le gamma.</li>
             <li>Choisir le <b>tramage</b> et la puissance&nbsp;; «&nbsp;Mire des tramages&nbsp;» compare les sept sur chute. Sur bois, «&nbsp;Lignes gravées&nbsp;» est celui qui a été retenu à l'établi — il ne dépend d'aucune courbe de calibration.</li>
             <li>Régler le <b>Seuil blanc</b>. Il compte particulièrement en «&nbsp;Lignes gravées&nbsp;»&nbsp;: le niveau le plus bas de ce tramage n'est pas «&nbsp;rien&nbsp;» mais la <i>puissance la plus faible mesurée</i>, si bien qu'un pixel blanc pur grave quand même un trait fin — <b>33&nbsp;% de couverture au pas 0,30 sur hêtre</b>, un fond blanc sortant gris uni. Au-dessus de 0, le bois reste nu sous ce seuil, le faisceau s'éteignant sans que la tête s'arrête.</li>
+            <li>Choisir ce que devient ce qui passe <b>sous le seuil</b>&nbsp;: <b>Bois nu</b> (net et franc — fond blanc, dessin encré, logo) ou <b>Pointillé dégressif</b> (le trait le plus fin, mais espacé, de plus en plus clairsemé vers le blanc pur — photographie, dégradé doux). Le pointillé fait ce que la largeur ne peut pas&nbsp;: la table des largeurs s'arrêtant à la puissance la plus basse mesurée, espacer le trait est le <i>seul moyen</i> de descendre sous le plancher du mode, et la couverture balaie alors continûment 0&nbsp;→&nbsp;33&nbsp;% au lieu de sauter.</li>
             <li>Zéro machine&nbsp;: X/Y au coin <b>bas-gauche</b> (l'image y est posée), Z sur la surface.</li>
             <li>Vérifier avec «&nbsp;<b>Aperçu photo</b>&nbsp;»&nbsp;— le rendu du résultat sur fond bois, peint <i>comme le tramage choisi brûle</i>, en vignette dans le panneau et en grand au bouton. Puis «&nbsp;Aperçu des points&nbsp;» (vue 3D) et «&nbsp;Aperçu cadrage&nbsp;» (fichier séparé, à blanc) avant de générer&nbsp;— compter ~2-4 points/seconde sur les tramages à points.</li>
           </ol>
