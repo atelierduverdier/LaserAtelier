@@ -103,7 +103,8 @@ g = core.generate_gcode_curved(
     style="degrade_trace",
     style_params={"deg_z_min": 64.8, "deg_z_max": 0.0}, quiet=True)
 assert g, "aucun G-code"
-assert "degrade le long du TRACE" in g, [l for l in g.split("\n") if "Style" in l]
+assert "degrade de LARGEUR le long du trace" in g, [
+    l for l in g.split("\n") if "Style" in l]
 
 blocs, cur = [], []
 for l in g.split("\n"):
@@ -140,7 +141,7 @@ print("7. approche à Z={:.2f}, premier G1 à Z={:.2f} : saut de {:.2f} mm au "
 
 # --- 8. Le panneau : style câblé, champs visibles, réglages mémorisés --
 p = tp.TaskPanelCurved([])
-assert p.combo_style.count() == 7, p.combo_style.count()
+assert p.combo_style.count() == 8, p.combo_style.count()
 p.combo_style.setCurrentIndex(6)
 assert p._style_kwargs()["style"] == "degrade_trace"
 for w in (p.spn_deg_w0, p.spn_deg_w1, p.combo_deg_boucle):
@@ -155,7 +156,7 @@ assert not p.spn_deg_angle.isHidden() and p.combo_deg_boucle.isHidden()
 # fermeture du panneau.
 for cle in ("deg_angle", "deg_w0", "deg_w1", "deg_boucle"):
     assert cle in p._last_fields, (cle, sorted(p._last_fields))
-print("8. panneau : 7 styles, champs du fuseau visibles sur le bon, angle "
+print("8. panneau : 8 styles, champs du fuseau visibles sur le bon, angle "
       "réservé au dégradé spatial, 4 réglages mémorisés OK")
 
 
@@ -229,5 +230,96 @@ for i in range(p.combo_style.count()):
         p.combo_style.itemText(i), visibles, i)
 print("11. {} styles, {} schémas : celui du style courant est affiché, et "
       "lui seul OK".format(p.combo_style.count(), len(diags)))
+
+
+# --- 12. Dégradé de PUISSANCE : la teinte rampe, la largeur ne bouge pas
+# Demandé le 31/07/2026 : « je pensais voir au début un noir très clair et
+# à la fin un noir foncé ». Les deux dégradés de LARGEUR ne savent pas le
+# faire -- ils montent le bec à puissance constante, donc le trait
+# s'élargit et pâlit. Celui-ci fait l'inverse : Z constant, S qui rampe.
+gp = core.generate_gcode_curved(
+    [seg(V(0, 0, 0), V(100, 0, 0))],
+    power=800, feed=400, z_focus=core.Z_WORK_MM, marge_survol=0.0,
+    style="degrade_puissance",
+    style_params={"deg_s_debut": 150.0, "deg_s_fin": 1000.0}, quiet=True)
+assert gp, "aucun G-code"
+assert "degrade de PUISSANCE" in gp, [l for l in gp.split("\n") if "Style" in l]
+
+
+def _s_et_z(g):
+    """(puissances gravantes, hauteurs Z) des G1. Les commentaires portent
+    eux aussi des « S… » : les compter fausserait tout (piège du plafond)."""
+    ss, zs, s = [], set(), 0
+    for l in g.split("\n"):
+        if l.startswith("("):
+            continue
+        m = re.search(r"\bS(\d+)", l) or re.search(r"M67 E0 Q(\d+)", l)
+        if m:
+            s = int(m.group(1))
+        mz = re.match(r"G1 X[-\d.]+ Y[-\d.]+ Z([-\d.]+)", l)
+        if mz:
+            zs.add(round(float(mz.group(1)), 3))
+            if s > 0:
+                ss.append(s)
+    return ss, zs
+
+
+ss, zs = _s_et_z(gp)
+assert len(zs) == 1, ("le Z doit rester CONSTANT : c'est la puissance qui "
+                      "fait le dégradé", sorted(zs)[:5])
+assert abs(sorted(zs)[0] - core.Z_WORK_MM) < 1e-6, sorted(zs)
+assert abs(ss[0] - 150) <= 5 and abs(ss[-1] - 1000) <= 5, (ss[0], ss[-1])
+assert all(b >= a - 5 for a, b in zip(ss, ss[1:])), "la puissance n'est pas monotone"
+assert len(set(ss)) > 20, ("la rampe doit être progressive, pas deux paliers",
+                           len(set(ss)))
+print("12. dégradé de puissance : S{} -> S{} en {} valeurs, Z CONSTANT à "
+      "{:.2f} OK".format(ss[0], ss[-1], len(set(ss)), sorted(zs)[0]))
+
+# --- 13. Il ne dépasse jamais l'échelle de la machine ------------------
+gp2 = core.generate_gcode_curved(
+    [seg(V(0, 0, 0), V(50, 0, 0))],
+    power=800, feed=400, z_focus=core.Z_WORK_MM, marge_survol=0.0,
+    style="degrade_puissance",
+    style_params={"deg_s_debut": 0.0, "deg_s_fin": core.S_MAX * 3},
+    quiet=True)
+ss2, _ = _s_et_z(gp2)
+assert max(ss2) <= core.S_MAX + 1e-6, (
+    "une consigne au-delà de S_MAX doit être bornée", max(ss2), core.S_MAX)
+print("13. consigne 3x S_MAX bornée à S{:.0f} OK".format(core.S_MAX))
+
+# --- 14. Boucle fermée : la même option que le fuseau ------------------
+# Les deux styles partagent `rampe_trace_dz`, donc l'aller-retour vaut
+# pour les deux -- sur un cercle, la puissance doit revenir à sa valeur de
+# départ, sinon le raccord se voit comme une marche de teinte.
+cercle_edges = Part.Wire([Part.Circle(V(0, 0, 0), V(0, 0, 1), 20.0).toShape()]).Edges
+gp3 = core.generate_gcode_curved(
+    cercle_edges, power=800, feed=400, z_focus=core.Z_WORK_MM,
+    marge_survol=0.0, style="degrade_puissance",
+    style_params={"deg_s_debut": 150.0, "deg_s_fin": 1000.0,
+                  "deg_aller_retour": True}, quiet=True)
+ss3, _ = _s_et_z(gp3)
+assert abs(ss3[0] - ss3[-1]) <= 10, (
+    "en aller-retour, la boucle doit se refermer sur sa puissance de départ",
+    ss3[0], ss3[-1])
+assert max(ss3) >= 990, ("la puissance de fin doit être atteinte à "
+                         "mi-parcours", max(ss3))
+print("14. cercle en aller-retour : S{} -> S{} (max S{}) -- se referme sans "
+      "marche de teinte OK".format(ss3[0], ss3[-1], max(ss3)))
+
+# --- 15. L'aperçu montre une teinte qui varie à largeur CONSTANTE ------
+p.combo_style.setCurrentIndex(7)
+p._edges = [seg(V(0, 0, 0), V(120, 0, 0))]
+p.spn_deg_s0.setValue(150.0)
+p.spn_deg_s1.setValue(1000.0)
+st7 = p._strokes_degrade(7, 800.0, 400.0)
+larg7 = [w for _pts, w, _t in st7]
+ton7 = [t for _pts, _w, t in st7]
+assert max(larg7) - min(larg7) < 1e-6, (
+    "la largeur doit rester constante", min(larg7), max(larg7))
+assert ton7[-1] > ton7[0], ("la teinte doit foncer du début à la fin",
+                            ton7[0], ton7[-1])
+print("15. aperçu : largeur constante {:.2f} mm, teinte {:.2f} -> {:.2f} -- "
+      "l'inverse des dégradés de largeur OK".format(
+          larg7[0], ton7[0], ton7[-1]))
 
 print("\nTOUS LES TESTS fuseau PASSENT")

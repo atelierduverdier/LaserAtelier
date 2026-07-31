@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 90">
+  <!-- Degrade de PUISSANCE le long du trace : la TEINTE va du clair au
+       fonce, la LARGEUR ne bouge pas. L'inverse des deux degrades de
+       largeur, qui montent le bec a puissance constante. Demande par
+       Christophe le 31/07/2026 : « au debut un noir tres clair, a la fin
+       un noir fonce ». -->
+
+  <!-- le trait : epaisseur CONSTANTE, teinte croissante. Rendu par des
+       segments de gris de plus en plus sombres (QtSvg gere les degrades,
+       mais des paliers disent mieux « la puissance monte par blocs »). -->
+  <g>
+    <rect x="26" y="34" width="28" height="13" fill="#2f3540" opacity="0.13"/>
+    <rect x="54" y="34" width="28" height="13" fill="#2f3540" opacity="0.25"/>
+    <rect x="82" y="34" width="28" height="13" fill="#2f3540" opacity="0.38"/>
+    <rect x="110" y="34" width="28" height="13" fill="#2f3540" opacity="0.51"/>
+    <rect x="138" y="34" width="28" height="13" fill="#2f3540" opacity="0.64"/>
+    <rect x="166" y="34" width="28" height="13" fill="#2f3540" opacity="0.77"/>
+    <rect x="194" y="34" width="28" height="13" fill="#2f3540" opacity="0.89"/>
+    <rect x="222" y="34" width="28" height="13" fill="#2f3540" opacity="1"/>
+  </g>
+
+  <!-- reperes : meme hauteur aux deux bouts = largeur inchangee -->
+  <line x1="20" y1="34" x2="20" y2="47" stroke="#ff8a00" stroke-width="2.5"/>
+  <line x1="256" y1="34" x2="256" y2="47" stroke="#ff8a00" stroke-width="2.5"/>
+  <text x="20" y="27" font-family="sans-serif" font-size="11" fill="#ff8a00"
+        text-anchor="middle">clair</text>
+  <text x="258" y="27" font-family="sans-serif" font-size="11" fill="#ff8a00"
+        text-anchor="middle">fonce</text>
+
+  <text x="150" y="78" font-family="sans-serif" font-size="10"
+        fill="#ff8a00" text-anchor="middle">la teinte monte, la largeur ne bouge pas</text>
+</svg>

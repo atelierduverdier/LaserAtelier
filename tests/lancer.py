@@ -4,6 +4,8 @@
 
     python3 tests/lancer.py              # tout
     python3 tests/lancer.py lignes am    # ceux dont le nom contient ça
+    python3 tests/lancer.py --captures   # régénère les captures de panneaux
+    python3 tests/lancer.py --captures curved   # une seule
 
 Se lance avec le python SYSTÈME : il ne fait que déléguer chaque test à un
 sous-processus, avec l'interpréteur de FreeCAD et son PYTHONPATH.
@@ -46,6 +48,20 @@ def main(filtres):
         return 2
     print("interpréteur : {}\n".format(exe))
 
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        [lib, ICI, RACINE] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+    env["QT_QPA_PLATFORM"] = "offscreen"
+
+    # `captures.py` n'est pas un test (il n'est pas nommé test_*, donc le glob
+    # ne le voit pas) mais il a besoin du MÊME interpréteur et du même
+    # harnais -- donc de la config redirigée vers une copie jetable. Son
+    # en-tête documentait cette entrée depuis toujours ; elle n'existait pas.
+    if filtres and filtres[0] == "--captures":
+        r = subprocess.run([exe, os.path.join(ICI, "captures.py")] + filtres[1:],
+                           env=env, cwd=RACINE, timeout=1800)
+        return r.returncode
+
     fichiers = sorted(glob.glob(os.path.join(ICI, "test_*.py")))
     if filtres:
         fichiers = [f for f in fichiers
@@ -54,11 +70,6 @@ def main(filtres):
     if not fichiers:
         print("aucun test ne correspond.")
         return 1
-
-    env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        [lib, ICI, RACINE] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
-    env["QT_QPA_PLATFORM"] = "offscreen"
 
     ok, rates = [], []
     for f in fichiers:

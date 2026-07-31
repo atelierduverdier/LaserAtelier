@@ -9800,7 +9800,9 @@ class TaskPanelCurved:
         self.combo_style = QtWidgets.QComboBox()
         self.combo_style.addItems(
             ["Trait plein", "Tirets", "Pointillé", "Vague défocus", "Défocus (point élargi)",
-             "Dégradé de largeur (sur la pièce)", "Dégradé de largeur (le long du tracé)"])
+             "Dégradé de largeur (sur la pièce)",
+             "Dégradé de largeur (le long du tracé)",
+             "Dégradé de puissance (le long du tracé)"])
         self.combo_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_style.setMinimumContentsLength(14)
         self.combo_style.setToolTip(
@@ -9824,11 +9826,14 @@ class TaskPanelCurved:
             "  le long du tracé : UN trait dont la largeur suit son\n"
             "    PARCOURS, du début à la fin. Un fuseau.\n"
             "\n"
-            "Les deux font varier la LARGEUR, à puissance CONSTANTE. Un\n"
+            "Ces deux-là font varier la LARGEUR, à puissance CONSTANTE. Un\n"
             "trait plus large reçoit moins d'énergie par mm² : il n'est pas\n"
-            "plus noir, il est plus large -- et souvent plus pâle. Pour un\n"
-            "dégradé de TEINTE, c'est la puissance qu'il faudrait faire\n"
-            "varier ; aucun style ne le fait encore.\n"
+            "plus noir, il est plus large -- et souvent plus pâle.\n"
+            "\n"
+            "  Dégradé de PUISSANCE : l'inverse. Le bec ne bouge pas, donc\n"
+            "    la largeur non plus ; c'est la TEINTE qui va du clair au\n"
+            "    foncé le long du tracé. C'est celui-là qu'il faut pour un\n"
+            "    vrai dégradé de gris sur un trait.\n"
             "\n"
             "Tous les styles suivent le relief comme le trait plein.")
         form.addRow("Style de trait :", self.combo_style)
@@ -9847,6 +9852,7 @@ class TaskPanelCurved:
             _diagram(form, "diag_style_defocus.svg", 260, 78),
             _diagram(form, "diag_style_degrade_dir.svg", 260, 78),
             _diagram(form, "diag_fuseau.svg", 260, 78),
+            _diagram(form, "diag_style_degrade_puissance.svg", 260, 78),
         ]
 
         self.spn_dash_len = QtWidgets.QDoubleSpinBox()
@@ -9904,6 +9910,33 @@ class TaskPanelCurved:
         self.spn_deg_w1.setValue(2.0); self.spn_deg_w1.setSuffix(" mm")
         self.spn_deg_w1.setToolTip("Largeur du trait à la FIN du dégradé (large/doux = défocalisé).")
         form.addRow("Dégradé -- largeur fin :", self.spn_deg_w1)
+
+        # Le dégradé de PUISSANCE : la teinte va du clair au foncé le long
+        # du tracé, à largeur de trait CONSTANTE. C'est ce que les deux
+        # « dégradés de largeur » ne savent pas faire -- eux montent le bec
+        # à puissance constante, donc le trait s'élargit et pâlit.
+        self.spn_deg_s0 = QtWidgets.QDoubleSpinBox()
+        self.spn_deg_s0.setRange(0.0, core.S_MAX)
+        self.spn_deg_s0.setDecimals(0)
+        self.spn_deg_s0.setSingleStep(25.0)
+        self.spn_deg_s0.setValue(150.0)
+        self.spn_deg_s0.setToolTip(
+            "Puissance au DÉBUT du tracé. Basse = trait très clair.\n"
+            "0 = le trait ne commence à marquer qu'un peu plus loin.")
+        form.addRow("Dégradé -- puissance début :", self.spn_deg_s0)
+
+        self.spn_deg_s1 = QtWidgets.QDoubleSpinBox()
+        self.spn_deg_s1.setRange(0.0, core.S_MAX)
+        self.spn_deg_s1.setDecimals(0)
+        self.spn_deg_s1.setSingleStep(25.0)
+        self.spn_deg_s1.setValue(core.S_MAX)
+        self.spn_deg_s1.setToolTip(
+            "Puissance à la FIN du tracé. Haute = trait foncé.\n"
+            "\n"
+            "La largeur, elle, ne bouge pas : le bec reste à la même\n"
+            "hauteur du début à la fin. C'est la TEINTE qui fait le\n"
+            "dégradé, pas l'épaisseur.")
+        form.addRow("Dégradé -- puissance fin :", self.spn_deg_s1)
 
         # Sur une BOUCLE FERMÉE, une rampe simple ramène la largeur de fin
         # juste à côté de celle de départ : le raccord se voit. L'aller-
@@ -9975,8 +10008,14 @@ class TaskPanelCurved:
             _set_row_visible(form, self.spn_spot_width, idx == 4)
             for w in (self.spn_deg_w0, self.spn_deg_w1):
                 _set_row_visible(form, w, idx in (5, 6))
+            for w in (self.spn_deg_s0, self.spn_deg_s1):
+                _set_row_visible(form, w, idx == 7)
             _set_row_visible(form, self.spn_deg_angle, idx == 5)
-            _set_row_visible(form, self.combo_deg_boucle, idx == 6)
+            # Le choix de fermeture vaut pour les DEUX rampes le long du
+            # tracé : elles partagent `rampe_trace_dz`.
+            _set_row_visible(form, self.combo_deg_boucle, idx in (6, 7))
+            # La puissance globale n'a plus de sens quand elle est rampée.
+            self.spn_power.setEnabled(idx != 7)
             for i, diag in enumerate(self._diagrammes_style):
                 # _diagram renvoie None si le rendu SVG a échoué : ne jamais
                 # planter le panneau pour un dessin manquant.
@@ -10125,6 +10164,7 @@ class TaskPanelCurved:
             # préréglage ne le rapportait pas non plus (cf. plus bas).
             "deg_angle": self.spn_deg_angle, "deg_w0": self.spn_deg_w0,
             "deg_w1": self.spn_deg_w1, "deg_boucle": self.combo_deg_boucle,
+            "deg_s0": self.spn_deg_s0, "deg_s1": self.spn_deg_s1,
             "fluence_on": self._fluence["chk"], "ref_power": self._fluence["ref_power"],
             "ref_feed": self._fluence["ref_feed"], "ref_spot": self._fluence["ref_spot"],
         }
@@ -10337,6 +10377,38 @@ class TaskPanelCurved:
                 cache[cle] = max(0.0, min(1.0, ton))
             return cache[cle]
 
+        # Dégradé de PUISSANCE : l'inverse des deux autres. La largeur ne
+        # bouge pas (le bec reste à sa hauteur) et c'est la TEINTE qui
+        # rampe. On peint donc une largeur unique et une teinte par
+        # morceau, calculée à la puissance de ce morceau.
+        if idx == 7:
+            w_fixe = largeur(0.0)
+            cache_s = {}
+
+            def teinte_s(s):
+                cle = round(s / 5.0) * 5
+                if cle not in cache_s:
+                    ton = (_tone_measured(mat_nuancier, cle, feed, 0.0)
+                           if _mesure_utilisable(0.0) else None)
+                    if ton is None:
+                        ton = _tone_burn(cle, feed, w_fixe)
+                    cache_s[cle] = max(0.0, min(1.0, ton))
+                return cache_s[cle]
+
+            strokes = []
+            for chain in chains:
+                if len(chain) < 2:
+                    continue
+                ss = core.rampe_trace_dz(
+                    chain, sp.get("deg_s_debut", power),
+                    sp.get("deg_s_fin", power),
+                    bool(sp.get("deg_aller_retour", False)))
+                for i in range(len(chain) - 1):
+                    a_, b_ = chain[i], chain[i + 1]
+                    strokes.append(([(a_.x, a_.y), (b_.x, b_.y)], w_fixe,
+                                    teinte_s((ss[i] + ss[i + 1]) / 2.0)))
+            return strokes
+
         strokes = []
         for chain in chains:
             if len(chain) < 2:
@@ -10360,7 +10432,8 @@ class TaskPanelCurved:
         # (cf. _z_focus) : le point élargi fait le noir, le tracé reste
         # continu. D'où style="plein" ici, la différence est portée par le Z.
         style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague",
-                     4: "plein", 5: "degrade", 6: "degrade_trace"}
+                     4: "plein", 5: "degrade", 6: "degrade_trace",
+                     7: "degrade_puissance"}
         # Vague : la largeur max voulue -> amplitude de défocus (Z) via la
         # calibration du point.
         wave_amp = core.defocus_for_spot_diameter(
@@ -10378,6 +10451,8 @@ class TaskPanelCurved:
                 "deg_z_min": core.defocus_for_spot_diameter(self.spn_deg_w0.value(), core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0,
                 "deg_z_max": core.defocus_for_spot_diameter(self.spn_deg_w1.value(), core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0,
                 "deg_aller_retour": self.combo_deg_boucle.currentData() == "aller_retour",
+                "deg_s_debut": self.spn_deg_s0.value(),
+                "deg_s_fin": self.spn_deg_s1.value(),
             },
         }
 
@@ -10410,6 +10485,8 @@ class TaskPanelCurved:
         self.spn_deg_w1.setValue(values.get("deg_w1", self.spn_deg_w1.value()))
         self.combo_deg_boucle.setCurrentIndex(
             values.get("deg_boucle", self.combo_deg_boucle.currentIndex()))
+        self.spn_deg_s0.setValue(values.get("deg_s0", self.spn_deg_s0.value()))
+        self.spn_deg_s1.setValue(values.get("deg_s1", self.spn_deg_s1.value()))
         self._fluence["chk"].setChecked(values.get("fluence_on", self._fluence["chk"].isChecked()))
         self._fluence["ref_power"].setValue(values.get("ref_power", self._fluence["ref_power"].value()))
         self._fluence["ref_feed"].setValue(values.get("ref_feed", self._fluence["ref_feed"].value()))
@@ -10435,6 +10512,8 @@ class TaskPanelCurved:
             "deg_w0": self.spn_deg_w0.value(),
             "deg_w1": self.spn_deg_w1.value(),
             "deg_boucle": self.combo_deg_boucle.currentIndex(),
+            "deg_s0": self.spn_deg_s0.value(),
+            "deg_s1": self.spn_deg_s1.value(),
             "fluence_on": self._fluence["chk"].isChecked(),
             "ref_power": self._fluence["ref_power"].value(),
             "ref_feed": self._fluence["ref_feed"].value(),
@@ -10511,7 +10590,7 @@ class TaskPanelCurved:
             z_tone = defocus
         elif idx == 3:                                 # Vague : moyenne foyer/max
             width = (w_focus + self.spn_wave_width.value()) / 2.0
-        elif idx in (5, 6):
+        elif idx in (5, 6, 7):
             # Les deux dégradés ont une largeur qui VARIE : la peindre
             # constante (l'ancienne moyenne des deux valeurs) montrait une
             # ligne uniforme là où la machine trace un fuseau -- signalé
@@ -10527,7 +10606,7 @@ class TaskPanelCurved:
         tone = _tone_measured(mat_nuancier, pw, fd, z_tone)
         if tone is None:
             tone = _tone_burn(pw, fd, width)
-        if idx in (5, 6):
+        if idx in (5, 6, 7):
             strokes = self._strokes_degrade(idx, pw, fd)
         else:
             strokes = []

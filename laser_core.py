@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.11.3"
+VERSION = "2.12.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3507,8 +3507,9 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     if style != "plein":
         style_names = {"tirets": "tirets", "pointille": "pointille",
                    "vague": "vague defocus, S compense en fluence",
-                   "degrade": "degrade selon une DIRECTION (angle)",
-                   "degrade_trace": "degrade le long du TRACE"}
+                   "degrade": "degrade de LARGEUR selon une DIRECTION (angle)",
+                   "degrade_trace": "degrade de LARGEUR le long du trace",
+                   "degrade_puissance": "degrade de PUISSANCE le long du trace"}
         lines.append("(Style de trait : {})".format(style_names.get(style, style)))
         if style == "degrade_trace":
             sp = style_params or {}
@@ -3516,6 +3517,14 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                 sp.get("deg_z_min", 0.0), sp.get("deg_z_max", 0.0),
                 ", aller-retour sur boucle fermee"
                 if sp.get("deg_aller_retour") else ""))
+        if style == "degrade_puissance":
+            sp = style_params or {}
+            lines.append("(Teinte : S{:.0f} -> S{:.0f} par trace, Z CONSTANT, "
+                         "largeur inchangee{})".format(
+                             sp.get("deg_s_debut", power),
+                             sp.get("deg_s_fin", power),
+                             ", aller-retour sur boucle fermee"
+                             if sp.get("deg_aller_retour") else ""))
     lines.append("(Transit : hauteur de travail + {:.2f}mm, {})".format(marge_survol, probe_kind))
     lines.append("(Contrôle bec (cône {:.0f}mm) : {})".format(
         NOZZLE_CONE_TOP_RADIUS * 2, "actif" if nozzle_check_active else "inactif (pas de sonde exacte)"))
@@ -3599,6 +3608,18 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                 style_params.get("deg_z_min", 0.0),
                 style_params.get("deg_z_max", 0.0),
                 bool(style_params.get("deg_aller_retour", False)))
+        # La MÊME rampe, mais portant des PUISSANCES : `rampe_trace_dz`
+        # interpole une valeur le long de l'abscisse curviligne, peu lui
+        # importe ce que cette valeur représente. Le fuseau et le dégradé
+        # de puissance héritent donc des mêmes propriétés -- rampe entière
+        # par chaîne, aller-retour sur boucle fermée -- et des mêmes tests.
+        ss_trace = None
+        if style == "degrade_puissance":
+            ss_trace = [max(0.0, min(S_MAX, v)) for v in rampe_trace_dz(
+                chain,
+                style_params.get("deg_s_debut", power),
+                style_params.get("deg_s_fin", power),
+                bool(style_params.get("deg_aller_retour", False)))]
 
         if current_pos is None:
             lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(p0.x, p0.y, z_safe_start_end))
@@ -3671,6 +3692,21 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                 lines.extend(cmd_power_prefix(s_pt))
                 lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} {}".format(
                     p.x, p.y, to_machine_z(p.z) + dz, feed,
+                    cmd_power_suffix(s_pt)))
+            lines.append(beam_off)
+        elif style == "degrade_puissance" and ss_trace is not None:
+            # Z CONSTANT : c'est la PUISSANCE qui fait le dégradé, donc la
+            # TEINTE, à largeur de trait inchangée. L'inverse exact des
+            # deux « dégradés de largeur », qui montent le bec à puissance
+            # constante et donnent un trait plus large -- souvent plus pâle.
+            lines.extend(cmd_power_prefix(ss_trace[0]))
+            if cmd_power_suffix(ss_trace[0]):
+                lines.append(cmd_power_suffix(ss_trace[0]))
+            for p, s_pt in zip(chain[1:], ss_trace[1:]):
+                _mark_check(p)
+                lines.extend(cmd_power_prefix(s_pt))
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} {}".format(
+                    p.x, p.y, to_machine_z(p.z), feed,
                     cmd_power_suffix(s_pt)))
             lines.append(beam_off)
         elif style == "degrade_trace" and dzs_trace is not None:

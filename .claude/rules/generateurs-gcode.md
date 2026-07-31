@@ -106,7 +106,7 @@ correct image, only the *noise* betrayed it.
   `core.Z_WORK_MM` unconditionally — the panel restores last field values across sessions, so a
   defocused height left behind silently poisons every later job (observed).
 
-## Two gradients, and they are NOT the same thing (v2.9.0)
+## Three gradients, and they are NOT the same thing (v2.9.0, v2.12.0)
 
 `"degrade"` (v1.x) ramps the defocus by **spatial projection**: `t = (p·u - pmin) / span`, `u` given
 by `deg_angle`, normalised over the bounding extent of *all* chains. `"degrade_trace"` (v2.9.0) ramps
@@ -133,6 +133,26 @@ user decisions from 2026-07-31:
   merely lifts the head. `_operation_intrinsic_safe_z` and the generator's own `z_safe_start_end`
   both ignore the gradient lift, and are therefore consistent with each other — don't "fix" one
   alone.
+
+### `"degrade_puissance"` — the one that actually darkens (v2.12.0)
+
+**Both width gradients keep `S` CONSTANT and only raise Z.** That is the fact everyone gets wrong,
+including me: on 2026-07-31 I renamed `degrade_trace` "dégradé de tonalité" because the user called
+it that, and only measuring the emitted G-code showed the truth — S800 throughout, Z +0 → +47.2 mm
+for a 0.3 → 3.0 mm taper, i.e. fluence 8.00 → 0.71. A trace ten times wider gets **eleven times less
+energy per mm²**: it is not darker, it is wider and usually *paler*. It reads as a tone gradient on
+**hatching** (wider strokes cover more), never on a lone line — which is exactly the case the user
+tried, and reported as not matching the name.
+
+`"degrade_puissance"` is the inverse and the literal answer to "clair au début, foncé à la fin":
+**Z constant, `S` ramped along the curvilinear abscissa**, `deg_s_debut` → `deg_s_fin`, clamped to
+`[0, S_MAX]`. It reuses `rampe_trace_dz` unchanged — the ramp interpolates *a value* along the path
+and does not care whether that value is a height or a power — so it inherits the whole-ramp-per-chain
+guarantee and the `aller_retour` closed-loop option for free. Emission mirrors the `vague` branch
+(per-point `cmd_power_prefix` / `cmd_power_suffix`), so it obeys the M67 dialect: **with M67 the
+per-point power changes are free; without it, every `S` between two `G1` stops the machine** (proved
+on the PrintNC by two twin files — see the M67 note above). The panel greys out the global power
+field on this style, since a ramped power makes it meaningless.
 
 ### The preview must show the taper, not its average (v2.9.1)
 
