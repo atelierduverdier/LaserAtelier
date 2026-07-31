@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.10.0</span><br>
+      <span class="ver">Version 2.11.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.10.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.11.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -700,6 +700,10 @@
     <p>Troisième fait, celui-là relevé à l'œil et non au pied à coulisse&nbsp;: ces tramages ont besoin de <b>place</b>. Le gris y est rendu par la forme d'une marque visible à l'œil nu — épaisseur du trait, diamètre du point — et il faut assez de marques en travers du sujet pour que le motif s'effface derrière lui. Le portrait raté mesurait 80&nbsp;mm de large&nbsp;: le grain se voyait plus que le visage. <b>Viser 100&nbsp;mm au minimum</b>, et le panneau le rappelle sous la grille pour les trois tramages concernés (gros points&nbsp;Z, similigravure, lignes gravées). Ce n'est pas une mesure, c'est un jugement d'atelier&nbsp;— mais il vient d'une planche gravée.</p>
     <p>Un piège à connaître si ce code est repris&nbsp;: la table des largeurs brûlées <b>borne aux mesures</b>. Sous la plus faible puissance relevée, elle renvoie la largeur du bord — si bien que S0 semble donner un trait de 0,10&nbsp;mm alors qu'il ne grave rien. Un tramage qui promet une ligne jamais coupée ne doit donc jamais descendre sous la plage mesurée&nbsp;; les niveaux partent de la plus faible puissance <em>réellement mesurée</em>.</p>
 
+    <h4>La zone F800–F1500 n'avait jamais été mesurée</h4>
+    <p>Les colonnes de saisie au foyer étaient <code>200, 400, 800, 1500, 3000</code>&nbsp;: <b>rien entre 800 et 1500</b>. Or c'est exactement là que ce tramage se joue. Sur le hêtre de l'atelier, à F800 le trait va de 0,10 à 0,30&nbsp;mm, à F1500 il est <em>plat</em> à 0,10 quelle que soit la puissance. Tout ce que l'atelier annonçait entre les deux — «&nbsp;F1000&nbsp;→&nbsp;0,23&nbsp;mm&nbsp;», «&nbsp;F1200&nbsp;→&nbsp;0,17&nbsp;» — était une <b>droite tracée entre deux mesures</b>, jamais une mesure. Personne n'avait brûlé une ligne à F1000 pour la mesurer, et c'est pourtant ce chiffre qui décidait de refuser une vitesse.</p>
+    <p>La <b>Planche 1</b> grave donc désormais sept vitesses (<code>200, 400, 800, <b>1000</b>, <b>1200</b>, 1500, 3000</code>), et la grille de saisie ② a les colonnes correspondantes. Deux points intérieurs suffisent à encadrer l'effondrement&nbsp;; quatre rendraient la grille illisible dans un panneau étroit. L'enjeu est concret&nbsp;: si le trait tient sa pleine plage jusqu'à F1200, un portrait passe de 69 à environ 46&nbsp;minutes.</p>
+
     <h4>Le palier le plus bas n'est pas «&nbsp;rien&nbsp;»&nbsp;: le blanc sortait gris</h4>
     <p>Le piège du paragraphe précédent a une conséquence que personne n'avait tirée. Puisque le niveau le plus bas de ce tramage est la <b>puissance la plus faible mesurée</b> — S200 sur hêtre, soit un trait de 0,10&nbsp;mm — un pixel <b>blanc pur</b> gravait un vrai trait. Au pas 0,30, cela fait <b>33&nbsp;% du bois brûlé pour représenter du blanc</b>. Un fond blanc sortait donc gris uni, et toute la photo s'en trouvait assombrie&nbsp;: le contraste tenait dans 33→100&nbsp;% au lieu de 0→100.</p>
     <p>Le plus gênant est que l'atelier l'écrivait depuis toujours. L'en-tête de chaque fichier annonce <code>(Trait : 0.10 a 0.30 mm -- couverture 33 a 100 %)</code>&nbsp;: le chiffre était là, calculé, imprimé — et rien ne le consommait. Constaté en cours de gravure le 31&nbsp;juillet&nbsp;2026, sur le bois, comme toujours dans cet atelier.</p>
@@ -994,7 +998,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.10.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.11.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

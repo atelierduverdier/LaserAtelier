@@ -567,7 +567,17 @@ class _MesuresPlanchesControleur:
     # Doit rester aligné sur les feeds par défaut de generate_gcode_planche_focus
     # (laser_core.py) : F6000 retiré le 27 juil. 2026 (ne marque plus depuis
     # un changement de lentille).
-    FEEDS_FOCUS = (200, 400, 800, 1500, 3000)
+    #
+    # F1000 et F1200 ajoutés le 31/07/2026. Il n'y avait RIEN entre 800 et
+    # 1500, et c'est exactement là que le tramage « Lignes gravées » se
+    # joue : à F800 le trait va de 0,10 à 0,30 mm, à F1500 il est plat à
+    # 0,10. Tout ce que l'atelier racontait entre les deux (« F1000 ->
+    # 0,23 ») était une DROITE tracée entre deux mesures, jamais une
+    # mesure -- et `swell_max_feed` en dépend pour refuser ou non une
+    # vitesse. Deux points intérieurs suffisent à encadrer l'effondrement ;
+    # quatre rendraient la grille de saisie illisible dans un panneau de
+    # 430 px de large.
+    FEEDS_FOCUS = (200, 400, 800, 1000, 1200, 1500, 3000)
     # Doit rester aligné sur les feeds par défaut de generate_gcode_planche_defocus
     # (laser_core.py) : la grille de saisie n'a de colonnes que pour ce qui
     # est réellement gravé sur la planche. Resserré le 27 juil. 2026 (était
@@ -9628,6 +9638,8 @@ class TaskPanelCurved:
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         _panel_header(form, "curved.svg", "Marquage de motif (plat ou courbe)")
+        self.btn_resel = _reselect_button(form, self._on_recapture_selection,
+                                          lambda: self.selection)
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -9676,6 +9688,7 @@ class TaskPanelCurved:
             "<code>G0&nbsp;Z…</code> en tête du .ngc avant de lancer.",
         ])
 
+        _section(form, "Préréglage matériau", "sect_preset.svg")
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)
@@ -9715,8 +9728,6 @@ class TaskPanelCurved:
                 self.combo_style.setCurrentIndex(0)
             self._update_style_ui()
             self._update_duration_preview()
-        self.btn_resel = _reselect_button(form, self._on_recapture_selection,
-                                          lambda: self.selection)
 
         self._shade_picker = _make_shade_picker(form, _apply_shade)
 
@@ -10608,6 +10619,7 @@ class TaskPanelFlat:
             "bec avant de lancer.",
         ])
 
+        _section(form, "Préréglage matériau", "sect_preset.svg")
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)
@@ -11173,6 +11185,7 @@ class TaskPanelCurvedCut:
             "lancer.",
         ])
 
+        _section(form, "Préréglage matériau", "sect_preset.svg")
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_preset.setMinimumContentsLength(14)

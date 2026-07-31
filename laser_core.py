@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.10.0"
+VERSION = "2.11.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2620,7 +2620,7 @@ def build_test_grid_cells(mode, power_min, power_max, n_power,
     le triplet min/max/nombre correspondant. Les paliers calculés sont
     répartis LINÉAIREMENT, ce qui ne sait pas produire une progression
     géométrique -- or les colonnes de saisie des largeurs brûlées en sont
-    une (200, 400, 800, 1500, 3000). Sans ces listes, l'objectif « Largeurs
+    une (200, 400, 800, 1000, 1200, 1500, 3000). Sans ces listes, l'objectif « Largeurs
     brûlées — grille au foyer » gravait 400/1800/3200/4600/6000 : quatre
     vitesses sur cinq n'avaient AUCUNE colonne où être saisies, et la
     planche était donc inexploitable par le chemin prévu pour elle.
@@ -9121,7 +9121,8 @@ def _label_band(label_edges, comment):
 
 def generate_gcode_planche_focus(z_focus=None,
                                  powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
-                                 feeds=(200.0, 400.0, 800.0, 1500.0, 3000.0),
+                                 feeds=(200.0, 400.0, 800.0, 1000.0,
+                                        1200.0, 1500.0, 3000.0),
                                  trait_len=20.0, row_gap=6.0, label_height=3.0,
                                  pre_gcode="", post_gcode="", quiet=False, body_only=False):
     """PLANCHE 1 -- FOYER (Vitesse x Puissance). Grille de traits gravés AU

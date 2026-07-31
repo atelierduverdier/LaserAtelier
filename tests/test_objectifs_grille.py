@@ -248,3 +248,27 @@ print("10. le parcours ★ cite les {} objectifs de mesure, tous existants "
       "OK".format(len(mesure)))
 
 print("\nTOUS LES TESTS objectifs_grille PASSENT")
+
+# --- La zone F800-F1500 doit être MESURABLE ----------------------------
+# Il n'y avait rien entre 800 et 1500, et c'est exactement là que le
+# tramage « Lignes gravées » se joue : à F800 le trait va de 0,10 à
+# 0,30 mm, à F1500 il est plat. Tout ce que l'atelier annonçait entre les
+# deux était une droite tracée entre deux mesures. Ajouté le 31/07/2026.
+cols = list(tp._MesuresPlanchesControleur.FEEDS_FOCUS)
+interieurs = [f for f in cols if 800 < f < 1500]
+assert len(interieurs) >= 2, (
+    "la zone où le trait cesse d'enfler doit être encadrée par au moins "
+    "deux vitesses mesurables", cols)
+assert cols == sorted(cols), ("colonnes non triées", cols)
+
+# La Planche 1 doit graver EXACTEMENT ces vitesses -- sinon on regrave un
+# carton dont les cases n'ont nulle part où être saisies (défaut v2.3.1).
+import re as _re
+_g = core.generate_gcode_planche_focus()
+_fs = sorted({int(float(m.group(1))) for m in _re.finditer(r"F([\d.]+)", _g)})
+_manque = [f for f in cols if f not in _fs]
+assert not _manque, ("la Planche 1 ne grave pas toutes les colonnes de ②",
+                     _manque, _fs)
+print("Zone F800-F1500 : {} vitesses intérieures ({}), gravées par la "
+      "Planche 1 et saisissables en ② OK".format(
+          len(interieurs), interieurs))
