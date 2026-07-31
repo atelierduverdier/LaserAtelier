@@ -287,6 +287,34 @@ otherwise it names a perfectly good feed as the culprit.
 false alarm cost a round trip here; `tests/test_lignes_gravees.py` §17 carries the helper that avoids
 it.
 
+#### Darkness SATURATES near S900-950 — measured twice, 2026-07-31
+
+The v2.8.0 ceiling was introduced as a quality/contrast trade-off. Two independent measurements now
+say the contrast half of that trade is largely **theoretical** on this wood:
+
+1. **Twin portraits.** The same 401 × 602 px image engraved at 100 % and at ceiling S900 — G-code
+   geometrically identical (25 437 mm burned, 29 602 mm travel), only the power scale differs (mean
+   S748 → S680). Measured on a single photo of both boards side by side, normalised by a **local**
+   white point per cell: overall darkness essentially equal (0.710 vs 0.702), but the **deep blacks
+   are denser at S900** — 10th percentile 0.178 → 0.153, area below 0.30 luminance 20.4 % → 22.6 %,
+   against a noise floor of 0.003 read off the upper percentiles.
+2. **A 10-patch board** (`noirceur_balayage` geometry, but at FOCUS, F800, pitch 0.30, powers
+   S600–S1000 shuffled), ranked by eye. The ranking is **perfect at the group level** — the four
+   highest powers take the four darkest slots, then the next pair, etc. — but inside the top group
+   **5 of 6 pairs are inverted**: S925 judged darkest, ahead of S950, S975 and S1000.
+
+Alone the second is worth 17 % by chance (4 items). Together with the first, which is independent
+and instrument-based, the direction is settled: **above ~S925 you dig without darkening.**
+
+Practical consequences, both encoded: the ceiling tooltip now carries this measurement instead of
+presenting the cap as a pure loss, and **92 % is the retained setting on beech at F800**. The eye's
+resolution on this material is ~75 S — all 7 of the 45 ranking inversions are between neighbours
+25–50 S apart — so there is no point tuning the ceiling finer than that.
+
+**This is per material and per feed.** Re-burn the patch board before carrying the number to another
+wood. And note what it does NOT say: nothing here measures depth, so the ceiling remains a hand-set
+knob, not a computed one.
+
 ### Size matters too — a bench judgement, not a measurement
 
 The three **grain** tramages (4, 5, 6) render grey by the shape of a mark visible to the naked eye,

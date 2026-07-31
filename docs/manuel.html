@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.13.0</span><br>
+      <span class="ver">Version 2.13.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.13.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.13.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -739,7 +739,8 @@
       <tr><td>S900 (90&nbsp;%)</td><td>0,28&nbsp;mm</td><td>92&nbsp;%</td><td>58 points</td></tr>
       <tr><td>S800 (80&nbsp;%)</td><td>0,25&nbsp;mm</td><td>83&nbsp;%</td><td>50 points</td></tr>
     </table>
-    <p>À 90-95&nbsp;% la perte reste modeste — 5 à 9 points sur 67 — pour un bois qui n'est plus entamé. En dessous, on paye vite&nbsp;: les noirs cessent d'être pleins et il reste du bois nu entre les lignes. Le plafond ne fabrique jamais une largeur intermédiaire&nbsp;: il retire des <em>paliers mesurés</em>, et garde ce qui a été relevé au pied à coulisse en dessous. Réglé sur S max, il n'a aucun effet.</p>
+    <p><b>Et ces points perdus sont en grande partie théoriques</b> — établi le 31/07/2026, sur hêtre à F800, au foyer, pas 0,30, par deux mesures indépendantes. D'abord <b>deux portraits jumeaux</b>, le même fichier gravé à 100&nbsp;% puis à plafond S900 (parcours rigoureusement identique, seule la puissance change)&nbsp;: noirceur d'ensemble équivalente, mais des <b>noirs profonds plus denses à 90&nbsp;%</b> — la surface sous 30&nbsp;% de luminance passe de 20,4 à 22,6&nbsp;%. Ensuite une <b>planche de dix aplats</b> de S600 à S1000, classée à l'œil&nbsp;: le classement est <em>parfait</em> par groupes de puissance, mais dans le groupe de tête <b>S925 est jugé le plus foncé, devant S950, S975 et S1000</b>. Autrement dit la noirceur <b>sature vers S900-950</b>&nbsp;; au-delà on creuse sans noircir. <b>92&nbsp;% est le réglage retenu à l'atelier.</b> Une précision qui compte&nbsp;: l'œil ne distingue rien en dessous de ~75&nbsp;S d'écart sur ce bois, donc régler ce plafond au S près n'a aucun sens — et le constat vaut pour <em>ce</em> bois à <em>cette</em> vitesse, à regraver ailleurs.</p>
+    <p>Sur le papier, à 90-95&nbsp;% la perte reste modeste — 5 à 9 points sur 67 — pour un bois qui n'est plus entamé. En dessous, on paye vite&nbsp;: les noirs cessent d'être pleins et il reste du bois nu entre les lignes. Le plafond ne fabrique jamais une largeur intermédiaire&nbsp;: il retire des <em>paliers mesurés</em>, et garde ce qui a été relevé au pied à coulisse en dessous. Réglé sur S max, il n'a aucun effet.</p>
     <p>Un plafond descendu <em>sous</em> la plus faible puissance mesurée ne laisse plus aucune plage où le trait puisse enfler&nbsp;: le mode refuse, et le message accuse alors le <b>plafond</b> — pas la vitesse, qui n'y est pour rien.</p>
 
     <h4>Fond pointillé&nbsp;: combler la marche</h4>
@@ -1012,7 +1013,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.13.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.13.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
