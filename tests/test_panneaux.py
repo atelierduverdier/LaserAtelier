@@ -208,4 +208,62 @@ assert QtWidgets.QApplication.overrideCursor() is None, (
 print("5. aperçu photo : curseur normal pendant l'affichage, et aucun "
       "curseur forcé qui survive OK")
 
+
+# --- 6. Reprendre la sélection : les CINQ panneaux, pas quatre ---------
+# Le bouton existait depuis longtemps mais manquait dans Hachures, et
+# surtout il ne s'annonçait pas : Christophe a redemandé la fonction le
+# 31/07/2026 alors qu'elle était sous ses yeux dans Marquage. D'où une
+# ligne d'état qui passe au rouge dès que la vue 3D montre autre chose.
+from PySide6 import QtWidgets as _Qw, QtCore as _Qc
+
+
+class _FauxObjet:
+    def __init__(self, nom):
+        self.Name = nom
+
+
+class _FauxSel:
+    def __init__(self, nom, subs=()):
+        self.Object = _FauxObjet(nom)
+        self.SubElementNames = tuple(subs)
+
+
+# La signature doit distinguer les objets ET leurs sous-éléments, sans
+# dépendre de l'ordre de clic.
+_s = tp._signature_selection
+assert _s([_FauxSel("L", ("Edge1",))]) == _s([_FauxSel("L", ("Edge1",))])
+assert _s([_FauxSel("L", ("Edge1",))]) != _s([_FauxSel("L", ("Edge2",))])
+assert _s([_FauxSel("A")]) != _s([_FauxSel("A"), _FauxSel("B")])
+assert _s([_FauxSel("A"), _FauxSel("B")]) == _s([_FauxSel("B"), _FauxSel("A")])
+
+_panneaux = (("Hachures 2D", tp.TaskPanelHatch),
+             ("Gravure remplie", tp.TaskPanelFilledEngraving),
+             ("Marquage de motif", tp.TaskPanelCurved),
+             ("Découpe plate", tp.TaskPanelFlat),
+             ("Découpe courbe", tp.TaskPanelCurvedCut))
+_vraie_sel = tp.Gui.Selection.getSelectionEx
+for _nom, _cls in _panneaux:
+    _p = _cls([])
+    _btn = [x for x in _p.form.findChildren(_Qw.QPushButton)
+            if "reprendre la s" in x.text().lower()]
+    assert _btn, ("panneau sans bouton de reprise", _nom)
+    _lbl = [x for x in _p.form.findChildren(_Qw.QLabel)
+            if "Sélection 3D" in x.text()]
+    assert _lbl, ("panneau sans indicateur de sélection", _nom)
+    assert not _btn[0].isEnabled(), (
+        "sélection identique : le bouton ne doit rien proposer", _nom)
+    # La vue 3D montre maintenant autre chose.
+    tp.Gui.Selection.getSelectionEx = lambda: [_FauxSel("Trait", ("Edge1",))]
+    try:
+        for _tm in _btn[0].findChildren(_Qc.QTimer):
+            _tm.timeout.emit()
+        assert _btn[0].isEnabled(), ("sélection différente : le bouton doit "
+                                     "s'activer", _nom)
+        assert "différente" in texte(_lbl[0]), (_nom, texte(_lbl[0]))
+    finally:
+        tp.Gui.Selection.getSelectionEx = _vraie_sel
+    assert hasattr(_p, "_on_recapture_selection"), _nom
+print("6. les 5 panneaux à sélection ont bouton + indicateur, et l'indicateur "
+      "s'allume quand la vue 3D diverge OK")
+
 print("\nTOUS LES TESTS panneaux PASSENT")

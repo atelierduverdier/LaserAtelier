@@ -194,6 +194,27 @@ floor the drawing code truncates rather than overflowing — overlapping labels 
 one. **Verify label changes on the BUILT board's edge bounding boxes, never on the layout formula**:
 the overflow existed for months precisely because nothing measured the geometry that came out.
 
+## Reprendre la sélection (v2.10.0)
+
+`_reselect_button(form, on_reselect, selection_courante=None)` — a panel captures the 3D selection at
+**open** time only; this button re-reads it. It existed in four of the five selection panels for a
+long time. Two things were wrong with that:
+
+- **Hachures didn't have it at all**, so "everywhere" was false.
+- **It didn't announce itself.** On 2026-07-31 the user asked for the feature while it was sitting in
+  the panel he had open. A button among fifteen others is invisible when you don't know it exists.
+
+Passing `selection_courante` (a getter for what the panel holds) adds a live status line above the
+button: grey "identique" with the button disabled, red "N objets — différente" with it enabled.
+`_signature_selection` compares `(Object.Name, SubElementNames)` sorted — so it catches a different
+sub-element on the same object, and ignores click order. It reads **names only, never geometry**, so
+polling it every 600 ms costs nothing; re-reading the geometry stays behind the click.
+
+**Deliberately NOT automatic.** Re-applying a selection also re-applies the per-shape settings stored
+on the object (`LaserAtelierReglages`), which would overwrite what the user has just typed, silently
+— and on a big model each re-read rebuilds the ray probe. The user chose the button for exactly that
+reason. If this is ever revisited, keep geometry and settings separable.
+
 ## Job combiné
 
 Operations are NOT added via bespoke mini-dialogs. Each combinable mode (Flat cut, Curved cut, Curved

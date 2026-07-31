@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.9.1</span><br>
+      <span class="ver">Version 2.10.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.9.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.10.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -441,6 +441,11 @@
       <p><strong>Astuce :</strong> survolez un bouton, une infobulle résume ce qu'il fait <em>et</em> ce qu'il attend en sélection (par exemple « sélectionne le motif projeté ET le modèle 3D »).</p>
     </div>
   </div>
+
+  <h3>Sélectionner APRÈS avoir ouvert un panneau</h3>
+  <p>Un panneau capture la sélection à son <b>ouverture</b>. Si vous ouvrez Marquage puis cliquez le trait, il ne voit rien — et c'est le genre de chose qui fait croire à une panne.</p>
+  <p>Les cinq modes qui travaillent sur une sélection (Hachures, Gravure remplie, Marquage, et les deux Découpes) portent donc un bouton <b>«&nbsp;Reprendre la sélection de la vue&nbsp;»</b>. Depuis la v2.10, une ligne juste au-dessus dit en permanence ce que montre la vue 3D&nbsp;: en gris «&nbsp;identique à celle du panneau&nbsp;» (le bouton reste inactif, il n'y a rien à faire), en rouge «&nbsp;<em>N</em> objets — différente&nbsp;» dès que vous avez cliqué ailleurs. Le bouton s'allume alors tout seul.</p>
+  <p><b>Vos réglages en cours ne sont jamais remplacés&nbsp;:</b> seule la géométrie à graver change. C'est la raison pour laquelle la reprise reste un bouton et non un automatisme — reprendre une sélection recharge aussi la recette attachée à cette forme, qui écraserait sans prévenir la puissance et la vitesse que vous venez de saisir.</p>
 
   <h3>Que fait chaque bouton</h3>
   <div class="legende">
@@ -989,7 +994,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.9.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.10.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

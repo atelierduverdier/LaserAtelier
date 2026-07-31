@@ -156,18 +156,72 @@ def _gcode_editor(placeholder="", hauteur=76):
     return ed
 
 
-def _reselect_button(form, on_reselect):
+def _signature_selection(selection):
+    """Empreinte comparable d'une sélection : (objet, sous-éléments). Sert
+    à savoir si la vue 3D montre autre chose que ce que le panneau tient,
+    SANS toucher à la géométrie -- c'est un simple relevé de noms."""
+    sig = []
+    for so in (selection or []):
+        try:
+            sig.append((getattr(so.Object, "Name", "?"),
+                        tuple(getattr(so, "SubElementNames", ()) or ())))
+        except Exception:
+            sig.append(("?", ()))
+    return tuple(sorted(sig))
+
+
+def _reselect_button(form, on_reselect, selection_courante=None):
     """Bouton « Reprendre la sélection de la vue » : un panneau ne capture la
     sélection qu'à son OUVERTURE ; ce bouton relit la sélection courante.
-    `on_reselect` est le rappel propre au panneau (relit + rafraîchit)."""
+    `on_reselect` est le rappel propre au panneau (relit + rafraîchit).
+
+    `selection_courante` : rappel rendant la sélection que le panneau tient
+    aujourd'hui. Fourni, une ligne d'état S'ANNONCE dès que la vue 3D montre
+    autre chose -- le bouton existait depuis longtemps mais restait un bouton
+    parmi d'autres, et l'atelier a redemandé la fonction sans l'avoir vu
+    (31/07/2026). Le relevé ne lit que des NOMS d'objets, jamais la
+    géométrie : le rafraîchir en continu ne coûte rien."""
     btn = QtWidgets.QPushButton("Reprendre la sélection de la vue")
     _btn_icon(btn, "btn_reselect.svg")
     btn.setToolTip(
         "Le panneau capture la sélection à son OUVERTURE. Si tu as\n"
         "sélectionné le motif APRÈS, clique ici pour reprendre la\n"
-        "sélection courante de la vue / de l'arbre.")
+        "sélection courante de la vue / de l'arbre.\n"
+        "\n"
+        "Tes réglages en cours ne sont PAS remplacés : seule la géométrie\n"
+        "à graver change.")
     btn.clicked.connect(on_reselect)
+
+    if selection_courante is None:
+        form.addRow(btn)
+        return btn
+
+    lbl = _WrapLabel("")
+    form.addRow(lbl)
     form.addRow(btn)
+
+    def _etat():
+        try:
+            vue = Gui.Selection.getSelectionEx()
+        except Exception:
+            return
+        n = len(vue or [])
+        if _signature_selection(vue) == _signature_selection(selection_courante()):
+            lbl.setText("<span style=\"color:#5a626e\">Sélection 3D : "
+                        "identique à celle du panneau.</span>")
+            btn.setEnabled(False)
+        else:
+            lbl.setText(
+                "<span style=\"color:#c62828\">Sélection 3D : <b>{}</b> "
+                "\u2014 différente de celle du panneau.</span>".format(
+                    "{} objet{}".format(n, "s" if n > 1 else "")
+                    if n else "vide"))
+            btn.setEnabled(True)
+
+    minuteur = QtCore.QTimer(btn)
+    minuteur.timeout.connect(_etat)
+    minuteur.start(600)
+    _etat()
     return btn
 
 
@@ -4002,6 +4056,10 @@ class TaskPanelHatch:
 
         _diagram(form, "diag_hatch.svg")
 
+        # Seul des cinq panneaux à sélection à ne PAS avoir ce bouton.
+        _reselect_button(form, self._on_recapture_selection,
+                         lambda: self.selection)
+
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
             "<b>1.</b> Sélectionne la <b>face 2D</b> (ou esquisse fermée) à "
@@ -4187,6 +4245,21 @@ class TaskPanelHatch:
         FreeCAD.Console.PrintMessage("Succès : objet '{}' créé.\n".format(obj.Name))
         return True
 
+    def _on_recapture_selection(self):
+        """Reprend la sélection courante de la vue / de l'arbre (le panneau
+        ne la capture qu'à son ouverture). Hachures lit la sélection au
+        moment de CRÉER l'objet : il n'y a donc aucune géométrie mise en
+        cache à reconstruire ici, contrairement aux modes de marquage."""
+        self.selection = Gui.Selection.getSelectionEx()
+        if not self.selection:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Sélection",
+                "Aucune sélection courante. Sélectionne la face 2D (ou "
+                "l'esquisse fermée) à remplir dans la vue ou l'arbre, puis "
+                "reclique.")
+        else:
+            FreeCAD.Console.PrintMessage("Sélection reprise.\n")
+
     def reject(self):
         return True
 
@@ -4313,7 +4386,8 @@ class TaskPanelFilledEngraving:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "filled.svg", "Gravure remplie (noir)")
-        _reselect_button(form, self._on_recapture_selection)
+        _reselect_button(form, self._on_recapture_selection,
+                         lambda: self.selection)
         _intro(form,
                "Grave la forme/le texte 2D sélectionné (face, sketch, "
                "ShapeString) en NOIR PLEIN, en deux temps :",
@@ -9641,7 +9715,8 @@ class TaskPanelCurved:
                 self.combo_style.setCurrentIndex(0)
             self._update_style_ui()
             self._update_duration_preview()
-        self.btn_resel = _reselect_button(form, self._on_recapture_selection)
+        self.btn_resel = _reselect_button(form, self._on_recapture_selection,
+                                          lambda: self.selection)
 
         self._shade_picker = _make_shade_picker(form, _apply_shade)
 
@@ -10496,7 +10571,8 @@ class TaskPanelFlat:
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         _panel_header(form, "flat.svg", "Découpe multi-passes (plat)")
-        _reselect_button(form, self._on_recapture_selection)
+        _reselect_button(form, self._on_recapture_selection,
+                         lambda: self.selection)
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -11061,7 +11137,8 @@ class TaskPanelCurvedCut:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "curved_cut.svg", "Découpe multi-passes (courbe)")
-        _reselect_button(form, self._on_recapture_selection)
+        _reselect_button(form, self._on_recapture_selection,
+                         lambda: self.selection)
         _intro(form,
                "Découpe en plusieurs passes EN SUIVANT LE RELIEF d'une "
                "surface courbe. Sélectionne le motif projeté (Motif_Projete) "
