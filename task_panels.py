@@ -7135,6 +7135,32 @@ class TaskPanelHalftone:
             "s'affiche sous la grille.")
         form.addRow("Épaisseur mini du trait :", self.spn_line_min)
 
+        # Le pendant HAUT de « épaisseur mini ». La table des largeurs ne
+        # connaît que la largeur, jamais la PROFONDEUR : à pleine puissance
+        # le trait fait bien la largeur annoncée, mais il peut creuser et
+        # laisser la surface striée. Aucune mesure de l'atelier ne prédit
+        # ça -- d'où un plafond réglé à la main, à l'oeil, sur une chute.
+        self.spn_power_max = QtWidgets.QDoubleSpinBox()
+        self.spn_power_max.setRange(0.0, core.S_MAX)
+        self.spn_power_max.setDecimals(0)
+        self.spn_power_max.setSingleStep(25.0)
+        self.spn_power_max.setValue(core.S_MAX)
+        self.spn_power_max.setToolTip(
+            "Lignes gravées : puissance du trait le plus NOIR.\n"
+            "\n"
+            "À pleine puissance le trait atteint sa largeur maximale, mais\n"
+            "sur certains bois il CREUSE : la surface ressort striée au\n"
+            "lieu d'être marquée. La table des largeurs ne peut pas le\n"
+            "prévoir, elle ne mesure que la largeur -- jamais la profondeur.\n"
+            "\n"
+            "Baisser ce plafond rogne le haut de la plage : sur hêtre F800\n"
+            "au pas 0,30, S900 donne un trait de 0,28 mm au lieu de 0,30,\n"
+            "soit 58 points de contraste au lieu de 67. Le verdict affiche\n"
+            "la plage réellement obtenue.\n"
+            "\n"
+            "À S max : aucun plafond (comportement d'origine).")
+        form.addRow("Puissance maxi du trait :", self.spn_power_max)
+
         # Ce qu'on fait de ce qui passe SOUS le seuil de blanc. Deux
         # réponses honnêtes, pas une bonne et une mauvaise : « Bois nu »
         # est franc mais crée une marche (rien, puis d'un coup 33 % de
@@ -7240,6 +7266,8 @@ class TaskPanelHalftone:
             # Le choix du fond n'a de sens que pour les lignes gravées (les
             # autres tramages à seuil coupent, point), et seulement si un
             # seuil est effectivement demandé.
+            _set_row_visible(form, self.spn_power_max,
+                             t["reglage"] == "trait_mini")
             _set_row_visible(form, self.combo_fond,
                              t["reglage"] == "trait_mini")
             self.combo_fond.setEnabled(self.spn_white.value() > 0.0)
@@ -7373,6 +7401,7 @@ class TaskPanelHalftone:
             "line_feed": self.spn_line_feed, "gamma": self.spn_gamma,
             "dot_spacing": self.spn_dot_spacing,
             "line_min": self.spn_line_min,
+            "power_max": self.spn_power_max,
             "fond_clair": self.combo_fond,
             # Le MATÉRIAU manquait, et c'est le réglage dont tout le régime
             # dépend : sans lui une recette « Hêtre » ne pouvait pas
@@ -7392,6 +7421,7 @@ class TaskPanelHalftone:
                      self.spn_gamma.valueChanged,
                      self.spn_dot_spacing.valueChanged,
                      self.spn_line_min.valueChanged,
+                     self.spn_power_max.valueChanged,
                      # la mise en garde « trait plus étroit que le pas » de
                      # la similigravure dépend aussi de ces trois-là
                      self.spn_power.valueChanged,
@@ -7641,10 +7671,12 @@ class TaskPanelHalftone:
             # _emit_raster_rows fusionne les S égaux -- l'aperçu dessine
             # donc les mêmes segments que la machine gravera.
             feed_l = self.spn_line_feed.value()
-            niv = core.swell_power_levels(material, feed_l,
-                                          self.spn_line_min.value())
+            niv = core.swell_power_levels(
+                material, feed_l, self.spn_line_min.value(),
+                power_max=self.spn_power_max.value())
             if niv is None:
-                return None, core.swell_refus_message(material, feed_l)
+                return None, core.swell_refus_message(
+                    material, feed_l, self.spn_power_max.value())
             puissances, w_min, w_max = niv
             n = len(puissances)
             # Seuil de blanc ET fond pointillé viennent de la MÊME grille
@@ -7933,7 +7965,8 @@ class TaskPanelHalftone:
                 material=self.combo_photo_mat.currentData(),
                 line_min_mm=self.spn_line_min.value(),
                 white_threshold=self.spn_white.value() / 100.0,
-                fond_clair=self.combo_fond.currentData(), **extra)
+                fond_clair=self.combo_fond.currentData(),
+                power_max=self.spn_power_max.value(), **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame
         # de points, silencieusement -- du G-code valide pour le mauvais
@@ -8110,10 +8143,20 @@ class TaskPanelHalftone:
                         "passe par « Calibration du kerf », ce tramage n'a "
                         "que ça pour travailler.")
             return False, False
-        if enfle and plage[1] - plage[0] < 1e-9:
+        # Le plafond de puissance rogne le HAUT de la plage : le verdict doit
+        # partir de la table PLAFONNÉE -- la MÊME que le générateur -- sinon
+        # il annonce un trait maxi et un contraste que le G-code ne produira
+        # pas. Un seul appel, dont on tire à la fois le refus et la plage.
+        plafond = self.spn_power_max.value() if enfle else None
+        niveaux = (core.swell_power_levels(mat, feed, self.spn_line_min.value(),
+                                           power_max=plafond)
+                   if enfle else None)
+        if enfle and niveaux is not None:
+            plage = (niveaux[1], niveaux[2])
+        if enfle and (niveaux is None or plage[1] - plage[0] < 1e-9):
             # Majuscule sur la PREMIÈRE lettre seulement : capitalize()
             # rabattrait « F800 » en « f800 » dans la suite du message.
-            m = core.swell_refus_message(mat, feed)
+            m = core.swell_refus_message(mat, feed, plafond)
             msgs.append(m[:1].upper() + m[1:])
             return False, False
         if enfle:

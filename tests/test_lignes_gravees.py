@@ -339,4 +339,54 @@ assert "2e7d32" in brut5, ("avec un seuil le verdict redevient vert", brut5[:120
 print("16. seuil nul -> verdict ROUGE (le fond sortira gris) ; seuil 5 % -> "
       "vert. Un ✓ ne décrit plus un défaut OK")
 
+
+# --- 17. Plafond de puissance : ne pas creuser le bois -----------------
+# Relevé À L'ÉTABLI le 31/07/2026, en cours de gravure : à pleine
+# puissance sur hêtre F800 le trait fait bien 0,30 mm, mais il CREUSE et
+# la surface ressort striée. La table des largeurs ne peut pas le prévoir
+# -- elle mesure la largeur, jamais la profondeur. D'où un plafond réglé
+# à la main, et un test qui vérifie qu'il est respecté partout.
+def _s_reels(g):
+    """S/Q qui pilotent le faisceau. Les COMMENTAIRES en contiennent aussi
+    (« 90 % de S1000 ») : les compter ferait croire que le plafond fuit."""
+    vals = set()
+    for l in g.split("\n"):
+        if l.startswith("("):
+            continue
+        m = re.search(r"\bS(\d+)", l) or re.search(r"M67 E0 Q(\d+)", l)
+        if m and int(m.group(1)) > 0:
+            vals.add(int(m.group(1)))
+    return vals
+
+
+img17 = [[x / 19.0 for x in range(20)] for _ in range(6)]
+sans = core.generate_gcode_photo_swell_lines(
+    img17, 0.30, core.Z_WORK_MM, 800.0, MAT, line_min_mm=0.10, quiet=True)
+assert max(_s_reels(sans)) == 1000, sorted(_s_reels(sans))[-3:]
+for cap in (950.0, 900.0, 800.0, 600.0):
+    g17 = core.generate_gcode_photo_swell_lines(
+        img17, 0.30, core.Z_WORK_MM, 800.0, MAT, line_min_mm=0.10,
+        quiet=True, power_max=cap)
+    assert g17, ("le plafond S%.0f ne devrait pas empêcher de générer" % cap)
+    haut = max(_s_reels(g17))
+    assert haut <= cap + 1e-9, ("le G-code dépasse le plafond", cap, haut)
+    # et la plage annoncée doit RÉTRÉCIR par le haut, jamais par le bas
+    niv = core.swell_power_levels(MAT, 800.0, 0.10, power_max=cap)
+    assert niv is not None and abs(niv[1] - 0.10) < 1e-9, niv
+    assert niv[2] < 0.30 + 1e-9, niv
+print("17. plafond respecté à S950/900/800/600 ; sans plafond le G-code monte "
+      "bien à S1000 OK")
+
+# Trop bas : refus NET, et le message accuse le plafond, pas la vitesse.
+assert core.swell_power_levels(MAT, 800.0, 0.10, power_max=150.0) is None
+assert core.generate_gcode_photo_swell_lines(
+    img17, 0.30, core.Z_WORK_MM, 800.0, MAT, quiet=True,
+    power_max=150.0) is None
+m17 = core.swell_refus_message(MAT, 800.0, 150.0)
+assert "plafond" in m17.lower() and "S200" in m17, m17
+assert "F800" not in m17, ("le refus accuse la vitesse alors que le fautif "
+                           "est le plafond", m17)
+print("18. plafond S150 (sous la plus faible mesure) : refus net, et le "
+      "message nomme le PLAFOND, pas la vitesse OK")
+
 print("\nTOUS LES TESTS lignes_gravees PASSENT")

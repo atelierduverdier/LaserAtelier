@@ -264,6 +264,29 @@ verdict goes red, and says the selector has no effect at a zero threshold.
 **Rule to carry:** when a verdict has words for a problem, it must also have the colour for it. A
 message and a status that disagree are worse than no message — the reader believes the status.
 
+### The width table knows nothing about DEPTH — `power_max` (v2.8.0)
+
+Found at the bench on 2026-07-31, mid-job: at full power on beech at F800 the trace does measure
+0.30 mm, but it **digs** — the surface comes out ridged rather than marked. The kerf table only ever
+recorded WIDTH; depth was never measured and cannot be inferred from it. So this is a hand-set
+ceiling, not a computed one, and it belongs to the same family as "darkness is not a function of
+energy alone": a physical variable the model simply doesn't carry.
+
+`swell_power_levels(..., power_max=)` filters the table to measured points at or below the ceiling —
+it never interpolates a new width. Everything downstream (generator, preview, verdict, contrast)
+reads that one function, so capping is felt everywhere at once. Cost on beech F800 at pitch 0.30,
+measured: S1000 → 0.30 mm / 67 points of contrast; **S950 → 0.29 / 62**; **S900 → 0.28 / 58**;
+S800 → 0.25 / 50. Modest at 90–95 %, which is the useful range.
+
+`swell_refus_message(material, feed, power_max)` gains a first branch: a ceiling below the lowest
+measured power leaves no span to swell in, and the message must blame the **ceiling**, not the feed —
+otherwise it names a perfectly good feed as the culprit.
+
+**Watch out when measuring this from G-code**: the header comment itself contains `S1000` (as in
+"90 % de S1000"), so a naive `\bS(\d+)` sweep reports the ceiling leaking. Skip comment lines. That
+false alarm cost a round trip here; `tests/test_lignes_gravees.py` §17 carries the helper that avoids
+it.
+
 ### Size matters too — a bench judgement, not a measurement
 
 The three **grain** tramages (4, 5, 6) render grey by the shape of a mark visible to the naked eye,

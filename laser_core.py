@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.7.1"
+VERSION = "2.8.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7769,10 +7769,21 @@ def swell_max_feed(material):
     return None
 
 
-def swell_refus_message(material, feed):
+def swell_refus_message(material, feed, power_max=None):
     """Pourquoi les « lignes gravées » refusent, et QUOI FAIRE. Un message
     qui dit seulement « trop vite » laisse l'utilisateur chercher la bonne
     valeur ; celui-ci la nomme."""
+    # Un plafond de puissance trop bas ne laisse plus qu'un ou deux paliers
+    # mesurés : la cause est alors le PLAFOND, pas la vitesse. Le dire,
+    # sinon le message accuse la vitesse qui, elle, va très bien.
+    if power_max is not None:
+        table = burn_width_power_table(material, feed)
+        if table and len([1 for s, _w in table if s <= float(power_max) + 1e-9]) < 2:
+            bas = min((s for s, _w in table), default=0)
+            return ("le plafond S{:.0f} est sous la plus faible puissance "
+                    "mesurée (S{:.0f}) : il ne reste aucune plage où le trait "
+                    "puisse enfler. Remonter le plafond."
+                    .format(float(power_max), bas))
     plage = burn_width_range(material, feed)
     if plage is None:
         return ("aucune largeur brûlée mesurée pour « {} » -- passer par "
@@ -7789,7 +7800,8 @@ def swell_refus_message(material, feed):
             .format(feed, plage[0], rapide, *burn_width_range(material, rapide)))
 
 
-def swell_power_levels(material, feed, line_min_mm, niveaux=256):
+def swell_power_levels(material, feed, line_min_mm, niveaux=256,
+                       power_max=None):
     """Table noirceur -> S du tramage « lignes gravées ».
 
     SOURCE UNIQUE partagée par le générateur et l'aperçu photo. Renvoie
@@ -7799,10 +7811,26 @@ def swell_power_levels(material, feed, line_min_mm, niveaux=256):
 
     Indexer plutôt qu'inverser à chaque pixel : la table de largeurs se lit
     dans la config, une inversion par pixel coûterait aussi cher qu'une
-    lecture de config par pixel."""
+    lecture de config par pixel.
+
+    `power_max` PLAFONNE la puissance du trait le plus noir. La table ne
+    connaît que la LARGEUR, jamais la PROFONDEUR : à pleine puissance sur
+    hêtre à F800, le trait fait bien 0,30 mm mais il creuse, et la surface
+    ressort striée (relevé à l'établi le 31/07/2026, en cours de gravure).
+    Aucune mesure de l'atelier ne peut prédire ça -- d'où un plafond réglé
+    à la main, et non un calcul. Plafonner rogne le haut de la plage : sur
+    hêtre F800 au pas 0,30, S900 donne 0,28 mm au lieu de 0,30, soit 58
+    points de contraste au lieu de 67. C'est le prix, et il est modeste."""
     table = burn_width_power_table(material, feed)
     if not table:
         return None
+    if power_max is not None:
+        # Le plafond retire des PALIERS MESURÉS, il n'invente pas une
+        # largeur intermédiaire : on garde ce qui a été relevé au pied à
+        # coulisse sous ce plafond.
+        table = [(s, w) for s, w in table if s <= float(power_max) + 1e-9]
+        if len(table) < 2:
+            return None
     w_min_mes, w_max = table[0][1], table[-1][1]
     if w_max - w_min_mes < 1e-9:
         return None
@@ -7920,7 +7948,8 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
                                      material, line_min_mm=0.10,
                                      pre_gcode="", post_gcode="",
                                      frame_only=False, quiet=False,
-                                     white_threshold=0.0, fond_clair="nu"):
+                                     white_threshold=0.0, fond_clair="nu",
+                                     power_max=None):
     """Photo en LIGNES GRAVÉES : chaque ligne est balayée en continu au
     FOYER, et c'est l'ÉPAISSEUR du trait qui rend le gris -- fin dans les
     clairs, épais dans les foncés, comme une gravure sur cuivre. Aucun
@@ -7948,12 +7977,13 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
     w = len(darkness_rows[0]) if h else 0
     if h < 1 or w < 1 or pitch <= 0 or feed <= 0:
         return None
-    niveaux = swell_power_levels(material, feed, line_min_mm)
+    niveaux = swell_power_levels(material, feed, line_min_mm,
+                                 power_max=power_max)
     if niveaux is None:
         if not quiet:
             FreeCAD.Console.PrintWarning(
                 "Lignes gravées : {}\n".format(
-                    swell_refus_message(material, feed)))
+                    swell_refus_message(material, feed, power_max)))
         return None
     puissances, w_min, w_max = niveaux
     n = len(puissances)
@@ -7968,6 +7998,11 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
         w, h, pitch, feed))
     lines.append("(Trait : {:.2f} a {:.2f} mm -- couverture {:.0f} a {:.0f} %)".format(
         w_min, w_max, 100.0 * w_min / pitch, 100.0 * min(1.0, w_max / pitch)))
+    if power_max is not None and power_max < S_MAX - 1e-9:
+        lines.append("(Puissance plafonnee a S{:.0f} ({:.0f} % de S{:.0f}) : "
+                     "trait le plus noir bride pour ne pas creuser)".format(
+                         float(power_max), 100.0 * float(power_max) / S_MAX,
+                         S_MAX))
     # Ce plancher de couverture est la limite du mode : le trait le plus fin
     # noircit deja 33 % du bois au pas 0,30. Sans seuil, une case BLANCHE le
     # grave quand meme -- le dire dans le fichier, puisque c'est la que ca se
