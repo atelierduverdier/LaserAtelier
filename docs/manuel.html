@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.11.1</span><br>
+      <span class="ver">Version 2.11.2</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.11.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.11.2</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -542,13 +542,13 @@
 
   <div class="mode"><img class="ic" src="../resources/icons/filled.svg" alt=""><div class="body">
     <img class="shot" src="manuel_img/filled.png" alt="Panneau Gravure remplie">
-    <p><b>Chaque style porte son petit schéma</b>, affiché sous le sélecteur&nbsp;: trait continu, tirets, points, vague qui enfle et rétrécit, point élargi constant, et les deux dégradés. Le dessin fait en un coup d'œil ce qu'un paragraphe explique mal — notamment la différence entre «&nbsp;dans une direction&nbsp;» (plusieurs traits, tous identiques à la même abscisse) et «&nbsp;le long du tracé&nbsp;» (un fuseau qui suit le parcours).</p>
+    <p><b>Chaque style porte son petit schéma</b>, affiché sous le sélecteur&nbsp;: trait continu, tirets, points, vague qui enfle et rétrécit, point élargi constant, et les deux dégradés. Le dessin fait en un coup d'œil ce qu'un paragraphe explique mal — notamment la différence entre «&nbsp;<b>dégradé de tonalité</b>&nbsp;» (des hachures qui s'épaississent selon leur position, donc une zone ombrée du clair au foncé) et «&nbsp;<b>dégradé le long du tracé</b>&nbsp;» (un seul trait en fuseau, qui suit son parcours).</p>
 
     <h4>Dégradé le long du tracé&nbsp;: le trait qui s'affine</h4>
     <p>Le mode <b>Marquage</b> compte désormais <b>sept styles de trait</b>, et deux d'entre eux s'appellent «&nbsp;dégradé&nbsp;» sans faire la même chose. La différence vaut d'être comprise une fois pour toutes&nbsp;:</p>
     <table class="reglages">
       <tr><th>Style</th><th>La largeur suit…</th><th>Sur une spirale</th></tr>
-      <tr><td><b>Dégradé (dans une direction)</b></td><td>la <b>position</b> du point, projetée sur une direction réglable (un angle), à l'échelle de toute la sélection</td><td>la largeur varie de gauche à droite&nbsp;: les tours extérieurs et intérieurs se ressemblent</td></tr>
+      <tr><td><b>Dégradé de tonalité (sur la pièce)</b></td><td>la <b>position</b> du point, projetée sur une direction réglable (un angle). Pensé pour des <b>hachures</b>&nbsp;: chaque trait s'épaissit selon où il se trouve, donc la zone s'ombre du clair au foncé — le pendant du «&nbsp;remplissage en dégradé&nbsp;» de la Gravure remplie</td><td>la largeur varie de gauche à droite&nbsp;: les tours extérieurs et intérieurs se ressemblent</td></tr>
       <tr><td><b>Dégradé le long du tracé</b></td><td>le <b>parcours</b> — l'abscisse curviligne, du premier au dernier point du trait</td><td>un vrai fuseau, large à l'extérieur et fin au centre</td></tr>
     </table>
     <p>Deux cases suffisent&nbsp;: <b>largeur au début</b> et <b>largeur à la fin</b>, en millimètres. L'atelier en déduit la hauteur de bec par la calibration du point — sur la machine de l'atelier, 4&nbsp;mm de large demandent <b>+64,8&nbsp;mm</b> de remontée. Attention à la borne basse&nbsp;: le point au foyer mesure 0,30&nbsp;mm, donc <b>on ne descend pas sous 0,30</b> optiquement (le 0,10&nbsp;mm des «&nbsp;lignes gravées&nbsp;» est une largeur <em>brûlée</em>, pas le point).</p>
@@ -1000,7 +1000,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.11.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.11.2 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

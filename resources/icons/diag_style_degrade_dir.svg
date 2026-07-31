@@ -1,13 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 90">
-  <!-- Degrade DANS UNE DIRECTION : la largeur suit la POSITION en X.
-       Plusieurs traits, tous identiques a la meme abscisse. -->
+  <!-- Degrade de TONALITE : pense pour des HACHURES. Chaque trait
+       s'epaissit selon sa POSITION sur la piece, pas selon son parcours,
+       donc la zone s'ombre du clair au fonce d'un bord a l'autre.
+       Dessine comme trois traits abstraits, ca ne disait pas a quoi ca
+       sert : Christophe ne comprenait pas le style (31/07/2026). -->
+
+  <!-- direction du degrade (angle reglable), au-dessus de la zone -->
+  <line x1="30" y1="9" x2="232" y2="9" stroke="#ff8a00" stroke-width="1.8"/>
+  <path d="M 232 5.5 L 243 9 L 232 12.5 Z" fill="#ff8a00"/>
+
+  <rect x="26" y="15" width="222" height="53" fill="none"
+        stroke="#2f3540" stroke-width="1.1" opacity="0.35"/>
+
   <g fill="#2f3540">
-    <path d="M 20 16 L 268 10 L 268 24 L 20 20 Z"/>
-    <path d="M 20 38 L 268 32 L 268 46 L 20 42 Z"/>
-    <path d="M 20 60 L 268 54 L 268 68 L 20 64 Z"/>
+    <path d="M 30 21.2 L 244 16.5 L 244 27.5 L 30 22.8 Z"/>
+    <path d="M 30 34.2 L 244 29.5 L 244 40.5 L 30 35.8 Z"/>
+    <path d="M 30 47.2 L 244 42.5 L 244 53.5 L 30 48.8 Z"/>
+    <path d="M 30 60.2 L 244 55.5 L 244 66.5 L 30 61.8 Z"/>
   </g>
-  <line x1="20" y1="78" x2="262" y2="78" stroke="#ff8a00" stroke-width="2"/>
-  <path d="M 262 74 L 274 78 L 262 82 Z" fill="#ff8a00"/>
-  <text x="150" y="88" font-family="sans-serif" font-size="10"
-        fill="#ff8a00" text-anchor="middle">la largeur suit la POSITION</text>
+
+  <text x="150" y="78" font-family="sans-serif" font-size="10"
+        fill="#ff8a00" text-anchor="middle">ombre une zone hachuree, du clair au fonce</text>
 </svg>

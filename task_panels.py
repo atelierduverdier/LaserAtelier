@@ -1131,6 +1131,14 @@ def _diagram(form, name, width=260, height=100):
     lbl = QtWidgets.QLabel()
     lbl.setPixmap(pm)
     lbl.setAlignment(QtCore.Qt.AlignHCenter)
+    # Hauteur MINIMALE imposée : sans elle, le formulaire peut serrer la
+    # rangée et rogner le bas du dessin (légende coupée en deux, signalé
+    # le 31/07/2026). La taille indépendante de la densité d'écran, sinon
+    # un affichage HiDPI réserve deux fois trop peu de place.
+    try:
+        lbl.setMinimumHeight(int(pm.deviceIndependentSize().height()))
+    except AttributeError:                      # Qt plus ancien
+        lbl.setMinimumHeight(int(pm.height() / max(1.0, pm.devicePixelRatio())))
     form.addRow(lbl)
     return lbl
 
@@ -9792,7 +9800,7 @@ class TaskPanelCurved:
         self.combo_style = QtWidgets.QComboBox()
         self.combo_style.addItems(
             ["Trait plein", "Tirets", "Pointillé", "Vague défocus", "Défocus (point élargi)",
-             "Dégradé (dans une direction)", "Dégradé le long du tracé"])
+             "Dégradé de tonalité (sur la pièce)", "Dégradé le long du tracé"])
         self.combo_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_style.setMinimumContentsLength(14)
         self.combo_style.setToolTip(
@@ -9805,8 +9813,18 @@ class TaskPanelCurved:
             "Défocus (point élargi) : trait continu gravé plus HAUT que le\n"
             "foyer (point laser élargi) -- pour NOIRCIR un remplissage en un\n"
             "passage (l'équivalent du remplissage Défocus des Hachures 2D,\n"
-            "mais appliqué au motif projeté). Tous les styles suivent le\n"
-            "relief comme le trait plein.")
+            "mais appliqué au motif projeté).\n"
+            "\n"
+            "Les deux DÉGRADÉS ne font pas la même chose malgré leurs noms :\n"
+            "  Dégradé de tonalité : pensé pour des HACHURES. Chaque trait\n"
+            "    s'épaissit selon sa POSITION sur la pièce (direction\n"
+            "    réglable), donc la zone s'ombre du clair au foncé d'un\n"
+            "    bord à l'autre. Le pendant du « remplissage en dégradé »\n"
+            "    de la Gravure remplie, pour un motif hachuré.\n"
+            "  Dégradé le long du tracé : UN trait dont la largeur suit son\n"
+            "    PARCOURS, du début à la fin. Un fuseau, pas une ombre.\n"
+            "\n"
+            "Tous les styles suivent le relief comme le trait plein.")
         form.addRow("Style de trait :", self.combo_style)
 
         # Un petit schéma par style, empilés ici : un seul est visible à la
