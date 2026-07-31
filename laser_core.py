@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.5.2"
+VERSION = "2.6.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7817,15 +7817,51 @@ def swell_power_levels(material, feed, line_min_mm, niveaux=256):
     return puissances, w_min, w_max
 
 
+def swell_niveau(darkness, n, white_threshold=0.0):
+    """Indice de palier d'une noirceur pour « lignes gravées », ou None si
+    la case doit rester du BOIS NU.
+
+    SOURCE UNIQUE, comme `swell_power_levels` : le générateur et l'aperçu
+    photo passent tous deux par ici, sinon l'aperçu montrerait un fond
+    blanc que la machine graverait quand même.
+
+    Pourquoi ce seuil existe : le palier 0 n'est PAS « rien ». La table
+    part de la puissance la plus basse réellement MESURÉE (S200 sur le
+    hêtre de l'atelier), parce qu'un mode qui promet un trait continu ne
+    doit pas choisir une puissance dont il ne sait rien. Conséquence, une
+    case blanche pure gravait un trait de 0,10 mm -- au pas 0,30 cela fait
+    **33 % du bois brûlé pour du blanc**, et l'en-tête du G-code l'annonçait
+    déjà (« couverture 33 a 100 % ») sans que personne n'en fasse rien.
+    Constaté sur une planche le 31/07/2026 : fond blanc sorti gris uni.
+
+    Le mode a été conçu « jamais de bois nu », en réponse aux 27 % de
+    planche vierge du portrait calibré. Mais ces trous-là étaient des
+    MANQUES dans les demi-teintes ; laisser le fond blanc intact est
+    l'inverse, c'est ce que « blanc » veut dire. À 0 (défaut), le
+    comportement d'origine est conservé à l'identique."""
+    d = min(1.0, max(0.0, float(darkness)))
+    if white_threshold > 0.0 and d < white_threshold:
+        return None
+    return max(0, min(n - 1, int(round(d * (n - 1)))))
+
+
 def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
                                      material, line_min_mm=0.10,
                                      pre_gcode="", post_gcode="",
-                                     frame_only=False, quiet=False):
+                                     frame_only=False, quiet=False,
+                                     white_threshold=0.0):
     """Photo en LIGNES GRAVÉES : chaque ligne est balayée en continu au
-    FOYER, faisceau jamais coupé, et c'est l'ÉPAISSEUR du trait qui rend le
-    gris -- fin dans les clairs, épais dans les foncés, comme une gravure
-    sur cuivre. Aucun nuancier n'est consulté : la puissance de chaque pixel
-    sort de la largeur brûlée MESURÉE (cf. swell_power_levels).
+    FOYER, et c'est l'ÉPAISSEUR du trait qui rend le gris -- fin dans les
+    clairs, épais dans les foncés, comme une gravure sur cuivre. Aucun
+    nuancier n'est consulté : la puissance de chaque pixel sort de la
+    largeur brûlée MESURÉE (cf. swell_power_levels).
+
+    `white_threshold` : sous cette noirceur, la case reste du BOIS NU. À 0
+    (défaut) le faisceau n'est jamais coupé, comportement d'origine. Au-delà,
+    le faisceau s'éteint sur les plages claires -- mais le MOUVEMENT reste
+    continu, `_emit_raster_rows` fusionnant les S0 dans le même balayage :
+    la tête ne s'arrête pas, seule la lumière s'éteint. Cf. `swell_niveau`
+    pour la raison (le palier 0 grave 33 % du bois au pas 0,30).
 
     Le pas doit valoir au moins la largeur maximale, sinon les traits se
     recouvrent dans les foncés et les lignes fondent en aplat -- le G-code
@@ -7844,9 +7880,13 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
         return None
     puissances, w_min, w_max = niveaux
     n = len(puissances)
-    grid = [[puissances[max(0, min(n - 1, int(round(min(1.0, max(0.0, d))
-                                                    * (n - 1)))))]
-             for d in row] for row in darkness_rows]
+    grid = []
+    for row in darkness_rows:
+        cells = []
+        for d in row:
+            k = swell_niveau(d, n, white_threshold)
+            cells.append(0 if k is None else puissances[k])
+        grid.append(cells)
 
     z_safe = z_work + TRAVEL_CLEARANCE_MM
     lines = []
@@ -7855,6 +7895,18 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
         w, h, pitch, feed))
     lines.append("(Trait : {:.2f} a {:.2f} mm -- couverture {:.0f} a {:.0f} %)".format(
         w_min, w_max, 100.0 * w_min / pitch, 100.0 * min(1.0, w_max / pitch)))
+    # Ce plancher de couverture est la limite du mode : le trait le plus fin
+    # noircit deja 33 % du bois au pas 0,30. Sans seuil, une case BLANCHE le
+    # grave quand meme -- le dire dans le fichier, puisque c'est la que ca se
+    # verifie.
+    if white_threshold > 0.0:
+        lines.append("(Seuil blanc {:.0f} % : sous cette noirceur, bois NU "
+                     "(faisceau coupe, mouvement continu))".format(
+                         100.0 * white_threshold))
+    elif w_min / pitch > 0.05:
+        lines.append("(SANS seuil blanc : une case BLANCHE grave un trait de "
+                     "{:.2f}mm, soit {:.0f} % de couverture)".format(
+                         w_min, 100.0 * w_min / pitch))
     if w_max > pitch + 1e-9:
         lines.append("(ATTENTION : trait maxi {:.2f}mm > pas {:.2f}mm -- les "
                      "lignes se recouvrent dans les fonces)".format(w_max, pitch))

@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.5.2</span><br>
+      <span class="ver">Version 2.6.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.5.2</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.6.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -683,6 +683,17 @@
     <p>Troisième fait, celui-là relevé à l'œil et non au pied à coulisse&nbsp;: ces tramages ont besoin de <b>place</b>. Le gris y est rendu par la forme d'une marque visible à l'œil nu — épaisseur du trait, diamètre du point — et il faut assez de marques en travers du sujet pour que le motif s'effface derrière lui. Le portrait raté mesurait 80&nbsp;mm de large&nbsp;: le grain se voyait plus que le visage. <b>Viser 100&nbsp;mm au minimum</b>, et le panneau le rappelle sous la grille pour les trois tramages concernés (gros points&nbsp;Z, similigravure, lignes gravées). Ce n'est pas une mesure, c'est un jugement d'atelier&nbsp;— mais il vient d'une planche gravée.</p>
     <p>Un piège à connaître si ce code est repris&nbsp;: la table des largeurs brûlées <b>borne aux mesures</b>. Sous la plus faible puissance relevée, elle renvoie la largeur du bord — si bien que S0 semble donner un trait de 0,10&nbsp;mm alors qu'il ne grave rien. Un tramage qui promet une ligne jamais coupée ne doit donc jamais descendre sous la plage mesurée&nbsp;; les niveaux partent de la plus faible puissance <em>réellement mesurée</em>.</p>
 
+    <h4>Le palier le plus bas n'est pas «&nbsp;rien&nbsp;»&nbsp;: le blanc sortait gris</h4>
+    <p>Le piège du paragraphe précédent a une conséquence que personne n'avait tirée. Puisque le niveau le plus bas de ce tramage est la <b>puissance la plus faible mesurée</b> — S200 sur hêtre, soit un trait de 0,10&nbsp;mm — un pixel <b>blanc pur</b> gravait un vrai trait. Au pas 0,30, cela fait <b>33&nbsp;% du bois brûlé pour représenter du blanc</b>. Un fond blanc sortait donc gris uni, et toute la photo s'en trouvait assombrie&nbsp;: le contraste tenait dans 33→100&nbsp;% au lieu de 0→100.</p>
+    <p>Le plus gênant est que l'atelier l'écrivait depuis toujours. L'en-tête de chaque fichier annonce <code>(Trait : 0.10 a 0.30 mm -- couverture 33 a 100 %)</code>&nbsp;: le chiffre était là, calculé, imprimé — et rien ne le consommait. Constaté en cours de gravure le 31&nbsp;juillet&nbsp;2026, sur le bois, comme toujours dans cet atelier.</p>
+    <p><b>Pourquoi ce mode n'avait pas de seuil de blanc, et pourquoi c'était une erreur de raisonnement.</b> Il a été conçu sur le principe «&nbsp;jamais de bois nu&nbsp;», en réponse au portrait calibré qui laissait 27&nbsp;% de la planche vierge. Mais ces 27&nbsp;%, c'étaient des <em>trous dans les demi-teintes</em> — le bois refusant de marquer là où il aurait dû. Laisser le <em>fond blanc</em> intact est l'inverse&nbsp;: c'est exactement ce que «&nbsp;blanc&nbsp;» veut dire. Les deux ont été confondus, et la règle appliquée trop largement.</p>
+    <p>Le champ <b>«&nbsp;Seuil blanc&nbsp;»</b> est donc actif pour ce tramage aussi. Sous cette noirceur, le bois reste nu. Deux points valent d'être connus&nbsp;:</p>
+    <ul class="puces">
+      <li><b>Le mouvement reste continu.</b> Le faisceau s'éteint, la tête ne s'arrête pas&nbsp;: une plage blanche à l'intérieur d'une rangée est traversée par un <code>G1</code> à la même avance, puissance nulle — jamais un <code>G0</code>. Le seuil <em>diminue</em> même le nombre de changements de puissance, donc il ne peut qu'aider le problème décrit au chapitre&nbsp;3.</li>
+      <li><b>C'est une marche, et c'est le compromis assumé.</b> Sous le seuil, bois nu&nbsp;; au-dessus, le trait apparaît d'un coup à 33&nbsp;% de couverture. Sur un fond blanc franc c'est précisément ce qu'on veut&nbsp;; sur un dégradé doux vers le blanc, cela pose un contour visible. C'est le même compromis que les trois autres tramages qui ont ce seuil depuis toujours.</li>
+    </ul>
+    <p>Le verdict «&nbsp;Trait &amp; matière&nbsp;» le dit maintenant <em>avant</em> de graver&nbsp;: à seuil nul, il annonce en toutes lettres que le blanc pur gravera tant de pour cent de couverture. À 0, le comportement d'origine est conservé à l'identique — faisceau jamais coupé.</p>
+
     <h4>Similigravure&nbsp;: quand le gris cesse de dépendre du bois</h4>
     <p>Les cinq premiers tramages demandent au bois de <em>rendre</em> un gris — par la puissance, par la durée, ou par la densité de points identiques. Près du seuil de brûlure, le bois n'en fait qu'à sa tête&nbsp;: c'est le fil qui tranche, et les demi-teintes sortent irrégulières. Le sixième tramage supprime le problème à la racine.</p>
     <p>La <b>similigravure</b> est la trame des journaux&nbsp;: une maille régulière à 45°, où c'est le <b>diamètre du point</b> qui rend le gris. Chaque point est brûlé à fond, toujours pareil. Le gris n'est plus une réponse du matériau mais une <b>surface</b>, donc de la géométrie. Aucun nuancier n'est consulté, aucune courbe, aucun régime à respecter.</p>
@@ -940,7 +951,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.5.2 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.6.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

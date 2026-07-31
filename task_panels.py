@@ -6912,9 +6912,15 @@ _TRAMAGES = (
          balayage=True, duree_variable=False, nuancier=False, au_foyer=True,
          grain=True, seuil_blanc=False, puissance=True,
          reglage="espacement"),
+    # seuil_blanc a longtemps valu False ici : le mode était né du principe
+    # « jamais de bois nu ». Mais son palier le plus bas n'est pas « rien »
+    # -- c'est la puissance la plus basse MESURÉE, donc un trait de 0,10 mm,
+    # soit 33 % de couverture au pas 0,30. Un fond blanc sortait gris uni
+    # (planche du 31/07/2026). Le « jamais de bois nu » visait les TROUS
+    # dans les demi-teintes, pas le fond blanc, qui doit rester nu.
     dict(cle="enfle", nom="Lignes gravées (trait qui enfle)",
          balayage=True, duree_variable=False, nuancier=False, au_foyer=True,
-         grain=True, seuil_blanc=False, puissance=False,
+         grain=True, seuil_blanc=True, puissance=False,
          reglage="trait_mini"),
 )
 
@@ -7176,9 +7182,16 @@ class TaskPanelHalftone:
         self.spn_white.setValue(8.0)
         self.spn_white.setSuffix(" %")
         self.spn_white.setToolTip(
-            "Seuil blanc (Durée variable et Lignes calibrées) : aucune case\n"
-            "dont la noirceur est sous ce seuil n'est gravée -- évite de\n"
-            "piqueter/hâler les blancs.")
+            "Seuil blanc : aucune case dont la noirceur est sous ce seuil\n"
+            "n'est gravée -- évite de piqueter/hâler les blancs.\n"
+            "\n"
+            "Sur « Lignes gravées », c'est le réglage qui rend le fond\n"
+            "VRAIMENT blanc : sans lui, la case la plus claire grave quand\n"
+            "même le trait le plus fin (la puissance la plus basse mesurée),\n"
+            "soit ~33 % de couverture au pas 0,30 sur hêtre. Le mouvement\n"
+            "reste continu, seul le faisceau s'éteint.\n"
+            "\n"
+            "À 0 : faisceau jamais coupé (comportement d'origine).")
         form.addRow("Seuil blanc :", self.spn_white)
 
         # --- Vitesse de balayage des lignes calibrées ---
@@ -7598,20 +7611,24 @@ class TaskPanelHalftone:
                 return None, core.swell_refus_message(material, feed_l)
             puissances, w_min, w_max = niv
             n = len(puissances)
+            # Même seuil de blanc que le générateur, via la MÊME fonction :
+            # sans ça l'aperçu montrerait un fond blanc que la machine
+            # graverait quand même (ou l'inverse).
+            seuil = self.spn_white.value() / 100.0
             t = teinte(puissances[-1], feed_l, w_max, 0.0)
             for row in range(h):
                 y = (h - 1 - row) * pitch
                 col = 0
                 while col < w:
-                    k0 = max(0, min(n - 1, int(round(
-                        min(1.0, max(0.0, darkness[row][col])) * (n - 1)))))
+                    k0 = core.swell_niveau(darkness[row][col], n, seuil)
                     c0 = col
                     while col < w:
-                        k = max(0, min(n - 1, int(round(
-                            min(1.0, max(0.0, darkness[row][col])) * (n - 1)))))
+                        k = core.swell_niveau(darkness[row][col], n, seuil)
                         if k != k0:
                             break
                         col += 1
+                    if k0 is None:      # bois nu : rien à peindre
+                        continue
                     largeur_k = w_min + (w_max - w_min) * k0 / float(n - 1)
                     strokes.append(([(c0 * pitch, y), (col * pitch, y)],
                                     largeur_k, t))
@@ -7877,7 +7894,8 @@ class TaskPanelHalftone:
                 rows, pitch=k["pitch"], z_work=core.Z_WORK_MM,
                 feed=self.spn_line_feed.value(),
                 material=self.combo_photo_mat.currentData(),
-                line_min_mm=self.spn_line_min.value(), **extra)
+                line_min_mm=self.spn_line_min.value(),
+                white_threshold=self.spn_white.value() / 100.0, **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame
         # de points, silencieusement -- du G-code valide pour le mauvais
@@ -8085,6 +8103,23 @@ class TaskPanelHalftone:
                 "{:.0f} → {:.0f} %, contraste <b>{:.0f} points</b>.".format(
                     w_min, w_max, feed, 100.0 * bas, 100.0 * haut,
                     100.0 * ecart))
+            # Ce plancher de couverture est aussi ce que reçoit une case
+            # BLANCHE, faute de seuil : le palier le plus bas n'est pas
+            # « rien », c'est la puissance la plus basse mesurée. Un fond
+            # blanc sortait donc gris uni (planche du 31/07/2026). Le dire
+            # AVANT de graver, avec le chiffre, plutôt qu'après sur le bois.
+            seuil = self.spn_white.value() / 100.0
+            if seuil <= 0.0 and bas > 0.05:
+                msgs.append(
+                    "<b>Sans seuil blanc, le blanc pur grave quand même</b> "
+                    "un trait de {:.2f} mm, soit <b>{:.0f} % de couverture</b> "
+                    "— un fond blanc sortira gris uni. Monte «&nbsp;Seuil "
+                    "blanc&nbsp;» pour le laisser en bois nu.".format(
+                        w_min, 100.0 * bas))
+            elif seuil > 0.0:
+                msgs.append(
+                    "Seuil blanc {:.0f} % : sous cette noirceur, bois nu "
+                    "(faisceau coupé, mouvement continu).".format(100.0 * seuil))
             # LA VITESSE D'ABORD, LE PAS ENSUITE. Au-delà de la plus rapide
             # utile, le trait cesse d'enfler jusqu'au bout : c'est toute la
             # plage qui rétrécit. Conseiller alors de resserrer le pas

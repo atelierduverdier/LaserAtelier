@@ -195,6 +195,37 @@ gains nothing (at pitch 0.20 both F800 and F1000 already saturate).
   pick a power it knows nothing about. `burn_width_power_table` starts at the lowest measured S (S200
   on Hêtre). Caught by a test asserting `min(levels) > 0`, not by eye.
 
+### The lowest level is NOT "nothing" — white burned grey (v2.6.0)
+
+The constraint just above has a consequence nobody drew until a board showed it: since level 0 is the
+lowest **measured** power (S200 on beech → 0.10 mm), a pure-white pixel engraved a real 0.10 mm line.
+At pitch 0.30 that is **33 % of the wood burned to represent white**, and the mode's own G-code header
+had been announcing it all along — `(Trait : 0.10 a 0.30 mm -- couverture 33 a 100 %)`. Nothing
+consumed that number. Christophe caught it mid-job on 2026-07-31: a white background coming out
+uniformly grey.
+
+The mode was deliberately built with `seuil_blanc=False`, answering his earlier complaint that the
+calibrated portrait left 27 % of the board unengraved. **That reasoning was over-applied**: those 27 %
+were *holes in the mid-tones* — the wood failing to mark where it should have. Leaving the actual
+white background bare is the opposite, and is what "white" means. Don't conflate the two again.
+
+`swell_niveau(darkness, n, white_threshold)` → level index or **None** (bare wood) is now the shared
+source for the generator AND the preview, exactly like `swell_power_levels`. Default `0.0` reproduces
+the original behaviour bit for bit, so the "beam never cut" promise still holds where it is wanted —
+`tests/test_lignes_gravees.py` §7 still asserts *no G1 at S0* on a threshold-free call.
+
+Two things worth knowing before touching this:
+
+- **Motion stays continuous.** `_emit_raster_rows` already merged S0 runs into the same sweep, so a
+  white gap inside a row becomes `G1 … S0` at the same feed — no `G0`, no stop. With M67 on (the
+  user's config) it is `M67 E0 Q0` + `G1`, and the queue is never drained. The threshold *reduces*
+  the number of power changes, so it can only help the M67 problem, never worsen it.
+- **The threshold is a step, and that is the honest trade.** Below it, bare wood; above it, the line
+  appears at once at `w_min/pitch` coverage. On a pure-white background that is exactly right; on a
+  soft gradient into the whites it puts a visible contour. Same trade the three other `seuil_blanc`
+  tramages already carry. If continuous tone into the whites is ever wanted, the answer is to make
+  the line **dashed** in the lightest tones rather than cutting it — not attempted, deliberately.
+
 ### Size matters too — a bench judgement, not a measurement
 
 The three **grain** tramages (4, 5, 6) render grey by the shape of a mark visible to the naked eye,

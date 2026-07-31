@@ -135,12 +135,17 @@ rows = p._build_rows(silent=True, max_cells=30000)
 gp = p._generate(rows, quiet=True)
 assert gp and "lignes gravees" in gp.lower(), (gp or "")[:200]
 attendus = set(core.swell_power_levels(MAT, 800.0, 0.10)[0])
-emis = puissances(gp, gravure_seule=True)
+# S0 sur un G1 n'est PAS une gravure : c'est la traversée d'une plage
+# blanche, faisceau coupé et mouvement continu (le panneau applique son
+# seuil de blanc par défaut). On ne contrôle donc que les S qui brûlent.
+# Le test 7, lui, appelle le générateur SANS seuil et garde l'invariant
+# d'origine « aucun G1 à S0 ».
+emis = {s for s in puissances(gp, gravure_seule=True) if s > 0}
 inconnus = emis - attendus
 assert not inconnus, ("le G-code émet des S absents de la table partagée",
                       sorted(inconnus)[:5])
-print("9. les {} valeurs de S émises sortent toutes de swell_power_levels, la "
-      "table que l'aperçu utilise aussi OK".format(len(emis)))
+print("9. les {} valeurs de S gravantes sortent toutes de swell_power_levels, "
+      "la table que l'aperçu utilise aussi OK".format(len(emis)))
 
 # --- 10. Aucune diffusion d'erreur dans ce tramage ---------------------
 vrai = core.floyd_steinberg_dither
@@ -155,5 +160,72 @@ assert im is not None, note
 assert appels["n"] == 0, "les lignes gravées passent par une diffusion"
 print("10. aperçu rendu sans diffusion d'erreur -- note : « {} » OK"
       .format(note))
+
+
+# --- 11. Le BLANC doit pouvoir rester du bois nu ------------------------
+# Le défaut, relevé sur une planche le 31/07/2026 : le fond blanc pur
+# sortait GRIS UNI. Le palier le plus bas de ce tramage n'est pas « rien »
+# -- c'est la puissance la plus basse MESURÉE (S200 sur hêtre), donc un
+# trait de 0,10 mm : 33 % du bois brûlé au pas 0,30, pour du blanc.
+#
+# Ce contrôle se démontre lui-même : il rejoue d'abord SANS seuil pour
+# prouver que le blanc gravait vraiment, sinon il ne prouverait rien.
+blanches = [[0.0] * 8, [0.0] * 8, [1.0] * 8]
+sans = core.generate_gcode_photo_swell_lines(
+    blanches, pitch=0.30, z_work=core.Z_WORK_MM, feed=800.0,
+    material=MAT, line_min_mm=0.10, quiet=True)
+assert sans, "génération refusée sans seuil"
+niv0 = core.swell_power_levels(MAT, 800.0, 0.10)[0][0]
+assert niv0 > 0, "le palier le plus bas devrait être une puissance réelle"
+assert niv0 in puissances(sans, gravure_seule=True), (
+    "sans seuil, une case blanche devrait graver à S{} -- si ce n'est plus "
+    "le cas, ce contrôle ne démontre plus rien".format(niv0))
+
+avec = core.generate_gcode_photo_swell_lines(
+    blanches, pitch=0.30, z_work=core.Z_WORK_MM, feed=800.0,
+    material=MAT, line_min_mm=0.10, quiet=True, white_threshold=0.08)
+assert avec, "génération refusée avec seuil"
+# Une rangée entièrement blanche ne doit produire AUCUN G1 gravant à sa
+# hauteur : _emit_raster_rows saute les lignes vides. On compte les G1
+# porteurs d'une puissance non nulle, ligne par ligne.
+def _g1_gravants(g):
+    n, s = 0, 0
+    for l in g.split("\n"):
+        m = re.search(r"\bS(\d+)", l)
+        if m and not l.startswith("G1"):
+            s = int(m.group(1))
+        m67 = re.search(r"M67 E0 Q(\d+)", l)
+        if m67:
+            s = int(m67.group(1))
+        if l.startswith("G1"):
+            m = re.search(r"\bS(\d+)", l)
+            if m:
+                s = int(m.group(1))
+            if s > 0:
+                n += 1
+    return n
+
+assert _g1_gravants(avec) < _g1_gravants(sans), (
+    "le seuil de blanc n'a rien coupé", _g1_gravants(sans), _g1_gravants(avec))
+# Et la seule rangée qui reste gravée est la NOIRE : 8 cases à S max.
+smax = core.swell_power_levels(MAT, 800.0, 0.10)[0][-1]
+assert puissances(avec, gravure_seule=True) == {smax}, (
+    "avec un seuil à 8 %, seule la rangée noire doit graver",
+    sorted(puissances(avec, gravure_seule=True)))
+print("11. blanc pur : sans seuil il grave à S{} ({:.0f} % de couverture au "
+      "pas 0,30) ; avec seuil 8 % il ne reste que la rangée noire (S{}) OK"
+      .format(niv0, 100.0 * 0.10 / 0.30, smax))
+
+# --- 12. Aperçu et G-code d'accord sur le blanc -------------------------
+# La règle de la maison : l'aperçu ne refait jamais ses propres calculs.
+# Les deux passent par core.swell_niveau, donc un fond blanc peint doit
+# correspondre à un fond blanc gravé.
+n_niv = len(core.swell_power_levels(MAT, 800.0, 0.10)[0])
+assert core.swell_niveau(0.0, n_niv, 0.0) == 0, "sans seuil, 0 -> palier 0"
+assert core.swell_niveau(0.0, n_niv, 0.08) is None, "avec seuil, 0 -> bois nu"
+assert core.swell_niveau(0.5, n_niv, 0.08) is not None, "un gris moyen reste gravé"
+assert core.swell_niveau(1.0, n_niv, 0.08) == n_niv - 1, "le noir reste au max"
+print("12. swell_niveau, source unique du générateur ET de l'aperçu : "
+      "blanc -> bois nu, gris et noir inchangés OK")
 
 print("\nTOUS LES TESTS lignes_gravees PASSENT")
