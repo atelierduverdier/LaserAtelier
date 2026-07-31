@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.13.3</span><br>
+      <span class="ver">Version 2.14.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.13.3</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.14.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -569,7 +569,15 @@
     <p>Il partage toute la mécanique du fuseau, parce que c'est <em>la même rampe</em> — elle interpole une valeur le long de l'abscisse curviligne, peu lui importe que cette valeur soit une hauteur ou une puissance. Il en hérite donc les mêmes garanties&nbsp;: <b>chaque trait porte sa rampe entière</b>, et sur une <b>boucle fermée</b> le même choix marche visible / aller-retour — utile ici, car un ressaut de teinte à la fermeture d'un cercle se voit beaucoup.</p>
     <p>Deux garde-fous&nbsp;: la consigne est <b>bornée à l'échelle de la machine</b> (une valeur au-delà de S max est ramenée à S max), et le champ «&nbsp;Puissance&nbsp;» global se grise, puisqu'il ne sert plus à rien quand la puissance est rampée. Côté machine, ce style change la puissance à chaque point&nbsp;: avec «&nbsp;Puissance par M67&nbsp;» coché, ça ne coûte rien (cf. <a href="#c3">chapitre&nbsp;3</a>) ; sans lui, chaque changement de <code>S</code> arrête le mouvement.</p>
 
-    <h4>Gravure remplie (noir)</h4>
+        <h4>La mire de mesure gravée sur les planches</h4>
+    <p class="quoi">Une réglette et quatre repères, gravés en même temps que la planche.</p>
+    <p>Les <b>Planches 1 et 2</b> portent désormais leur propre <b>mire de mesure</b>&nbsp;: une réglette graduée au millimètre sous la planche, et <b>quatre repères en croix</b> aux coins d'un rectangle dont les cotes sont <em>rondes</em> et annoncées dans l'en-tête du G-code. Il suffit alors de photographier la planche pour en mesurer les traits.</p>
+    <p><b>Pourquoi gravée plutôt que posée&nbsp;?</b> Une réglette d'acier posée sur la planche est 0,5 à 1&nbsp;mm <em>au-dessus</em> de la surface&nbsp;: en macro elle est vue sous un angle légèrement différent du trait qu'on mesure — parallaxe. Une graduation gravée partage son plan, et surtout son <b>repère machine</b>&nbsp;: elle hérite de la précision de positionnement de la CNC, pas de celle d'une règle du commerce.</p>
+    <p><b>Pourquoi quatre repères et pas un&nbsp;?</b> Quatre correspondances permettent de corriger la <b>perspective</b>, pas seulement l'échelle — une photo tenue à la main n'est jamais perpendiculaire, et c'est l'erreur dominante. La base est longue exprès&nbsp;: l'erreur d'échelle vaut l'incertitude sur le centre d'un repère divisée par la longueur de base, soit 0,06&nbsp;% pour 0,05&nbsp;mm sur 80.</p>
+    <p><b>Gravée lentement, et c'est délibéré.</b> La réglette, ce sont des dizaines de petits traits séparés par des rapides, donc autant d'accélérations. À F1200 le support en PLA de l'atelier vibrait et les repères sortaient <em>ondulés</em> — ce qui ruine exactement ce qu'on leur demande, un centre net. Réglages par laser&nbsp;: <b>S100 à F300</b> par défaut. Pour un repère, un trait un peu gras mais droit vaut bien mieux qu'un trait fin qui serpente.</p>
+    <p><b>Ce qu'elle a déjà servi à trouver.</b> Le 31/07/2026, elle a permis de mesurer sur photo un trait annoncé à 0,30&nbsp;mm par la table&nbsp;: il faisait <b>0,50</b>. Valeur ensuite confirmée au pied à coulisse. La table des largeurs au foyer décrivait un état de la machine qui n'existait plus.</p>
+
+<h4>Gravure remplie (noir)</h4>
     <p class="quoi">Noircir une surface fermée par un remplissage.</p>
     <p>Utilise le <strong>défocus calibré</strong> pour élargir le point et remplir vite, avec un contour repassé net par-dessus. Le remplissage se glisse volontairement <em>sous</em> le contour pour éviter le liseré pâle sur les bords.</p>
     <p>Le parcours est <strong>optimisé</strong> : les traits de remplissage sont gravés de proche en proche plutôt que dans l'ordre où les hachures sont calculées. Sur une forme à trous (orbites, cavités, contre-formes de lettres), chaque ligne de hachure est coupée en un nombre de morceaux différent de sa voisine, et sans ce tri la tête traverse la pièce d'un bout à l'autre entre deux traits. Mesuré sur un crâne réel : <strong>56 m de déplacements à vide ramenés à 5 m</strong>, pour une gravure rigoureusement identique — juste beaucoup moins d'allers-retours.</p>
@@ -1014,7 +1022,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.13.3 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.14.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

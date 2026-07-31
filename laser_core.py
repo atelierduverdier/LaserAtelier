@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.13.3"
+VERSION = "2.14.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -799,6 +799,13 @@ SPOT_TEST_DIAMETER_MM = 1.0           # diamètre du point mesuré à ce défocu
 LABEL_POWER = 600.0                   # étiquettes gravées des tests/planches : puissance (S)
 LABEL_FEED = 800.0                    # ... et vitesse d'avance (mm/min) -- par laser, réglés
                                       # une fois dans les Préférences
+# MIRE DE MESURE gravée sur les planches (réglette + 4 repères). Volontairement
+# LENTE : la réglette, c'est des dizaines de petits traits séparés par des
+# rapides, donc autant d'accélérations -- à F1200 le support caméra en PLA de
+# l'atelier vibrait et les repères sortaient ONDULÉS, ce qui ruine justement
+# ce qu'on leur demande (un centre net). Réglable par laser.
+MIRE_POWER = 100.0                    # puissance (S) de la mire
+MIRE_FEED = 300.0                     # vitesse (mm/min) -- lente, contre la vibration
 
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
 _USER_SETTINGS = (
@@ -818,6 +825,8 @@ _USER_SETTINGS = (
     ("travel_clearance_mm", "TRAVEL_CLEARANCE_MM", float, lambda v: v >= 0),
     ("label_power", "LABEL_POWER", float, lambda v: 0 <= v),
     ("label_feed", "LABEL_FEED", float, lambda v: v > 0),
+    ("mire_power", "MIRE_POWER", float, lambda v: 0 <= v),
+    ("mire_feed", "MIRE_FEED", float, lambda v: v > 0),
     ("frame_power", "FRAME_POWER", float, lambda v: v >= 0),
     ("frame_feed_mm_min", "FRAME_FEED_MM_MIN", float, lambda v: v > 0),
     ("z_max_feed_mm_min", "Z_MAX_FEED_MM_MIN", float, lambda v: v > 0),
@@ -951,7 +960,8 @@ def save_nozzle(bottom_diameter_mm, top_diameter_mm, height_mm):
 # communs -- les rattacher au laser actif est le développement suivant.
 PER_LASER_KEYS = ("laser_tool", "s_max", "spot_focus_mm", "spot_test_defocus_mm",
                   "spot_test_diameter_mm", "z_work_mm", "frame_power",
-                  "label_power", "label_feed", "gcode_dialect")
+                  "label_power", "label_feed", "mire_power", "mire_feed",
+                  "gcode_dialect")
 
 
 def _laser_slug(name):
@@ -9202,6 +9212,132 @@ def _powers_capped(powers):
     return tuple(sorted({min(float(p), float(S_MAX)) for p in powers}))
 
 
+def mire_de_mesure(x_min, y_min, x_max, y_max, power=None, feed=None,
+                   marge=6.0, bras=2.0, garde=3.0):
+    """Mire de mesure à graver AUTOUR d'une planche : une réglette graduée
+    au millimètre sous le contenu, et QUATRE repères en croix aux coins
+    d'un rectangle de dimensions RONDES.
+
+    À quoi ça sert, et pourquoi gravée plutôt que posée : une réglette
+    d'acier posée sur la planche est 0,5 à 1 mm AU-DESSUS de la surface,
+    donc vue sous un angle différent du trait qu'on mesure -- parallaxe.
+    Une graduation gravée est dans le même plan ET dans le même repère
+    machine, donc elle hérite de la précision de positionnement de la CNC
+    au lieu de celle d'une règle du commerce.
+
+    QUATRE repères et non un seul : quatre correspondances permettent de
+    corriger la PERSPECTIVE (homographie), pas seulement l'échelle. Une
+    macro tenue à la main n'est jamais perpendiculaire, et c'est l'erreur
+    dominante. Le rectangle est arrondi au multiple de 10 mm pour que ses
+    cotes soient exactes et annonçables dans l'en-tête -- c'est LUI la
+    référence, la réglette n'est là que pour l'oeil et pour les cadrages
+    serrés où les repères sortent du champ.
+
+    La base est LONGUE volontairement : l'erreur d'échelle vaut
+    (incertitude sur le centre d'un repère) / (longueur de base). 0,05 mm
+    sur 80 mm, c'est 0,06 %.
+
+    Renvoie (bande, label_edges, infos) où `bande` est au format attendu
+    par _emit_flat_marks -- (chaîne, S, F, commentaire) avec chaîne =
+    liste de (x, y) -- et `infos` un dict des cotes à écrire en en-tête.
+    Renvoie (None, None, None) si le contenu est vide.
+
+    Vérifié le 31/07/2026 sur bois : la réglette gravée a permis de
+    mesurer un trait à 0,50 mm par photo, valeur ensuite CONFIRMÉE au pied
+    à coulisse alors que la table annonçait 0,30.
+    """
+    if x_max <= x_min or y_max <= y_min:
+        return None, None, None
+    s = MIRE_POWER if power is None else float(power)
+    f = MIRE_FEED if feed is None else float(feed)
+
+    # Hauteur occupée par la réglette : traits (3 mm au plus long), puis
+    # les chiffres. Le contenu doit rester AU-DESSUS, d'où la garde.
+    tick_max, num_h, num_dy = 3.0, 2.5, 0.6
+    h_reglette = 2.5 + tick_max + num_dy + num_h
+
+    x0 = math.floor(x_min - marge)
+    y0 = math.floor(y_min - marge - h_reglette - garde)
+    largeur = max(10.0, math.ceil((x_max + marge - x0) / 10.0) * 10.0)
+    hauteur = max(10.0, math.ceil((y_max + marge - y0) / 10.0) * 10.0)
+
+    bande, labels = [], []
+
+    def croix(cx, cy):
+        bande.append(([(cx - bras, cy), (cx + bras, cy)], s, f, "(-- mire : repere --)"))
+        bande.append(([(cx, cy - bras), (cx, cy + bras)], s, f, "(-- mire : repere --)"))
+
+    for dx in (0.0, largeur):
+        for dy in (0.0, hauteur):
+            croix(x0 + dx, y0 + dy)
+
+    y_reg = y0 + 2.5
+    for i in range(int(largeur) + 1):
+        haut = tick_max if i % 10 == 0 else (2.0 if i % 5 == 0 else 1.0)
+        bande.append(([(x0 + i, y_reg), (x0 + i, y_reg + haut)], s, f,
+                      "(-- mire : reglette 1mm --)"))
+    for i in range(0, int(largeur) + 1, 10):
+        labels.extend(text_to_edges("{:.0f}".format(i),
+                                    x0 + i - 1.5, y_reg + tick_max + num_dy, num_h))
+
+    infos = {"x0": x0, "y0": y0, "largeur": largeur, "hauteur": hauteur,
+             "power": s, "feed": f,
+             "garde": y_min - (y_reg + tick_max + num_dy + num_h)}
+    # Le contenu ne doit jamais retomber sur la mire : c'est arrivé au
+    # premier essai (le trait le plus large gravé en travers des chiffres,
+    # donc inmesurable), et ça ne se voit qu'à l'aperçu.
+    if infos["garde"] < 0.5:
+        return None, None, None
+    return bande, labels, infos
+
+
+def _bbox_planche(bande, label_edges=None):
+    """Emprise (x_min, y_min, x_max, y_max) d'une planche à plat, à partir
+    de ses bandes -- chaînes de (x, y) -- et de ses étiquettes (arêtes
+    Part, dont on lit les sommets). Sert à poser la mire AUTOUR du
+    contenu sans avoir à recalculer sa mise en page."""
+    xs, ys = [], []
+    for chain, _s, _f, _c in bande or []:
+        for x, y in chain:
+            xs.append(x); ys.append(y)
+    for e in label_edges or []:
+        for v in e.Vertexes:
+            xs.append(v.Point.x); ys.append(v.Point.y)
+    if not xs:
+        return None
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _ajouter_mire(bande, label_edges, power=None, feed=None):
+    """Ajoute la mire de mesure à une planche à plat. Modifie `bande` et
+    `label_edges` EN PLACE et renvoie les cotes, ou None si la planche est
+    vide ou si la mire ne tient pas. Point d'entrée unique : les planches
+    ne recalculent pas la géométrie de la mire chacune de leur côté."""
+    bb = _bbox_planche(bande, label_edges)
+    if bb is None:
+        return None
+    mb, ml, infos = mire_de_mesure(*bb, power=power, feed=feed)
+    if mb is None:
+        return None
+    bande.extend(mb)
+    label_edges.extend(ml)
+    return infos
+
+
+def _entete_mire(infos):
+    """Les deux lignes de commentaire qui décrivent la mire. UN commentaire
+    par ligne, chacun refermé -- une phrase coupée en deux avait fait
+    refuser le chargement du fichier par LinuxCNC le 31/07/2026."""
+    if not infos:
+        return []
+    return [
+        "(Mire de mesure : 4 reperes en croix, rectangle de {:.2f} x {:.2f} mm"
+        " ENTRE CENTRES)".format(infos["largeur"], infos["hauteur"]),
+        "(Mire : reglette au mm sous la planche, gravee a S{:.0f} F{:.0f})".format(
+            infos["power"], infos["feed"]),
+    ]
+
+
 def _emit_flat_marks(lines, bands, z_safe):
     """Émet les lignes G-code pour une série de « bandes » de traits déjà à
     plat -- (chain, power, feed, comment) avec chain = liste de (x, y) --
@@ -9252,7 +9388,7 @@ def _label_band(label_edges, comment):
             for chain in chain_edges(label_edges)]
 
 
-def generate_gcode_planche_focus(z_focus=None,
+def generate_gcode_planche_focus(z_focus=None, mire=True,
                                  powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
                                  feeds=(200.0, 400.0, 800.0, 1000.0,
                                         1200.0, 1500.0, 3000.0),
@@ -9294,6 +9430,7 @@ def generate_gcode_planche_focus(z_focus=None,
     for j, f in enumerate(feeds):
         _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
     _lab("1", 0.0, y_head + 6.0, 5.0)
+    infos_mire = _ajouter_mire(band, label_edges) if mire else None
     labels = _label_band(label_edges, "(-- Planche 1 : etiquettes --)")
 
     if not band and not labels:
@@ -9305,6 +9442,7 @@ def generate_gcode_planche_focus(z_focus=None,
         lines.append("(G-Code Laser - Planche 1 : foyer (vitesse x puissance))")
         lines.append("(Traits : {} S x {} F, tous au foyer Z={:.4f})".format(
             len(powers), len(feeds), z_focus))
+        lines.extend(_entete_mire(infos_mire))
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
@@ -9331,7 +9469,7 @@ def generate_gcode_planche_focus(z_focus=None,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
-def generate_gcode_planche_defocus(z_focus=None,
+def generate_gcode_planche_defocus(mire=True, z_focus=None,
                                    powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
                                    feeds=(200.0, 400.0, 600.0, 800.0),
                                    defocus_levels_mm=DEFOCUS_LEVELS_MM,
@@ -9383,6 +9521,17 @@ def generate_gcode_planche_defocus(z_focus=None,
         _lab("d{:.0f}".format(dz), 0.0, y_head, 5.0)
         y = y_head + block_gap
     _lab("2", 0.0, y_head + 6.0, 5.0)
+    # La mire est gravée AU FOYER, comme les étiquettes : les cellules
+    # peuvent être défocalisées, la référence de mesure doit rester nette.
+    infos_mire = None
+    if mire:
+        toutes = [t for _z, bd in bands for t in bd]
+        bb = _bbox_planche(toutes, label_edges)
+        if bb is not None:
+            mb, ml, infos_mire = mire_de_mesure(*bb)
+            if mb is not None:
+                bands.append((z_focus, mb))
+                label_edges.extend(ml)
     labels = _label_band(label_edges, "(-- Planche 2 : etiquettes --)")
     bands.append((z_focus, labels))
 
@@ -9393,6 +9542,7 @@ def generate_gcode_planche_defocus(z_focus=None,
     lines = []
     if not body_only:
         lines.append("(G-Code Laser - Planche 2 : defocus (S x F par niveau))")
+        lines.extend(_entete_mire(infos_mire))
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")

@@ -214,6 +214,36 @@ CHAIN, not a lone edge) and emits one stroke per segment, its width from
 `rampe_trace_dz`), so preview and G-code cannot disagree — §10 of `test_fuseau.py` asserts both are
 called.
 
+## The engraved measuring mire (v2.14.0)
+
+`mire_de_mesure(x_min, y_min, x_max, y_max, …)` → `(bande, label_edges, infos)` in the neutral
+`_emit_flat_marks` form, plus `_bbox_planche` / `_ajouter_mire` / `_entete_mire`. Wired into
+**Planche 1 (focus)** and **Planche 2 (defocus)** behind `mire=True`; `mire=False` reproduces the old
+G-code exactly. `MIRE_POWER` / `MIRE_FEED` are per-laser settings (`mire_power`, `mire_feed`).
+
+Four design points, each earned:
+
+- **Engraved, not laid on.** A steel rule sitting on the board is 0.5–1 mm *above* the surface, so a
+  macro sees it at a different angle from the trace being measured — parallax. An engraved scale
+  shares the plane *and* the machine coordinate frame.
+- **Four fiducials, not one.** Four correspondences let software correct **perspective** (homography),
+  not just scale; a hand-held macro is never perpendicular and that is the dominant error. The
+  enclosing rectangle is rounded to whole 10 mm so its dimensions are exact and can be announced in
+  the header — the rectangle is the reference, the ruler is for the eye and for tight framings where
+  the crosses fall outside the field.
+- **Slow on purpose.** The ruler is dozens of short strokes separated by rapids, hence dozens of
+  accelerations; at F1200 the workshop's PLA camera mount vibrated and the crosses came out **wavy**,
+  which destroys exactly what a fiducial is for. For a fiducial, *straight beats thin* — a slightly
+  fat clean line gives a better centre than a thin wobbly one.
+- **It refuses rather than overlaps.** `mire_de_mesure` returns `(None, None, None)` when the
+  clearance under the content would go negative. The first hand-built version engraved the widest
+  trace straight through the ruler digits — unmeasurable, and visible only in the preview.
+
+**What it found on day one**: a trace the width table called 0.30 mm measured **0.50** on a photo,
+then 0.50 again with Christophe's calliper. The focus burn-width table described a machine state that
+no longer existed. Hidden variable surfaced at the same time and **recorded nowhere**: air assist
+on/off changes the browning around the trace (he sees a brown halo with air, clean without).
+
 ## Chain ordering (v1.82.0)
 
 `generate_gcode_curved` runs `order_chains_by_proximity(chains)` right after `chain_edges`, so every
