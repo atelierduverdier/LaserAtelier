@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.11.2</span><br>
+      <span class="ver">Version 2.11.3</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.11.2</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.11.3</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -542,15 +542,19 @@
 
   <div class="mode"><img class="ic" src="../resources/icons/filled.svg" alt=""><div class="body">
     <img class="shot" src="manuel_img/filled.png" alt="Panneau Gravure remplie">
-    <p><b>Chaque style porte son petit schéma</b>, affiché sous le sélecteur&nbsp;: trait continu, tirets, points, vague qui enfle et rétrécit, point élargi constant, et les deux dégradés. Le dessin fait en un coup d'œil ce qu'un paragraphe explique mal — notamment la différence entre «&nbsp;<b>dégradé de tonalité</b>&nbsp;» (des hachures qui s'épaississent selon leur position, donc une zone ombrée du clair au foncé) et «&nbsp;<b>dégradé le long du tracé</b>&nbsp;» (un seul trait en fuseau, qui suit son parcours).</p>
+    <p><b>Chaque style porte son petit schéma</b>, affiché sous le sélecteur&nbsp;: trait continu, tirets, points, vague qui enfle et rétrécit, point élargi constant, et les deux dégradés. Le dessin fait en un coup d'œil ce qu'un paragraphe explique mal — notamment la différence entre «&nbsp;<b>dégradé de largeur</b>&nbsp;» (des hachures qui s'épaississent selon leur position, donc une zone ombrée du clair au foncé) et «&nbsp;<b>dégradé de largeur le long du tracé</b>&nbsp;» (un seul trait en fuseau, qui suit son parcours).</p>
 
-    <h4>Dégradé le long du tracé&nbsp;: le trait qui s'affine</h4>
+    <h4>Dégradé de largeur (le long du tracé)&nbsp;: le trait qui s'affine</h4>
     <p>Le mode <b>Marquage</b> compte désormais <b>sept styles de trait</b>, et deux d'entre eux s'appellent «&nbsp;dégradé&nbsp;» sans faire la même chose. La différence vaut d'être comprise une fois pour toutes&nbsp;:</p>
     <table class="reglages">
       <tr><th>Style</th><th>La largeur suit…</th><th>Sur une spirale</th></tr>
-      <tr><td><b>Dégradé de tonalité (sur la pièce)</b></td><td>la <b>position</b> du point, projetée sur une direction réglable (un angle). Pensé pour des <b>hachures</b>&nbsp;: chaque trait s'épaissit selon où il se trouve, donc la zone s'ombre du clair au foncé — le pendant du «&nbsp;remplissage en dégradé&nbsp;» de la Gravure remplie</td><td>la largeur varie de gauche à droite&nbsp;: les tours extérieurs et intérieurs se ressemblent</td></tr>
-      <tr><td><b>Dégradé le long du tracé</b></td><td>le <b>parcours</b> — l'abscisse curviligne, du premier au dernier point du trait</td><td>un vrai fuseau, large à l'extérieur et fin au centre</td></tr>
+      <tr><td><b>Dégradé de largeur (sur la pièce)</b></td><td>la <b>position</b> du point, projetée sur une direction réglable (un angle). Pensé pour des <b>hachures</b>&nbsp;: chaque trait s'épaissit selon où il se trouve, donc la zone s'ombre du clair au foncé — le pendant du «&nbsp;remplissage en dégradé&nbsp;» de la Gravure remplie</td><td>la largeur varie de gauche à droite&nbsp;: les tours extérieurs et intérieurs se ressemblent</td></tr>
+      <tr><td><b>Dégradé de largeur (le long du tracé)</b></td><td>le <b>parcours</b> — l'abscisse curviligne, du premier au dernier point du trait</td><td>un vrai fuseau, large à l'extérieur et fin au centre</td></tr>
     </table>
+    <p><b>Les deux font varier la LARGEUR, à puissance constante.</b> C'est le point qui trompe, et il vaut d'être dit franchement&nbsp;: le G-code de ces styles garde un <code>S</code> unique du début à la fin et ne fait monter que le <b>Z</b>. Sur un dégradé 0,3&nbsp;→&nbsp;3&nbsp;mm, la machine passe de Z+0 à <b>Z+47&nbsp;mm</b> avec la même puissance. Un trait dix fois plus large reçoit donc dix fois moins d'énergie par millimètre carré&nbsp;: il n'est pas <em>plus noir</em>, il est <em>plus large</em> — et souvent plus pâle.</p>
+    <p>Sur des <b>hachures</b>, l'effet se lit quand même comme un dégradé de teinte, parce que des traits plus larges <em>couvrent</em> davantage&nbsp;: la zone fonce d'un bord à l'autre. C'est pour ça que ce style existe. Sur un <b>trait seul</b>, il n'y a rien à couvrir, et on obtient simplement un trait qui s'élargit.</p>
+    <p>Ce que fait la teinte, elle, dépend du bois et se lit dans le nuancier mesuré — pas d'une règle simple. Sur le hêtre de l'atelier, un même 0,3&nbsp;→&nbsp;3&nbsp;mm à S800 donne&nbsp;: à F800 une teinte qui tombe de 100 à 63&nbsp;%, à F1500 une teinte qui <em>monte</em> de 74 à 83&nbsp;%, à F2000 une qui redescend de 66 à 55. L'aperçu photo affiche cette teinte-là, morceau par morceau.</p>
+    <p><b>Pour un vrai dégradé de teinte</b> — clair au départ, foncé à l'arrivée, à largeur constante — il faudrait faire varier la <b>puissance</b> le long du tracé. Aucun style ne le fait aujourd'hui&nbsp;; la Gravure remplie a l'équivalent pour ses remplissages («&nbsp;remplissage en dégradé&nbsp;»).</p>
     <p>Deux cases suffisent&nbsp;: <b>largeur au début</b> et <b>largeur à la fin</b>, en millimètres. L'atelier en déduit la hauteur de bec par la calibration du point — sur la machine de l'atelier, 4&nbsp;mm de large demandent <b>+64,8&nbsp;mm</b> de remontée. Attention à la borne basse&nbsp;: le point au foyer mesure 0,30&nbsp;mm, donc <b>on ne descend pas sous 0,30</b> optiquement (le 0,10&nbsp;mm des «&nbsp;lignes gravées&nbsp;» est une largeur <em>brûlée</em>, pas le point).</p>
     <p><b>Chaque trait sélectionné porte sa rampe entière.</b> Sélectionner deux lignes donne deux fuseaux identiques, quelle que soit leur longueur — le résultat ne dépend donc pas de l'ordre dans lequel l'atelier enchaîne les tracés, qui est choisi pour raccourcir le trajet et non pour dessiner.</p>
     <p><b>Et sur un cercle&nbsp;?</b> C'est la question à se poser, car une boucle fermée revient sur son point de départ. Deux réponses, au choix dans le panneau&nbsp;: <b>marche visible</b> (la largeur va du début à la fin le long du tracé, donc un ressaut net là où la boucle se referme — littéral et prévisible) ou <b>aller-retour</b> (la largeur de fin est atteinte à <em>mi-parcours</em>, puis redescend&nbsp;: la boucle se referme sans aucun raccord). Sur un trait ouvert l'option est ignorée — elle contredirait «&nbsp;largeur à la fin&nbsp;».</p>
@@ -1000,7 +1004,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.11.2 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.11.3 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

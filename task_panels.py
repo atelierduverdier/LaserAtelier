@@ -9800,7 +9800,7 @@ class TaskPanelCurved:
         self.combo_style = QtWidgets.QComboBox()
         self.combo_style.addItems(
             ["Trait plein", "Tirets", "Pointillé", "Vague défocus", "Défocus (point élargi)",
-             "Dégradé de tonalité (sur la pièce)", "Dégradé le long du tracé"])
+             "Dégradé de largeur (sur la pièce)", "Dégradé de largeur (le long du tracé)"])
         self.combo_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_style.setMinimumContentsLength(14)
         self.combo_style.setToolTip(
@@ -9816,13 +9816,19 @@ class TaskPanelCurved:
             "mais appliqué au motif projeté).\n"
             "\n"
             "Les deux DÉGRADÉS ne font pas la même chose malgré leurs noms :\n"
-            "  Dégradé de tonalité : pensé pour des HACHURES. Chaque trait\n"
-            "    s'épaissit selon sa POSITION sur la pièce (direction\n"
-            "    réglable), donc la zone s'ombre du clair au foncé d'un\n"
-            "    bord à l'autre. Le pendant du « remplissage en dégradé »\n"
-            "    de la Gravure remplie, pour un motif hachuré.\n"
-            "  Dégradé le long du tracé : UN trait dont la largeur suit son\n"
-            "    PARCOURS, du début à la fin. Un fuseau, pas une ombre.\n"
+            "  sur la pièce : chaque trait s'épaissit selon sa POSITION\n"
+            "    (direction réglable). Pensé pour des HACHURES : la zone\n"
+            "    couvre de plus en plus, donc elle s'ombre d'un bord à\n"
+            "    l'autre. Sur un trait SEUL, ça donne juste un trait qui\n"
+            "    s'élargit.\n"
+            "  le long du tracé : UN trait dont la largeur suit son\n"
+            "    PARCOURS, du début à la fin. Un fuseau.\n"
+            "\n"
+            "Les deux font varier la LARGEUR, à puissance CONSTANTE. Un\n"
+            "trait plus large reçoit moins d'énergie par mm² : il n'est pas\n"
+            "plus noir, il est plus large -- et souvent plus pâle. Pour un\n"
+            "dégradé de TEINTE, c'est la puissance qu'il faudrait faire\n"
+            "varier ; aucun style ne le fait encore.\n"
             "\n"
             "Tous les styles suivent le relief comme le trait plein.")
         form.addRow("Style de trait :", self.combo_style)
@@ -10257,7 +10263,7 @@ class TaskPanelCurved:
                 return p_eff
         return self.spn_power.value()
 
-    def _strokes_degrade(self, idx, power, feed, tone):
+    def _strokes_degrade(self, idx, power, feed, _tone_ignore=None):
         """Traits de l'aperçu pour les deux styles à largeur VARIABLE.
 
         Un `stroke` porte UNE largeur : pour montrer un fuseau il faut donc
@@ -10280,6 +10286,10 @@ class TaskPanelCurved:
             sp.get("deg_z_min", 0.0), sp.get("deg_z_max", 0.0))
             if idx == 5 else None)
 
+        mat_nuancier = (self._shade_picker["mat"].currentData()
+                        or self._shade_picker["mat"].currentText())
+        cache = {}
+
         def largeur(dz):
             # Largeur BRÛLÉE mesurée si on l'a, sinon le point optique --
             # même repli que les autres branches de l'aperçu.
@@ -10287,6 +10297,45 @@ class TaskPanelCurved:
                     or core.spot_diameter_at_defocus(
                         dz, core.SPOT_FOCUS_MM, half)
                     or core.SPOT_FOCUS_MM)
+
+        # « Une mesure bornée n'est pas une mesure » : `darkness_at` borne la
+        # vitesse à la plage réellement mesurée et rend la valeur du bord,
+        # EN SILENCE. Hors de cette plage on repasse au modèle -- même garde
+        # que l'aperçu photo, pour la même raison.
+        #
+        # Et la garde se fait AU DÉFOCUS COURANT, pas une fois pour toutes :
+        # sur ce hêtre la plage mesurée vaut F400-6000 au foyer mais
+        # F1000-4000 à défocus 36. Un trait qui rampe du foyer au défocus
+        # traverse donc les deux, et une garde prise au foyer laisserait
+        # passer un F400 qui n'a jamais été mesuré là-haut.
+        def _mesure_utilisable(dz):
+            p = core.shade_feed_range(mat_nuancier, dz)
+            return p is not None and p[0] - 1e-6 <= feed <= p[1] + 1e-6
+
+        def teinte_a(dz, w):
+            """La teinte VARIE avec le défocus, elle aussi.
+
+            L'aperçu peignait tous les morceaux d'une même teinte, calculée
+            une fois sur la largeur moyenne. Or à puissance CONSTANTE, un
+            trait deux fois plus large reçoit deux fois moins d'énergie par
+            unité de surface : il est plus large ET PLUS PÂLE. Mesuré sur
+            un 0,3 -> 3 mm : fluence 8,00 au départ contre 0,71 à l'arrivée,
+            soit 11x moins. Peindre le bout large aussi noir que le fin
+            était donc un mensonge, et il cachait justement ce qui surprend
+            dans ce style (signalé le 31/07/2026).
+
+            Mémoïsé sur le dz arrondi : `_tone_measured` relit la config,
+            et un appel par segment coûterait aussi cher qu'une lecture de
+            config par pixel (même piège que l'aperçu photo).
+            """
+            cle = round(dz, 1)
+            if cle not in cache:
+                ton = (_tone_measured(mat_nuancier, power, feed, dz)
+                       if _mesure_utilisable(dz) else None)
+                if ton is None:
+                    ton = _tone_burn(power, feed, w)
+                cache[cle] = max(0.0, min(1.0, ton))
+            return cache[cle]
 
         strokes = []
         for chain in chains:
@@ -10300,8 +10349,10 @@ class TaskPanelCurved:
                     bool(sp.get("deg_aller_retour", False)))
             for i in range(len(chain) - 1):
                 a_, b_ = chain[i], chain[i + 1]
-                w = largeur((dzs[i] + dzs[i + 1]) / 2.0)
-                strokes.append(([(a_.x, a_.y), (b_.x, b_.y)], w, tone))
+                dz = (dzs[i] + dzs[i + 1]) / 2.0
+                w = largeur(dz)
+                strokes.append(([(a_.x, a_.y), (b_.x, b_.y)], w,
+                                teinte_a(dz, w)))
         return strokes
 
     def _style_kwargs(self):
@@ -10477,7 +10528,7 @@ class TaskPanelCurved:
         if tone is None:
             tone = _tone_burn(pw, fd, width)
         if idx in (5, 6):
-            strokes = self._strokes_degrade(idx, pw, fd, tone)
+            strokes = self._strokes_degrade(idx, pw, fd)
         else:
             strokes = []
             for e in self._edges:

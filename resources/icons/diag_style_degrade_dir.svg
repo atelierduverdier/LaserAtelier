@@ -20,5 +20,5 @@
   </g>
 
   <text x="150" y="78" font-family="sans-serif" font-size="10"
-        fill="#ff8a00" text-anchor="middle">ombre une zone hachuree, du clair au fonce</text>
+        fill="#ff8a00" text-anchor="middle">hachures : chaque trait s'epaissit selon sa position</text>
 </svg>
