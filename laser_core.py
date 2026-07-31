@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.13.1"
+VERSION = "2.13.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3519,8 +3519,13 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                 if sp.get("deg_aller_retour") else ""))
         if style == "degrade_puissance":
             sp = style_params or {}
-            lines.append("(Teinte : S{:.0f} -> S{:.0f} par trace, Z CONSTANT, "
-                         "largeur inchangee{})".format(
+            # « Z constant », pas « largeur inchangee » : le bec ne bouge
+            # pas, mais la largeur BRULEE suit quand meme la puissance
+            # (0,10 -> 0,30 mm sur hetre au foyer a F800, soit 3x) -- a
+            # basse puissance, seul le coeur du faisceau depasse le seuil
+            # de brulure. L'en-tete promettait le contraire.
+            lines.append("(Teinte : S{:.0f} -> S{:.0f} par trace, Z CONSTANT "
+                         "(bec fixe ; le trait s'elargit tout de meme avec S){})".format(
                              sp.get("deg_s_debut", power),
                              sp.get("deg_s_fin", power),
                              ", aller-retour sur boucle fermee"

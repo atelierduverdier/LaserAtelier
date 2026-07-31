@@ -9969,9 +9969,15 @@ class TaskPanelCurved:
         self.spn_deg_s1.setToolTip(
             "Puissance à la FIN du tracé. Haute = trait foncé.\n"
             "\n"
-            "La largeur, elle, ne bouge pas : le bec reste à la même\n"
-            "hauteur du début à la fin. C'est la TEINTE qui fait le\n"
-            "dégradé, pas l'épaisseur.")
+            "Le BEC ne bouge pas : Z reste constant du début à la fin,\n"
+            "et le point optique aussi. Le trait s'élargit quand même un\n"
+            "peu, parce qu'à basse puissance seul le coeur du faisceau\n"
+            "dépasse le seuil de brûlure du bois -- mesuré sur hêtre au\n"
+            "foyer à F800 : 0,10 mm à S200 contre 0,30 à S1000.\n"
+            "\n"
+            "C'est donc d'abord un dégradé de TEINTE, avec un trait qui\n"
+            "s'épaissit en même temps -- rien à voir avec les dégradés de\n"
+            "largeur, qui montent le bec et PÂLISSENT en s'élargissant.")
         form.addRow("Dégradé -- puissance fin :", self.spn_deg_s1)
 
         # Le bouton donne le CHIFFRE plutôt qu'un conseil : S proportionnel
@@ -10425,6 +10431,8 @@ class TaskPanelCurved:
         if not chains:
             return []
         half = core.calibrated_half_angle()
+        mat_nuancier = (self._shade_picker["mat"].currentData()
+                        or self._shade_picker["mat"].currentText())
         dz_dir = (core.rampe_direction_dz(
             chains, sp.get("deg_angle", 0.0),
             sp.get("deg_z_min", 0.0), sp.get("deg_z_max", 0.0))
@@ -10436,18 +10444,24 @@ class TaskPanelCurved:
             sp.get("deg_s_debut", power), sp.get("deg_s_fin", power))
             if idx == 5 and sp.get("deg_s_rampe") else None)
 
-        mat_nuancier = (self._shade_picker["mat"].currentData()
-                        or self._shade_picker["mat"].currentText())
         cache = {}
 
         def largeur(dz, s=None):
-            # Largeur BRÛLÉE mesurée si on l'a, sinon le point optique --
-            # même repli que les autres branches de l'aperçu.
+            # Largeur BRÛLÉE mesurée si on l'a, sinon le point optique.
             # `s` : puissance LOCALE quand une rampe de puissance est
             # superposée au dégradé de largeur -- elle change la largeur
             # brûlée autant que la teinte, les deux doivent la voir.
+            #
+            # LE MATÉRIAU EST OBLIGATOIRE. Sans lui, `_burn_width_material`
+            # ne devine que si UN SEUL matériau est mesuré ; dès qu'il y en
+            # a deux (hêtre + MDF ici) il renvoie None, `burn_width_...`
+            # aussi, et l'aperçu retombait EN SILENCE sur le point optique
+            # -- 0,30 mm partout au foyer là où le bois brûle 0,10 à S200.
+            # Le repli existe pour un matériau non mesuré, pas pour masquer
+            # un argument oublié. Même défaut, même correctif que Gravure
+            # remplie en v1.80.0.
             return (core.burn_width_defocus_scaled(
-                        power if s is None else s, feed, dz)
+                        power if s is None else s, feed, dz, mat_nuancier)
                     or core.spot_diameter_at_defocus(
                         dz, core.SPOT_FOCUS_MM, half)
                     or core.SPOT_FOCUS_MM)
@@ -10497,8 +10511,17 @@ class TaskPanelCurved:
         # rampe. On peint donc une largeur unique et une teinte par
         # morceau, calculée à la puissance de ce morceau.
         if idx == 7:
-            w_fixe = largeur(0.0)
             cache_s = {}
+
+            def largeur_s(s):
+                # Le bec ne bouge pas, mais le TRAIT s'élargit quand même :
+                # à basse puissance, seul le coeur du faisceau dépasse le
+                # seuil de brûlure du bois. Mesuré sur hêtre au foyer à
+                # F800 : 0,10 mm à S200 contre 0,30 à S1000, soit 3x.
+                # L'aperçu peignait une largeur unique, et le G-code
+                # annonçait « largeur inchangee » -- vrai du point OPTIQUE,
+                # faux de ce qu'on voit sur la planche.
+                return largeur(0.0, s)
 
             def teinte_s(s):
                 cle = round(s / 5.0) * 5
@@ -10506,7 +10529,7 @@ class TaskPanelCurved:
                     ton = (_tone_measured(mat_nuancier, cle, feed, 0.0)
                            if _mesure_utilisable(0.0) else None)
                     if ton is None:
-                        ton = _tone_burn(cle, feed, w_fixe)
+                        ton = _tone_burn(cle, feed, largeur_s(cle))
                     cache_s[cle] = max(0.0, min(1.0, ton))
                 return cache_s[cle]
 
@@ -10520,8 +10543,9 @@ class TaskPanelCurved:
                     bool(sp.get("deg_aller_retour", False)))
                 for i in range(len(chain) - 1):
                     a_, b_ = chain[i], chain[i + 1]
-                    strokes.append(([(a_.x, a_.y), (b_.x, b_.y)], w_fixe,
-                                    teinte_s((ss[i] + ss[i + 1]) / 2.0)))
+                    s_pt = (ss[i] + ss[i + 1]) / 2.0
+                    strokes.append(([(a_.x, a_.y), (b_.x, b_.y)],
+                                    largeur_s(s_pt), teinte_s(s_pt)))
             return strokes
 
         strokes = []
@@ -10716,12 +10740,18 @@ class TaskPanelCurved:
         # à la largeur au foyer quoi qu'on règle.
         idx = self.combo_style.currentIndex()
         half = core.calibrated_half_angle()
-        w_focus = core.burn_width_defocus_scaled(pw, fd, 0.0) or core.SPOT_FOCUS_MM
+        # Matériau OBLIGATOIRE ici aussi (cf. `largeur` dans
+        # _strokes_degrade) : sans lui l'aperçu peignait le point optique.
+        mat_largeur = (self._shade_picker["mat"].currentData()
+                       or self._shade_picker["mat"].currentText())
+        w_focus = core.burn_width_defocus_scaled(
+            pw, fd, 0.0, mat_largeur) or core.SPOT_FOCUS_MM
         z_tone = 0.0
         if idx == 4:                                   # Défocus (point élargi)
             defocus = core.defocus_for_spot_diameter(
                 self.spn_spot_width.value(), core.SPOT_FOCUS_MM, half) or 0.0
-            width = core.burn_width_defocus_scaled(pw, fd, defocus) or self.spn_spot_width.value()
+            width = core.burn_width_defocus_scaled(
+                pw, fd, defocus, mat_largeur) or self.spn_spot_width.value()
             z_tone = defocus
         elif idx == 3:                                 # Vague : moyenne foyer/max
             width = (w_focus + self.spn_wave_width.value()) / 2.0

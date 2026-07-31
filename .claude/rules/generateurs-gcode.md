@@ -146,7 +146,17 @@ tried, and reported as not matching the name.
 
 `"degrade_puissance"` is the inverse and the literal answer to "clair au début, foncé à la fin":
 **Z constant, `S` ramped along the curvilinear abscissa**, `deg_s_debut` → `deg_s_fin`, clamped to
-`[0, S_MAX]`. It reuses `rampe_trace_dz` unchanged — the ramp interpolates *a value* along the path
+`[0, S_MAX]`.
+
+**It does NOT hold the trace width constant, and v2.12.0 shipped claiming it did** — G-code header,
+tooltip, manual and the preview all said "largeur inchangée". What is constant is the nozzle height
+and hence the *optical* spot; the **burned** width still follows power, because at low power only the
+beam's core crosses the wood's burn threshold. Measured on beech at focus, F800: **0.10 mm at S200
+against 0.30 at S1000, i.e. 3×**. The project already knew this (it is why
+`width_for_darkness` exists) — it just wasn't applied when the style was written. It stays clearly
+distinct from a width gradient: 3× against 11× for a 0.3 → 3.0 mm fuseau on the same selection, which
+is what `test_fuseau.py` §15 now asserts instead of the old "constant width" claim that froze the
+defect. It reuses `rampe_trace_dz` unchanged — the ramp interpolates *a value* along the path
 and does not care whether that value is a height or a power — so it inherits the whole-ramp-per-chain
 guarantee and the `aller_retour` closed-loop option for free. Emission mirrors the `vague` branch
 (per-point `cmd_power_prefix` / `cmd_power_suffix`), so it obeys the M67 dialect: **with M67 the
@@ -296,7 +306,21 @@ more it returns `None`, and every caller silently degrades — `burn_width_defoc
 however narrow the real trace is. That is how a beech fill at S200/F1800 (0.10 mm burned, 0.26 mm
 spacing → **62 % bare wood**) shipped as G-code the workbench believed solid.
 `TaskPanelFilledEngraving._materiau()` (v1.80.0) feeds the "Nuancier matériau" combo into all five of
-its calls; other panels still rely on the single-material guess.
+its calls.
+
+**`TaskPanelCurved`'s photo preview had the same hole until v2.13.2** — three calls with no material,
+so on this workshop (beech *and* MDF measured) they returned None on every single call and the
+preview silently painted the **optical spot** instead of the measured burn. Its own docstring said
+"largeur BRÛLÉE mesurée si on l'a, sinon le point optique"; "si on l'a" was never true. Visible cost:
+2.80 mm painted as 3.00 at the wide end of a fuseau, and 0.30 instead of 0.10 at focus — a 3× error
+on the thin end, which also poisons `_tone_burn(power, feed, width)` fed from it. `test_fuseau.py` §9
+now asserts the painted width **differs from the optical spot**, so an omitted material fails the
+test instead of looking plausible.
+
+**Still open**: `_strokes_from_operation` (the combined-job preview) has the same three calls and
+cannot be fixed the same way — a combined operation's `params` are *the exact kwargs its generator
+takes*, so slipping a `"material"` key in would break the `**params` call. Fixing it means threading
+the material separately through `_build_combined_operation`.
 
 ### Covering-setting search, and its inverse
 

@@ -177,15 +177,29 @@ for idx in (5, 6):
     assert len(st) > 50, ("l'aperçu doit découper le tracé pour varier la "
                           "largeur", idx, len(st))
     larg = [w for _pts, w, _t in st]
-    assert abs(larg[0] - 0.30) < 0.05, (idx, larg[0])
-    assert abs(larg[-1] - 3.00) < 0.05, (idx, larg[-1])
     assert all(b >= a - 1e-9 for a, b in zip(larg, larg[1:])), (
         "la largeur peinte doit croître comme la rampe", idx)
     # Le défaut d'origine : une seule largeur constante partout.
     assert max(larg) - min(larg) > 2.0, (
         "l'aperçu peint une largeur quasi constante", idx, min(larg), max(larg))
-print("9. aperçu des deux dégradés : {} morceaux, largeur peinte 0.30 -> 3.00 "
-      "mm et croissante -- plus de trait uniforme OK".format(len(st)))
+    # La largeur peinte est la BRÛLURE MESURÉE, pas le point optique. Les
+    # deux se ressemblent, d'où le piège : `burn_width_defocus_scaled`
+    # appelée sans matériau renvoie None dès que DEUX matériaux sont
+    # mesurés, et l'aperçu retombait en silence sur le point optique. Un
+    # test qui n'accepterait que « ~3,00 mm » validerait donc justement le
+    # défaut. On exige ici que le peint DIFFÈRE de l'optique.
+    optique = core.spot_diameter_at_defocus(
+        core.defocus_for_spot_diameter(3.0, core.SPOT_FOCUS_MM,
+                                       core.calibrated_half_angle()),
+        core.SPOT_FOCUS_MM, core.calibrated_half_angle())
+    assert 2.0 < larg[-1] < optique - 0.05, (
+        "le bout large doit peindre la brûlure mesurée, plus étroite que "
+        "le point optique -- sinon le matériau n'est pas passé",
+        idx, larg[-1], optique)
+    assert larg[0] < 0.35, ("le bout fin reste fin", idx, larg[0])
+print("9. aperçu des deux dégradés : {} morceaux, largeur peinte {:.2f} -> "
+      "{:.2f} mm (brûlure MESURÉE, contre {:.2f} pour le point optique) OK"
+      .format(len(st), larg[0], larg[-1], optique))
 
 # --- 10. Aperçu et G-code sortent des MÊMES rampes ---------------------
 # `rampe_direction_dz` était une fermeture interne au générateur : l'aperçu
@@ -306,7 +320,13 @@ assert max(ss3) >= 990, ("la puissance de fin doit être atteinte à "
 print("14. cercle en aller-retour : S{} -> S{} (max S{}) -- se referme sans "
       "marche de teinte OK".format(ss3[0], ss3[-1], max(ss3)))
 
-# --- 15. L'aperçu montre une teinte qui varie à largeur CONSTANTE ------
+# --- 15. Le bec ne bouge pas, mais le TRAIT s'élargit quand même -------
+# Ce test affirmait « largeur CONSTANTE », et le G-code l'annonçait aussi
+# (« largeur inchangee »). C'est vrai du bec et du point OPTIQUE, faux de
+# ce qu'on voit sur la planche : à basse puissance seul le coeur du
+# faisceau dépasse le seuil de brûlure, donc le trait brûlé suit la
+# puissance -- 0,10 mm à S200 contre 0,30 à S1000 sur hêtre au foyer à
+# F800, soit 3x. Le test figeait donc l'affirmation fausse.
 p.combo_style.setCurrentIndex(7)
 p._edges = [seg(V(0, 0, 0), V(120, 0, 0))]
 p.spn_deg_s0.setValue(150.0)
@@ -314,13 +334,33 @@ p.spn_deg_s1.setValue(1000.0)
 st7 = p._strokes_degrade(7, 800.0, 400.0)
 larg7 = [w for _pts, w, _t in st7]
 ton7 = [t for _pts, _w, t in st7]
-assert max(larg7) - min(larg7) < 1e-6, (
-    "la largeur doit rester constante", min(larg7), max(larg7))
 assert ton7[-1] > ton7[0], ("la teinte doit foncer du début à la fin",
                             ton7[0], ton7[-1])
-print("15. aperçu : largeur constante {:.2f} mm, teinte {:.2f} -> {:.2f} -- "
-      "l'inverse des dégradés de largeur OK".format(
-          larg7[0], ton7[0], ton7[-1]))
+assert larg7[-1] > larg7[0] + 1e-9, (
+    "à puissance croissante, le trait brûlé doit s'élargir",
+    larg7[0], larg7[-1])
+assert all(b >= a - 1e-9 for a, b in zip(larg7, larg7[1:])), (
+    "la largeur peinte doit croître avec la puissance, sans à-coup")
+
+# ... et ça doit rester SANS COMMUNE MESURE avec un vrai fuseau, sinon
+# les deux styles ne se distingueraient plus. On le démontre plutôt que
+# de l'affirmer, sur la même sélection.
+p.combo_style.setCurrentIndex(6)
+p.chk_deg_s.setChecked(False)
+p.spn_deg_w0.setValue(0.3)
+p.spn_deg_w1.setValue(3.0)
+larg6 = [w for _pts, w, _t in p._strokes_degrade(6, 800.0, 400.0)]
+p.combo_style.setCurrentIndex(7)
+etendue7 = larg7[-1] / max(larg7[0], 1e-9)
+etendue6 = larg6[-1] / max(larg6[0], 1e-9)
+assert etendue6 > 2.0 * etendue7, (
+    "le fuseau doit rester bien plus « large » que l'élargissement "
+    "collatéral du dégradé de puissance", etendue6, etendue7)
+print("15. aperçu du dégradé de puissance : teinte {:.2f} -> {:.2f}, trait "
+      "{:.2f} -> {:.2f} mm ({:.1f}x) -- réel, mais {:.0f}x moins que le "
+      "fuseau ({:.1f}x) OK".format(
+          ton7[0], ton7[-1], larg7[0], larg7[-1], etendue7,
+          etendue6 / etendue7, etendue6))
 
 # --- 16. Rampe de puissance SUR les deux dégradés de largeur -----------
 # Spirale gravée le 31/07/2026 : 0,3 -> 4 mm à S1000 CONSTANT. Le bout

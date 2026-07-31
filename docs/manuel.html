@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.13.1</span><br>
+      <span class="ver">Version 2.13.2</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.13.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.13.2</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -563,7 +563,8 @@
     <p>Ces réglages se rangent dans les <b>préréglages</b> du panneau, avec le style et tout le reste&nbsp;: c'est là que se constitue la bibliothèque de traits. Au passage, les champs du dégradé n'étaient jusqu'ici <em>ni</em> mémorisés d'une session à l'autre <em>ni</em> enregistrés dans un préréglage — un fuseau réglé se perdait à la fermeture du panneau. C'est réparé.</p>
 
     <h4>Dégradé de puissance&nbsp;: le vrai dégradé de teinte</h4>
-    <p>C'est le troisième dégradé, et il fait exactement l'inverse des deux autres&nbsp;: le bec <b>ne bouge pas</b> — donc la largeur du trait non plus — et c'est la <b>puissance</b> qui rampe le long du tracé. Deux cases&nbsp;: <b>puissance au début</b> et <b>à la fin</b>, en S. Clair au départ, foncé à l'arrivée, à épaisseur constante.</p>
+    <p>C'est le troisième dégradé, et il fait exactement l'inverse des deux autres&nbsp;: le bec <b>ne bouge pas</b> et c'est la <b>puissance</b> qui rampe le long du tracé. Deux cases&nbsp;: <b>puissance au début</b> et <b>à la fin</b>, en S. Clair au départ, foncé à l'arrivée.</p>
+    <p><b>Une nuance qui a d'abord été écrite à l'envers ici.</b> Le bec immobile veut dire que le <em>point optique</em> ne change pas — mais le trait <em>brûlé</em>, lui, suit quand même la puissance, parce qu'à basse puissance seul le cœur du faisceau dépasse le seuil de brûlure du bois. Mesuré sur hêtre au foyer à F800&nbsp;: <b>0,10&nbsp;mm à S200 contre 0,30 à S1000</b>, soit 3×. Ce style est donc d'abord un dégradé de <em>teinte</em>, avec un trait qui s'épaissit en même temps — ce qui reste sans commune mesure avec un fuseau, où la largeur varie d'un facteur 11 sur la même sélection. L'aperçu peint désormais cette variation.</p>
     <p>C'est le style à prendre quand on veut un dégradé de <em>gris</em> sur un trait. Les deux «&nbsp;dégradés de largeur&nbsp;» ne savent pas le faire&nbsp;: en montant le bec à puissance constante, ils élargissent le trait et le pâlissent plutôt que de le foncer.</p>
     <p>Il partage toute la mécanique du fuseau, parce que c'est <em>la même rampe</em> — elle interpole une valeur le long de l'abscisse curviligne, peu lui importe que cette valeur soit une hauteur ou une puissance. Il en hérite donc les mêmes garanties&nbsp;: <b>chaque trait porte sa rampe entière</b>, et sur une <b>boucle fermée</b> le même choix marche visible / aller-retour — utile ici, car un ressaut de teinte à la fermeture d'un cercle se voit beaucoup.</p>
     <p>Deux garde-fous&nbsp;: la consigne est <b>bornée à l'échelle de la machine</b> (une valeur au-delà de S max est ramenée à S max), et le champ «&nbsp;Puissance&nbsp;» global se grise, puisqu'il ne sert plus à rien quand la puissance est rampée. Côté machine, ce style change la puissance à chaque point&nbsp;: avec «&nbsp;Puissance par M67&nbsp;» coché, ça ne coûte rien (cf. <a href="#c3">chapitre&nbsp;3</a>) ; sans lui, chaque changement de <code>S</code> arrête le mouvement.</p>
@@ -1013,7 +1014,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.13.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.13.2 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
