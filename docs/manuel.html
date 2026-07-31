@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.5.1</span><br>
+      <span class="ver">Version 2.5.2</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.5.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.5.2</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -324,7 +324,7 @@
 
     <h4>Le mot <code>S</code> arrête la machine — et <code>M67</code> ne l'arrête pas</h4>
     <p>Le lissage ci-dessus ne suffit pas si quelque chose d'autre force l'arrêt. Sur la PrintNC, <b>un changement de puissance entre deux blocs arrête le mouvement</b>, même sur des segments parfaitement alignés. Ce n'est pas une déduction : deux fichiers de géométrie <em>rigoureusement identique</em> — 200 segments de 0,30&nbsp;mm à F800, laser désarmé — ont tranché. Celui à <code>S</code> constant passe fluide ; celui dont le <code>S</code> change à chaque bloc saccade, à l'oreille, sans ambiguïté.</p>
-    <p>La facture est lourde là où la puissance module à chaque pixel. Un portrait en lignes gravées de 120&nbsp;×&nbsp;180&nbsp;mm — <b>172&nbsp;614 blocs</b> de 0,30&nbsp;mm de médiane, 72,3&nbsp;m à F800, donc 1&nbsp;h&nbsp;30 de coupe pure — est parti pour <b>4&nbsp;heures</b>. Soit ~76&nbsp;ms par bloc là où 0,30&nbsp;mm à F800 en demande 22. Et 55&nbsp;ms est <em>exactement</em> le temps d'un déplacement de 0,30&nbsp;mm avec arrêt aux deux bouts à 400&nbsp;mm/s². Le chiffre a désigné le mécanisme avant l'expérience ne le confirme.</p>
+    <p>La facture est lourde là où la puissance module à chaque pixel. Un portrait en lignes gravées de 120&nbsp;×&nbsp;180&nbsp;mm — <b>172&nbsp;614 blocs</b> de 0,30&nbsp;mm de médiane, 72,3&nbsp;m à F800, donc 1&nbsp;h&nbsp;30 de coupe pure — est parti pour <b>4&nbsp;heures</b>. Soit ~76&nbsp;ms par bloc là où 0,30&nbsp;mm à F800 n'en demande que <b>22,5</b> à vitesse constante. Or un bloc de 0,30&nbsp;mm <em>parcouru avec arrêt aux deux bouts</em> coûte ~45&nbsp;ms à l'accélération de cette machine (600&nbsp;mm/s², d'après son <code>.ini</code>) — la tête n'atteint même pas F800, elle accélère et freine sans jamais tenir la vitesse demandée. Le compte n'y est pas au dixième près, mais l'ordre de grandeur a <b>désigné le mécanisme avant que l'expérience ne le confirme</b>&nbsp;: ce qui coûte cher n'est pas de graver, c'est de s'arrêter.</p>
     <p>La sortie qu'il fallait s'appelle <code>M67 E0 Q&lt;valeur&gt;</code> : une sortie analogique <b>synchronisée avec le mouvement</b>. La valeur est appliquée au début du bloc suivant <em>sans vider la file de trajectoire</em>. Sa jumelle <code>M68</code> fait l'inverse — immédiate, et elle arrête le mouvement : ne pas les confondre. On garde donc un escalier de puissance, un palier par segment, mais la machine ne s'arrête plus entre les paliers.</p>
     <p>La case <b>« Puissance par M67 »</b> des Préférences bascule les onze points du code qui émettent une puissance, dans les six familles de générateurs — tous ensemble, ce qui n'est pas un détail : le câblage machine étant commun, un générateur resté en <code>S</code> alors que la machine écoute l'autre canal graverait <b>blanc</b>, sans erreur, pendant des heures. Côté machine, le HAL <b>additionne les deux sources</b> : l'une vaut toujours zéro, donc les deux modes fonctionnent et les anciens fichiers restent valides. Aucun basculement coordonné à orchestrer.</p>
     <p><b>Et sur GRBL ou grblHAL&nbsp;?</b> <code>M67</code> n'y existe pas — c'est un code LinuxCNC. Mais le problème ne s'y pose pas&nbsp;: le <b>mode laser</b> de GRBL (<code>$32=1</code>, armement en <code>M4</code>) traverse les <code>G1</code> consécutifs <em>sans s'arrêter</em> quand seule la puissance change, et fait suivre la puissance à la vitesse réelle. C'est la raison d'être de ce mode. La case «&nbsp;Puissance par M67&nbsp;» est donc ignorée sur ces deux dialectes, et ce n'est pas une limitation&nbsp;: chacun résout la même difficulté à sa façon, LinuxCNC par une sortie synchronisée, GRBL par un planificateur qui sait que <code>S</code> ne doit pas casser le mouvement.</p>
@@ -377,6 +377,7 @@
   <p>De gauche à droite, les boutons suivent le fil du travail : d'abord la découverte, puis la gravure à plat, la surface 3D, la découpe, l'assemblage, ensuite la calibration, et enfin les réglages tout au bout.</p>
   <div class="toolbar">
     <img src="../resources/icons/guide.svg" alt="Guide rapide"><span class="tb-sep"></span>
+    <img src="../resources/icons/import_svg.svg" alt="Importer un dessin SVG"><span class="tb-sep"></span>
     <img src="../resources/icons/hatch.svg" alt="Hachures 2D">
     <img src="../resources/icons/text.svg" alt="Texte">
     <img src="../resources/icons/filled.svg" alt="Gravure remplie">
@@ -404,6 +405,8 @@
     <div class="menu">
       <div class="menu-title">Atelier Laser</div>
       <div class="mi"><img src="../resources/icons/guide.svg" alt="">Guide rapide</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/import_svg.svg" alt="">Importer un dessin SVG</div>
       <div class="msep"></div>
       <div class="mi"><img src="../resources/icons/hatch.svg" alt="">Hachures 2D (géométrie)</div>
       <div class="mi"><img src="../resources/icons/text.svg" alt="">Texte (trait simple)</div>
@@ -444,6 +447,9 @@
     <div class="fam">Découverte</div>
     <div class="row"><img src="../resources/icons/guide.svg" alt=""><div><span class="nm">Guide rapide</span> — <span class="ds">rappelle en une page l'ordre conseillé des opérations. À ouvrir en cas de doute.</span></div></div>
 
+    <div class="fam">Import de dessins</div>
+    <div class="row"><img src="../resources/icons/import_svg.svg" alt=""><div><span class="nm">Importer un dessin SVG</span> — <span class="ds">lit un <code>.svg</code> et crée un objet par tracé d'origine, sans détour par le DXF. Aucune sélection requise.</span></div></div>
+
     <div class="fam">Graver &amp; marquer à plat</div>
     <div class="row"><img src="../resources/icons/hatch.svg" alt=""><div><span class="nm">Hachures 2D</span> — <span class="ds">prépare un remplissage par hachures (objet), à graver ensuite. Aucun G-code ici.</span></div></div>
     <div class="row"><img src="../resources/icons/text.svg" alt=""><div><span class="nm">Texte (trait simple)</span> — <span class="ds">écrit un texte « bâton » monotrait, prêt à graver.</span></div></div>
@@ -477,7 +483,7 @@
     <div class="row"><img src="../resources/icons/catalogue.svg" alt=""><div><span class="nm">Catalogue</span> — <span class="ds">grave une planche d'exemples réels, une fois les deux groupes ci-dessus faits.</span></div></div>
 
     <div class="fam">Réglages</div>
-    <div class="row"><img src="../resources/icons/settings.svg" alt=""><div><span class="nm">Préférences</span> — <span class="ds">machine, profils laser, sauvegarde export/import (voir chapitre dédié).</span></div></div>
+    <div class="row"><img src="../resources/icons/settings.svg" alt=""><div><span class="nm">Préférences</span> — <span class="ds">machine, profils laser, sauvegarde export/import — et la case <b>« Puissance par M67 »</b>, qui décide si la puissance suit le mouvement ou arrête la machine à chaque changement (<a href="#c8">chapitre dédié</a>).</span></div></div>
   </div>
 
   <div class="box astuce">
@@ -512,7 +518,7 @@
 
 <!-- ================= 6. LES MODES ================= -->
 <section class="chap" id="c6">
-  <h2 class="titre"><span class="ttl">Les modes de l'atelier</span><span class="sub">Dix-huit outils, quatre familles. Voici à quoi sert chacun.</span></h2>
+  <h2 class="titre"><span class="ttl">Les modes de l'atelier</span><span class="sub">Dix-neuf outils, quatre familles. Voici à quoi sert chacun.</span></h2>
 
   <p>Chaque mode ouvre un panneau organisé de haut en bas dans l'ordre où l'on travaille. Les modes de test et de calibration suivent tous la même trame : <strong>① Graver</strong> (les réglages du tir), <strong>② Entrer les mesures</strong> (la donnée relevée, saisie sur place), <strong>③ Photo du résultat</strong> (pour garder une trace).</p>
 
@@ -569,7 +575,7 @@
     <img class="shot" src="manuel_img/halftone.png" alt="Panneau Gravure photo">
     <h4>Gravure photo (trame de points)</h4>
     <p class="quoi">Reproduire une image en niveaux de gris.</p>
-    <p>Sept tramages : points façon Floyd-Steinberg, points à durée variable, <strong>lignes calibrées</strong> (puissance par pixel via la courbe du nuancier), lignes tramées, points par diamètre (Z), <strong>similigravure</strong> (trame à 45°, sans calibration) et <strong>lignes gravées</strong> (trait continu dont l'épaisseur rend le gris). Une <strong>mire</strong> grave le même dégradé par les <b>sept</b> tramages, en bandes numérotées, pour les comparer d'un coup sur une chute — chaque bande dans <em>son</em> régime, faute de quoi la comparaison mentirait&nbsp;: les deux tramages à grain au foyer, et les lignes gravées à la vitesse où leur trait enfle encore.</p>
+    <p>Sept tramages, nommés ici <em>exactement</em> comme dans le menu déroulant du panneau&nbsp;: <b>Diffusion (Floyd-Steinberg)</b> — densité de points identiques&nbsp;; <b>Durée variable</b> — un point par case, la durée du pulse fait le gris&nbsp;; <strong>Lignes calibrées (nuancier)</strong> — puissance par pixel via la courbe du nuancier&nbsp;; <b>Diffusion en lignes (points fins, rapide)</b> — même diffusion, mais en balayage continu&nbsp;; <b>Gros points Z (taille variable, artistique)</b> — c'est le <em>diamètre</em> du point qui rend le gris, par un Z propre à chacun&nbsp;; <strong>Similigravure (trame 45°, sans calibration)</strong> — la trame des journaux, le gris est une <em>surface</em>&nbsp;; <strong>Lignes gravées (trait qui enfle)</strong> — un trait continu dont l'<em>épaisseur</em> rend le gris. Une <strong>mire</strong> grave le même dégradé par les <b>sept</b> tramages, en bandes numérotées, pour les comparer d'un coup sur une chute — chaque bande dans <em>son</em> régime, faute de quoi la comparaison mentirait&nbsp;: les deux tramages à grain au foyer, et les lignes gravées à la vitesse où leur trait enfle encore.</p>
     <p class="meta"><b>Réglages clés :</b> image · pas de trame · tramage · gamma. <b>Fichier :</b> <code>gravure_photo.ngc</code></p>
   </div></div>
 
@@ -626,6 +632,17 @@
     <h4>Grille de test puissance/vitesse</h4>
     <p class="quoi">Balayer une matrice de réglages sur une chute.</p>
     <p>Grave une grille où puissance et vitesse varient case par case. Un menu « Objectif » propose une recette de départ ; le style de remplissage est réglable. On lit la meilleure case à l'œil. Aucune sélection n'est requise&nbsp;: la grille fabrique ses propres cases, contrairement au mode <em>Gravure remplie</em> qui attend une face.</p>
+
+    <p>Le menu «&nbsp;Objectif&nbsp;» en tête de la section ① remplit d'un coup <em>toute</em> la grille — mode, plages S/F, remplissage, défocus des cellules — selon la <b>donnée que vous cherchez à obtenir</b>. Il y en a cinq, et ce ne sont pas cinq variantes du même essai&nbsp;: chacun produit une mesure que les autres ne peuvent pas produire.</p>
+    <table class="reglages">
+      <tr><th>Objectif</th><th>Ce qu'il grave, et ce qu'on en tire</th></tr>
+      <tr><td><b>Nuancier — tons clairs (défocus)</b></td><td>16 cases en aplat, du très clair (S200/F4000, ≈&nbsp;5&nbsp;%) au foncé (S600/F1000, ≈&nbsp;74&nbsp;%), point élargi à ≈&nbsp;1&nbsp;mm. Complète le <b>bas</b> du nuancier&nbsp;: les tons clairs sont ceux qui manquent presque toujours, parce que les planches de largeurs ne les atteignent pas.</td></tr>
+      <tr><td><b>Largeurs brûlées — grille au foyer</b></td><td>Traits <b>isolés</b> au foyer, espacés de 2&nbsp;mm, aux puissances et vitesses <em>exactes</em> de la grille de saisie ②. On y mesure une <b>largeur au pied à coulisse</b>, case par case. L'espacement de 2&nbsp;mm n'est pas cosmétique&nbsp;: à 0,20&nbsp;mm les cases lentes et puissantes sortaient en aplat, où une largeur ne se mesure plus.</td></tr>
+      <tr><td><b>Largeurs brûlées — grille en défocus</b></td><td>Les mêmes traits isolés, à défocus 15&nbsp;mm et en <b>vitesses lentes</b>. C'est lui qui débloque la photo calibrée et le «&nbsp;ton sur mesure&nbsp;» — détaillé plus bas.</td></tr>
+      <tr><td><b>Noirceur — bande en balayage (photo calibrée)</b></td><td>Des <b>aplats</b>, pas des traits&nbsp;: une seule vitesse, un seul défocus, le pas d'une vraie photo. C'est la planche qui alimente la courbe noirceur → énergie — détaillée plus bas.</td></tr>
+      <tr><td><b>Découpe — trouver le passage</b></td><td>Contours seuls (aucun remplissage, aucun cadre), S400→S1000 sur F100→F600&nbsp;: on cherche la case qui <b>traverse proprement en une passe</b>. C'est le seul objectif en mode découpe, et le seul dont la réponse se lit en retournant la chute.</td></tr>
+    </table>
+    <p>Chaque objectif affiche sa <b>note</b> sous le menu&nbsp;: ce qu'il faut mesurer, où le reporter, et les pièges propres à cette planche. Les valeurs restent modifiables à la main après coup — l'objectif est un point de départ, pas un verrou.</p>
 
     <h4>Trajet des tramages à points</h4>
     <p>Dans les tramages à points, chaque point est gravé par un <b>micro-trait</b> — jamais par une pause faisceau allumé, qui ne graverait rien sur cette machine. Les points sont parcourus en serpentin, une ligne sur deux inversée, pour économiser du déplacement.</p>
@@ -786,7 +803,7 @@
   <p>Un cône de divergence linéaire calibré sur <strong>deux mesures réelles</strong> : le diamètre du point au foyer, puis à un défocus de test connu. De là, l'atelier sait le diamètre du point à n'importe quelle hauteur, donc l'espacement idéal des hachures pour un remplissage plein en un passage. Le remplissage est <em>rentré</em> du rayon du point pour rester à l'intérieur du tracé.</p>
 
   <h3>La largeur réellement brûlée</h3>
-  <p>Attention : la largeur qui compte pour l'espacement du remplissage n'est pas le point <em>optique</em> mais la largeur <strong>brûlée</strong>, mesurée. La <strong>Planche 2</strong> en grave une grille S × F à chaque niveau de défocus (15 et 36 mm) ; l'atelier interpole en (S, F) puis entre les deux niveaux qui encadrent votre défocus de travail. C'est ce qui a supprimé le liseré pâle que masquait, avant, un contour repassé.</p>
+  <p>Attention : la largeur qui compte pour l'espacement du remplissage n'est pas le point <em>optique</em> mais la largeur <strong>brûlée</strong>, mesurée. La <strong>Planche 2</strong> en grave une grille S × F à chaque niveau de défocus que vous décidez de mesurer (historiquement 15 et 36&nbsp;mm, mais le champ est libre depuis la v2.2) ; l'atelier interpole en (S, F) puis entre les deux niveaux qui encadrent votre défocus de travail. C'est ce qui a supprimé le liseré pâle que masquait, avant, un contour repassé.</p>
 
   <h3>Le nuancier</h3>
   <p>Pour la photo et les « tons sur mesure », l'atelier relie une <strong>teinte de gris</strong> à une dose (puissance/vitesse) à partir des tons que vous avez gravés et mesurés — une courbe lissée qui traduit « je veux ce gris-là » en réglage machine.</p>
@@ -796,7 +813,7 @@
 
   <div class="box astuce">
     <span class="t">💡 L'ordre de calibration conseillé</span>
-    <p>① le point (offsets X/Y) → ② les offsets et le kerf pour la découpe → ③ la planche de défocus à plusieurs niveaux + le nuancier. Une fois ces mesures saisies, la plupart des modes « savent » se régler seuls.</p>
+    <p>C'est celui que le Guide rapide affiche, et il se lit en deux temps. <b>Une fois par laser</b> (à refaire seulement après un changement optique ou un démontage)&nbsp;: <b>★1 Bande de calibration défocus</b>, pour trouver le foyer et la divergence — chargez le préréglage ★ «&nbsp;Recherche du foyer (fin)&nbsp;» puis ★ «&nbsp;Divergence (large + rampe)&nbsp;»&nbsp;; puis <b>★2 Test des offsets X/Y</b>, pour aligner l'axe du laser sur celui de la broche (à reporter dans <code>tool.tbl</code>&nbsp;; à sauter en GRBL ou sur un laser seul). <b>Puis une fois par matériau</b>&nbsp;: <b>★3 Grille de test puissance/vitesse</b>, qui caractérise le bois — largeurs brûlées <em>et</em> noirceurs, via ses objectifs successifs&nbsp;; et <b>★4 Calibration kerf</b> si vous comptez découper ce matériau. Une fois ces mesures saisies, la plupart des modes «&nbsp;savent&nbsp;» se régler seuls.</p>
   </div>
 </section>
 
@@ -811,6 +828,9 @@
     <tr><th>Réglage</th><th>À quoi ça sert</th></tr>
     <tr><td>Laser actif</td><td>Basculer entre profils laser (cloner / renommer / supprimer). Chaque profil a sa calibration <em>et</em> ses données (nuancier, largeurs, préréglages).</td></tr>
     <tr><td>Dialecte G-code</td><td>LinuxCNC (défaut), GRBL ou grblHAL — par profil.</td></tr>
+    <tr><td><b>Puissance par M67</b></td><td><b>Le réglage qui change le plus de choses.</b> Coché, la puissance voyage par <code>M67&nbsp;E0&nbsp;Q…</code>, une sortie synchronisée avec le mouvement, au lieu du mot <code>S</code>. Sous LinuxCNC, un <code>S</code> entre deux <code>G1</code> <strong>arrête la machine</strong> — mesuré, 76&nbsp;ms par bloc au lieu de 22,5 — ce qui saccade tous les tramages modulés et les rallonge d'un facteur 3. Décoché, rien ne change pour les jobs à puissance constante. Sans effet en GRBL, qui ne connaît pas <code>M67</code> et n'a pas le problème. <a href="#c3">Le détail au chapitre&nbsp;3</a>.</td></tr>
+    <tr><td>Vitesse rapide (estimation)</td><td>La vitesse des déplacements <code>G0</code> <em>supposée</em> pour estimer la durée d'un job. À aligner sur le <code>MAX_LINEAR_VELOCITY</code> de votre machine, sinon l'estimation ment — la laisser à 650 quand la machine fait 8000 sur-estime de 80&nbsp;%.</td></tr>
+    <tr><td>Accélération (estimation)</td><td>Même principe&nbsp;: à aligner sur le <code>MAX_ACCELERATION</code> de votre <code>.ini</code>. C'est elle qui décide du coût des dizaines de milliers de changements de direction d'une gravure hachurée.</td></tr>
     <tr><td>Puissance S max</td><td>L'échelle de puissance (0…S_max) ; les panneaux s'y adaptent, aucune valeur codée en dur.</td></tr>
     <tr><td>Puissance de cadrage</td><td>Si &gt; 0, le rectangle de cadrage est parcouru faisceau très faible, pour <em>voir</em> la zone sur la pièce sans marquer.</td></tr>
     <tr><td>Bec &amp; focale</td><td>Le cône anti-collision et la table de focale du module laser.</td></tr>
@@ -886,6 +906,9 @@
   <h4>Un point/pointillé ne marque rien.</h4>
   <p>Rappel du chapitre 9 : pas de tir à l'arrêt. Les points doivent être des micro-traits — c'est le cas partout dans l'atelier ; si vous bricolez un G-code à la main, ne posez jamais de <code>G4</code> faisceau allumé.</p>
 
+  <h4>Ma gravure photo saccade et dure trois fois trop longtemps.</h4>
+  <p>Sous LinuxCNC, c'est presque toujours la puissance qui voyage par le mot <code>S</code>&nbsp;: un changement de <code>S</code> entre deux <code>G1</code> <b>arrête le mouvement</b>, et les tramages modulés en changent à chaque pixel. Cochez <b>«&nbsp;Puissance par M67&nbsp;»</b> dans les Préférences et régénérez le fichier — la puissance passe alors par une sortie synchronisée avec le mouvement, et la machine ne s'arrête plus entre les paliers. Sur GRBL/grblHAL la case est sans effet, et c'est normal&nbsp;: leur mode laser (<code>$32=1</code>) résout déjà la même difficulté. Vérifiez aussi que l'<b>accélération</b> déclarée dans les Préférences correspond bien au <code>MAX_ACCELERATION</code> de votre <code>.ini</code>, sinon l'estimation de durée ment sans que rien ne le signale.</p>
+
   <h4>Où sont passés mes réglages après réinstallation ?</h4>
   <p>Ils sont hors dépôt (fichier de config + <code>photos_resultats/</code>). Restaurez votre <code>.zip</code> d'export via « Importer une sauvegarde ».</p>
 </section>
@@ -902,7 +925,8 @@
     <tr><td>Nuancier</td><td>Table reliant une teinte de gris mesurée à une dose (puissance/vitesse) sur un matériau.</td></tr>
     <tr><td>Fluence</td><td>Énergie déposée par unité de surface (∝ puissance / (largeur × vitesse)) ; gouverne la teinte brûlée.</td></tr>
     <tr><td>Cadrage</td><td>Parcours du seul rectangle englobant, laser éteint, pour vérifier le positionnement.</td></tr>
-    <tr><td>Armement</td><td>Mise en route unique du laser (relais) en début de travail ; la puissance réelle reste pilotée par S.</td></tr>
+    <tr><td>Armement</td><td>Mise en route unique du laser (relais) en début de travail ; la puissance réelle reste pilotée par le canal choisi — <code>S</code> par défaut, <code>M67</code> si la case des Préférences est cochée.</td></tr>
+    <tr><td><code>M67</code></td><td>Commande LinuxCNC réglant une sortie <b>synchronisée avec le mouvement</b> (<code>M67&nbsp;E0&nbsp;Q…</code>)&nbsp;: la valeur prend effet au bloc suivant <em>sans vider la file de trajectoire</em>. C'est ce qui permet de moduler la puissance pixel par pixel sans arrêter la machine, là où un <code>S</code> l'arrête. Sa jumelle <code>M68</code> est immédiate et <em>arrête</em> le mouvement — ne pas les confondre. N'existe pas en GRBL, qui n'a pas ce problème (<a href="#c8">Préférences</a>, <a href="#c3">chapitre&nbsp;3</a>).</td></tr>
     <tr><td>Job combiné</td><td>Plusieurs opérations réunies en un fichier, un seul armement/désarmement.</td></tr>
   </table>
 
@@ -916,7 +940,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.5.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.5.2 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

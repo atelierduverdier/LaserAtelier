@@ -118,14 +118,34 @@ print("2. nuancier Hêtre au foyer ({} tons, {} trous sur {} cases) : aucune "
       "ligne de puissance plate sur {} vitesses OK".format(
           len(tons), trous, len(puissances) * len(vitesses), len(vitesses)))
 
-# La preuve que ce contrôle discrimine : sur les MÊMES tons, l'ancienne
-# métrique produit bel et bien une ligne plate.
-avant = [_lexicographique(tons, 1000.0, f, "darkness") for f in vitesses]
+# La preuve que ce contrôle discrimine, sur un jeu FIGÉ.
+#
+# Cette démonstration rejouait l'ancienne métrique sur les tons Hêtre
+# VIVANTS. Elle a cessé de tenir dès que Christophe a saisi le ton
+# S1000/F800 -- justement celui que la planche carbonisée réclamait : avec
+# deux mesures dans la colonne S1000, plus de ligne plate, et le contrôle
+# tombait en échec alors que le code était juste. Une démonstration ne doit
+# pas s'éteindre parce que la donnée s'améliore : on fige donc ici la
+# grille TELLE QU'ELLE ÉTAIT le 30/07/2026 -- un seul S1000, mesuré à
+# F6000, et des colonnes basses correctement balayées.
+trouee = [pt(200, 400, 8.0, "darkness"), pt(200, 2000, 4.0, "darkness"),
+          pt(600, 400, 70.0, "darkness"), pt(600, 2000, 30.0, "darkness"),
+          pt(800, 400, 90.0, "darkness"), pt(800, 2000, 55.0, "darkness"),
+          pt(1000, 6000, 42.0, "darkness")]
+f_test = [400.0, 800.0, 2000.0, 6000.0]
+avant = [_lexicographique(trouee, 1000.0, f, "darkness") for f in f_test]
 assert max(avant) - min(avant) < 1e-6, (
-    "l'ancienne métrique ne rend plus la ligne plate : ce contrôle ne "
-    "prouve plus rien, le nuancier a dû changer", avant)
-print("   (l'ancienne métrique rendait {:.0f} % à TOUTES les vitesses -- le "
-      "contrôle discrimine bien)".format(avant[0]))
+    "l'ancienne métrique devrait rendre S1000 plat sur cette grille trouée",
+    avant)
+apres = [core._bilinear_burn(trouee, 1000.0, f, key="darkness") for f in f_test]
+assert max(apres) - min(apres) > 1.0, (
+    "la métrique corrigée rend elle aussi la colonne plate : la correction "
+    "ne sert à rien", apres)
+assert apres[0] > apres[-1], (
+    "à S1000, F400 doit rester plus foncé que F6000", apres)
+print("   (sur la grille trouée figée : l'ancienne métrique rendait {:.0f} % "
+      "à TOUTES les vitesses, la corrigée s'étale de {:.0f} à {:.0f} % -- le "
+      "contrôle discrimine bien)".format(avant[0], min(apres), max(apres)))
 
 # Le cas exact démenti par le bois : S1000 doit noircir quand on ralentit.
 lent = core.darkness_at(MAT, 1000.0, 800.0, 0.0)

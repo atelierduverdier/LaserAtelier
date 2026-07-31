@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.5.1"
+VERSION = "2.5.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -746,14 +746,30 @@ Z_MAX_FEED_MM_MIN = 1500.0            # vitesse max supposée de l'axe Z (mm/min
                                       # uniquement à AVERTIR quand un trait en vague demande
                                       # plus vite (LinuxCNC ralentira le trajet pour respecter
                                       # la vraie limite machine, rien de dangereux)
-ACCEL_MM_S2 = 400.0                   # accélération machine RÉELLE (mm/s2) pour l'estimation
+ACCEL_MM_S2 = 600.0                   # accélération machine RÉELLE (mm/s2) pour l'estimation
                                       # de durée -- n'affecte jamais le G-code. Doit valoir le
                                       # MAX_ACCELERATION du .ini LinuxCNC : à 800 alors que la
-                                      # PrintNC tourne à 400, toute estimation sortait deux fois
-                                      # trop optimiste, et d'autant plus que le job est fait de
-                                      # segments courts (là où l'accélération fait tout le
-                                      # temps). Relevé le 30/07/2026. À remonter à 600 dans les
-                                      # Préférences une fois le Pi passé à 600.
+                                      # PrintNC tournait à 400, toute estimation sortait deux
+                                      # fois trop optimiste, et d'autant plus que le job est
+                                      # fait de segments courts (là où l'accélération fait tout
+                                      # le temps).
+                                      #
+                                      # Historique, parce que ce nombre a déjà menti deux fois :
+                                      # 800 (jamais vérifié) -> 400 (relevé le 30/07/2026, la
+                                      # machine y était) -> 600 (remora-flexi.ini du dépôt
+                                      # printnc-config dit MAX_ACCELERATION = 600 sur tous
+                                      # les axes). Le seul bon réflexe est de LIRE le .ini,
+                                      # jamais de supposer.
+                                      #
+                                      # Attention si ce chiffre est réexaminé : le portrait
+                                      # qui a fait trouver M67 mesurait ~76 ms/bloc pour
+                                      # 22,5 ms de coupe pure. Un aller-retour complet sur
+                                      # 0,30 mm coûte 54,8 ms à 400 mais 44,7 à 600 -- la
+                                      # mesure colle mieux à 400. Soit le Pi tournait encore
+                                      # sur une ancienne config, soit l'arrêt-redémarrage
+                                      # n'explique pas tout l'écart. Ça ne change rien au
+                                      # correctif (M67 supprime l'arrêt quel que soit a),
+                                      # seulement à l'estimation de durée.
 Z_WORK_MM = 8.0                       # Z de travail (foyer) proposé par défaut dans les
                                       # panneaux -- propriété machine (focale du nez avec le
                                       # zéro Z sur la surface), une seule valeur à entretenir

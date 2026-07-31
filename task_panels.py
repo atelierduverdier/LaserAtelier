@@ -8022,6 +8022,15 @@ class TaskPanelHalftone:
         elif recouvre < 0.95 and recouvre > 0:
             msgs.append("Pas {:.2f} mm plus large que le trait ({:.2f}) : il "
                         "restera du bois nu entre les lignes.".format(pas, largeur))
+        else:
+            # Le cas qui va bien mérite une PHRASE, pas une coche nue. Sans
+            # ce dernier cas, un pas rigoureusement égal au trait (recouvre
+            # entre 0,95 et 1,05) ne produisait aucun message et le verdict
+            # s'affichait « ✓ » tout seul -- impossible de savoir s'il
+            # approuvait quelque chose ou s'il n'avait rien trouvé à dire.
+            msgs.append("Pas {:.2f} mm pour un trait de {:.2f} : les lignes "
+                        "se touchent juste, sans bois nu ni repasse.".format(
+                            pas, largeur))
         self.lbl_regime.setText(
             "<span style=\"color:{}\">{} {}</span>".format(
                 "#2e7d32" if ok else "#c62828", "✓" if ok else "⚠",

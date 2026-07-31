@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>2.5.1</b></span>
+        <span class="badge">Version <b>2.5.2</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -317,6 +317,10 @@
   <div class="callout note">
     <span class="ci">Le point d'entrée&nbsp;: le Guide rapide</span>
     <p>La première icône de la barre d'outils (livre ouvert) ouvre un <b>Guide rapide</b> qui résume le flux de travail et répond à «&nbsp;quel mode pour quoi&nbsp;?&nbsp;». Chaque panneau s'ouvre aussi sur un résumé court avec un bouton «&nbsp;En savoir plus&nbsp;» et, pour les concepts clés, un petit schéma explicatif.</p>
+    <figure class="diagram" style="margin:12px 0 0">
+      <img src="screenshots/panneaux/01_guide.png" alt="Panneau Guide rapide : le flux de travail et « quel mode pour quoi ? »">
+      <figcaption>Le Guide rapide, tel qu'il s'ouvre.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -398,13 +402,30 @@
 <!-- ============ MODES ============ -->
 <section id="modes">
   <div class="sec-tag">● Les modes</div>
-  <h2>18 modes, regroupés par thème</h2>
+  <h2>19 modes, regroupés par thème</h2>
   <p class="sec-lede">Ils apparaissent dans cet ordre dans la barre d'outils et le menu «&nbsp;Atelier Laser&nbsp;». Voici chaque panneau, avec sa capture et le cas d'usage.</p>
 
   <!-- GROUPE : Gravure à plat -->
   <div class="group-title"><span class="gi"><img src="assets/hatch.svg" alt=""></span><h3>Gravure à plat</h3></div>
   <p class="group-sub">Sur une pièce plane : remplissage, texte/forme en noir, ou photo.</p>
   <div class="modes">
+    <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/20_import_svg.png" alt="Panneau Importer un dessin SVG"></div>
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/import_svg.svg" alt=""></span><h4>Importer un dessin SVG</h4></div>
+        <p>Lit le <code>.svg</code> directement et crée <b>un objet par tracé d'origine</b>, sélectionnable séparément. Sans le détour par le DXF, qui émiettait un crâne de 23 tracés en <b>plus de 210 fragments</b> — impossible à reprendre. La couleur de remplissage est reportée sur l'objet, pour distinguer les pièces à l'œil.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Tout début de projet, dès que le dessin vient d'Inkscape ou d'une banque de motifs.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li><b>Parcourir…</b> et choisir le fichier <code>.svg</code>.</li>
+            <li><b>OK</b> crée un objet par <code>&lt;path&gt;</code>. C'est de la géométrie, <b>pas de G-code</b>.</li>
+            <li>Placer l'ensemble en X/Y, puis enchaîner sur <b>Marquage</b>, <b>Gravure remplie</b> ou <b>Hachures</b>.</li>
+          </ol>
+          <p class="note">Hors périmètre pour l'instant, et annoncé plutôt que subi&nbsp;: <code>&lt;use&gt;</code>, dégradés, <code>&lt;clipPath&gt;</code>/masques, images matricielles embarquées, et les classes CSS d'un bloc <code>&lt;style&gt;</code>. Chacun produit un avertissement, jamais un échec silencieux.</p>
+        </details>
+      </div>
+    </div>
     <div class="mode">
       <div class="shot"><img src="screenshots/panneaux/02_hachures_2d.png" alt="Panneau Hachures 2D"></div>
       <div class="body">
@@ -464,7 +485,7 @@
       <div class="shot"><img src="screenshots/panneaux/04_gravure_photo.png" alt="Panneau Gravure photo"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/halftone.svg" alt=""></span><h4>Gravure photo (trame de points)</h4></div>
-        <p>Convertit une image en gravure laser, <b>5 tramages</b> : points (diffusion Floyd-Steinberg, durée variable), <b>lignes calibrées</b> (photo calibrée : puissance modulée par pixel via le nuancier mesuré), <b>diffusion en lignes</b> (points fins rapides) et <b>gros points Z</b> (taille de point = noirceur, artistique). Tonalité (gamma) avec aperçu en direct, et <b>mire des tramages</b> pour comparer les styles sur chute. Bouton <b>photo de démonstration</b> (Maupassant par Nadar, 1888, domaine public) et <b>préréglages ★</b> (portrait qualité, essai rapide, équilibré, artistique) pour démarrer sans tâtonner.</p>
+        <p>Convertit une image en gravure laser, <b>7 tramages</b> : <b>Diffusion (Floyd-Steinberg)</b> et <b>Durée variable</b> (points), <b>Lignes calibrées (nuancier)</b> (puissance modulée par pixel via le nuancier mesuré), <b>Diffusion en lignes</b> (points fins rapides), <b>Gros points Z</b> (le <i>diamètre</i> du point fait le gris), <b>Similigravure</b> (trame à 45° façon journal : le gris est une <i>surface</i>, aucune calibration requise) et <b>Lignes gravées</b> (un trait continu dont l'<i>épaisseur</i> fait le gris, lu dans la table des largeurs brûlées — aucun bois nu). Les deux derniers gravent <b>au foyer</b> : ils rendent le gris par une géométrie, jamais en demandant au bois de produire une teinte. Tonalité (gamma) avec aperçu en direct, et <b>mire des tramages</b> pour comparer les sept sur chute, chaque bande dans <i>son</i> régime. Bouton <b>photo de démonstration</b> (Maupassant par Nadar, 1888, domaine public) et <b>préréglages ★</b> (portrait qualité, essai rapide, équilibré, artistique) pour démarrer sans tâtonner.</p>
         <div class="when"><b>Quand&nbsp;?</b> Graver une photo, un portrait, un dégradé photographique.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>
@@ -472,9 +493,9 @@
           <ol>
             <li>Charger l'image («&nbsp;Parcourir…&nbsp;» ou la photo de démonstration). Aucune sélection dans la vue 3D.</li>
             <li>Régler la <b>largeur</b>, le <b>pas de trame</b> (finesse ET durée), l'angle et le gamma.</li>
-            <li>Choisir le <b>tramage</b> (Floyd-Steinberg recommandé) et la puissance&nbsp;; «&nbsp;Mire des tramages&nbsp;» les compare sur chute.</li>
+            <li>Choisir le <b>tramage</b> et la puissance&nbsp;; «&nbsp;Mire des tramages&nbsp;» compare les sept sur chute. Sur bois, «&nbsp;Lignes gravées&nbsp;» est celui qui a été retenu à l'établi — il ne dépend d'aucune courbe de calibration et ne laisse pas de bois nu.</li>
             <li>Zéro machine&nbsp;: X/Y au coin <b>bas-gauche</b> (l'image y est posée), Z sur la surface.</li>
-            <li>Vérifier («&nbsp;Aperçu des points&nbsp;», «&nbsp;Aperçu cadrage&nbsp;») puis générer&nbsp;— compter ~2-4 points/seconde.</li>
+            <li>Vérifier avec «&nbsp;<b>Aperçu photo</b>&nbsp;»&nbsp;— le rendu du résultat sur fond bois, peint <i>comme le tramage choisi brûle</i>, en vignette dans le panneau et en grand au bouton. Puis «&nbsp;Aperçu des points&nbsp;» (vue 3D) et «&nbsp;Aperçu cadrage&nbsp;» (fichier séparé, à blanc) avant de générer&nbsp;— compter ~2-4 points/seconde sur les tramages à points.</li>
           </ol>
         </details>
       </div>
@@ -637,10 +658,12 @@
           <img src="assets/diag_planche_calibration.svg" alt="Planches de calibration : traits au foyer, traits au défocus et largeur du point">
           <ol>
             <li>Aucune sélection requise&nbsp;: la grille ne dépend d'aucun objet du document.</li>
-            <li>Choisir gravure/découpe, les plages de <b>puissance</b> (colonnes) et <b>vitesse</b> (lignes), le nombre de cellules.</li>
+            <li>Choisir un <b>Objectif</b>, qui remplit toute la grille selon la <i>donnée cherchée</i>. Il y en a cinq&nbsp;: <b>Nuancier — tons clairs (défocus)</b> (16 aplats du très clair au foncé, pour compléter le bas du nuancier)&nbsp;; <b>Largeurs brûlées — grille au foyer</b> et <b>— grille en défocus</b> (traits <i>isolés</i>, espacés pour se mesurer un par un au pied à coulisse)&nbsp;; <b>Noirceur — bande en balayage (photo calibrée)</b> (des <i>aplats</i> à vitesse, défocus et pas d'une vraie photo — c'est la planche qui alimente la courbe noirceur → énergie)&nbsp;; et <b>Découpe — trouver le passage</b> (contours seuls, on cherche la case qui traverse en une passe). Chacun affiche sa note&nbsp;: quoi mesurer, où le reporter, et le piège propre à cette planche.</li>
+            <li>Ou tout régler à la main&nbsp;: gravure/découpe, plages de <b>puissance</b> (colonnes) et <b>vitesse</b> (lignes), nombre de cellules.</li>
             <li>Régler taille des cellules, plein/contour, étiquettes S/F.</li>
             <li><b>Hauteur (Z) de test</b>&nbsp;: rejouer la grille à une autre hauteur (bec défocalisé).</li>
-            <li>Graver sur chute, choisir la meilleure cellule&nbsp;; saisir les <b>largeurs brûlées</b> en section «&nbsp;② Entrer les mesures&nbsp;» et les tons au <b>Nuancier</b>.</li>
+            <li>Graver sur chute, choisir la meilleure cellule&nbsp;; saisir les <b>largeurs brûlées</b> en section «&nbsp;② Entrer les mesures&nbsp;». Le jugement à l'œil se saisit <b>sur place</b> aussi, dans «&nbsp;Noirceur jugée à l'œil&nbsp;» au bas de la même section — plus d'aller-retour vers le Nuancier avec les valeurs retenues de mémoire.</li>
+            <li>Le <b>défocus des cellules est libre</b>&nbsp;: la saisie ② ouvre une grille pour la hauteur demandée même si ce niveau n'a jamais été mesuré, plus une par niveau déjà connu du matériau. Un niveau ne sert d'ancrage que s'il porte <b>au moins deux puissances</b> — une mesure unique donnerait la même largeur à S200 et à S1000. Et «&nbsp;Enregistrer les mesures&nbsp;» <b>fusionne</b> au lieu de remplacer.</li>
           </ol>
         </details>
       </div>
@@ -736,6 +759,7 @@
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/settings.svg" alt=""></span><h4>Préférences</h4></div>
         <p>Tous les réglages machine centralisés, avec des <b>profils laser</b> (un par module : outil, calibration du point, Z, bec, échelle S, <b>et son propre nuancier / largeurs brûlées / préréglages matériau</b> — prêt pour un 2ᵉ laser IR) : appliqués immédiatement, sans redémarrer. <b>Export / import</b> de toute la config + les photos de résultat en un <code>.zip</code>, à ranger en lieu sûr.</p>
+        <p>Une case y pèse plus lourd que les autres&nbsp;: <b>« Puissance par M67 »</b>. Sous LinuxCNC, un mot <code>S</code> glissé entre deux <code>G1</code> <b>arrête la machine</b> — 76&nbsp;ms par bloc au lieu de 22,5, mesuré sur deux fichiers jumeaux. Tous les tramages qui modulent la puissance s'en trouvaient saccadés et trois fois trop longs. <code>M67&nbsp;E0&nbsp;Q…</code> est la sortie <b>synchronisée avec le mouvement</b>&nbsp;: la puissance change sans jamais interrompre le geste. Sans effet en GRBL, qui n'a pas ce problème.</p>
         <div class="when"><b>Quand&nbsp;?</b> À l'installation, puis dès qu'un réglage machine change.</div>
       </div>
     </div>
@@ -991,7 +1015,8 @@ net laser-arm       spindle.1.on            =&gt; flexi.output.AUX3   # interloc
   <details class="faq">
     <summary><span class="q">Mes traits sont en pointillé à haute vitesse, c'est un bug&nbsp;?</span><span class="chev">›</span></summary>
     <div class="a">
-      <p>Non. Le laser est piloté en <b>S/PWM</b> : à chaque changement de puissance, la machine marque une micro-pause aux frontières de paliers, ce qui hache le trait à grande vitesse. Les rampes utilisent le lissage de trajectoire <code>G64</code> et une commande <code>S</code> insérée sur les lignes <code>G1</code> pour rester fluides. Réduire le nombre de paliers aide aussi.</p>
+      <p>Non, et la cause est identifiée. Sous LinuxCNC, un mot <code>S</code> glissé entre deux <code>G1</code> <b>arrête le mouvement</b>, même sur des segments parfaitement alignés — deux fichiers de géométrie rigoureusement identique l'ont tranché, l'un à <code>S</code> constant fluide, l'autre à <code>S</code> variable saccadé à l'oreille. Le remède est la case <b>«&nbsp;Puissance par M67&nbsp;»</b> des Préférences&nbsp;: la puissance voyage alors par <code>M67&nbsp;E0&nbsp;Q…</code>, une sortie <i>synchronisée avec le mouvement</i>, appliquée au bloc suivant sans vider la file de trajectoire. On garde un palier par segment, mais la machine ne s'arrête plus entre les paliers. Le lissage <code>G64&nbsp;P0.05</code> émis par tous les jobs joue son rôle par ailleurs.</p>
+      <p><b>Ce qui ne marche pas, et a été essayé&nbsp;:</b> réduire le nombre de paliers de puissance pour allonger les segments. De 161 à 8 niveaux, la longueur moyenne d'un segment ne passe que de 0,36 à 0,73&nbsp;mm sur une photo réelle — un segment par pixel est structurel sur une image bruitée, et huit niveaux de gris auraient abîmé l'image pour rien. Sur GRBL/grblHAL la question ne se pose pas&nbsp;: leur mode laser (<code>$32=1</code>, armement <code>M4</code>) traverse les <code>G1</code> consécutifs sans s'arrêter quand seule la puissance change.</p>
     </div>
   </details>
 
