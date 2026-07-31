@@ -7835,18 +7835,21 @@ class TaskPanelHalftone:
         self.lbl_halftone_preview.setVisible(True)
 
     def _on_photo_preview(self):
-        """Aperçu photo plein format, comme dans les autres modes."""
+        """Aperçu photo plein format, comme dans les autres modes.
+
+        Le sablier ne couvre QUE le rendu. Il englobait aussi l'affichage,
+        or `_show_image_dialog` est MODAL (`exec`) : le curseur restait donc
+        en « occupé » pendant tout le temps que la fenêtre était ouverte,
+        alors que plus rien ne travaillait. Signalé le 31/07/2026 -- la
+        fenêtre marchait très bien, seul le curseur mentait."""
         darkness = self._build_rows(max_cells=self._PREVIEW_MAX_CELLS)
         if darkness is None:
             return
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
-            self._afficher_apercu_photo(darkness)
+            img, note = self._render_photo_preview(darkness, largeur_px=900)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
-
-    def _afficher_apercu_photo(self, darkness):
-        img, note = self._render_photo_preview(darkness, largeur_px=900)
         if img is None:
             QtWidgets.QMessageBox.warning(
                 self.form, "Aperçu photo",

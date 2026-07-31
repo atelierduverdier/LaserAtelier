@@ -176,4 +176,36 @@ assert p._generate(rows, quiet=True) is None, \
 print("4. hors régime : aperçu ET générateur refusent, en nommant F{:.0f} "
       "OK".format(rapide))
 
+
+# --- 5. Le sablier ne doit pas survivre au calcul ----------------------
+# Signalé le 31/07/2026 : « le pointeur de ma souris est en mode travail,
+# pourtant il fonctionne bien ». Le curseur d'attente enveloppait le rendu
+# ET l'affichage, or _show_image_dialog est MODAL : le sablier restait donc
+# affiché tout le temps que la fenêtre était ouverte. On lit le curseur au
+# moment PRÉCIS où le dialogue s'ouvre -- c'est là qu'il se voit.
+from PySide6 import QtWidgets
+
+p5 = tp.TaskPanelHalftone()
+p5.edt_image.setText(image_demo())
+p5.spn_width.setValue(30.0)
+p5.combo_mode.setCurrentIndex(0)
+
+vu = {}
+vrai_dialog = tp._show_image_dialog
+tp._show_image_dialog = lambda img, titre: vu.__setitem__(
+    "pendant", QtWidgets.QApplication.overrideCursor())
+try:
+    p5._on_photo_preview()
+finally:
+    tp._show_image_dialog = vrai_dialog
+
+assert "pendant" in vu, "l'aperçu n'a pas ouvert de fenêtre"
+assert vu["pendant"] is None, (
+    "le sablier est encore forcé pendant que la fenêtre modale est "
+    "affichée : le curseur annonce un calcul qui est fini")
+assert QtWidgets.QApplication.overrideCursor() is None, (
+    "un curseur forcé a survécu à l'aperçu")
+print("5. aperçu photo : curseur normal pendant l'affichage, et aucun "
+      "curseur forcé qui survive OK")
+
 print("\nTOUS LES TESTS panneaux PASSENT")
