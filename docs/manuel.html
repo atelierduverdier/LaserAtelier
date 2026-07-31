@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.14.0</span><br>
+      <span class="ver">Version 2.15.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.14.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.15.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -569,7 +569,9 @@
     <p>Il partage toute la mécanique du fuseau, parce que c'est <em>la même rampe</em> — elle interpole une valeur le long de l'abscisse curviligne, peu lui importe que cette valeur soit une hauteur ou une puissance. Il en hérite donc les mêmes garanties&nbsp;: <b>chaque trait porte sa rampe entière</b>, et sur une <b>boucle fermée</b> le même choix marche visible / aller-retour — utile ici, car un ressaut de teinte à la fermeture d'un cercle se voit beaucoup.</p>
     <p>Deux garde-fous&nbsp;: la consigne est <b>bornée à l'échelle de la machine</b> (une valeur au-delà de S max est ramenée à S max), et le champ «&nbsp;Puissance&nbsp;» global se grise, puisqu'il ne sert plus à rien quand la puissance est rampée. Côté machine, ce style change la puissance à chaque point&nbsp;: avec «&nbsp;Puissance par M67&nbsp;» coché, ça ne coûte rien (cf. <a href="#c3">chapitre&nbsp;3</a>) ; sans lui, chaque changement de <code>S</code> arrête le mouvement.</p>
 
-        <h4>La mire de mesure gravée sur les planches</h4>
+        <p><b>Planches resserrées (v2.15)</b>&nbsp;: traits de 20 à <b>12&nbsp;mm</b>, entre-rangs de 6 à 4, étiquettes de 3 à 2,5&nbsp;mm, et surtout un <b>entre-colonnes calculé</b> sur la largeur réelle des étiquettes au lieu des 12&nbsp;mm réservés au jugé. Résultat&nbsp;: Planche 1 de 195&nbsp;×&nbsp;74 à <b>145&nbsp;×&nbsp;64&nbsp;mm</b> (−36&nbsp;% de surface, 4&nbsp;min&nbsp;11 → 3&nbsp;min&nbsp;05) et Planche 2 de 135&nbsp;×&nbsp;114 à <b>94&nbsp;×&nbsp;94&nbsp;mm</b> (−43&nbsp;%, 5&nbsp;min&nbsp;01 → 3&nbsp;min&nbsp;35). Moins de chute consommée, une photo plus facile à cadrer, et un test plus rapide. Douze millimètres suffisent&nbsp;: même à F3000, la plus rapide, l'accélération ne mange que 2&nbsp;mm à chaque bout et il reste près de 8&nbsp;mm à vitesse établie. Un contrôle automatique vérifie qu'aucune étiquette ne vient toucher un trait après resserrage — c'est comme ça qu'un trait s'était retrouvé gravé en travers des chiffres de la réglette au premier essai.</p>
+
+    <h4>La mire de mesure gravée sur les planches</h4>
     <p class="quoi">Une réglette et quatre repères, gravés en même temps que la planche.</p>
     <p>Les <b>Planches 1 et 2</b> portent désormais leur propre <b>mire de mesure</b>&nbsp;: une réglette graduée au millimètre sous la planche, et <b>quatre repères en croix</b> aux coins d'un rectangle dont les cotes sont <em>rondes</em> et annoncées dans l'en-tête du G-code. Il suffit alors de photographier la planche pour en mesurer les traits.</p>
     <p><b>Pourquoi gravée plutôt que posée&nbsp;?</b> Une réglette d'acier posée sur la planche est 0,5 à 1&nbsp;mm <em>au-dessus</em> de la surface&nbsp;: en macro elle est vue sous un angle légèrement différent du trait qu'on mesure — parallaxe. Une graduation gravée partage son plan, et surtout son <b>repère machine</b>&nbsp;: elle hérite de la précision de positionnement de la CNC, pas de celle d'une règle du commerce.</p>
@@ -1022,7 +1024,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.14.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.15.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

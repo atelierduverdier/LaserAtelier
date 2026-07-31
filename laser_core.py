@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.14.0"
+VERSION = "2.15.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9392,7 +9392,7 @@ def generate_gcode_planche_focus(z_focus=None, mire=True,
                                  powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
                                  feeds=(200.0, 400.0, 800.0, 1000.0,
                                         1200.0, 1500.0, 3000.0),
-                                 trait_len=20.0, row_gap=6.0, label_height=3.0,
+                                 trait_len=12.0, row_gap=4.0, label_height=2.5,
                                  pre_gcode="", post_gcode="", quiet=False, body_only=False):
     """PLANCHE 1 -- FOYER (Vitesse x Puissance). Grille de traits gravés AU
     FOYER : une ligne par puissance S (bornée à S_MAX), une colonne par vitesse
@@ -9412,7 +9412,15 @@ def generate_gcode_planche_focus(z_focus=None, mire=True,
     if z_focus is None:
         z_focus = Z_WORK_MM
     powers = _powers_capped(powers)
-    x0, col_pitch = 16.0, trait_len + 12.0
+    # Encombrement CALCULE des etiquettes plutot que 12 mm reserves au
+    # juge : a 2,5 mm de haut « F3000 » ne fait que 8,25 mm, et la marge
+    # forfaitaire coutait 14 mm par colonne. Demande de Christophe le
+    # 31/07/2026 : « je n'ai pas besoin de 3 cm de traits pour avoir la
+    # largeur », et une planche plus petite se photographie mieux.
+    l_f = max(text_width("F{:.0f}".format(f), label_height) for f in feeds)
+    l_s = max(text_width("S{:.0f}".format(p_), label_height) for p_ in powers)
+    col_pitch = max(trait_len + 4.0, l_f + 2.0)
+    x0 = 2.0 + l_s + 2.0
     label_edges = []
 
     def _lab(txt, x, y, h=None):
@@ -9473,8 +9481,8 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
                                    powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
                                    feeds=(200.0, 400.0, 600.0, 800.0),
                                    defocus_levels_mm=DEFOCUS_LEVELS_MM,
-                                   trait_len=20.0, row_gap=6.0, block_gap=10.0,
-                                   label_height=3.0,
+                                   trait_len=12.0, row_gap=4.0, block_gap=7.0,
+                                   label_height=2.5,
                                    pre_gcode="", post_gcode="", quiet=False, body_only=False):
     """PLANCHE 2 -- DÉFOCUS (balayage du feed). Pour CHAQUE niveau de défocus
     (defocus_levels_mm, ~15 et 36 mm), une grille de traits S x F gravés à
@@ -9497,7 +9505,15 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
     if z_focus is None:
         z_focus = Z_WORK_MM
     powers = _powers_capped(powers)
-    x0, col_pitch = 16.0, trait_len + 12.0
+    # Encombrement CALCULE des etiquettes plutot que 12 mm reserves au
+    # juge : a 2,5 mm de haut « F3000 » ne fait que 8,25 mm, et la marge
+    # forfaitaire coutait 14 mm par colonne. Demande de Christophe le
+    # 31/07/2026 : « je n'ai pas besoin de 3 cm de traits pour avoir la
+    # largeur », et une planche plus petite se photographie mieux.
+    l_f = max(text_width("F{:.0f}".format(f), label_height) for f in feeds)
+    l_s = max(text_width("S{:.0f}".format(p_), label_height) for p_ in powers)
+    col_pitch = max(trait_len + 4.0, l_f + 2.0)
+    x0 = 6.0 + l_s + 2.0
     label_edges = []
 
     def _lab(txt, x, y, h=None):

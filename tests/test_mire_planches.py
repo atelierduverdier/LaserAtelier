@@ -112,3 +112,66 @@ print("5. mire a S{:.0f} F{:.0f}, reglable par laser, presente dans le G-code OK
       .format(core.MIRE_POWER, core.MIRE_FEED))
 
 print("\nTOUS LES TESTS mire_planches PASSENT")
+
+
+# --- 6. Compaction : rien ne doit se toucher -------------------------
+# Les planches ont été resserrées le 31/07/2026 (« je n'ai pas besoin de
+# 3 cm de traits pour avoir la largeur, ça économisera du bois et la
+# photo sera plus facile ») : trait 20 -> 12 mm, entre-rangs 6 -> 4,
+# étiquettes 3 -> 2,5, et l'entre-colonnes CALCULÉ sur la largeur réelle
+# des étiquettes au lieu de 12 mm forfaitaires. Resserrer une mise en
+# page sans vérifier les distances, c'est exactement comme ça qu'un trait
+# s'est retrouvé gravé en travers des chiffres de la réglette.
+import math
+
+
+def _segments(g):
+    par_commentaire, cur, x, y = {}, None, None, None
+    for l in g.split("\n"):
+        if l.startswith("(-- "):
+            cur = l
+            continue
+        m = re.match(r"G0 X([-\d.]+) Y([-\d.]+)", l)
+        if m:
+            x, y = float(m.group(1)), float(m.group(2))
+            continue
+        m = re.match(r"G1 X([-\d.]+) Y([-\d.]+)", l)
+        if m and x is not None:
+            par_commentaire.setdefault(cur, []).append(
+                ((x, y), (float(m.group(1)), float(m.group(2)))))
+            x, y = float(m.group(1)), float(m.group(2))
+    return par_commentaire
+
+
+def _dist(p, a, b):
+    (ax, ay), (bx, by), (px, py) = a, b, p
+    dx, dy = bx - ax, by - ay
+    L = dx * dx + dy * dy
+    t = 0.0 if L == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / L))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+for nom, gen, cle in (("Planche 1", core.generate_gcode_planche_focus, "Planche 1 : S"),
+                      ("Planche 2", core.generate_gcode_planche_defocus, "Planche 2 : d")):
+    g = gen(quiet=True)
+    seg = _segments(g)
+    traits = [s for c, ss in seg.items() if c and cle in c for s in ss]
+    etiq = [s for c, ss in seg.items() if c and "etiquette" in c for s in ss]
+    assert traits and etiq, (nom, len(traits), len(etiq))
+    mini = min(_dist(p, a, b) for a, b in traits for c_, d_ in etiq for p in (c_, d_))
+    assert mini > 0.6, (nom, "une etiquette touche un trait", mini)
+    print("6. {} : {} traits, distance minimale trait/etiquette {:.2f} mm OK".format(
+        nom, len(traits), mini))
+
+# ... et la compaction a bien eu lieu (une regression la reperdrait en
+# silence : les planches marcheraient, elles seraient juste plus grandes).
+import inspect
+sig = inspect.signature(core.generate_gcode_planche_focus)
+assert sig.parameters["trait_len"].default <= 12.0, sig.parameters["trait_len"].default
+assert sig.parameters["row_gap"].default <= 4.0, sig.parameters["row_gap"].default
+w, h = 0.0, 0.0
+xs = [float(t[1:]) for l in core.generate_gcode_planche_focus(quiet=True).split("\n")
+      if l.startswith(("G0 X", "G1 X")) for t in l.split() if t.startswith("X")]
+assert max(xs) - min(xs) < 170, ("planche 1 trop large", max(xs) - min(xs))
+print("7. Planche 1 : {:.0f} mm de large (etait ~195 avant compaction) OK".format(
+    max(xs) - min(xs)))
