@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>2.13.2</b></span>
+        <span class="badge">Version <b>2.13.3</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -907,7 +907,7 @@
     </div>
     <div class="panel">
       <h3>Assainissement obligatoire</h3>
-      <p>LinuxCNC rejette les <b>parenthèses imbriquées</b> dans les commentaires et les <b>octets non-ASCII</b> (accents français). Le générateur remplace les parenthèses internes et translittère les accents à chaque sortie — l'opération est idempotente (sûre pour les jobs combinés).</p>
+      <p>LinuxCNC rejette les <b>parenthèses imbriquées</b> dans les commentaires et les <b>octets non-ASCII</b> (accents français). Le générateur remplace les parenthèses internes et translittère les accents à chaque sortie — l'opération est idempotente (sûre pour les jobs combinés). Il referme aussi tout <b>commentaire resté ouvert</b>&nbsp;: un «&nbsp;<code>(</code>&nbsp;» sans son «&nbsp;<code>)</code>&nbsp;» fait échouer le <i>chargement</i> du fichier (« Unclosed comment found ») — le job ne démarre même pas. RS274 n'a pas de commentaire multi-ligne, donc fermer en fin de ligne est toujours la bonne réparation.</p>
     </div>
   </div>
 

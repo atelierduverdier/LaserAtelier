@@ -129,3 +129,35 @@ print("3. le désarmement porte le M67 sous LinuxCNC et JAMAIS sous GRBL OK")
 
 poser("linuxcnc", m67=False)
 print("\nTOUS LES TESTS dialectes PASSENT")
+
+
+# --- Commentaire non refermé : LinuxCNC refuse de CHARGER le fichier ---
+# Trouvé le 31/07/2026 : une planche dont l'en-tête portait un commentaire
+# coupé en deux lignes a fait échouer le chargement (« Unclosed comment
+# found », le job ne démarre même pas). L'assainisseur recopiait la ligne
+# telle quelle -- alors que garantir un fichier chargeable EST son rôle.
+# RS274 n'a pas de commentaire multi-ligne : fermer en fin de ligne est
+# donc toujours la bonne réparation.
+brut = "\n".join([
+    "(en-tete coupe en deux",
+    "( suite du commentaire)",
+    "G1 X10 Y10 F800",
+    "G1 X20 (commentaire normal)",
+])
+propre = core.sanitize_gcode_for_linuxcnc(brut)
+for i, l in enumerate(propre.split("\n"), 1):
+    ouvertes = l.count("(")
+    fermees = l.count(")")
+    assert ouvertes == fermees, (
+        "ligne {} : {} '(' pour {} ')'".format(i, ouvertes, fermees), l)
+assert propre.split("\n")[0] == "(en-tete coupe en deux)", propre.split("\n")[0]
+# Les lignes déjà correctes ne bougent pas.
+assert propre.split("\n")[2] == "G1 X10 Y10 F800"
+assert propre.split("\n")[3] == "G1 X20 (commentaire normal)"
+# Idempotence : ré-assainir ne rajoute pas une deuxième parenthèse.
+assert core.sanitize_gcode_for_linuxcnc(propre) == propre, "non idempotent"
+# Et le contrôle se démontre : sans le correctif, la 1re ligne resterait
+# telle quelle et le compte de parenthèses serait déséquilibré.
+assert "(en-tete coupe en deux" in brut and not brut.split("\n")[0].endswith(")")
+print("commentaire non referme : ferme en fin de ligne, idempotent, "
+      "lignes valides intactes OK")

@@ -34,6 +34,15 @@ a hard-coded 1000). The emitted `T<n> M6` loads the laser tool itself (no-op if 
 
 ## Mandatory sanitizer
 
+**An UNCLOSED comment kills the file at LOAD time** (v2.13.3). A `(` with no `)` after it makes
+LinuxCNC refuse the program outright — "Unclosed comment found", the job never starts. The sanitizer
+used to pass such a line through untouched (`if end <= start: out.append(line)`), which is the one
+failure mode it exists to prevent. It now closes the comment at end of line; RS274 has no multi-line
+comment, so that is always the correct repair, and it stays idempotent. Found on 2026-07-31 when a
+hand-built measurement board split a header sentence across two lines. **When building comment text
+by hand, keep each comment on its own line** and assert `line.count("(") == line.count(")")` before
+writing — don't lean on the sanitizer to paper over malformed text.
+
 `sanitize_gcode_for_linuxcnc(text)` at every generator's return. LinuxCNC rejects **nested
 parentheses** in comments (`passe(s)`, `(par bande de Z)`) and **non-ASCII bytes** (French accents);
 the sanitizer brackets inner parens and transliterates. It is **idempotent**, so it's safe for

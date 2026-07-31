@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.13.2"
+VERSION = "2.13.3"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -197,6 +197,17 @@ def sanitize_gcode_for_linuxcnc(text):
        INTERNE à un commentaire devient crochet [ ].
     2. Caractères non-ASCII (accents français) : RS274 rejette les octets
        non ASCII -- ils sont translittérés (é->e, ç->c...).
+    3. Commentaire NON REFERMÉ : un '(' sans ')' après lui fait échouer le
+       CHARGEMENT du fichier (« Unclosed comment found »), donc le job ne
+       démarre même pas. RS274 n'a pas de commentaire multi-ligne : la
+       parenthèse doit se fermer sur sa propre ligne, et la fermer en fin
+       de ligne est donc toujours la bonne réparation.
+
+       Ce cas passait tout droit -- la ligne était recopiée telle quelle.
+       Trouvé le 31/07/2026 par LinuxCNC refusant une planche de mesure
+       dont l'en-tête portait un commentaire coupé en deux lignes. C'est
+       la façon la plus simple de rendre un fichier illisible, et
+       l'assainisseur, dont c'est précisément le rôle, la laissait passer.
 
     Idempotent (ré-assainir un texte déjà propre ne change rien), donc sûr
     à appliquer plusieurs fois (job combiné = corps déjà assainis)."""
@@ -213,7 +224,10 @@ def sanitize_gcode_for_linuxcnc(text):
         # DERNIER ')', ses parenthèses internes sont neutralisées.
         end = line.rfind(")")
         if end <= start:
-            out.append(line)
+            # Commentaire ouvert et jamais refermé : on le ferme en fin de
+            # ligne. Sans ça LinuxCNC refuse de CHARGER le fichier et le
+            # job ne démarre pas du tout (cf. point 3 du docstring).
+            out.append(line + ")")
             continue
         content = line[start + 1:end].replace("(", "[").replace(")", "]")
         out.append(line[:start] + "(" + content + ")" + line[end + 1:])
