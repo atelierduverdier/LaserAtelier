@@ -1068,6 +1068,7 @@ def _diagram(form, name, width=260, height=100):
     lbl.setPixmap(pm)
     lbl.setAlignment(QtCore.Qt.AlignHCenter)
     form.addRow(lbl)
+    return lbl
 
 
 def _hline(form):
@@ -9704,7 +9705,8 @@ class TaskPanelCurved:
         _section(form, "Style de trait", "sect_options.svg")
         self.combo_style = QtWidgets.QComboBox()
         self.combo_style.addItems(
-            ["Trait plein", "Tirets", "Pointillé", "Vague défocus", "Défocus (point élargi)", "Dégradé (Z croissant)"])
+            ["Trait plein", "Tirets", "Pointillé", "Vague défocus", "Défocus (point élargi)",
+             "Dégradé (dans une direction)", "Dégradé le long du tracé"])
         self.combo_style.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.combo_style.setMinimumContentsLength(14)
         self.combo_style.setToolTip(
@@ -9766,6 +9768,8 @@ class TaskPanelCurved:
         self.spn_deg_angle.setSuffix(" °")
         self.spn_deg_angle.setToolTip("Direction du dégradé (0° = de gauche à droite).")
         form.addRow("Dégradé -- direction :", self.spn_deg_angle)
+        self._diag_fuseau = _diagram(form, "diag_fuseau.svg", 260, 104)
+
         self.spn_deg_w0 = QtWidgets.QDoubleSpinBox()
         self.spn_deg_w0.setRange(0.05, 30.0); self.spn_deg_w0.setDecimals(2)
         self.spn_deg_w0.setValue(0.3); self.spn_deg_w0.setSuffix(" mm")
@@ -9776,6 +9780,29 @@ class TaskPanelCurved:
         self.spn_deg_w1.setValue(2.0); self.spn_deg_w1.setSuffix(" mm")
         self.spn_deg_w1.setToolTip("Largeur du trait à la FIN du dégradé (large/doux = défocalisé).")
         form.addRow("Dégradé -- largeur fin :", self.spn_deg_w1)
+
+        # Sur une BOUCLE FERMÉE, une rampe simple ramène la largeur de fin
+        # juste à côté de celle de départ : le raccord se voit. L'aller-
+        # retour atteint la largeur de fin à MI-PARCOURS et referme sur la
+        # largeur de départ. Réglable plutôt qu'imposé : les deux rendus
+        # se défendent, et c'est le dessin qui tranche.
+        self.combo_deg_boucle = QtWidgets.QComboBox()
+        self.combo_deg_boucle.addItem("Marche visible à la fermeture", "marche")
+        self.combo_deg_boucle.addItem("Aller-retour (fermeture invisible)", "aller_retour")
+        self.combo_deg_boucle.setToolTip(
+            "Ce que devient la rampe sur un contour FERMÉ (cercle, boucle).\n"
+            "\n"
+            "Marche visible : la largeur va du début à la fin le long du\n"
+            "  tracé, donc en revenant au point de départ elle saute de la\n"
+            "  largeur de fin à celle de début. Littéral et prévisible.\n"
+            "\n"
+            "Aller-retour : la largeur de fin est atteinte à MI-PARCOURS,\n"
+            "  puis redescend ; la boucle se referme sans aucun raccord.\n"
+            "  « Largeur à la fin » désigne alors le milieu du contour.\n"
+            "\n"
+            "Sans effet sur un trait OUVERT : l'aller-retour y ramènerait\n"
+            "la largeur de départ, ce qui contredirait « largeur à la fin ».")
+        form.addRow("Boucle fermée :", self.combo_deg_boucle)
 
         self.spn_wave_width = QtWidgets.QDoubleSpinBox()
         self.spn_wave_width.setRange(0.1, 30.0)
@@ -9822,8 +9849,12 @@ class TaskPanelCurved:
             for w in (self.spn_wave_period, self.spn_wave_width):
                 _set_row_visible(form, w, idx == 3)
             _set_row_visible(form, self.spn_spot_width, idx == 4)
-            for w in (self.spn_deg_angle, self.spn_deg_w0, self.spn_deg_w1):
-                _set_row_visible(form, w, idx == 5)
+            for w in (self.spn_deg_w0, self.spn_deg_w1):
+                _set_row_visible(form, w, idx in (5, 6))
+            _set_row_visible(form, self.spn_deg_angle, idx == 5)
+            _set_row_visible(form, self.combo_deg_boucle, idx == 6)
+            if self._diag_fuseau is not None:
+                _set_row_visible(form, self._diag_fuseau, idx == 6)
             # Compensation puissance/défocus : seulement pour le style
             # Défocus (point élargi), le seul à point élargi constant.
             self._fluence["container"].setVisible(idx == 4)
@@ -9962,6 +9993,11 @@ class TaskPanelCurved:
             "gap_len": self.spn_gap_len, "dot_spacing": self.spn_dot_spacing,
             "dot_dwell_ms": self.spn_dot_dwell, "wave_period": self.spn_wave_period,
             "wave_width": self.spn_wave_width, "spot_width": self.spn_spot_width,
+            # Les cinq champs du dégradé manquaient depuis leur création :
+            # un fuseau réglé se perdait à la fermeture du panneau, et un
+            # préréglage ne le rapportait pas non plus (cf. plus bas).
+            "deg_angle": self.spn_deg_angle, "deg_w0": self.spn_deg_w0,
+            "deg_w1": self.spn_deg_w1, "deg_boucle": self.combo_deg_boucle,
             "fluence_on": self._fluence["chk"], "ref_power": self._fluence["ref_power"],
             "ref_feed": self._fluence["ref_feed"], "ref_spot": self._fluence["ref_spot"],
         }
@@ -10104,7 +10140,8 @@ class TaskPanelCurved:
         # Le style « Défocus » (index 4) est un trait PLEIN gravé plus haut
         # (cf. _z_focus) : le point élargi fait le noir, le tracé reste
         # continu. D'où style="plein" ici, la différence est portée par le Z.
-        style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague", 4: "plein", 5: "degrade"}
+        style_map = {0: "plein", 1: "tirets", 2: "pointille", 3: "vague",
+                     4: "plein", 5: "degrade", 6: "degrade_trace"}
         # Vague : la largeur max voulue -> amplitude de défocus (Z) via la
         # calibration du point.
         wave_amp = core.defocus_for_spot_diameter(
@@ -10121,6 +10158,7 @@ class TaskPanelCurved:
                 "deg_angle": self.spn_deg_angle.value(),
                 "deg_z_min": core.defocus_for_spot_diameter(self.spn_deg_w0.value(), core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0,
                 "deg_z_max": core.defocus_for_spot_diameter(self.spn_deg_w1.value(), core.SPOT_FOCUS_MM, core.calibrated_half_angle()) or 0.0,
+                "deg_aller_retour": self.combo_deg_boucle.currentData() == "aller_retour",
             },
         }
 
@@ -10148,6 +10186,11 @@ class TaskPanelCurved:
         self.spn_wave_period.setValue(values.get("wave_period", self.spn_wave_period.value()))
         self.spn_wave_width.setValue(values.get("wave_width", self.spn_wave_width.value()))
         self.spn_spot_width.setValue(values.get("spot_width", self.spn_spot_width.value()))
+        self.spn_deg_angle.setValue(values.get("deg_angle", self.spn_deg_angle.value()))
+        self.spn_deg_w0.setValue(values.get("deg_w0", self.spn_deg_w0.value()))
+        self.spn_deg_w1.setValue(values.get("deg_w1", self.spn_deg_w1.value()))
+        self.combo_deg_boucle.setCurrentIndex(
+            values.get("deg_boucle", self.combo_deg_boucle.currentIndex()))
         self._fluence["chk"].setChecked(values.get("fluence_on", self._fluence["chk"].isChecked()))
         self._fluence["ref_power"].setValue(values.get("ref_power", self._fluence["ref_power"].value()))
         self._fluence["ref_feed"].setValue(values.get("ref_feed", self._fluence["ref_feed"].value()))
@@ -10169,6 +10212,10 @@ class TaskPanelCurved:
             "wave_period": self.spn_wave_period.value(),
             "wave_width": self.spn_wave_width.value(),
             "spot_width": self.spn_spot_width.value(),
+            "deg_angle": self.spn_deg_angle.value(),
+            "deg_w0": self.spn_deg_w0.value(),
+            "deg_w1": self.spn_deg_w1.value(),
+            "deg_boucle": self.combo_deg_boucle.currentIndex(),
             "fluence_on": self._fluence["chk"].isChecked(),
             "ref_power": self._fluence["ref_power"].value(),
             "ref_feed": self._fluence["ref_feed"].value(),

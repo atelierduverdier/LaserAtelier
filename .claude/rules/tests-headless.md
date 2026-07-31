@@ -106,6 +106,14 @@ dict on every `itemData()` call, so two reads of one item are never the same obj
 - `test_micro_traits.py` — direction reversals inside a row, counted for **all 7** tramages,
   expecting zero. Written after the same bug shipped twice.
 
+## `preparer()` BEFORE `import Part` — segfault with zero output
+
+`preparer()` is what initialises FreeCAD's interpreter. A test importing `Part` at module level
+*before* calling it dies on a bare **SEGFAULT**: no traceback, no message, and `lancer.py` prints an
+`ÉCHEC` with an empty body — which looks like anything except an import-order problem. Cost a
+bisection to find (2026-07-31, `test_fuseau.py`, the first test in the repo to need `Part` at module
+level). Put `h = preparer()` first, then `import Part` / `import FreeCAD` below it.
+
 ## Two rules for new tests here
 
 1. **Test the property over the family, not the case that was reported.** A test written for the one

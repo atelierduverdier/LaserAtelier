@@ -106,6 +106,34 @@ correct image, only the *noise* betrayed it.
   `core.Z_WORK_MM` unconditionally — the panel restores last field values across sessions, so a
   defocused height left behind silently poisons every later job (observed).
 
+## Two gradients, and they are NOT the same thing (v2.9.0)
+
+`"degrade"` (v1.x) ramps the defocus by **spatial projection**: `t = (p·u - pmin) / span`, `u` given
+by `deg_angle`, normalised over the bounding extent of *all* chains. `"degrade_trace"` (v2.9.0) ramps
+by **curvilinear abscissa along each chain**. On a straight line oriented along `deg_angle` the two
+coincide; on a spiral, a circle, or anything doubling back, the first follows POSITION and the second
+follows the PATH. Keep both — the user asked for the second precisely because the first could not
+taper a spiral from outside to centre.
+
+`rampe_trace_dz(chain, dz0, dz1, aller_retour)` returns one dz per point. Design points, all
+user decisions from 2026-07-31:
+
+- **Each chain carries the WHOLE ramp.** Two selected lines give two identical tapers, so the result
+  can't depend on the visiting order — which `order_chains_by_proximity` picks for travel, not for
+  drawing. Test: a 100 mm and a 60 mm line must show the same Z stroke.
+- **Closed loops are a user choice, not a hidden rule.** A plain ramp brings `dz1` back beside `dz0`,
+  so the closure shows as a step; `aller_retour` reaches `dz1` at MID-path and closes on the starting
+  width. Ignored on an open chain — it would contradict "width at the end". `chaine_fermee` tests XY
+  only: a contour projected on relief has different Z at its two ends.
+- **The approach `G0` must already carry `dzs[0]`**, exactly like `"degrade"` — otherwise the first
+  `G1` jumps the full ramp height (64.8 mm on the workshop's 4 mm setting) over one
+  `DISCRETIZE_DISTANCE` of XY. Measured after the fix: 0.19 mm instead of 64.8.
+- **dz is never negative**, in either ramp direction. That matters beyond aesthetics: the nozzle
+  collision check runs on the point's *native* Z, so it is only conservative as long as the style
+  merely lifts the head. `_operation_intrinsic_safe_z` and the generator's own `z_safe_start_end`
+  both ignore the gradient lift, and are therefore consistent with each other — don't "fix" one
+  alone.
+
 ## Chain ordering (v1.82.0)
 
 `generate_gcode_curved` runs `order_chains_by_proximity(chains)` right after `chain_edges`, so every

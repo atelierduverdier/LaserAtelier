@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.8.1"
+VERSION = "2.9.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3506,8 +3506,16 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     lines.append("(Chaînes : {} (à partir de {} segments d'origine))".format(len(chains), len(edges)))
     if style != "plein":
         style_names = {"tirets": "tirets", "pointille": "pointille",
-                   "vague": "vague defocus, S compense en fluence"}
+                   "vague": "vague defocus, S compense en fluence",
+                   "degrade": "degrade selon une DIRECTION (angle)",
+                   "degrade_trace": "degrade le long du TRACE"}
         lines.append("(Style de trait : {})".format(style_names.get(style, style)))
+        if style == "degrade_trace":
+            sp = style_params or {}
+            lines.append("(Fuseau : Z +{:.1f} -> +{:.1f}mm par trace{})".format(
+                sp.get("deg_z_min", 0.0), sp.get("deg_z_max", 0.0),
+                ", aller-retour sur boucle fermee"
+                if sp.get("deg_aller_retour") else ""))
     lines.append("(Transit : hauteur de travail + {:.2f}mm, {})".format(marge_survol, probe_kind))
     lines.append("(Contrôle bec (cône {:.0f}mm) : {})".format(
         NOZZLE_CONE_TOP_RADIUS * 2, "actif" if nozzle_check_active else "inactif (pas de sonde exacte)"))
@@ -3586,6 +3594,18 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
     for chain in chains:
         p0 = chain[0]
 
+        # Style « dégradé le long du tracé » : la rampe est PROPRE À CETTE
+        # CHAÎNE (abscisse curviligne), contrairement à "degrade" dont la
+        # projection est globale. D'où un calcul ici, dans la boucle, et
+        # non une fermeture calculée une fois pour toutes.
+        dzs_trace = None
+        if style == "degrade_trace":
+            dzs_trace = rampe_trace_dz(
+                chain,
+                style_params.get("deg_z_min", 0.0),
+                style_params.get("deg_z_max", 0.0),
+                bool(style_params.get("deg_aller_retour", False)))
+
         if current_pos is None:
             lines.append("G0 X{:.4f} Y{:.4f} Z{:.4f}".format(p0.x, p0.y, z_safe_start_end))
         else:
@@ -3609,6 +3629,8 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         # ~DISCRETIZE_DISTANCE de déplacement XY, au lieu d'une transition
         # douce comme "vague" (qui, lui, part toujours de dz=0).
         z0_deg = deg_dz(p0) if style == "degrade" and deg_dz is not None else 0.0
+        if dzs_trace is not None:
+            z0_deg = dzs_trace[0]
         lines.append("G0 Z{:.4f}".format(to_machine_z(p0.z) + z0_deg))
 
         if not state_armed:
@@ -3656,6 +3678,13 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                 lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} {}".format(
                     p.x, p.y, to_machine_z(p.z) + dz, feed,
                     cmd_power_suffix(s_pt)))
+            lines.append(beam_off)
+        elif style == "degrade_trace" and dzs_trace is not None:
+            lines.append(beam_on)
+            for p, dz in zip(chain[1:], dzs_trace[1:]):
+                _mark_check(p)
+                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                    p.x, p.y, to_machine_z(p.z) + dz, feed))
             lines.append(beam_off)
         elif style == "degrade" and deg_dz is not None:
             samples = chain      # déjà discrétisé dense (DISCRETIZE_DISTANCE)
@@ -6766,6 +6795,52 @@ def dot_positions(chain, spacing):
             pts[-1].x - pts[0].x, pts[-1].y - pts[0].y) < spacing * 0.5:
         pts.pop()
     return pts
+
+
+def chaine_fermee(chain, tol=1e-6):
+    """La chaîne revient-elle sur son point de départ ? (XY seuls : un
+    contour projeté sur un relief n'a pas le même Z aux deux bouts.)"""
+    return (len(chain) > 2
+            and math.hypot(chain[0].x - chain[-1].x,
+                           chain[0].y - chain[-1].y) < tol)
+
+
+def rampe_trace_dz(chain, dz_debut, dz_fin, aller_retour=False):
+    """dz de CHAQUE point d'une chaîne, pour le style « dégradé le long du
+    tracé » : le défocus suit l'ABSCISSE CURVILIGNE, du premier au dernier
+    point du trait.
+
+    À ne pas confondre avec le style « dégradé » historique, qui rampe
+    selon une DIRECTION DE L'ESPACE (`deg_angle`) : sur une droite orientée
+    comme cette direction les deux coïncident, mais sur une spirale ou une
+    courbe qui revient sur elle-même, la largeur y suit la POSITION et non
+    le parcours. C'est pour un fuseau franc du début à la fin d'un trait
+    que ce style-ci existe.
+
+    `aller_retour` ne concerne que les BOUCLES FERMÉES : une rampe simple
+    y ramène `dz_fin` juste à côté de `dz_debut`, donc un ressaut visible
+    au point de fermeture. En aller-retour, `dz_fin` est atteint à
+    MI-PARCOURS et la boucle se referme sur sa largeur de départ, sans
+    raccord. Sur une chaîne ouverte l'option est ignorée : elle
+    contredirait « largeur à la fin ».
+
+    Chaque chaîne porte sa rampe ENTIÈRE, indépendamment des autres --
+    sélectionner deux traits donne deux fuseaux identiques, et le résultat
+    ne dépend donc pas de l'ordre de parcours (que `order_chains_by_proximity`
+    choisit pour le trajet, pas pour le dessin)."""
+    cum = _chain_cumlen(chain)
+    total = cum[-1]
+    if total < 1e-9:
+        return [dz_debut] * len(chain)
+    boucle = aller_retour and chaine_fermee(chain)
+    dzs = []
+    for s in cum:
+        u = s / total
+        # Aller-retour : 0 -> 1 -> 0. Le sommet tombe exactement à u=0,5,
+        # donc la largeur de fin est atteinte à mi-parcours.
+        t = (1.0 - abs(1.0 - 2.0 * u)) if boucle else u
+        dzs.append(dz_debut + (dz_fin - dz_debut) * t)
+    return dzs
 
 
 def wave_resample(chain, period, amplitude, step=None):
