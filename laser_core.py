@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.12.0"
+VERSION = "2.13.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3525,6 +3525,12 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                              sp.get("deg_s_fin", power),
                              ", aller-retour sur boucle fermee"
                              if sp.get("deg_aller_retour") else ""))
+        if style in ("degrade", "degrade_trace") and (style_params or {}).get("deg_s_rampe"):
+            sp = style_params or {}
+            lines.append("(Puissance RAMPEE avec la largeur : S{:.0f} -> S{:.0f} "
+                         "-- sinon la fluence varie comme 1/largeur)".format(
+                             sp.get("deg_s_debut", power),
+                             sp.get("deg_s_fin", power)))
     lines.append("(Transit : hauteur de travail + {:.2f}mm, {})".format(marge_survol, probe_kind))
     lines.append("(Contrôle bec (cône {:.0f}mm) : {})".format(
         NOZZLE_CONE_TOP_RADIUS * 2, "actif" if nozzle_check_active else "inactif (pas de sonde exacte)"))
@@ -3594,6 +3600,30 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
             style_params.get("deg_z_min", 0.0),
             style_params.get("deg_z_max", 0.0))
 
+    # RAMPE DE PUISSANCE superposée à un dégradé de LARGEUR (option).
+    #
+    # Sans elle, S reste constant pendant que la largeur varie : la
+    # fluence surfacique évolue comme 1/largeur. Sur la spirale gravée le
+    # 31/07/2026 (0,3 -> 4 mm à S1000 constant), le bout large est sorti
+    # gris et marbré -- fluence effondrée d'un facteur 13 -- et le bout
+    # fin, au foyer, creusé et carbonisé. C'est le défaut structurel des
+    # deux dégradés de largeur, et le manuel l'annonçait déjà.
+    #
+    # La rampe est EXPLICITE (deux valeurs) et non calculée : une
+    # compensation exacte demanderait S75 au bout fin de ce fuseau, sous
+    # le plancher des puissances mesurées (S200 sur hêtre à F800), donc
+    # sous ce dont on sait quoi que ce soit. Le panneau propose la valeur
+    # compensée et dit quand elle passe sous ce plancher ; le choix reste
+    # à l'utilisateur, qui le tranchera sur le bois.
+    deg_s = None
+    if (style == "degrade" and chains
+            and style_params.get("deg_s_rampe")):
+        _bs = rampe_direction_dz(
+            chains, style_params.get("deg_angle", 0.0),
+            style_params.get("deg_s_debut", power),
+            style_params.get("deg_s_fin", power))
+        deg_s = lambda p: max(0.0, min(S_MAX, _bs(p)))  # NOQA: E731
+
     for chain in chains:
         p0 = chain[0]
 
@@ -3614,7 +3644,8 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
         # de puissance héritent donc des mêmes propriétés -- rampe entière
         # par chaîne, aller-retour sur boucle fermée -- et des mêmes tests.
         ss_trace = None
-        if style == "degrade_puissance":
+        if style == "degrade_puissance" or (
+                style == "degrade_trace" and style_params.get("deg_s_rampe")):
             ss_trace = [max(0.0, min(S_MAX, v)) for v in rampe_trace_dz(
                 chain,
                 style_params.get("deg_s_debut", power),
@@ -3710,19 +3741,46 @@ def generate_gcode_curved(edges, power, feed, z_focus, marge_survol, reference_s
                     cmd_power_suffix(s_pt)))
             lines.append(beam_off)
         elif style == "degrade_trace" and dzs_trace is not None:
-            lines.append(beam_on)
-            for p, dz in zip(chain[1:], dzs_trace[1:]):
-                _mark_check(p)
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
-                    p.x, p.y, to_machine_z(p.z) + dz, feed))
+            # Largeur ET puissance peuvent ramper ensemble : sans la
+            # seconde, la fluence évolue comme 1/largeur (spirale du
+            # 31/07/2026, bout large marbré et bout fin carbonisé).
+            if ss_trace is not None:
+                lines.extend(cmd_power_prefix(ss_trace[0]))
+                if cmd_power_suffix(ss_trace[0]):
+                    lines.append(cmd_power_suffix(ss_trace[0]))
+                for p, dz, s_pt in zip(chain[1:], dzs_trace[1:], ss_trace[1:]):
+                    _mark_check(p)
+                    lines.extend(cmd_power_prefix(s_pt))
+                    lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} {}".format(
+                        p.x, p.y, to_machine_z(p.z) + dz, feed,
+                        cmd_power_suffix(s_pt)))
+            else:
+                lines.append(beam_on)
+                for p, dz in zip(chain[1:], dzs_trace[1:]):
+                    _mark_check(p)
+                    lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                        p.x, p.y, to_machine_z(p.z) + dz, feed))
             lines.append(beam_off)
         elif style == "degrade" and deg_dz is not None:
             samples = chain      # déjà discrétisé dense (DISCRETIZE_DISTANCE)
-            lines.append(beam_on)
-            for p in samples[1:]:
-                _mark_check(p)
-                lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
-                    p.x, p.y, to_machine_z(p.z) + deg_dz(p), feed))
+            if deg_s is not None:
+                s0 = deg_s(samples[0])
+                lines.extend(cmd_power_prefix(s0))
+                if cmd_power_suffix(s0):
+                    lines.append(cmd_power_suffix(s0))
+                for p in samples[1:]:
+                    _mark_check(p)
+                    s_pt = deg_s(p)
+                    lines.extend(cmd_power_prefix(s_pt))
+                    lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f} {}".format(
+                        p.x, p.y, to_machine_z(p.z) + deg_dz(p), feed,
+                        cmd_power_suffix(s_pt)))
+            else:
+                lines.append(beam_on)
+                for p in samples[1:]:
+                    _mark_check(p)
+                    lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}".format(
+                        p.x, p.y, to_machine_z(p.z) + deg_dz(p), feed))
             lines.append(beam_off)
         else:
             # DOSE : une chaine plus courte que le point (dose_spot_d,
@@ -6937,6 +6995,25 @@ def wave_peak_z_feed(amplitude, feed, period):
     return math.pi * amplitude * feed / period
 
 
+def puissance_fluence_largeur(power_ref, largeur_ref, largeur_cible):
+    """S qu'il faut à `largeur_cible` pour retrouver la FLUENCE SURFACIQUE
+    obtenue à `largeur_ref` sous `power_ref`.
+
+    Modèle : fluence = P/(d.v), donc à vitesse égale S est proportionnel
+    au DIAMÈTRE du point. C'est le même modèle que le style vague, et il
+    n'y en a qu'un dans ce fichier -- deux formules parallèles pour la
+    même grandeur, c'est le genre d'écart qui a déjà coûté cher ici.
+
+    Renvoie None si les largeurs ne sont pas exploitables."""
+    try:
+        wr, wc = float(largeur_ref), float(largeur_cible)
+    except (TypeError, ValueError):
+        return None
+    if wr <= 0 or wc <= 0:
+        return None
+    return max(0.0, float(power_ref)) * wc / wr
+
+
 def wave_fluence_powers(power, samples, amplitude):
     """Puissances S (une par échantillon de wave_resample) compensées en
     FLUENCE le long d'une vague : le point s'élargit avec le défocus,
@@ -6956,7 +7033,8 @@ def wave_fluence_powers(power, samples, amplitude):
     out = []
     for _p, dz in samples:
         d = spot_diameter_at_defocus(dz, SPOT_FOCUS_MM, ha)
-        out.append(max(5.0, round(power * d / d_max / 5.0) * 5.0))
+        s = puissance_fluence_largeur(power, d_max, d)
+        out.append(max(5.0, round((power if s is None else s) / 5.0) * 5.0))
     return out
 
 

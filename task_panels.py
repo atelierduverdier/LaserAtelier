@@ -9911,6 +9911,26 @@ class TaskPanelCurved:
         self.spn_deg_w1.setToolTip("Largeur du trait à la FIN du dégradé (large/doux = défocalisé).")
         form.addRow("Dégradé -- largeur fin :", self.spn_deg_w1)
 
+        # RAMPE DE PUISSANCE SUPERPOSÉE aux deux dégradés de LARGEUR.
+        #
+        # Le 31/07/2026, la spirale gravée à S1000 constant de 0,3 à 4 mm
+        # est sortie marbrée au bout large (fluence effondrée d'un facteur
+        # 13) et carbonisée au bout fin, au foyer. Demande de Christophe :
+        # « corréler la puissance de début à celle de fin afin que j'aie du
+        # noir mais pas carbonisé ». Décochée = comportement d'avant, au
+        # bit près.
+        self.chk_deg_s = QtWidgets.QCheckBox(
+            "Faire varier aussi la puissance le long du dégradé")
+        self.chk_deg_s.setToolTip(
+            "Sans ça, S reste CONSTANT pendant que la largeur varie, donc\n"
+            "la fluence évolue comme 1/largeur : le trait large sort pâle\n"
+            "et marbré, le trait fin sort creusé et brûlé.\n"
+            "\n"
+            "Coché, la puissance rampe le long du même parcours que la\n"
+            "largeur. Le bouton « Compenser la fluence » calcule la valeur\n"
+            "qui donnerait une teinte constante.")
+        form.addRow("", self.chk_deg_s)
+
         # Le dégradé de PUISSANCE : la teinte va du clair au foncé le long
         # du tracé, à largeur de trait CONSTANTE. C'est ce que les deux
         # « dégradés de largeur » ne savent pas faire -- eux montent le bec
@@ -9937,6 +9957,21 @@ class TaskPanelCurved:
             "hauteur du début à la fin. C'est la TEINTE qui fait le\n"
             "dégradé, pas l'épaisseur.")
         form.addRow("Dégradé -- puissance fin :", self.spn_deg_s1)
+
+        # Le bouton donne le CHIFFRE plutôt qu'un conseil : S proportionnel
+        # au diamètre du point (`core.puissance_fluence_largeur`, le même
+        # modèle que le style vague -- une seule formule pour une seule
+        # grandeur). Le libellé dit ensuite franchement quand la valeur
+        # tombe sous la plus basse puissance MESURÉE : là, plus personne ne
+        # sait si le trait marque encore.
+        self.btn_deg_fluence = QtWidgets.QPushButton("Compenser la fluence")
+        self.btn_deg_fluence.setToolTip(
+            "Calcule la puissance de fin qui donnerait la MÊME teinte\n"
+            "qu'au début, en suivant la largeur du trait.")
+        self.btn_deg_fluence.clicked.connect(self._on_deg_fluence)
+        self.lbl_deg_fluence = _WrapLabel("")
+        form.addRow("", self.btn_deg_fluence)
+        form.addRow("", self.lbl_deg_fluence)
 
         # Sur une BOUCLE FERMÉE, une rampe simple ramène la largeur de fin
         # juste à côté de celle de départ : le raccord se voit. L'aller-
@@ -10008,14 +10043,20 @@ class TaskPanelCurved:
             _set_row_visible(form, self.spn_spot_width, idx == 4)
             for w in (self.spn_deg_w0, self.spn_deg_w1):
                 _set_row_visible(form, w, idx in (5, 6))
+            # La case n'a de sens que sur les deux dégradés de LARGEUR : le
+            # dégradé de PUISSANCE rampe S par construction.
+            _set_row_visible(form, self.chk_deg_s, idx in (5, 6))
+            rampe_s = idx == 7 or (idx in (5, 6) and self.chk_deg_s.isChecked())
             for w in (self.spn_deg_s0, self.spn_deg_s1):
-                _set_row_visible(form, w, idx == 7)
+                _set_row_visible(form, w, rampe_s)
+            for w in (self.btn_deg_fluence, self.lbl_deg_fluence):
+                _set_row_visible(form, w, idx in (5, 6) and self.chk_deg_s.isChecked())
             _set_row_visible(form, self.spn_deg_angle, idx == 5)
             # Le choix de fermeture vaut pour les DEUX rampes le long du
             # tracé : elles partagent `rampe_trace_dz`.
             _set_row_visible(form, self.combo_deg_boucle, idx in (6, 7))
             # La puissance globale n'a plus de sens quand elle est rampée.
-            self.spn_power.setEnabled(idx != 7)
+            self.spn_power.setEnabled(not rampe_s)
             for i, diag in enumerate(self._diagrammes_style):
                 # _diagram renvoie None si le rendu SVG a échoué : ne jamais
                 # planter le panneau pour un dessin manquant.
@@ -10054,10 +10095,16 @@ class TaskPanelCurved:
                     self.spn_feed.value(), self._fluence)
                 self._fluence["info"].setText(txt2)
                 self._fluence["info"].setStyleSheet("color: {};".format(color))
-                self.spn_power.setEnabled(not self._fluence["chk"].isChecked())
+                self.spn_power.setEnabled(
+                    not rampe_s and not self._fluence["chk"].isChecked())
             else:
                 self.lbl_style_info.setVisible(False)
-                self.spn_power.setEnabled(True)
+                # `not rampe_s` et pas `True` : ces deux lignes s'exécutent
+                # APRÈS le grisage décidé plus haut et l'écrasaient. Le
+                # dégradé de puissance livré en v2.12.0 laissait donc son
+                # champ « Puissance » actif alors qu'il ne sert plus à rien
+                # -- deux mécanismes sur le même widget, le dernier gagne.
+                self.spn_power.setEnabled(not rampe_s)
 
         self._update_style_ui = _update_style_ui
         self.combo_style.currentIndexChanged.connect(lambda _i: _update_style_ui())
@@ -10069,6 +10116,7 @@ class TaskPanelCurved:
                   self._fluence["ref_spot"]):
             w.valueChanged.connect(lambda _v: _update_style_ui())
         self._fluence["chk"].toggled.connect(lambda _v: _update_style_ui())
+        self.chk_deg_s.toggled.connect(lambda _v: _update_style_ui())
 
         _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
@@ -10165,6 +10213,7 @@ class TaskPanelCurved:
             "deg_angle": self.spn_deg_angle, "deg_w0": self.spn_deg_w0,
             "deg_w1": self.spn_deg_w1, "deg_boucle": self.combo_deg_boucle,
             "deg_s0": self.spn_deg_s0, "deg_s1": self.spn_deg_s1,
+            "deg_s_rampe": self.chk_deg_s,
             "fluence_on": self._fluence["chk"], "ref_power": self._fluence["ref_power"],
             "ref_feed": self._fluence["ref_feed"], "ref_spot": self._fluence["ref_spot"],
         }
@@ -10303,6 +10352,45 @@ class TaskPanelCurved:
                 return p_eff
         return self.spn_power.value()
 
+    def _on_deg_fluence(self):
+        """Remplit la puissance de fin avec celle qui donnerait la MÊME
+        teinte qu'au début, puis dit franchement ce que ça vaut.
+
+        Modèle : fluence = P/(largeur.v), donc S proportionnel à la largeur
+        (`core.puissance_fluence_largeur`, le même que le style vague). Le
+        cas de la spirale du 31/07/2026 -- 0,3 -> 4 mm -- demande S75 au
+        bout fin, sous la plus basse puissance jamais MESURÉE sur ce bois
+        (S200 sur hêtre à F800). En dessous, la table de largeurs ne dit
+        plus rien : le trait peut ne pas marquer du tout. On donne le
+        chiffre ET la limite, le bois tranchera."""
+        w0, w1 = self.spn_deg_w0.value(), self.spn_deg_w1.value()
+        s0 = self.spn_deg_s0.value()
+        s1 = core.puissance_fluence_largeur(s0, w0, w1)
+        if s1 is None:
+            self.lbl_deg_fluence.setText(
+                "Largeurs inexploitables : impossible de calculer la "
+                "compensation.")
+            return
+        s1 = max(0.0, min(core.S_MAX, s1))
+        self.spn_deg_s1.setValue(round(s1 / 5.0) * 5.0)
+
+        txt = ("Teinte constante : S{:.0f} à {:.2f} mm -> S{:.0f} à {:.2f} mm "
+               "(S suit la largeur).".format(s0, w0, s1, w1))
+        mat = (self._shade_picker["mat"].currentData()
+               or self._shade_picker["mat"].currentText())
+        table = core.burn_width_power_table(mat, self.spn_feed.value()) if mat else None
+        plancher = min(p for p, _w in table) if table else None
+        if plancher is not None and s1 < plancher:
+            txt += (" ATTENTION : S{:.0f} est SOUS la plus basse puissance "
+                    "mesurée sur {} à F{:.0f} (S{:.0f}) -- en dessous, on ne "
+                    "sait pas si le trait marque encore. Réduis l'écart de "
+                    "largeurs, ou accepte une teinte qui varie.".format(
+                        s1, mat, self.spn_feed.value(), plancher))
+        elif s1 >= core.S_MAX:
+            txt += (" Borné à S{:.0f} : la compensation exacte demanderait "
+                    "davantage que ce que la machine peut donner.".format(core.S_MAX))
+        self.lbl_deg_fluence.setText(txt)
+
     def _strokes_degrade(self, idx, power, feed, _tone_ignore=None):
         """Traits de l'aperçu pour les deux styles à largeur VARIABLE.
 
@@ -10325,15 +10413,25 @@ class TaskPanelCurved:
             chains, sp.get("deg_angle", 0.0),
             sp.get("deg_z_min", 0.0), sp.get("deg_z_max", 0.0))
             if idx == 5 else None)
+        # Même fonction que le générateur pour la rampe SPATIALE de
+        # puissance : l'aperçu ne peut pas inventer une autre rampe.
+        dz_dir_s = (core.rampe_direction_dz(
+            chains, sp.get("deg_angle", 0.0),
+            sp.get("deg_s_debut", power), sp.get("deg_s_fin", power))
+            if idx == 5 and sp.get("deg_s_rampe") else None)
 
         mat_nuancier = (self._shade_picker["mat"].currentData()
                         or self._shade_picker["mat"].currentText())
         cache = {}
 
-        def largeur(dz):
+        def largeur(dz, s=None):
             # Largeur BRÛLÉE mesurée si on l'a, sinon le point optique --
             # même repli que les autres branches de l'aperçu.
-            return (core.burn_width_defocus_scaled(power, feed, dz)
+            # `s` : puissance LOCALE quand une rampe de puissance est
+            # superposée au dégradé de largeur -- elle change la largeur
+            # brûlée autant que la teinte, les deux doivent la voir.
+            return (core.burn_width_defocus_scaled(
+                        power if s is None else s, feed, dz)
                     or core.spot_diameter_at_defocus(
                         dz, core.SPOT_FOCUS_MM, half)
                     or core.SPOT_FOCUS_MM)
@@ -10352,7 +10450,7 @@ class TaskPanelCurved:
             p = core.shade_feed_range(mat_nuancier, dz)
             return p is not None and p[0] - 1e-6 <= feed <= p[1] + 1e-6
 
-        def teinte_a(dz, w):
+        def teinte_a(dz, w, s=None):
             """La teinte VARIE avec le défocus, elle aussi.
 
             L'aperçu peignait tous les morceaux d'une même teinte, calculée
@@ -10368,12 +10466,13 @@ class TaskPanelCurved:
             et un appel par segment coûterait aussi cher qu'une lecture de
             config par pixel (même piège que l'aperçu photo).
             """
-            cle = round(dz, 1)
+            pw = power if s is None else s
+            cle = (round(dz, 1), round(pw / 5.0) * 5)
             if cle not in cache:
-                ton = (_tone_measured(mat_nuancier, power, feed, dz)
+                ton = (_tone_measured(mat_nuancier, pw, feed, dz)
                        if _mesure_utilisable(dz) else None)
                 if ton is None:
-                    ton = _tone_burn(power, feed, w)
+                    ton = _tone_burn(pw, feed, w)
                 cache[cle] = max(0.0, min(1.0, ton))
             return cache[cle]
 
@@ -10419,12 +10518,25 @@ class TaskPanelCurved:
                 dzs = core.rampe_trace_dz(
                     chain, sp.get("deg_z_min", 0.0), sp.get("deg_z_max", 0.0),
                     bool(sp.get("deg_aller_retour", False)))
+            # Rampe de puissance optionnelle, sur le MÊME paramétrage que
+            # la largeur : sans elle, l'aperçu montrerait le fuseau que
+            # Christophe a gravé le 31/07/2026 -- marbré au large,
+            # carbonisé au fin.
+            ss = None
+            if sp.get("deg_s_rampe"):
+                s0 = sp.get("deg_s_debut", power)
+                s1 = sp.get("deg_s_fin", power)
+                ss = ([dz_dir_s(p) for p in chain] if dz_dir_s is not None
+                      else core.rampe_trace_dz(
+                          chain, s0, s1,
+                          bool(sp.get("deg_aller_retour", False))))
             for i in range(len(chain) - 1):
                 a_, b_ = chain[i], chain[i + 1]
                 dz = (dzs[i] + dzs[i + 1]) / 2.0
-                w = largeur(dz)
+                s_pt = None if ss is None else (ss[i] + ss[i + 1]) / 2.0
+                w = largeur(dz, s_pt)
                 strokes.append(([(a_.x, a_.y), (b_.x, b_.y)], w,
-                                teinte_a(dz, w)))
+                                teinte_a(dz, w, s_pt)))
         return strokes
 
     def _style_kwargs(self):
@@ -10453,6 +10565,10 @@ class TaskPanelCurved:
                 "deg_aller_retour": self.combo_deg_boucle.currentData() == "aller_retour",
                 "deg_s_debut": self.spn_deg_s0.value(),
                 "deg_s_fin": self.spn_deg_s1.value(),
+                # Rampe de puissance SUPERPOSÉE aux dégradés de largeur.
+                # Décochée, le générateur reprend exactement son ancienne
+                # branche : les fichiers d'avant restent reproductibles.
+                "deg_s_rampe": self.chk_deg_s.isChecked(),
             },
         }
 
@@ -10487,6 +10603,8 @@ class TaskPanelCurved:
             values.get("deg_boucle", self.combo_deg_boucle.currentIndex()))
         self.spn_deg_s0.setValue(values.get("deg_s0", self.spn_deg_s0.value()))
         self.spn_deg_s1.setValue(values.get("deg_s1", self.spn_deg_s1.value()))
+        self.chk_deg_s.setChecked(bool(values.get(
+            "deg_s_rampe", self.chk_deg_s.isChecked())))
         self._fluence["chk"].setChecked(values.get("fluence_on", self._fluence["chk"].isChecked()))
         self._fluence["ref_power"].setValue(values.get("ref_power", self._fluence["ref_power"].value()))
         self._fluence["ref_feed"].setValue(values.get("ref_feed", self._fluence["ref_feed"].value()))
@@ -10514,6 +10632,7 @@ class TaskPanelCurved:
             "deg_boucle": self.combo_deg_boucle.currentIndex(),
             "deg_s0": self.spn_deg_s0.value(),
             "deg_s1": self.spn_deg_s1.value(),
+            "deg_s_rampe": self.chk_deg_s.isChecked(),
             "fluence_on": self._fluence["chk"].isChecked(),
             "ref_power": self._fluence["ref_power"].value(),
             "ref_feed": self._fluence["ref_feed"].value(),

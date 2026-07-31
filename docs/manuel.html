@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.12.0</span><br>
+      <span class="ver">Version 2.13.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.12.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.13.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -553,6 +553,9 @@
     </table>
     <p><b>Les deux font varier la LARGEUR, à puissance constante.</b> C'est le point qui trompe, et il vaut d'être dit franchement&nbsp;: le G-code de ces styles garde un <code>S</code> unique du début à la fin et ne fait monter que le <b>Z</b>. Sur un dégradé 0,3&nbsp;→&nbsp;3&nbsp;mm, la machine passe de Z+0 à <b>Z+47&nbsp;mm</b> avec la même puissance. Un trait dix fois plus large reçoit donc dix fois moins d'énergie par millimètre carré&nbsp;: il n'est pas <em>plus noir</em>, il est <em>plus large</em> — et souvent plus pâle.</p>
     <p>Sur des <b>hachures</b>, l'effet se lit quand même comme un dégradé de teinte, parce que des traits plus larges <em>couvrent</em> davantage&nbsp;: la zone fonce d'un bord à l'autre. C'est pour ça que ce style existe. Sur un <b>trait seul</b>, il n'y a rien à couvrir, et on obtient simplement un trait qui s'élargit.</p>
+    <p><b>Faire varier aussi la puissance.</b> Une case à cocher, sous les deux largeurs, superpose une <b>rampe de puissance</b> au dégradé de largeur : S suit le même parcours, de la valeur de début à celle de fin. C'est la réponse au défaut ci-dessus, et elle vient d'une gravure — une spirale de 0,3 à 4&nbsp;mm à S1000 constant est sortie <em>marbrée</em> au bout large (fluence effondrée d'un facteur&nbsp;13) et <em>creusée et carbonisée</em> au bout fin, au foyer. Décochée, le G-code est exactement celui d'avant.</p>
+    <p>Le bouton <b>«&nbsp;Compenser la fluence&nbsp;»</b> remplit la puissance de fin avec celle qui donnerait la <em>même teinte</em> qu'au début : S proportionnel à la largeur, le même modèle que le style vague. Et il dit franchement ce que ça vaut — sur ce fuseau 0,3&nbsp;→&nbsp;4&nbsp;mm, la teinte constante demanderait <b>S75</b> au bout fin, soit <b>sous la plus basse puissance jamais mesurée</b> sur ce bois (S200 sur hêtre à F800). En dessous, la table de largeurs ne dit plus rien : le trait peut ne pas marquer du tout, et le panneau l'écrit au lieu de proposer un réglage inconnu.</p>
+    <p><b>La conclusion à garder</b>&nbsp;: sur un rapport de largeurs de 13×, une teinte uniforme <em>n'existe pas</em>. Ancrer à l'autre bout — S900 au foyer — demanderait S12000 au bout large, quatre fois plus que la machine ne sait donner. Il faut donc choisir&nbsp;: resserrer l'écart de largeurs, ou accepter que la teinte varie. La rampe permet au moins de placer ce compromis là où on veut, au lieu de le subir.</p>
     <p>Ce que fait la teinte, elle, dépend du bois et se lit dans le nuancier mesuré — pas d'une règle simple. Sur le hêtre de l'atelier, un même 0,3&nbsp;→&nbsp;3&nbsp;mm à S800 donne&nbsp;: à F800 une teinte qui tombe de 100 à 63&nbsp;%, à F1500 une teinte qui <em>monte</em> de 74 à 83&nbsp;%, à F2000 une qui redescend de 66 à 55. L'aperçu photo affiche cette teinte-là, morceau par morceau.</p>
     <p>Deux cases suffisent&nbsp;: <b>largeur au début</b> et <b>largeur à la fin</b>, en millimètres. L'atelier en déduit la hauteur de bec par la calibration du point — sur la machine de l'atelier, 4&nbsp;mm de large demandent <b>+64,8&nbsp;mm</b> de remontée. Attention à la borne basse&nbsp;: le point au foyer mesure 0,30&nbsp;mm, donc <b>on ne descend pas sous 0,30</b> optiquement (le 0,10&nbsp;mm des «&nbsp;lignes gravées&nbsp;» est une largeur <em>brûlée</em>, pas le point).</p>
     <p><b>Chaque trait sélectionné porte sa rampe entière.</b> Sélectionner deux lignes donne deux fuseaux identiques, quelle que soit leur longueur — le résultat ne dépend donc pas de l'ordre dans lequel l'atelier enchaîne les tracés, qui est choisi pour raccourcir le trajet et non pour dessiner.</p>
@@ -1009,7 +1012,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.12.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.13.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

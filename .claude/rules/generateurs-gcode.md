@@ -154,6 +154,33 @@ per-point power changes are free; without it, every `S` between two `G1` stops t
 on the PrintNC by two twin files — see the M67 note above). The panel greys out the global power
 field on this style, since a ramped power makes it meaningless.
 
+### A width ramp at constant power is a FLUENCE ramp — `deg_s_rampe` (v2.13.0)
+
+The spiral engraved on 2026-07-31 (0.3 → 4.0 mm, S1000 throughout) came off **mottled grey at the
+wide end and gouged/carbonised at the thin end**. That is not a bug, it is what constant power over a
+13× width ratio *means*: fluence goes as 1/width. The manual said so; the wood made it undeniable.
+
+`deg_s_rampe` (default **off**, so old files stay reproducible bit for bit) superposes a power ramp
+on **both** width gradients — `deg_s_debut` → `deg_s_fin`, on the same parametrisation as the width
+(curvilinear for `degrade_trace`, spatial projection for `degrade`, via the same
+`rampe_trace_dz` / `rampe_direction_dz`). The emission branches gain an S-carrying variant; the
+old loop is kept verbatim for the unchecked case.
+
+`puissance_fluence_largeur(power_ref, w_ref, w_cible)` is the **single** model — S proportional to
+spot diameter — and `wave_fluence_powers` now delegates to it rather than carrying a second copy.
+
+**The honest limit, and it must stay in the UI**: on that 0.3 → 4.0 mm taper, constant tone needs
+**S75** at the thin end, below the lowest *measured* power (S200 on beech at F800) where the width
+table says nothing at all. Anchoring at the other end needs **S12000**. So a uniform tone over 13×
+does not exist on this machine — the panel computes the number, then says which wall it hits. Do not
+"fix" this by silently clamping: a clamped suggestion is a made-up recipe.
+
+**Defect this uncovered, worth remembering**: `_update_style_ui` greyed `spn_power` for the ramped
+styles, then an unconditional `setEnabled(True)` a few lines below re-enabled it. Two mechanisms on
+one widget, last writer wins — the v2.12.0 power gradient shipped with its power field still live and
+nothing tested it. Any new `setEnabled` on a shared widget must be checked against the whole function,
+not just its own branch.
+
 ### The preview must show the taper, not its average (v2.9.1)
 
 `TaskPanelCurved`'s photo preview computed **one** width for the whole drawing, per style: the

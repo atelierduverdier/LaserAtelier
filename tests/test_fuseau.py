@@ -322,4 +322,120 @@ print("15. aperçu : largeur constante {:.2f} mm, teinte {:.2f} -> {:.2f} -- "
       "l'inverse des dégradés de largeur OK".format(
           larg7[0], ton7[0], ton7[-1]))
 
+# --- 16. Rampe de puissance SUR les deux dégradés de largeur -----------
+# Spirale gravée le 31/07/2026 : 0,3 -> 4 mm à S1000 CONSTANT. Le bout
+# large est sorti gris et marbré (fluence divisée par 13) et le bout fin,
+# au foyer, creusé et carbonisé. Christophe : « il faudrait corréler la
+# puissance de début à celle de fin afin que j'aie du noir mais pas
+# carbonisé ».
+#
+# Le test porte sur la PROPRIÉTÉ et sur les DEUX styles à largeur
+# variable, pas sur le seul cas signalé : un correctif branché sur un
+# générateur et pas sur son frère est resté un mois en place ici.
+for st, extra in (("degrade_trace", {}),
+                  ("degrade", {"deg_angle": 0.0})):
+    params = {"deg_z_min": 0.0, "deg_z_max": 64.8,
+              "deg_s_debut": 1000.0, "deg_s_fin": 200.0}
+    params.update(extra)
+
+    # a) sans la case cochée, le G-code est celui d'AVANT, au bit près.
+    avant = core.generate_gcode_curved(
+        [seg(V(0, 0, 0), V(100, 0, 0))], power=800, feed=400,
+        z_focus=core.Z_WORK_MM, marge_survol=0.0, style=st,
+        style_params=dict(params), quiet=True)
+    ss_avant, _ = _s_et_z(avant)
+    assert len(set(ss_avant)) == 1, (
+        "sans deg_s_rampe, la puissance doit rester CONSTANTE", st,
+        sorted(set(ss_avant))[:6])
+
+    # b) cochée, S rampe -- et le Z continue de ramper en même temps.
+    params["deg_s_rampe"] = True
+    apres = core.generate_gcode_curved(
+        [seg(V(0, 0, 0), V(100, 0, 0))], power=800, feed=400,
+        z_focus=core.Z_WORK_MM, marge_survol=0.0, style=st,
+        style_params=dict(params), quiet=True)
+    ss, zs = _s_et_z(apres)
+    assert abs(ss[0] - 1000) <= 5 and abs(ss[-1] - 200) <= 5, (st, ss[0], ss[-1])
+    assert all(b <= a + 5 for a, b in zip(ss, ss[1:])), (
+        "la puissance doit décroître de façon monotone", st)
+    assert len(set(ss)) > 20, ("rampe progressive attendue", st, len(set(ss)))
+    assert len(zs) > 20, (
+        "la LARGEUR doit continuer de ramper : c'est une rampe EN PLUS, "
+        "pas à la place", st, len(zs))
+    assert "Puissance RAMPEE" in apres, [
+        l for l in apres.split("\n") if "Puissance" in l]
+    print("16{}. {:16s} : S{} -> S{} en {} valeurs, et {} hauteurs Z "
+          "distinctes -- les deux rampes cohabitent OK".format(
+              "ab"[st == "degrade"], st, ss[0], ss[-1], len(set(ss)), len(zs)))
+
+# --- 17. La compensation de fluence donne un CHIFFRE, et sa limite -----
+# Modèle unique : S proportionnel à la largeur. Sur le fuseau de la
+# spirale (0,3 -> 4 mm), garder la teinte constante demanderait S75 au
+# bout fin -- sous la plus basse puissance MESURÉE. Le panneau doit le
+# dire, sinon il propose un réglage dont personne ne sait s'il marque.
+assert abs(core.puissance_fluence_largeur(1000.0, 4.0, 0.30) - 75.0) < 0.01
+assert abs(core.puissance_fluence_largeur(1000.0, 0.30, 4.0) - 13333.3) < 1.0
+assert core.puissance_fluence_largeur(1000.0, 0.0, 1.0) is None
+assert core.puissance_fluence_largeur(1000.0, 1.0, -1.0) is None
+
+p.combo_style.setCurrentIndex(6)
+p.chk_deg_s.setChecked(True)
+p.spn_deg_w0.setValue(4.0)
+p.spn_deg_w1.setValue(0.30)
+p.spn_deg_s0.setValue(1000.0)
+p.spn_feed.setValue(800.0)
+p._on_deg_fluence()
+msg = p.lbl_deg_fluence.text()
+assert abs(p.spn_deg_s1.value() - 75.0) <= 2.5, p.spn_deg_s1.value()
+assert "ATTENTION" in msg and "mesur" in msg, msg
+# Le contrôle se démontre : à largeurs rapprochées, plus d'avertissement.
+p.spn_deg_w1.setValue(2.0)
+p._on_deg_fluence()
+assert abs(p.spn_deg_s1.value() - 500.0) <= 2.5, p.spn_deg_s1.value()
+assert "ATTENTION" not in p.lbl_deg_fluence.text(), p.lbl_deg_fluence.text()
+print("17. compensation : 4,00 -> 0,30 mm donne S75 et AVERTIT (sous la "
+      "puissance mesurée) ; 4,00 -> 2,00 donne S500 sans alerte OK")
+
+# --- 18. Les champs suivent la case, et l'aperçu suit la rampe ---------
+p.combo_style.setCurrentIndex(6)
+p.chk_deg_s.setChecked(False)
+assert p.spn_deg_s0.isHidden() and p.spn_deg_s1.isHidden(), (
+    "décochée, les champs de puissance n'ont rien à faire là")
+assert p.spn_power.isEnabled(), "la puissance globale reste la seule qui compte"
+p.chk_deg_s.setChecked(True)
+assert not p.spn_deg_s0.isHidden() and not p.btn_deg_fluence.isHidden()
+assert not p.spn_power.isEnabled(), (
+    "puissance rampée : le champ global ne veut plus rien dire")
+
+# Le dégradé de PUISSANCE aussi -- et c'est là que le défaut vivait :
+# livré en v2.12.0, son grisage était écrasé quelques lignes plus bas par
+# un `setEnabled(True)` inconditionnel. Deux mécanismes sur le même
+# widget, le dernier gagnait, et rien ne le testait.
+p.combo_style.setCurrentIndex(7)
+assert not p.spn_power.isEnabled(), (
+    "style « dégradé de puissance » : le champ global doit être grisé")
+p.combo_style.setCurrentIndex(0)
+assert p.spn_power.isEnabled(), "trait plein : la puissance globale sert"
+p.combo_style.setCurrentIndex(6)
+
+p._edges = [seg(V(0, 0, 0), V(120, 0, 0))]
+p.spn_deg_w0.setValue(0.3)
+p.spn_deg_w1.setValue(3.0)
+p.spn_deg_s0.setValue(1000.0)
+p.spn_deg_s1.setValue(200.0)
+st_rampe = p._strokes_degrade(6, 800.0, 400.0)
+p.chk_deg_s.setChecked(False)
+st_plat = p._strokes_degrade(6, 800.0, 400.0)
+t_rampe = [t for _p, _w, t in st_rampe]
+t_plat = [t for _p, _w, t in st_plat]
+assert t_rampe != t_plat, (
+    "l'aperçu doit CHANGER quand la puissance rampe -- sinon il montre "
+    "encore le fuseau qui a déçu")
+assert t_rampe[-1] < t_plat[-1] + 1e-9, (
+    "à puissance réduite en fin de tracé, le bout doit être PLUS CLAIR",
+    t_rampe[-1], t_plat[-1])
+print("18. champs pilotés par la case ; aperçu : bout final {:.2f} avec "
+      "rampe contre {:.2f} sans -- il ne montre plus la même chose OK"
+      .format(t_rampe[-1], t_plat[-1]))
+
 print("\nTOUS LES TESTS fuseau PASSENT")
