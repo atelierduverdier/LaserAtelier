@@ -2,8 +2,13 @@
 # -*- coding: utf-8 -*-
 """Redresse la photo d'une planche gravée, à partir de sa MIRE.
 
-    python3 outils/redresser_photo.py photo.jpg --base 140x60
-    python3 outils/redresser_photo.py photo.jpg --base 80x50 --pxmm 60
+    python3 outils/redresser_photo.py photo.jpg --gcode planche1_foyer.ngc
+    python3 outils/redresser_photo.py photo.jpg --base 140x60 --pxmm 60
+
+Les cotes de la mire sont LUES DANS L'EN-TETE du .ngc quand on le donne :
+recopier « 140x60 » à la main est un piège, puisque la mise en page d'une
+planche peut changer (elles ont été resserrées le 31/07/2026) et qu'une
+cote périmée donnerait une échelle fausse EN SILENCE.
 
 Pourquoi cet outil existe
 -------------------------
@@ -154,9 +159,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("photo")
-    ap.add_argument("--base", required=True,
-                    help="cotes du rectangle ENTRE CENTRES des croix, ex 140x60 "
-                         "(ligne « rectangle de ... » de l'en-tete du G-code)")
+    ap.add_argument("--gcode", default=None,
+                    help="fichier .ngc de la planche : les cotes de la mire sont "
+                         "LUES DANS SON EN-TETE. A preferer a --base, qui se "
+                         "perime des qu'on change la mise en page d'une planche")
+    ap.add_argument("--base", default=None,
+                    help="cotes du rectangle ENTRE CENTRES des croix, ex 140x60. "
+                         "A n'utiliser que sans le .ngc sous la main")
     ap.add_argument("--pxmm", type=float, default=40.0,
                     help="pixels par mm de l'image redressee (defaut 40, "
                          "soit 0,025 mm/pixel)")
@@ -168,7 +177,21 @@ def main():
                          "(pour rejouer sans interface)")
     a = ap.parse_args()
 
-    L, H = (float(v) for v in a.base.lower().split("x"))
+    if a.gcode:
+        import re
+        entete = open(a.gcode, errors="ignore").read(4000)
+        m = re.search(r"rectangle de ([\d.]+) x ([\d.]+) mm ENTRE CENTRES", entete)
+        if not m:
+            sys.exit("pas de ligne « rectangle de ... ENTRE CENTRES » dans {} : "
+                     "cette planche n'a pas de mire, ou elle est anterieure a la "
+                     "v2.14".format(a.gcode))
+        L, H = float(m.group(1)), float(m.group(2))
+        print("cotes de la mire lues dans {} : {:.2f} x {:.2f} mm".format(
+            os.path.basename(a.gcode), L, H))
+    elif a.base:
+        L, H = (float(v) for v in a.base.lower().split("x"))
+    else:
+        sys.exit("donne --gcode planche.ngc (recommande) ou --base 140x60")
     img = cv2.imread(a.photo)
     if img is None:
         sys.exit("image illisible : " + a.photo)
