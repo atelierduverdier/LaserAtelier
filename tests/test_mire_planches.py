@@ -175,3 +175,28 @@ xs = [float(t[1:]) for l in core.generate_gcode_planche_focus(quiet=True).split(
 assert max(xs) - min(xs) < 170, ("planche 1 trop large", max(xs) - min(xs))
 print("7. Planche 1 : {:.0f} mm de large (etait ~195 avant compaction) OK".format(
     max(xs) - min(xs)))
+
+
+# --- 8. La planche porte SES PROPRES cotes ---------------------------
+# Le 31/07/2026, les planches ont été compactées quelques heures après
+# avoir été gravées : le .ngc régénéré ne décrivait plus le bois posé sur
+# l'établi, et redresser sa photo avec la cote du fichier aurait donné
+# une échelle fausse EN SILENCE. Une planche vit des années, un fichier
+# est réécrit -- la planche doit donc se suffire à elle-même.
+for nom, gen in (("Planche 1", core.generate_gcode_planche_focus),
+                 ("Planche 2", core.generate_gcode_planche_defocus)):
+    g = gen(quiet=True)
+    m = re.search(r"rectangle de ([\d.]+) x ([\d.]+) mm", g)
+    L, H = float(m.group(1)), float(m.group(2))
+    attendu = "{:.0f}-{:.0f}".format(L, H)
+    # Les cotes sont gravées : on les retrouve dans la géométrie des
+    # étiquettes, pas seulement dans un commentaire.
+    b, lbl, infos = core.mire_de_mesure(20.0, 30.0, 120.0, 80.0)
+    assert lbl, nom
+    ys = [v.Point.y for e in lbl for v in e.Vertexes]
+    # le texte des cotes est le groupe le plus BAS des etiquettes (sous la
+    # reglette, a hauteur des croix du bas)
+    assert min(ys) < infos["y0"] + 1.0, (
+        nom, "les cotes gravees ne sont pas sous la reglette", min(ys), infos["y0"])
+    print("8. {} : cotes « {} » gravees sur la planche elle-meme, "
+          "sous la reglette OK".format(nom, attendu))

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.15.0"
+VERSION = "2.15.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9279,6 +9279,22 @@ def mire_de_mesure(x_min, y_min, x_max, y_max, power=None, feed=None,
     for i in range(0, int(largeur) + 1, 10):
         labels.extend(text_to_edges("{:.0f}".format(i),
                                     x0 + i - 1.5, y_reg + tick_max + num_dy, num_h))
+
+    # LES COTES GRAVÉES SUR LA PLANCHE, au format « largeur-hauteur ».
+    #
+    # Sans elles, redresser une photo exige de retrouver le .ngc qui a
+    # produit la planche -- or ce fichier est régénéré à chaque évolution
+    # de la mise en page. C'est arrivé le 31/07/2026 : les planches ont
+    # été compactées quelques heures après avoir été gravées, et la cote
+    # lue dans le fichier ne décrivait plus le bois posé sur l'établi.
+    # Une cote périmée donne une échelle fausse EN SILENCE.
+    #
+    # Une planche vit des années, un fichier est réécrit : la planche doit
+    # donc se suffire à elle-même. Le tiret plutôt qu'un « x » parce que
+    # la police 7 segments ne connaît que les chiffres, S, F, '.' et '-'.
+    labels.extend(text_to_edges(
+        "{:.0f}-{:.0f}".format(largeur, hauteur),
+        x0 + bras + 2.0, y0 - num_h / 2.0, num_h))
 
     infos = {"x0": x0, "y0": y0, "largeur": largeur, "hauteur": hauteur,
              "power": s, "feed": f,
