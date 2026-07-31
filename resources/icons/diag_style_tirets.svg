@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 90">
+  <!-- Tirets : faisceau pulse, mouvement continu. -->
+  <path d="M 20 45 C 70 22, 120 68, 170 45 C 210 27, 250 52, 282 40"
+        fill="none" stroke="#2f3540" stroke-width="7" stroke-linecap="butt"
+        stroke-dasharray="18 10"/>
+  <!-- cotes tiret / espace -->
+  <line x1="20" y1="66" x2="38" y2="66" stroke="#ff8a00" stroke-width="2"/>
+  <line x1="38" y1="66" x2="48" y2="66" stroke="#ff8a00" stroke-width="2"
+        stroke-dasharray="2 2"/>
+  <text x="150" y="80" font-family="sans-serif" font-size="11"
+        fill="#ff8a00" text-anchor="middle">longueur du tiret + espace</text>
+</svg>

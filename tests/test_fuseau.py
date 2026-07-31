@@ -208,4 +208,26 @@ print("10. l'aperçu appelle rampe_direction_dz ({}) et rampe_trace_dz ({}) : "
       "il ne peut pas dessiner une autre rampe que le G-code OK".format(
           appels["dir"], appels["trace"]))
 
+
+# --- 11. Un schéma par style, et un seul visible ----------------------
+# Demandé le 31/07/2026 : « dans chaque style de ligne je veux un petit
+# motif, comme dans dégradé le long du tracé ». Le test porte sur la
+# PROPRIÉTÉ, pas sur les sept fichiers : un style ajouté demain sans son
+# dessin, ou un SVG invalide (QtSvg ne rend RIEN, en silence), tombe ici.
+diags = p._diagrammes_style
+assert len(diags) == p.combo_style.count(), (
+    "il faut exactement un schéma par style", len(diags), p.combo_style.count())
+manquants = [i for i, d in enumerate(diags) if d is None]
+assert not manquants, (
+    "schéma absent ou SVG illisible pour ces styles (QtSvg échoue en "
+    "silence sur un XML invalide)", manquants)
+for i in range(p.combo_style.count()):
+    p.combo_style.setCurrentIndex(i)
+    visibles = [j for j, d in enumerate(diags) if not d.isHidden()]
+    assert visibles == [i], (
+        "le schéma affiché ne correspond pas au style choisi",
+        p.combo_style.itemText(i), visibles, i)
+print("11. {} styles, {} schémas : celui du style courant est affiché, et "
+      "lui seul OK".format(p.combo_style.count(), len(diags)))
+
 print("\nTOUS LES TESTS fuseau PASSENT")

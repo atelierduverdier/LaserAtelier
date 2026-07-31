@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 90">
+  <!-- Degrade DANS UNE DIRECTION : la largeur suit la POSITION en X.
+       Plusieurs traits, tous identiques a la meme abscisse. -->
+  <g fill="#2f3540">
+    <path d="M 20 16 L 268 10 L 268 24 L 20 20 Z"/>
+    <path d="M 20 38 L 268 32 L 268 46 L 20 42 Z"/>
+    <path d="M 20 60 L 268 54 L 268 68 L 20 64 Z"/>
+  </g>
+  <line x1="20" y1="78" x2="262" y2="78" stroke="#ff8a00" stroke-width="2"/>
+  <path d="M 262 74 L 274 78 L 262 82 Z" fill="#ff8a00"/>
+  <text x="150" y="88" font-family="sans-serif" font-size="10"
+        fill="#ff8a00" text-anchor="middle">la largeur suit la POSITION</text>
+</svg>

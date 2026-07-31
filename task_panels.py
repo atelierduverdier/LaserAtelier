@@ -9809,6 +9809,22 @@ class TaskPanelCurved:
             "relief comme le trait plein.")
         form.addRow("Style de trait :", self.combo_style)
 
+        # Un petit schéma par style, empilés ici : un seul est visible à la
+        # fois (_update_style_ui). Le dessin dit d'un coup d'oeil ce qu'un
+        # paragraphe explique mal -- en particulier la différence entre les
+        # deux « dégradés », dont les noms se ressemblent alors que l'un
+        # suit la POSITION dans l'espace et l'autre le PARCOURS du trait.
+        # L'ordre suit celui du menu, index par index.
+        self._diagrammes_style = [
+            _diagram(form, "diag_style_plein.svg", 260, 78),
+            _diagram(form, "diag_style_tirets.svg", 260, 78),
+            _diagram(form, "diag_style_pointille.svg", 260, 78),
+            _diagram(form, "diag_style_vague.svg", 260, 78),
+            _diagram(form, "diag_style_defocus.svg", 260, 78),
+            _diagram(form, "diag_style_degrade_dir.svg", 260, 78),
+            _diagram(form, "diag_fuseau.svg", 260, 78),
+        ]
+
         self.spn_dash_len = QtWidgets.QDoubleSpinBox()
         self.spn_dash_len.setRange(0.2, 50.0)
         self.spn_dash_len.setValue(3.0)
@@ -9854,8 +9870,6 @@ class TaskPanelCurved:
         self.spn_deg_angle.setSuffix(" °")
         self.spn_deg_angle.setToolTip("Direction du dégradé (0° = de gauche à droite).")
         form.addRow("Dégradé -- direction :", self.spn_deg_angle)
-        self._diag_fuseau = _diagram(form, "diag_fuseau.svg", 260, 104)
-
         self.spn_deg_w0 = QtWidgets.QDoubleSpinBox()
         self.spn_deg_w0.setRange(0.05, 30.0); self.spn_deg_w0.setDecimals(2)
         self.spn_deg_w0.setValue(0.3); self.spn_deg_w0.setSuffix(" mm")
@@ -9939,8 +9953,11 @@ class TaskPanelCurved:
                 _set_row_visible(form, w, idx in (5, 6))
             _set_row_visible(form, self.spn_deg_angle, idx == 5)
             _set_row_visible(form, self.combo_deg_boucle, idx == 6)
-            if self._diag_fuseau is not None:
-                _set_row_visible(form, self._diag_fuseau, idx == 6)
+            for i, diag in enumerate(self._diagrammes_style):
+                # _diagram renvoie None si le rendu SVG a échoué : ne jamais
+                # planter le panneau pour un dessin manquant.
+                if diag is not None:
+                    _set_row_visible(form, diag, i == idx)
             # Compensation puissance/défocus : seulement pour le style
             # Défocus (point élargi), le seul à point élargi constant.
             self._fluence["container"].setVisible(idx == 4)

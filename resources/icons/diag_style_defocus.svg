@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 90">
+  <!-- Defocus (point elargi) : bec remonte, trait large CONSTANT. -->
+  <path d="M 132 6 L 168 6 L 160 26 L 140 26 Z" fill="#2f3540"/>
+  <line x1="150" y1="26" x2="150" y2="46" stroke="#ff8a00" stroke-width="2"
+        stroke-dasharray="3 3"/>
+  <path d="M 146 40 L 150 48 L 154 40 Z" fill="#ff8a00"/>
+  <path d="M 20 56 C 70 44, 120 68, 170 56 C 210 47, 250 62, 282 54"
+        fill="none" stroke="#2f3540" stroke-width="15" stroke-linecap="round"/>
+  <text x="150" y="84" font-family="sans-serif" font-size="11"
+        fill="#ff8a00" text-anchor="middle">bec remonte : trait large, constant</text>
+</svg>
