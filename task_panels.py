@@ -8151,9 +8151,15 @@ class TaskPanelHalftone:
                 msgs.append(
                     "<b>Sans seuil blanc, le blanc pur grave quand même</b> "
                     "un trait de {:.2f} mm, soit <b>{:.0f} % de couverture</b> "
-                    "— un fond blanc sortira gris uni. Monte «&nbsp;Seuil "
-                    "blanc&nbsp;» pour le laisser en bois nu.".format(
-                        w_min, 100.0 * bas))
+                    "— un fond blanc sortira gris uni, et le choix «&nbsp;Sous "
+                    "le seuil&nbsp;» reste sans effet. Monte «&nbsp;Seuil "
+                    "blanc&nbsp;» à 5-8 %.".format(w_min, 100.0 * bas))
+                # ROUGE, pas vert. Le verdict décrivait ce défaut tout en
+                # affichant une coche verte : personne ne lit un avertissement
+                # sous un ✓. C'est exactement ce qui a laissé partir un aperçu
+                # au fond gris uni le 31/07/2026, alors que le panneau
+                # l'annonçait mot pour mot.
+                return False, False
             elif seuil > 0.0 and self.combo_fond.currentData() == "pointille":
                 msgs.append(
                     "Seuil blanc {:.0f} %, fond <b>pointillé</b> : sous cette "

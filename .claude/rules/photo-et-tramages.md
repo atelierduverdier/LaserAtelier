@@ -248,6 +248,22 @@ continuous one (which restarted at 38.6 %). Measured after the fix: 33.3 % on bo
 threshold. At `seuil = 0` the remap is the identity, so files engraved before it stay reproducible —
 §14 asserts exactly that.
 
+### A GREEN verdict must never describe a defect (v2.7.1)
+
+The zero-threshold warning shipped in v2.6.0 under a green ✓. On 2026-07-31 Christophe sent back a
+preview whose whole background was a uniform grey line texture, asking "is this what I'm going to
+get?" — and the panel had been spelling out the reason, in words, under a tick that said everything
+was fine. Nobody reads a warning beneath a ✓.
+
+Reproduced exactly by rendering the preview at `white = 0`; his saved setting was 5 %, and at 5 %
+the same image renders as clean bare wood. So the picture was never the dotted mode misbehaving —
+it was the threshold still at zero, which also makes the `fond_clair` selector inert (it greys out,
+but a greyed combo still *reads* as active). `_verdict_au_foyer` now returns `False` there, so the
+verdict goes red, and says the selector has no effect at a zero threshold.
+
+**Rule to carry:** when a verdict has words for a problem, it must also have the colour for it. A
+message and a status that disagree are worse than no message — the reader believes the status.
+
 ### Size matters too — a bench judgement, not a measurement
 
 The three **grain** tramages (4, 5, 6) render grey by the shape of a mark visible to the naked eye,

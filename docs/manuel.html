@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.7.0</span><br>
+      <span class="ver">Version 2.7.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.7.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.7.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -704,6 +704,7 @@
     <p>La trame employée est <b>ordonnée</b> (matrice de Bayer 4×4), pas une diffusion d'erreur&nbsp;: déterministe, elle ne bave pas d'une ligne sur l'autre et ne coûte rien par pixel — et ce tramage tient à ne faire aucune diffusion, ce qu'un test vérifie.</p>
     <p><b>Un réglage a dû être corrigé pour que le raccord soit exact.</b> Au-dessus du seuil, la plage de noirceur restante est désormais <b>remise à l'échelle</b> sur toute la plage de largeurs. Sans cela, un seuil à 8&nbsp;% rendait les paliers les plus fins inutilisables&nbsp;: la case la plus claire encore gravée sortait à 0,116&nbsp;mm au lieu de 0,10 — une partie de la plage mesurée gâchée, et 5 points de couverture d'écart entre les deux branches. Mesuré après correction&nbsp;: <b>33,3&nbsp;% de part et d'autre du seuil</b>, le raccord est franc-bord. À seuil nul le remappage est l'identité, donc les fichiers déjà gravés restent reproductibles.</p>
     <p>Le verdict «&nbsp;Trait &amp; matière&nbsp;» le dit maintenant <em>avant</em> de graver&nbsp;: à seuil nul, il annonce en toutes lettres que le blanc pur gravera tant de pour cent de couverture. À 0, le comportement d'origine est conservé à l'identique — faisceau jamais coupé.</p>
+    <p><b>Et il le dit en ROUGE.</b> Il l'écrivait déjà, mais sous une coche verte&nbsp;: personne ne lit un avertissement sous un&nbsp;✓. Un aperçu au fond gris uni est parti comme ça le 31&nbsp;juillet&nbsp;2026 alors que le panneau l'annonçait mot pour mot. Sur ce tramage, un seuil à 0 rend donc le verdict rouge — et il rappelle au passage que le choix «&nbsp;Sous le seuil&nbsp;» est alors sans effet, puisque rien ne passe sous un seuil nul.</p>
 
     <h4>Similigravure&nbsp;: quand le gris cesse de dépendre du bois</h4>
     <p>Les cinq premiers tramages demandent au bois de <em>rendre</em> un gris — par la puissance, par la durée, ou par la densité de points identiques. Près du seuil de brûlure, le bois n'en fait qu'à sa tête&nbsp;: c'est le fil qui tranche, et les demi-teintes sortent irrégulières. Le sixième tramage supprime le problème à la racine.</p>
@@ -962,7 +963,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.7.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.7.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

@@ -314,4 +314,29 @@ assert appels["n"] > 0, ("l'aperçu recalcule le pointillé au lieu de passer "
 print("15. l'aperçu appelle swell_niveaux_grille ({} fois) : il ne peut pas "
       "dessiner un pointillé différent de celui gravé OK".format(appels["n"]))
 
+# --- 16. Un verdict VERT ne doit pas décrire un défaut ------------------
+# Le 31/07/2026, un aperçu au fond gris uni est parti alors que le panneau
+# l'annonçait mot pour mot -- sous une coche verte. Personne ne lit un
+# avertissement sous un ✓. À seuil nul sur ce tramage, le verdict doit
+# donc être ROUGE, puisqu'il décrit un fond blanc qui sortira gris.
+p.combo_mode.setCurrentIndex(6)
+p.spn_pitch.setValue(0.30)
+p.spn_line_feed.setValue(800.0)
+p.spn_line_min.setValue(0.10)
+for i in range(p.combo_photo_mat.count()):
+    if p.combo_photo_mat.itemData(i) == MAT:
+        p.combo_photo_mat.setCurrentIndex(i)
+        break
+p.spn_white.setValue(0.0)
+p._maj_regime()
+brut0 = p.lbl_regime.text()
+assert "c62828" in brut0, ("à seuil nul le verdict doit être rouge", brut0[:120])
+assert "⚠" in brut0, "à seuil nul le verdict doit porter le pictogramme d'alerte"
+p.spn_white.setValue(5.0)
+p._maj_regime()
+brut5 = p.lbl_regime.text()
+assert "2e7d32" in brut5, ("avec un seuil le verdict redevient vert", brut5[:120])
+print("16. seuil nul -> verdict ROUGE (le fond sortira gris) ; seuil 5 % -> "
+      "vert. Un ✓ ne décrit plus un défaut OK")
+
 print("\nTOUS LES TESTS lignes_gravees PASSENT")
