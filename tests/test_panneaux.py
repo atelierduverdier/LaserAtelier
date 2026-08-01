@@ -349,7 +349,17 @@ print("redressement : outils/redresser_photo.py present, options du contrat OK")
 # un message promettant « rangee dans les photos du resultat ».
 assert hasattr(tp, "_PLANCHES")
 _cles = {c for _l, c in tp._PLANCHES}
-assert _cles == {"planche1", "planche2", "planche_autre"}, _cles
+assert _cles == {"planche1", "planche2", "planche2b", "planche_autre"}, _cles
+# Toute planche qui se GRAVE doit pouvoir se REDRESSER : la 2b avait été
+# ajoutée aux boutons sans être ajoutée ici (01/08/2026), donc sa photo
+# n'avait nulle part où aller.
+for _lib, _cle in tp._PLANCHES:
+    if _cle == "planche_autre":
+        continue
+    _cotes = tp._cotes_mire_defaut(_cle)
+    assert _cotes != "140-60" or _cle == "planche1", (
+        "« {} » retombe sur les cotes par defaut : son generateur n'est pas "
+        "branche dans _cotes_mire_defaut".format(_lib), _cotes)
 _hote2 = _Qt.QWidget()
 _form2 = _Qt.QFormLayout(_hote2)
 tp._boutons_planches(_form2, lambda *a, **k: None)
@@ -646,12 +656,12 @@ else:
 # photo rangee sous la mauvaise planche et fichier au nom mensonger.
 _cotes = {c: tp._cotes_mire_defaut(c).replace("-", "x")
           for _l, c in tp._PLANCHES if c != "planche_autre"}
-assert set(_cotes) == {"planche1", "planche2"}, _cotes
+assert set(_cotes) == {"planche1", "planche2", "planche2b"}, _cotes
 # Le controle se demontre : les deux planches doivent avoir des cotes
 # DIFFERENTES, sinon il n'y a rien a distinguer et le garde-fou est vide.
-assert _cotes["planche1"] != _cotes["planche2"], (
-    "les deux planches ont les memes cotes : le garde-fou ne peut rien "
-    "detecter, et ce test ne prouve rien")
+assert len(set(_cotes.values())) == len(_cotes), (
+    "deux planches partagent les memes cotes : le garde-fou ne peut plus "
+    "les distinguer, et ce test ne prouve rien", _cotes)
 # Et il doit bien exister dans le code, avec la bascule vers l'autre.
 _src_tp = open(_os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
                              "task_panels.py")).read()
@@ -660,8 +670,8 @@ _corps = _src_tp[_i:_i + 9000]
 assert "planche = _autre" in _corps, (
     "le garde-fou doit pouvoir CORRIGER le rangement, pas seulement avertir")
 assert "QtWidgets.QMessageBox.Cancel" in _corps, "et pouvoir annuler"
-print("redressement : cotes {} / {} -> les deux planches sont distinguables, "
-      "garde-fou en place OK".format(_cotes["planche1"], _cotes["planche2"]))
+print("redressement : cotes {} -> toutes distinguables, garde-fou en "
+      "place OK".format(", ".join(sorted(_cotes.values()))))
 
 
 # --- La galerie dit QUELLE planche elle montre (v2.26.0) -------------

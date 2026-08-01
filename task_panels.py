@@ -602,7 +602,8 @@ def _cotes_mire_defaut(planche):
     été gravée avant une évolution de la mise en page, et ses vraies cotes
     sont GRAVÉES dessus."""
     gen = {"planche1": core.generate_gcode_planche_focus,
-           "planche2": core.generate_gcode_planche_defocus}.get(planche)
+           "planche2": core.generate_gcode_planche_defocus,
+           "planche2b": core.generate_gcode_planche_defocus_profond}.get(planche)
     if gen is None:
         return "140-60"
     try:
@@ -680,6 +681,7 @@ def _importer_image_a_l_echelle(chemin, largeur_mm, hauteur_mm):
 # photos du résultat » (constaté le 01/08/2026).
 _PLANCHES = (("Planche 1 — foyer", "planche1"),
              ("Planche 2 — défocus", "planche2"),
+             ("Planche 2b — défocus profond", "planche2b"),
              ("Autre planche", "planche_autre"))
 
 
