@@ -744,3 +744,36 @@ assert not _c4.lbl_hors_grille[15.0].text(), (
     _c4.lbl_hors_grille[15.0].text())
 core.save_burn_widths("BoisHorsGrille", {})
 print("mesures hors grille : annoncées sous la grille, silence sinon OK")
+
+
+# --- Aucun bouton ne doit tomber DANS une section repliable (v2.29.1) -
+# `_activer_sections` regroupe les rangees qui SUIVENT un titre de section
+# dans un conteneur montre/cache. Un bouton ajoute apres `_make_photo_section`
+# se retrouve donc a l'interieur de « Planches redressees » et DISPARAIT
+# quand elle est fermee. « Je ne vois pas la planche2b dans la liste »,
+# 01/08/2026 : le bouton existait, il etait avale.
+_hote5 = _Qt.QWidget()
+_form5 = _Qt.QFormLayout(_hote5)
+tp._boutons_planches(_form5, lambda *a, **k: None)
+_pos = {}
+for _r in range(_form5.rowCount()):
+    for _role in (_Qt.QFormLayout.LabelRole, _Qt.QFormLayout.FieldRole,
+                  _Qt.QFormLayout.SpanningRole):
+        _it = _form5.itemAt(_r, _role)
+        if _it is not None and _it.widget() is not None:
+            _pos.setdefault(_it.widget(), _r)
+_r_titre = min([r for w, r in _pos.items()
+                if isinstance(w, tp._SectionHeader)] or [10 ** 6])
+_boutons_planche = [w for w, _r in _pos.items()
+                    if isinstance(w, _Qt.QPushButton)
+                    and w.text().startswith("Planche")]
+assert len(_boutons_planche) >= 4, [b.text() for b in _boutons_planche]
+for _b in _boutons_planche:
+    assert _pos[_b] < _r_titre, (
+        "« {} » est place APRES un titre de section : il sera avale par "
+        "la section repliable et invisible quand elle est fermee".format(
+            _b.text()), _pos[_b], _r_titre)
+assert any("2b" in b.text() for b in _boutons_planche), \
+    [b.text() for b in _boutons_planche]
+print("boutons de planche : les {} restent HORS des sections repliables OK"
+      .format(len(_boutons_planche)))
