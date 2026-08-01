@@ -1096,3 +1096,81 @@ assert "La mesure ira dans" in _corps8, "la case visée doit être écrite dans 
 assert "_retenir_et_suivant" in _corps8 and "Retenir → case suivante" in _corps8
 print("enchaînement : {} cases dans l'ordre du bois, chacune sa valeur OK".format(
     len(_vus)))
+
+
+# --- Choisir la planche dans le panneau (v2.35.0) --------------------
+# « Je veux calculer les lignes au foyer, mais je n'ai pas le choix, il
+# m'ouvre le dernier et c'est le defocus » -- 01/08/2026. L'ouverture
+# automatique prenait la plus RECENTE, sans le dire, et il fallait passer
+# par un dialogue de fichiers pour en sortir. Un automatisme qui choisit a
+# votre place doit au minimum montrer ce qu'il a choisi.
+_hote9 = _Qt.QWidget()
+_form9 = _Qt.QFormLayout(_hote9)
+_c9 = tp._MesuresPlanchesControleur(_form9, _FauxParent(), lambda: u"Hêtre")
+_c9.reload()
+_cb9 = _c9._blocs[0].combo_planche
+assert _cb9 is not None and _cb9.count() >= 1
+
+_planches9 = core.planches_redressees()
+if _planches9:
+    # La liste doit contenir les planches, et une seule entree par planche
+    # -- l'apercu et le controle des reperes ne sont pas des planches.
+    assert _cb9.count() == len(_planches9), (_cb9.count(), len(_planches9))
+    _libelles = [_cb9.itemText(i) for i in range(_cb9.count())]
+    assert all(l.startswith("Planche ") for l in _libelles), _libelles
+    # Le libelle doit etre LISIBLE : la planche, l'heure, les cotes -- pas
+    # un nom de fichier de 60 caracteres.
+    assert any("h" in l and "(" in l for l in _libelles), _libelles
+    # Chaque entree pointe sur l'image de MESURE, pas sur un derive.
+    for i in range(_cb9.count()):
+        _d = _cb9.itemData(i)
+        assert _d and _os.path.isfile(_d), _d
+        assert not _d.endswith(("_apercu.jpg", "_reperes.jpg")), _d
+
+    # Choisir une planche qui n'est PAS la plus recente doit tenir.
+    _autre = None
+    for i in range(_cb9.count()):
+        if _cb9.itemData(i) != _c9._image_mesure:
+            _autre = _cb9.itemData(i)
+            break
+    if _autre:
+        _c9._on_planche_choisie(_autre)
+        assert _c9._image_mesure == _autre
+        assert _c9._image_de_mesure() == _autre, (
+            "« Mesurer » doit ouvrir la planche CHOISIE, pas la plus récente")
+        # Un seul choix pour toutes les grilles.
+        assert all(b.combo_planche.currentData() == _autre
+                   for b in _c9._blocs_vivants()), (
+            "les listes des différents blocs doivent se suivre")
+    print("choix de planche : {} planches listées, sélection tenue OK".format(
+        _cb9.count()))
+else:
+    assert _cb9.itemData(0) is None
+    print("choix de planche : liste vide annoncée proprement OK")
+
+
+# --- Sortie PROPRE ------------------------------------------------------
+# Tout ce qui devait etre verifie l'a ete : les assertions sont au-dessus,
+# et une seule qui echoue leve avant d'arriver ici.
+#
+# Restait un echec ALEATOIRE, environ une fois sur quatre, SANS trace : le
+# script sortait en code 1 apres avoir affiche tous ses OK. Ce n'est pas un
+# test qui tombe, c'est la fermeture de Qt/FreeCAD qui rend la main sur un
+# code non nul -- ce fichier construit une dizaine de fenetres, chacune
+# avec ses grilles, ses filtres d'evenements et ses minuteurs, et l'ordre
+# de destruction n'est garanti par personne.
+#
+# Une suite qui rougit une fois sur quatre sans raison apprend a ignorer le
+# rouge, ce qui est pire que pas de suite du tout. On lache donc les
+# references, on laisse Qt digerer, et on sort explicitement.
+for _nom_w, _w in list(globals().items()):
+    if _nom_w.startswith("_hote") and isinstance(_w, _Qt.QWidget):
+        try:
+            _w.setParent(None)
+            _w.deleteLater()
+        except Exception:
+            pass
+_Qt.QApplication.processEvents()
+sys.stdout.flush()
+sys.stderr.flush()
+_os._exit(0)

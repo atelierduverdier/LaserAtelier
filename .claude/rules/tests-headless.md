@@ -149,6 +149,22 @@ Same idea for a property that needs a **complete** grid: build one in the test
 (`test_interpolation_mesures` §5 now does) and, on the real grids, **count and print** rather than
 assert — a divergence there is information about the measurements, not a defect in the code.
 
+## `test_panneaux.py` sort explicitement en 0
+
+It builds a dozen windows, each with grids, event filters and timers, and used to fail **at
+random — about one run in four — with exit code 1 and no traceback**, every check printed OK. That
+is not a test falling over: it is Qt/FreeCAD teardown handing back a non-zero code, with a widget
+destruction order nobody here controls.
+
+The file therefore drops its `_hote*` references, lets Qt digest, and calls `os._exit(0)` at the
+very end. Every assertion runs **above** that line, so a real failure still raises and still exits
+non-zero — verified by deliberately inserting `assert False` before the block. (First attempt put
+the sabotage *after* `os._exit`, where it could never run; a check that cannot fail proves
+nothing.)
+
+A suite that reddens one run in four for no reason teaches you to ignore red, which is worse than
+no suite at all.
+
 ## Two rules for new tests here
 
 1. **Test the property over the family, not the case that was reported.** A test written for the one

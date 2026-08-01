@@ -546,11 +546,35 @@ class _BlocMesure(QtWidgets.QWidget):
     centaines : le bloc affiche donc son message juste au-dessous, là où
     l'oeil est déjà."""
 
-    def __init__(self, on_mesurer, on_perp, on_mesure_image, parent=None):
+    def __init__(self, on_mesurer, on_perp, on_mesure_image, on_planche,
+                 parent=None):
         super().__init__(parent)
         v = QtWidgets.QVBoxLayout(self)
         v.setContentsMargins(0, 2, 0, 8)
         v.setSpacing(2)
+        # QUELLE PLANCHE, écrit noir sur blanc.
+        #
+        # L'ouverture automatique prenait la plus RÉCENTE : en mesurant le
+        # foyer, elle ouvrait la planche de défocus sans que rien ne le
+        # dise, et il fallait passer par un dialogue de fichiers pour en
+        # sortir (01/08/2026). Un automatisme qui choisit à votre place doit
+        # au minimum montrer ce qu'il a choisi.
+        rang = QtWidgets.QWidget()
+        hb = QtWidgets.QHBoxLayout(rang)
+        hb.setContentsMargins(0, 0, 0, 0)
+        hb.addWidget(QtWidgets.QLabel("Planche :"))
+        self.combo_planche = QtWidgets.QComboBox()
+        self.combo_planche.setToolTip(
+            "La planche redressée sur laquelle « Mesurer sur l'image »\n"
+            "va travailler. Le choix vaut pour toute la séance et pour\n"
+            "toutes les grilles.")
+        self.combo_planche.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_planche.setMinimumContentsLength(22)
+        self.combo_planche.activated.connect(
+            lambda _i: on_planche(self.combo_planche.currentData()))
+        hb.addWidget(self.combo_planche, 1)
+        v.addWidget(rang)
         self.btn = QtWidgets.QPushButton("Mesurer A → B dans la vue 3D")
         # NoFocus : le bouton ne vole pas le cadre de focus à la case, qui
         # reste ainsi visiblement désignée pendant toute la mesure.
@@ -1295,7 +1319,8 @@ class _MesuresPlanchesControleur:
     def _creer_bloc(self, grille):
         """Un bloc de mesure attaché à cette grille, mémorisé dans _blocs."""
         bloc = _BlocMesure(self._on_mesurer, self._on_perp,
-                           self._on_mesure_image)
+                           self._on_mesure_image, self._on_planche_choisie)
+        self._remplir_planches(bloc)
         bloc.grille = grille
         bloc.chk_perp.setChecked(self._perp)
         self._blocs.append(bloc)
@@ -1462,14 +1487,8 @@ class _MesuresPlanchesControleur:
         if not forcer_choix and self._image_mesure \
                 and os.path.isfile(self._image_mesure):
             return self._image_mesure
-        if not forcer_choix:
-            for p in core.planches_redressees():
-                for f in p["fichiers"]:
-                    racine, ext = os.path.splitext(f)
-                    if racine == p["base"] and ext.lower() in (".png", ".jpg",
-                                                               ".jpeg"):
-                        self._image_mesure = f
-                        return f
+        # Plus de devinette silencieuse : la liste déroulante du bloc porte
+        # le choix, et elle est déjà pré-remplie avec la plus récente.
         chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
             self._parent.form if getattr(self._parent, "form", None) else None,
             "Planche redressée", core.dossier_planches(),
@@ -1522,6 +1541,51 @@ class _MesuresPlanchesControleur:
         self._mesure_cible = suiv
         self._serie = []
         return self._nom_case(suiv), txt
+
+    @staticmethod
+    def _libelle_planche(p):
+        """« Planche 2b — 11h14 (60x110) » à partir du nom du fichier.
+
+        On découpe par la FIN : `<laser>_<planche>_<date>_redresse`. Le nom
+        du laser peut contenir des soulignés, pas la date ni la planche."""
+        champs = p["nom"][:-len("_redresse")].split("_")
+        date = champs[-1] if len(champs) >= 2 else ""
+        planche = champs[-2] if len(champs) >= 2 else p["nom"]
+        heure = date[-4:] if len(date) >= 4 and date[-4:].isdigit() else date
+        lib = planche.replace("planche", "Planche ")
+        if heure:
+            lib += " — {}h{}".format(heure[:2], heure[2:])
+        cotes = (p.get("infos") or {}).get("base_mm")
+        if cotes:
+            lib += " ({:.0f}x{:.0f})".format(cotes[0], cotes[1])
+        return lib
+
+    def _remplir_planches(self, bloc):
+        for p in core.planches_redressees():
+            for f in p["fichiers"]:
+                racine, ext = os.path.splitext(f)
+                if racine == p["base"] and ext.lower() in (".png", ".jpg",
+                                                           ".jpeg"):
+                    bloc.combo_planche.addItem(self._libelle_planche(p), f)
+                    break
+        if bloc.combo_planche.count() == 0:
+            bloc.combo_planche.addItem("-- aucune planche redressée --", None)
+        if self._image_mesure is None:
+            self._image_mesure = bloc.combo_planche.itemData(0)
+        i = bloc.combo_planche.findData(self._image_mesure)
+        if i >= 0:
+            bloc.combo_planche.setCurrentIndex(i)
+
+    def _on_planche_choisie(self, chemin):
+        """UN choix pour toutes les grilles : les listes se suivent, sinon
+        deux blocs annonceraient deux planches pour la même mesure."""
+        self._image_mesure = chemin
+        for b in self._blocs_vivants():
+            i = b.combo_planche.findData(chemin)
+            if i >= 0 and i != b.combo_planche.currentIndex():
+                b.combo_planche.blockSignals(True)
+                b.combo_planche.setCurrentIndex(i)
+                b.combo_planche.blockSignals(False)
 
     def _changer_image(self):
         """L'utilisateur veut une AUTRE planche : on oublie la retenue."""

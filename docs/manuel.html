@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.34.0</span><br>
+      <span class="ver">Version 2.35.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.34.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.35.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -579,6 +579,7 @@
     <p><b>Les cotes sont proposées, jamais imposées.</b> Le dialogue pré-remplit ce que la mise en page <em>actuelle</em> produirait, mais la planche qu'on tient peut être plus ancienne — ses vraies cotes sont gravées dessus, sous la réglette. On lit sur le bois, on corrige si besoin.</p>
     <p><b>Et pour mesurer sans changer de panneau&nbsp;:</b> l'outil Ligne du Draft affiche bien la distance, mais il occupe le panneau des tâches — qui est <em>exclusif</em> dans FreeCAD, donc impossible de garder la grille de saisie ouverte à côté. D'où le bouton <b>«&nbsp;Mesurer A&nbsp;→&nbsp;B dans la vue 3D&nbsp;»</b> placé <i>dans</i> la saisie des mesures&nbsp;: on clique la case à remplir, puis le bouton, puis les deux extrémités dans la vue — et la distance atterrit dans la case. Aucun aller-retour. La case visée est <b>nommée à l'écran</b> («&nbsp;<i>Cible&nbsp;: S1000 / F800 (foyer)</i>&nbsp;») avant que vous pointiez&nbsp;: une valeur tombée dans la mauvaise case ne se voit pas, elle ressemble à une mesure.</p>
     <p><b>Mesurer à la LIGNE, sur le profil moyenné (v2.33.0).</b> Le bouton «&nbsp;Mesurer sur l'image redressée…&nbsp;» ouvre la planche, on encadre <em>un</em> trait à la souris, et l'atelier affiche à côté de lui son <b>profil de noirceur moyenné sur toute sa longueur</b>. Deux lignes horizontales, qu'on fait glisser (flèches ↑↓ pour affiner au pixel), traversent l'image <em>et</em> la courbe&nbsp;; la largeur s'affiche en direct.</p>
+    <p><b>Choisir la planche dans le panneau (v2.35.0).</b> L'ouverture automatique prenait la <em>plus récente</em>&nbsp;: en mesurant le foyer, elle ouvrait la planche de défocus sans que rien ne le dise, et il fallait passer par un dialogue de fichiers pour en sortir. Une <b>liste déroulante «&nbsp;Planche&nbsp;»</b> est désormais dans le bloc de mesure, avec un libellé lisible — <i>Planche 2b — 11h14 (60x110)</i>. Le choix vaut pour toute la séance et pour toutes les grilles. Un automatisme qui choisit à votre place doit au minimum montrer ce qu'il a choisi.</p>
     <p><b>Enchaîner les cases sans fermer la fenêtre (v2.34.0).</b> Deux gênes signalées à l'usage, et la seconde était la plus sérieuse&nbsp;: il fallait rouvrir la fenêtre pour chaque trait, et surtout <em>rien ne disait dans quelle case allait la mesure</em>. La case visée est désormais écrite <b>en grand et en permanence</b> en haut de la fenêtre — une valeur qui atterrit dans la mauvaise case ne se voit pas, elle ressemble à une mesure.</p>
     <p>Et le bouton <b>«&nbsp;Retenir → case suivante&nbsp;»</b> range la largeur, avance d'une case et revient au choix du trait <em>sans fermer</em>. L'ordre suit celui du bois&nbsp;: une colonne de vitesse à la fois, du haut vers le bas — exactement la disposition des traits sur la planche, donc l'œil parcourt l'écran et le bois de la même façon. Un ordre par lignes obligerait à sauter d'une colonne de vitesse à l'autre entre chaque mesure.</p>
     <p><b>La planche s'ouvre toute seule (v2.33.1)</b>&nbsp;: la plus récente du dossier, puis retenue pour toute la séance — on mesure des dizaines de cases sur une même planche, redemander le fichier à chaque fois est un clic de trop répété quarante fois. Son nom est dans le titre de la fenêtre, pour vérifier d'un coup d'œil que c'est la bonne, et un bouton «&nbsp;Changer de planche…&nbsp;» permet d'en ouvrir une autre.</p>
@@ -1077,7 +1078,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.34.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.35.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
