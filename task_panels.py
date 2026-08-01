@@ -2355,6 +2355,66 @@ def _show_image_dialog(img, title):
     dlg.exec()
 
 
+# Plafond de lecture d'image, en Mo décompressés.
+#
+# Qt en impose un (256 Mo dans le FreeCAD de l'atelier) et renvoie une
+# image NULLE au-delà : une planche redressée de 13600 x 5100 px en réclame
+# 277 et ne s'affichait pas. On lève sa limite le temps de la lecture, mais
+# pas sans borne -- 2 Go couvre largement toute planche photographiable et
+# empêche un fichier aberrant de faire tomber FreeCAD.
+PLAFOND_LECTURE_IMAGE_MO = 2048.0
+
+
+def _image_bornee(chemin, largeur_max, hauteur_max):
+    """Charge `chemin` REDIMENSIONNÉ, sans jamais allouer l'image entière.
+
+    Qt refuse toute image dépassant `QImageReader.allocationLimit()`
+    (256 Mo par défaut) et renvoie alors une image NULLE. Une planche
+    redressée de 13600 x 5100 px fait 277 Mo une fois décompressée : la
+    vignette restait vide et le panneau affichait « — aucune photo — »,
+    c'est-à-dire un mensonge sur une photo qui existe (constaté le
+    01/08/2026). `setScaledSize` fait faire la réduction AU DÉCODEUR : rien
+    de grand n'est jamais alloué, et c'est au passage bien plus rapide.
+
+    Renvoie (QImage, None) ou (None, raison lisible)."""
+    lecteur = QtGui.QImageReader(chemin)
+    lecteur.setAutoTransform(True)
+    taille = lecteur.size()
+    besoin = 0.0
+    if taille.isValid() and taille.width() > 0 and taille.height() > 0:
+        besoin = taille.width() * taille.height() * 4 / (1024.0 * 1024.0)
+        k = min(1.0, float(largeur_max) / taille.width(),
+                float(hauteur_max) / taille.height())
+        if k < 1.0:
+            # Réduction faite par le DÉCODEUR : la sortie reste petite. Ça
+            # n'évite pas d'allouer la source (le PNG se décode en entier
+            # avant d'être réduit), mais ça évite tout le reste.
+            lecteur.setScaledSize(QtCore.QSize(max(1, int(taille.width() * k)),
+                                               max(1, int(taille.height() * k))))
+    if besoin > PLAFOND_LECTURE_IMAGE_MO:
+        return None, ("image de {:.0f} Mo une fois décompressée, au-delà du "
+                      "plafond de {:.0f} Mo".format(besoin,
+                                                    PLAFOND_LECTURE_IMAGE_MO))
+    # Lever la limite Qt LE TEMPS DE LA LECTURE.
+    #
+    # `setScaledSize` ne suffit pas : Qt refuse d'après la taille SOURCE,
+    # pas la sortie -- vérifié, une planche de 13600 x 5100 échoue quand
+    # même. On relève donc la limite, bornée par notre propre plafond
+    # ci-dessus, et on la remet en place quoi qu'il arrive.
+    ancienne = QtGui.QImageReader.allocationLimit()
+    lever = ancienne > 0 and besoin > ancienne
+    if lever:
+        QtGui.QImageReader.setAllocationLimit(0)
+    try:
+        img = lecteur.read()
+    finally:
+        if lever:
+            QtGui.QImageReader.setAllocationLimit(ancienne)
+    if img.isNull():
+        return None, (lecteur.errorString() or "format non reconnu")
+    return img, None
+
+
 class _ZoneTexte(QtWidgets.QPlainTextEdit):
     """Zone de texte de quelques lignes, qui prévient quand on la quitte.
 
@@ -2432,21 +2492,32 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat", entete=Non
     def _show_thumb():
         i = combo.currentIndex()
         items = state["items"]
-        if 0 <= i < len(items):
-            pm = QtGui.QPixmap(items[i]["path"])
-            if not pm.isNull():
-                lbl.setPixmap(pm.scaled(320, 180, QtCore.Qt.KeepAspectRatio,
-                                        QtCore.Qt.SmoothTransformation))
-                lbl.setText("")
-                edt_desc.setPlainText(items[i]["description"])
-                edt_desc.setEnabled(True)
-                btn_del.setEnabled(True)
-                return
+        if not (0 <= i < len(items)):
+            lbl.setPixmap(QtGui.QPixmap())
+            lbl.setText("— aucune photo —")
+            edt_desc.setPlainText("")
+            edt_desc.setEnabled(False)
+            btn_del.setEnabled(False)
+            return
+        # La photo EXISTE : description et suppression restent accessibles
+        # même si la vignette ne se fait pas. Auparavant l'échec d'affichage
+        # grisait le bouton Supprimer, donc la seule photo qu'on voulait
+        # jeter était justement celle qu'on ne pouvait pas jeter.
+        edt_desc.setPlainText(items[i]["description"])
+        edt_desc.setEnabled(True)
+        btn_del.setEnabled(True)
+        img, souci = _image_bornee(items[i]["path"], 640, 360)
+        if img is not None:
+            pm = QtGui.QPixmap.fromImage(img)
+            lbl.setPixmap(pm.scaled(320, 180, QtCore.Qt.KeepAspectRatio,
+                                    QtCore.Qt.SmoothTransformation))
+            lbl.setText("")
+            return
         lbl.setPixmap(QtGui.QPixmap())
-        lbl.setText("— aucune photo —")
-        edt_desc.setPlainText("")
-        edt_desc.setEnabled(False)
-        btn_del.setEnabled(False)
+        # DIRE pourquoi : « aucune photo » sur une photo qui existe est un
+        # mensonge, et il envoie chercher au mauvais endroit.
+        lbl.setText("aperçu impossible ({})\n{}".format(
+            souci or "illisible", os.path.basename(items[i]["path"])))
 
     def reload(select=None):
         cle = (cle_getter() or "").strip()
@@ -2494,9 +2565,15 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat", entete=Non
         i = combo.currentIndex()
         items = state["items"]
         if 0 <= i < len(items):
-            img = QtGui.QImage(items[i]["path"])
-            if not img.isNull():
+            # Borné aussi ici : la vue plein écran ne dépasse de toute façon
+            # pas l'écran, et une image de 277 Mo ne se charge pas.
+            img, souci = _image_bornee(items[i]["path"], 4000, 4000)
+            if img is not None:
                 _show_image_dialog(img, "Photo du résultat")
+            else:
+                QtWidgets.QMessageBox.warning(
+                    None, "Photo", "Image illisible : {}\n\n{}".format(
+                        items[i]["path"], souci))
     lbl.mousePressEvent = _on_click
 
     combo.currentIndexChanged.connect(lambda _i: _show_thumb())

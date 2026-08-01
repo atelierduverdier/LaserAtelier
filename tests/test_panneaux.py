@@ -777,3 +777,54 @@ assert any("2b" in b.text() for b in _boutons_planche), \
     [b.text() for b in _boutons_planche]
 print("boutons de planche : les {} restent HORS des sections repliables OK"
       .format(len(_boutons_planche)))
+
+
+# --- Une photo trop grande n'est pas « aucune photo » (v2.29.2) -------
+# Qt refuse toute image depassant QImageReader.allocationLimit() (256 Mo)
+# et renvoie une image NULLE. Une planche redressee de 13600x5100 px fait
+# 277 Mo decompressee : la vignette restait vide, le panneau affichait
+# « — aucune photo — » sur une photo qui existe, ET grisait le bouton
+# Supprimer -- donc la seule photo qu'on voulait jeter etait justement
+# celle qu'on ne pouvait pas jeter. Constate le 01/08/2026.
+from PySide6 import QtGui as _QtG
+assert hasattr(tp, "_image_bornee")
+import tempfile as _tf2
+_dj = _tf2.mkdtemp()
+_gros = _os.path.join(_dj, "gros.png")
+_im = _QtG.QImage(3000, 2000, _QtG.QImage.Format_RGB32)
+_im.fill(_QtG.QColor(200, 150, 100))
+assert _im.save(_gros), "impossible d'ecrire l'image de test"
+
+# On ABAISSE la limite plutot que de fabriquer une image de 300 Mo : elle
+# vaut 256 Mo dans le FreeCAD de l'atelier et 1024 ici, donc la fixer
+# rendrait le test dependant de l'environnement -- et ecrire un PNG de
+# 16000x16000 pour le prouver serait absurde.
+_limite = _QtG.QImageReader.allocationLimit()
+_QtG.QImageReader.setAllocationLimit(1)          # 1 Mo : 3000x2000 = 24 Mo
+try:
+    # Le controle se demontre : brut, Qt refuse ; borne, il accepte.
+    assert _QtG.QPixmap(_gros).isNull(), (
+        "sous une limite de 1 Mo, une image de 24 Mo doit etre refusee -- "
+        "sinon ce test ne prouve rien")
+    _img, _souci = tp._image_bornee(_gros, 640, 360)
+    assert _img is not None, ("la lecture bornee doit reussir la ou QPixmap "
+                              "echoue", _souci)
+    assert _img.width() <= 640 and _img.height() <= 360, (
+        _img.width(), _img.height())
+finally:
+    _QtG.QImageReader.setAllocationLimit(_limite)
+# La limite Qt doit etre REMISE : la lever durablement exposerait tout
+# FreeCAD a un fichier aberrant.
+assert _QtG.QImageReader.allocationLimit() == _limite, (
+    "la limite d'allocation n'a pas ete restauree",
+    _QtG.QImageReader.allocationLimit(), _limite)
+# Et un plafond a nous, pour qu'un fichier absurde ne fasse pas tomber
+# FreeCAD : au-dela, on refuse EN LE DISANT.
+assert tp.PLAFOND_LECTURE_IMAGE_MO >= 1024
+
+# Et un fichier vraiment illisible doit DIRE pourquoi, pas rendre None muet.
+_ko = _os.path.join(_dj, "pas_une_image.png")
+open(_ko, "wb").write(b"ceci n'est pas une image")
+_img2, _souci2 = tp._image_bornee(_ko, 640, 360)
+assert _img2 is None and _souci2, (_img2, _souci2)
+print("vignette : lue bornée là où QPixmap échoue (limite abaissée) OK")
