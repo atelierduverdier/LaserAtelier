@@ -273,6 +273,11 @@ def main():
                     help="ecrit un petit JSON decrivant le resultat (fichier, "
                          "taille en mm, px/mm) -- c'est le contrat que lit le "
                          "panneau FreeCAD, plus sur que de relire stdout")
+    ap.add_argument("--laser", default=None,
+                    help="nom du module laser ayant grave la planche. Il part "
+                         "dans la fiche .json : une largeur brulee n'a de sens "
+                         "que pour le laser qui l'a produite, et quelqu'un qui "
+                         "a le MEME module peut reprendre ces mesures")
     ap.add_argument("--reperes", default=None,
                     help="4 points x,y separes par des espaces, au lieu des clics "
                          "(pour rejouer sans interface)")
@@ -406,6 +411,7 @@ def main():
 
     import json
     infos = {"fichier": os.path.abspath(sortie),
+             "laser": a.laser,
              "apercu": os.path.abspath(apercu),
              "largeur_mm": W / a.pxmm, "hauteur_mm": Ht / a.pxmm,
              "pxmm": a.pxmm, "base_mm": [L, H],

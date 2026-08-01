@@ -35,6 +35,28 @@ The **description** field exists because no per-photo defocus/focus level can be
 from panel state — the user types what regime the board was burned at, and that is often the only
 record of it.
 
+## Rectified boards — a separate folder, and the laser in the filename
+
+`PLANCHES_DIR` (setting `planches_dir`, default `~/Planches-LaserAtelier`) holds the rectified
+measurement images, **not** the source-photo folder. A rectified board is not a photo, it is an
+instrument at an exact, ruler-verified scale; kept beside the raw `IMG_*.JPG` it gets lost, and
+each one is 55 MB.
+
+`nom_planche_redressee(planche, horodatage, suffixe, laser=None)` builds
+`<laser>_<planche>_<date>_redresse`, the laser coming from `active_laser_name()` through
+`slug_fichier` (accents dropped, no separator can survive — a `/` in a profile name would write
+somewhere else entirely). **The laser belongs in the name**: a burn width only means something for
+the module that produced it — two diodes give two different tables — and conversely someone with
+the *same* module can reuse these measurements without an hour at the bench. Without the name on
+the file, that reuse requires remembering, which means it won't happen.
+
+Each rectification writes four files there: the lossless PNG (measuring), a `.json` **fiche**
+(mm size, px/mm, ruler verification, laser), a ~0.5 MB JPEG preview, and the `_reperes.jpg`
+control. The fiche is written **unconditionally**, not only when the caller passes `--json`:
+without it an image has no scale, and the only way back is to redo the whole rectification. Only
+the preview is copied into `photos_resultats/` — `add_result_photo` copies, and copying the 55 MB
+PNG per run piled up 290 MB in one morning (2026-08-01).
+
 ## Export / import
 
 `export_all(dest_zip)` bundles the config JSON + all photos into a .zip; `import_all(src_zip)`

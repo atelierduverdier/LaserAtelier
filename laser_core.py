@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.21.0"
+VERSION = "2.22.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -706,6 +706,15 @@ def cmd_power_suffix(power):
 # Les valeurs ci-dessous (et SPINDLE_SELECT/ARM_DWELL_S plus haut,
 # SAFE_MIN_NOZZLE_HEIGHT_MM etc. plus bas) ne sont que les défauts.
 GCODE_DIR = "/mnt/srv-partage/Gcode"  # dossier proposé par défaut à la sauvegarde G-code
+# Dossier des planches redressées.
+#
+# À part, et pas à côté des photos d'origine : une planche redressée n'est
+# pas une photo, c'est un INSTRUMENT DE MESURE -- échelle exacte, contrôlée
+# sur la réglette gravée. Rangées avec les photos brutes, elles se perdaient
+# au milieu des IMG_*.JPG du dossier d'échange, et 290 Mo s'y sont empilés en
+# une matinée (01/08/2026). Un dossier à elles se retrouve sans se souvenir
+# d'où venait la photo.
+PLANCHES_DIR = os.path.join(os.path.expanduser("~"), "Planches-LaserAtelier")
 SECTIONS_ACCORDEON = True             # panneaux : ouvrir une section replie les autres
                                       # (décochable dans Préférences > Interface)
 GCODE_PRE_GLOBAL = ""                 # G-code personnalisé GLOBAL inséré avant chaque job
@@ -814,6 +823,7 @@ _USER_SETTINGS = (
      lambda v: v in ("linuxcnc", "grbl", "grblhal")),
     ("puissance_par_m67", "POWER_M67", bool, lambda v: isinstance(v, bool)),
     ("gcode_dir", "GCODE_DIR", str, lambda v: bool(v.strip())),
+    ("planches_dir", "PLANCHES_DIR", str, lambda v: bool(v.strip())),
     ("gcode_origin_bbox", "GCODE_ORIGIN_BBOX", bool, lambda v: isinstance(v, bool)),
     ("sections_accordeon", "SECTIONS_ACCORDEON", bool, lambda v: isinstance(v, bool)),
     ("gcode_pre_global", "GCODE_PRE_GLOBAL", str, lambda v: isinstance(v, str)),
@@ -1052,6 +1062,51 @@ def laser_profiles():
     cfg = load_config()
     _ensure_lasers(cfg)
     return [(lid, prof.get("name", lid)) for lid, prof in cfg["lasers"].items()]
+
+
+def slug_fichier(texte, defaut="sans-nom"):
+    """Texte réduit à ce qui tient dans un nom de fichier : lettres, chiffres,
+    tiret, souligné. Les accents tombent, les espaces deviennent des tirets.
+    Les planches voyagent entre machines et systèmes de fichiers."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(texte or ""))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    garde = [c if (c.isalnum() or c in "-_") else "-" for c in t]
+    t = "".join(garde).strip("-")
+    while "--" in t:
+        t = t.replace("--", "-")
+    return t or defaut
+
+
+def dossier_planches(creer=True):
+    """Dossier des planches redressées (réglage `planches_dir`), créé au
+    besoin. Repli sur le dossier personnel si la création échoue -- perdre
+    une planche redressée parce qu'un dossier manque serait absurde."""
+    d = PLANCHES_DIR or os.path.join(os.path.expanduser("~"), "Planches-LaserAtelier")
+    if creer:
+        try:
+            os.makedirs(d, exist_ok=True)
+        except Exception as exc:
+            FreeCAD.Console.PrintWarning(
+                "Dossier des planches inutilisable ({}) : repli sur le dossier "
+                "personnel.\n".format(exc))
+            return os.path.expanduser("~")
+    return d
+
+
+def nom_planche_redressee(planche, horodatage, suffixe="", laser=None):
+    """« LT-80W-AA-PRO_planche1_20260801-0745_redresse » (sans extension).
+
+    LE LASER EST DANS LE NOM, et ce n'est pas cosmétique : une largeur
+    brûlée n'a de sens que pour le module qui l'a gravée. Deux planches
+    identiques faites avec deux diodes différentes donnent deux tables de
+    mesure différentes -- et inversement, quelqu'un qui possède le MÊME
+    module peut reprendre ces mesures sans refaire une heure d'établi.
+    Sans le nom du laser sur le fichier, cette réutilisation demande de se
+    souvenir, ce qui revient à dire qu'elle n'aura pas lieu."""
+    return "{}_{}_{}{}_redresse".format(
+        slug_fichier(active_laser_name() if laser is None else laser, "laser"),
+        slug_fichier(planche, "planche"), horodatage, suffixe)
 
 
 def active_laser_id():

@@ -699,7 +699,7 @@ def _reposer_planche_redressee(parent):
     redresse toujours à 50 px/mm."""
     chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
         parent, "Planche déjà redressée (…_redresse.png)",
-        os.path.expanduser("~"), "Images redressées (*.png *.jpg);;Tous (*)")
+        core.dossier_planches(), "Images redressées (*.png *.jpg);;Tous (*)")
     if not chemin:
         return
     fiche = os.path.splitext(chemin)[0] + ".json"
@@ -793,12 +793,22 @@ def _redresser_photo_planche(parent, on_range=None):
     faits, rates = [], []
     for i, photo in enumerate(photos, 1):
         suffixe = "" if len(photos) == 1 else "_{}".format(i)
-        sortie = os.path.join(os.path.dirname(photo),
-                              "{}_{}{}_redresse.png".format(planche, horo, suffixe))
+        # Dossier À PART, et nom portant le LASER.
+        #
+        # À côté de la photo d'origine, les planches redressées se
+        # perdaient au milieu des IMG_*.JPG du dossier d'échange. Et sans
+        # le nom du laser sur le fichier, une largeur brûlée ne dit pas de
+        # quel module elle vient : deux diodes différentes donnent deux
+        # tables différentes, alors que le MÊME module rend ces mesures
+        # réutilisables telles quelles par quelqu'un d'autre.
+        sortie = os.path.join(
+            core.dossier_planches(),
+            core.nom_planche_redressee(planche, horo, suffixe) + ".png")
         infos = os.path.join(tempfile.gettempdir(), "redresse_{}.json".format(i))
         try:
             r = subprocess.run([py, script, photo, "--base", base,
                                 "--pxmm", "50", "--sortie", sortie,
+                                "--laser", core.active_laser_name(),
                                 "--json", infos],
                                capture_output=True, text=True, timeout=900,
                                env=_env_systeme_propre())
@@ -13213,6 +13223,27 @@ class TaskPanelSettings:
         row_layout.addWidget(btn_browse, 0)
         form.addRow("Dossier G-code :", row)
 
+        self.edt_planches_dir = QtWidgets.QLineEdit(settings["planches_dir"])
+        self.edt_planches_dir.setToolTip(
+            "Dossier où sont rangées les PLANCHES REDRESSÉES (image de\n"
+            "mesure, sa fiche .json, son aperçu et le contrôle des repères).\n"
+            "\n"
+            "À part des photos d'origine, volontairement : une planche\n"
+            "redressée n'est pas une photo, c'est un instrument de mesure à\n"
+            "l'échelle exacte. Rangée avec les photos brutes, elle se perd.\n"
+            "\n"
+            "Le nom du fichier porte le LASER ACTIF : une largeur brûlée n'a\n"
+            "de sens que pour le module qui l'a gravée -- et quelqu'un qui a\n"
+            "le même module peut reprendre ces mesures sans refaire l'établi.")
+        btn_browse_pl = QtWidgets.QPushButton("Parcourir...")
+        btn_browse_pl.clicked.connect(self._browse_planches_dir)
+        row_pl = QtWidgets.QWidget()
+        row_pl_layout = QtWidgets.QHBoxLayout(row_pl)
+        row_pl_layout.setContentsMargins(0, 0, 0, 0)
+        row_pl_layout.addWidget(self.edt_planches_dir, 1)
+        row_pl_layout.addWidget(btn_browse_pl, 0)
+        form.addRow("Dossier des planches :", row_pl)
+
         self.spn_rapid = QtWidgets.QDoubleSpinBox()
         self.spn_rapid.setRange(100.0, 60000.0)
         self.spn_rapid.setDecimals(0)
@@ -13607,6 +13638,13 @@ class TaskPanelSettings:
         if path:
             self.edt_gcode_dir.setText(path)
 
+    def _browse_planches_dir(self):
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self.form, "Dossier des planches redressées",
+            self.edt_planches_dir.text() or os.path.expanduser("~"))
+        if path:
+            self.edt_planches_dir.setText(path)
+
     def _refresh_laser_combo(self):
         self.combo_laser.blockSignals(True)
         self.combo_laser.clear()
@@ -13721,6 +13759,11 @@ class TaskPanelSettings:
         self._reload_active_laser_fields()
 
     def accept(self):
+        if not self.edt_planches_dir.text().strip():
+            QtWidgets.QMessageBox.warning(
+                self.form, "Préférences",
+                "Le dossier des planches redressées ne peut pas être vide.")
+            return False
         if not self.edt_gcode_dir.text().strip():
             QtWidgets.QMessageBox.critical(
                 self.form, "Erreur", "Le dossier G-code ne peut pas être vide.")
@@ -13739,6 +13782,7 @@ class TaskPanelSettings:
             "gcode_dialect": self.combo_dialect.currentData(),
             "puissance_par_m67": self.chk_m67.isChecked(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
+            "planches_dir": self.edt_planches_dir.text().strip(),
             "gcode_origin_bbox": self.chk_origin_bbox.isChecked(),
             "sections_accordeon": self.chk_accordeon.isChecked(),
             "gcode_pre_global": self.txt_gcode_pre.toPlainText(),

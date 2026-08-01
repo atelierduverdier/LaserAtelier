@@ -347,6 +347,50 @@ assert _i_fiche < _i_opt, (
     "sinon elle depend de l'appelant")
 print("redressement : bouton « Reposer » + fiche .json toujours ecrite OK")
 
+# --- Dossier a part, et le LASER dans le nom (v2.22.0) ---------------
+# Une largeur brulee n'a de sens que pour le module qui l'a gravee : deux
+# diodes differentes donnent deux tables differentes, et inversement le
+# MEME module rend ces mesures reutilisables telles quelles par quelqu'un
+# d'autre. Sans le laser sur le fichier, cette reutilisation demande de se
+# souvenir -- autant dire qu'elle n'aura pas lieu.
+assert ("planches_dir", "PLANCHES_DIR", str) == core._USER_SETTINGS[
+    [k for k, *_ in core._USER_SETTINGS].index("planches_dir")][:3]
+assert '"planches_dir"' in open(
+    _os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
+                  "task_panels.py")).read(), "le reglage doit etre enregistre"
+
+# Un slug ne doit JAMAIS contenir de separateur : « Diode 40W/gauche »
+# ecrirait dans un sous-dossier, ou nulle part.
+for brut in ("LT-80W-AA-PRO", "Bleu 450 nm", "Diode 40W (déportée)", "a//b", "  "):
+    slug = core.slug_fichier(brut, "laser")
+    assert slug and "/" not in slug and " " not in slug, (brut, slug)
+assert core.slug_fichier("Diode 40W (déportée)") == "Diode-40W-deportee"
+
+_nom = core.nom_planche_redressee("planche1", "20260801-0745",
+                                  laser="LT-80W-AA-PRO")
+assert _nom == "LT-80W-AA-PRO_planche1_20260801-0745_redresse", _nom
+assert core.nom_planche_redressee("planche2", "20260801-0745", "_2",
+                                  laser="Bleu 450 nm").startswith("Bleu-450-nm_")
+
+# Le dossier est CREE au besoin -- mais jamais celui de l'utilisateur
+# pendant un test : on repointe la globale sur un jetable.
+import tempfile as _tf
+_ancien = core.PLANCHES_DIR
+core.PLANCHES_DIR = _os.path.join(_tf.mkdtemp(), "planches")
+assert not _os.path.isdir(core.PLANCHES_DIR)
+assert core.dossier_planches() == core.PLANCHES_DIR
+assert _os.path.isdir(core.PLANCHES_DIR), "le dossier doit etre cree"
+core.PLANCHES_DIR = _ancien
+
+# Le panneau ecrit LA-BAS, plus a cote de la photo d'origine.
+_tp_src = open(_os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
+                             "task_panels.py")).read()
+_i = _tp_src.index("def _redresser_photo_planche")
+_corps = _tp_src[_i:_i + 6000]
+assert "core.dossier_planches()" in _corps and "core.nom_planche_redressee" in _corps
+assert '"--laser"' in _corps, "le laser doit partir dans la fiche du redressement"
+print("redressement : dossier a part + laser dans le nom du fichier OK")
+
 # Mesure A→B : sans vue 3D, le bouton doit REFUSER proprement et ne
 # laisser aucun rappel branché -- un callback oublié sur la vue rend
 # FreeCAD inutilisable jusqu'au redemarrage.
