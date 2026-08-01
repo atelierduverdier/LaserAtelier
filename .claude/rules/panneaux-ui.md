@@ -84,6 +84,22 @@ The defocus level is free: grids are rebuilt on every `reload()` from
 `DEFOCUS_LEVELS_MM` for an unmeasured material. Rebuilding is skipped when the level list is
 unchanged — otherwise a refresh would wipe a half-typed row.
 
+### A grid must SAY what it cannot show (v2.28.0)
+
+A defocus grid is created as soon as one measurement exists at that level, but it only has cells
+for `POWERS × FEEDS_DEFOCUS`. Points coming from the **power/speed ramp** carry interpolated powers
+(S585, S716, S909, S980 on the workshop's beech) — no cell matches, and the grid rendered
+completely **empty**. Christophe, on 2026-08-01, in front of a "Défocus 55 mm" table with 20 dashes
+in it: *"à quoi sert cela alors ?"*. A fair question about a table that exists **because** of a
+measurement it refuses to display.
+
+`lbl_hors_grille[dz]` now lists them under the grid (S/F = width), says they are kept on save, and
+adds that a level holding a single power is not an anchor for the model. **Silent when everything
+fits** — an always-on warning is noise that stops being read.
+
+This is the display half of the v2.4.0 merge rule below: `_on_save` already *preserved* off-grid
+points, but nothing ever *showed* them, so the data was safe and invisible at the same time.
+
 ### An objective must burn what ② can accept (v2.3.1)
 
 `TaskPanelTestGrid._recipes` drives the burn through min/max/count spin boxes, and those spread

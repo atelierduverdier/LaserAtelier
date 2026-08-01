@@ -1222,6 +1222,7 @@ class _MesuresPlanchesControleur:
         # niveaux suivent les mesures du matériau courant, qui change quand
         # on change de matériau ou qu'on grave un nouveau niveau.
         self.grilles_defocus = {}
+        self.lbl_hors_grille = {}
         self._boite_niveaux = QtWidgets.QWidget()
         self._pile_niveaux = QtWidgets.QVBoxLayout(self._boite_niveaux)
         self._pile_niveaux.setContentsMargins(0, 0, 0, 0)
@@ -1487,6 +1488,7 @@ class _MesuresPlanchesControleur:
         self._fin_mesure()
         self._blocs = [b for b in self._blocs if b.grille is self.grille_focus]
         self._bloc_courant = None
+        self.lbl_hors_grille = {}
         while self._pile_niveaux.count():
             item = self._pile_niveaux.takeAt(0)
             w = item.widget()
@@ -1501,6 +1503,20 @@ class _MesuresPlanchesControleur:
             gr.caseFocus.connect(self._on_case_focus)
             self.grilles_defocus[dz] = gr
             self._pile_niveaux.addWidget(gr)
+            # Ce que la grille NE PEUT PAS montrer.
+            #
+            # Une grille existe dès qu'un point est mesuré à ce niveau --
+            # mais elle n'a de cases que pour POWERS x FEEDS_DEFOCUS. Les
+            # points venus de la Rampe portent des puissances interpolées
+            # (S585, S716, S909, S980) : aucune case ne leur correspond, et
+            # la grille s'affichait VIDE. « À quoi sert cela alors ? »,
+            # 01/08/2026 -- question légitime devant un tableau né d'une
+            # mesure qu'il ne montre pas. Ces points sont conservés à
+            # l'enregistrement ; encore faut-il savoir qu'ils existent.
+            lbl = _WrapLabel("")
+            lbl.setStyleSheet("color: #b06000;")
+            self.lbl_hors_grille[dz] = lbl
+            self._pile_niveaux.addWidget(lbl)
             self._pile_niveaux.addWidget(self._creer_bloc(gr))
         self._levels = list(niveaux)
         # Les cases visées viennent d'être détruites : garder un pointeur
@@ -1531,8 +1547,29 @@ class _MesuresPlanchesControleur:
                 continue
             par_niveau[zk][(float(pt.get("power", 0)),
                             float(pt.get("feed", 800)))] = float(pt.get("width", 0.0))
+        cases = {(float(s_), float(f_))
+                 for s_ in self.POWERS for f_ in self.FEEDS_DEFOCUS}
         for dz, gr in self.grilles_defocus.items():
-            gr.set_values(par_niveau.get(dz, {}))
+            vals = par_niveau.get(dz, {})
+            gr.set_values(vals)
+            lbl = self.lbl_hors_grille.get(dz)
+            if lbl is None:
+                continue
+            dehors = sorted((k for k in vals if k not in cases))
+            if not dehors:
+                lbl.setText("")
+                lbl.setVisible(False)
+                continue
+            lbl.setVisible(True)
+            lbl.setText(
+                "⚠ {} mesure(s) à ce niveau que cette grille ne peut pas "
+                "afficher — puissance ou vitesse hors de ses colonnes : {}. "
+                "Elles viennent le plus souvent de la Rampe puissance/vitesse, "
+                "sont CONSERVÉES à l'enregistrement, mais un niveau à une "
+                "seule puissance ne sert pas d'ancre au modèle.".format(
+                    len(dehors),
+                    " ; ".join("S{:.0f}/F{:.0f} = {:.2f} mm".format(
+                        s_, f_, vals[(s_, f_)]) for s_, f_ in dehors[:6])))
 
     def _cellules_possedees(self):
         """(cases foyer, cases défocus) que ces grilles OCCUPENT, sous forme

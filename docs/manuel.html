@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.27.0</span><br>
+      <span class="ver">Version 2.28.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.27.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.28.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -581,6 +581,7 @@
     <p><b>Moyenner, parce que le trait n'est pas droit (v2.18.0).</b> Les bords d'une brûlure ondulent — c'est le grain qui décide, pas la machine. Des mesures successives sur la <em>même</em> case sont donc cumulées&nbsp;: la case reçoit la <b>moyenne courante</b>, et le panneau affiche l'<b>étendue</b> entre vos mesures. Trois pointés à trois endroits du trait valent bien mieux qu'un seul. L'étendue n'invalide rien&nbsp;: elle vous dit si votre critère «&nbsp;où s'arrête la brûlure&nbsp;» a tenu d'un bout à l'autre, ce qu'une valeur seule ne dit jamais. Re-cliquer la case repart de zéro.</p>
     <p><b>Le laser est GRAVÉ sur la planche (v2.24.0).</b> À côté des cotes, sous la réglette, la mire grave désormais le nom du <b>laser actif</b> — <code>140-60&nbsp;&nbsp;LT-80W-AA-PRO</code>. Il était jusque-là dans le nom du fichier <em>redressé</em>, ce qui ne suit pas le bois&nbsp;: une planche retrouvée sur l'établi six mois plus tard ne disait pas de quelle diode elle venait. C'est le même raisonnement que les cotes gravées, appliqué à la donnée qui décide du <em>sens</em> des mesures — une largeur brûlée n'a de valeur que pour le module qui l'a produite.</p>
     <p>Écrit en police <b>mono-trait</b> et non en 7&nbsp;segments&nbsp;: cette dernière ne connaît que les chiffres, S, F, le point et le tiret, donc elle aurait gravé un nom quasi vide — et dans le bois, ça ne se voit qu'après coup. Un nom trop long <b>rétrécit</b> plutôt que de déborder sur le repère en croix, qui reste la référence. L'en-tête du G-code le répète, mais c'est le bois qui fait foi&nbsp;: lui seul survit à la régénération du fichier.</p>
+    <p><b>Une grille vide qui n'aurait pas dû l'être (v2.28.0).</b> Une grille de défocus apparaît dès qu'une mesure existe à ce niveau — mais elle n'a de cases que pour les puissances et vitesses de la planche. Les points venus de la <i>Rampe puissance/vitesse</i> portent des puissances interpolées (S585, S716, S909…)&nbsp;: aucune case ne leur correspond, et le tableau s'affichait <b>entièrement vide</b>. Un tableau né d'une mesure qu'il ne montre pas. Ces points sont désormais <b>listés sous la grille</b>, avec leur largeur, et le rappel qu'ils sont conservés à l'enregistrement mais qu'un niveau à une seule puissance ne sert pas d'ancre au modèle. Rien ne s'affiche quand tout tient dans la grille&nbsp;: un avertissement permanent est du bruit qu'on cesse de lire.</p>
     <p><b>Un écart trop faible n'est pas une modulation (v2.27.0).</b> «&nbsp;Lignes gravées&nbsp;» refusait une vitesse seulement si le trait était <em>exactement</em> plat&nbsp;: un centième d'écart suffisait à promettre une modulation. Sur la planche du 01/08/2026, F1500 a donné 0,10&nbsp;→&nbsp;0,13&nbsp;mm — un pixel et demi sur l'image redressée — et l'atelier s'est mis à accepter des vitesses où le trait ne module rien. Il faut désormais un rapport d'au moins <b>1,5×</b> entre le trait le plus fin et le plus gros. Le refus <em>nomme</em> le rapport obtenu et le seuil, au lieu de dire seulement «&nbsp;trop vite&nbsp;».</p>
     <p>Repère utile pour vos propres mesures&nbsp;: une colonne qui affiche la <em>même</em> largeur à cinq puissances différentes n'est pas un plateau physique, c'est une grandeur passée sous votre plancher de mesure. Laissez-la telle quelle — l'atelier saura la refuser.</p>
     <p><b>La galerie dit maintenant QUELLE planche elle montre (v2.26.0).</b> Le sélecteur «&nbsp;Photos de&nbsp;» était placé <em>au-dessus</em> de la carte de section, donc visuellement rattaché à la section précédente&nbsp;: on croyait à une liste unique, et une planche rangée sous une autre entrée passait pour perdue. Il est désormais la première ligne <b>sous le titre</b>. Chaque planche a sa propre liste.</p>
@@ -1065,7 +1066,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.27.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.28.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

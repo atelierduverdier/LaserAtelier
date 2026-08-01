@@ -710,3 +710,37 @@ assert _z.toPlainText() == _long
 assert _z.height() >= 60, ("la zone doit montrer plusieurs lignes", _z.height())
 assert hasattr(_z, "edition_terminee"), "elle doit prevenir a la sortie du champ"
 print("galerie : description multi-lignes, {} caractères tenus OK".format(len(_long)))
+
+
+# --- Ce que la grille NE PEUT PAS montrer doit être DIT (v2.28.0) -----
+# Une grille de défocus naît dès qu'un point existe à ce niveau, mais elle
+# n'a de cases que pour POWERS x FEEDS_DEFOCUS. Les points venus de la
+# Rampe portent des puissances interpolees (S585, S716, S909, S980) :
+# aucune case ne leur correspond, et la grille s'affichait VIDE.
+# « A quoi sert cela alors ? » -- 01/08/2026.
+_hote4 = _Qt.QWidget()
+_form4 = _Qt.QFormLayout(_hote4)
+_c4 = tp._MesuresPlanchesControleur(_form4, _FauxParent(), lambda: "BoisHorsGrille")
+core.save_burn_widths("BoisHorsGrille", {"focus": [], "defocus": [
+    # DANS la grille...
+    {"power": 1000.0, "feed": 800.0, "width": 1.10, "z_offset": 15.0},
+    # ...et HORS de la grille : S909 n'est aucune de ses lignes.
+    {"power": 909.0, "feed": 400.0, "width": 3.00, "z_offset": 55.0},
+]})
+_c4.reload()
+assert 55.0 in _c4.grilles_defocus, sorted(_c4.grilles_defocus)
+assert not _c4.grilles_defocus[55.0].values(), (
+    "S909 ne peut pas s'afficher : la grille DOIT rester vide, "
+    "c'est le fait qu'il faut annoncer")
+_l55 = _c4.lbl_hors_grille[55.0]
+assert _l55.isVisibleTo(_hote4) or _l55.text(), "rien n'annonce la mesure cachee"
+assert "S909" in _l55.text() and "F400" in _l55.text() and "3.00" in _l55.text(), \
+    _l55.text()
+# Et là où tout est affichable, aucun avertissement : sinon il devient du
+# bruit qu'on cesse de lire.
+assert _c4.grilles_defocus[15.0].values(), "S1000/F800 devrait s'afficher"
+assert not _c4.lbl_hors_grille[15.0].text(), (
+    "pas d'avertissement quand tout tient dans la grille",
+    _c4.lbl_hors_grille[15.0].text())
+core.save_burn_widths("BoisHorsGrille", {})
+print("mesures hors grille : annoncées sous la grille, silence sinon OK")
