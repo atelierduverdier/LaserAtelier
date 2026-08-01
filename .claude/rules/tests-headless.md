@@ -173,3 +173,18 @@ no suite at all.
 2. **Verify against a really-generated file when one exists.** `/mnt/srv-partage/Gcode/*.ngc` holds
    what actually ran on the machine; counting a defect there is stronger than any argument. A
    headless test that only re-derives its own formula passes while still being wrong.
+
+## `preparer()` forces S-direct — don't write machine files from it
+
+`preparer()` calls `canal_puissance(core, m67=False)` so every test compares against one power
+channel. That is right for tests, and `test_puissance_m67` covers the other channel across all
+ten generator families (no `S` on a movement, well-formed `M67 E<n> Q<v>`, `M3`/`M5` kept).
+
+But the workshop's config says `puissance_par_m67: true`, so a **file written for the machine**
+from a harness-prepared `core` comes out in S-direct — one `S` word per block, which is the exact
+thing two twin files proved stalls the PrintNC. On 2026-08-01 a control board generated this way
+juddered on every power change; Christophe heard it before anything showed on screen, and his
+first guess (the repeated `F200`) was the wrong word — a constant `F` costs nothing, the changing
+`S` costs a full stop.
+
+Call `core._apply_settings_config()` after `preparer()` whenever the output is going to be cut.

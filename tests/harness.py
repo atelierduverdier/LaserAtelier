@@ -76,6 +76,14 @@ def preparer(config_reelle=True):
     # FORME de la sortie, jamais un paramètre physique (l'accélération reste
     # celle de la machine -- un test qui juge une durée doit la juger sur la
     # vraie valeur).
+    #
+    # ATTENTION si tu te sers du harness pour FABRIQUER un fichier destiné à
+    # la machine : ce forçage tient pour les tests, pas pour le bois. Un
+    # G-code écrit ainsi part en S DIRECT alors que la PrintNC tourne en
+    # M67, et il saccade à chaque changement de puissance -- entendu à
+    # l'oreille le 01/08/2026 sur une planche témoin, jamais vu à l'écran.
+    # Rappeler `core._apply_settings_config()` avant d'écrire un tel
+    # fichier, pour retrouver les vrais réglages de l'atelier.
     canal_puissance(core, m67=False)
 
     import task_panels as tp
