@@ -30,7 +30,10 @@ p.spn_gamma.setValue(1.0)
 
 # Chaque tramage a son régime ; imposer celui des lignes calibrées aux
 # lignes gravées les ferait refuser (cf. test_panneaux).
-REGIMES = {6: (0.30, 800.0)}
+# F200 pas 0,34 : le SEUL régime qui enfle vraiment sous le plafond
+# S900 de l'atelier (1,94x). L'ancien -- F800 pas 0,30 -- venait des
+# trois colonnes fabriquées du 31/07, et refuse depuis le vrai relevé.
+REGIMES = {6: (0.34, 200.0)}
 DEFAUT = (0.80, 2000.0)
 
 for idx in range(p.combo_mode.count()):

@@ -7,6 +7,18 @@ CARBONISÉ sur Hêtre. Le panneau, lui, affichait son verdict vert :
 exact, et complètement à côté. Le recouvrement et la surcuisson sont deux
 échecs OPPOSÉS ; vérifier l'un ne dit rien de l'autre.
 
+QUESTION OUVERTE depuis le relevé du 01/08/2026. Ce 0,30 mm venait d'une
+colonne fabriquée ; le vrai trait à S1000/F800 mesure 0,18 mm. Le panneau
+juge donc désormais ce même carré RAYÉ (0,19 pour 0,26) — alors que le bois,
+lui, est sorti carbonisé, c'est-à-dire tout sauf rayé. Les deux peuvent être
+vrais à la fois : la largeur d'UN trait isolé sur la planche de calibration
+n'est pas la largeur EFFECTIVE d'une passe de balayage, où les passes
+voisines préchauffent le bois. Mais tant qu'une planche témoin n'a pas
+tranché, le verdict de recouvrement est à prendre pour ce qu'il est — un
+calcul sur des traits isolés. Ce test se pose donc au pas 0,18, plein
+d'après la mesure ACTUELLE, pour continuer d'éprouver ce qu'il vise : plein
+et surcuit en même temps.
+
 D'où la ligne « Énergie ». Ce qu'elle annonce est un COÛT, pas un dommage :
 l'atelier ne sait pas prédire la carbonisation (sur MDF, des tons jugés
 97 % tiennent à 4x le réglage le plus économe). Elle compare deux
@@ -110,7 +122,10 @@ combo_mat.setCurrentIndex(idx[0])
 p.combo_fill_style.setCurrentIndex(0)          # style plein
 p.spn_fill_power.setValue(1000)
 p.spn_fill_feed.setValue(800)
-p.spn_spacing.setValue(0.26)
+# Pas 0,18 = le trait mesuré à ce régime, donc PLEIN sans marge : c'est le
+# cas qui doit rester couvert. Le 0,26 du carré carbonisé est aujourd'hui
+# jugé rayé (cf. la question ouverte en tête de fichier).
+p.spn_spacing.setValue(0.18)
 p._update_defocus_preview()
 
 recouvrement = texte(p.lbl_recouvrement.text())

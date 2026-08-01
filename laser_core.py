@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.35.1"
+VERSION = "2.36.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4640,14 +4640,29 @@ _FACTORY_PRESETS = {
         "Portrait Hêtre -- lignes gravées (le plus sûr)": {
             # Le tramage retenu à l'atelier : le gris est une LARGEUR lue sur
             # les largeurs brûlées mesurées, sans nuancier, sans bois nu.
-            # F800 = la plus rapide où le trait enfle encore à fond (au-delà
-            # il plafonne : 0,23 mm à F1000, plat dès F1500). Pas 0,30 = le
-            # trait le plus épais, donc le contraste MAXIMAL (67 points).
+            #
+            # RÉGIME REFAIT le 01/08/2026 sur la planche mesurée à l'outil de
+            # profil. L'ancien (F800, pas 0,30) reposait sur trois colonnes
+            # F200/F400/F800 IDENTIQUES, 0,10 à 0,30 par pas de 0,05 exacts :
+            # ce n'était pas un relevé. Le vrai trait à F800 monte à 0,18 mm,
+            # pas 0,30 -- la recette laissait donc 0,12 mm de bois nu entre
+            # chaque ligne, 40 % de la surface. Elle gravait des rayures.
+            #
+            # F200, plafond S900 (le plafond de l'atelier, posé à la main
+            # parce qu'à fond le trait creuse et strie) : 0,16 à 0,31 mm, soit
+            # 1,94x -- la plus grosse marge au-dessus du plancher de mesure,
+            # d'où « le plus sûr ». Pas 0,34 = le trait le plus épais SANS
+            # plafond, pour que les lignes se touchent même à pleine puissance.
+            # C'est plus lent que F800 ; F1000 et F1200 sont plus rapides ET
+            # plus contrastés SUR LE PAPIER, mais la noirceur ne dépend pas que
+            # de la largeur (le temps de pose compte), et le papier est
+            # exactement ce qui vient d'être démenti : à essayer sur chute.
             # 120 mm de large : sous 100 mm le grain se voit plus que le sujet.
             "mode": "enfle", "material": u"Hêtre", "width": 120.0,
-            "pitch": 0.30, "line_feed": 800.0, "line_min": 0.10,
+            "pitch": 0.34, "line_feed": 200.0, "line_min": 0.10,
             "spot_width": 0.0, "gamma": 1.0, "white": 5.0, "invert": False,
-            "power": 1000.0, "dwell_min": 10.0, "dwell_max": 60.0,
+            "power": 1000.0, "power_max": 900.0,
+            "dwell_min": 10.0, "dwell_max": 60.0,
             "dot_spacing": 1.27},
         "Portrait Hêtre -- lignes calibrées (nuancier)": {
             # Le régime EXACT des 10 tons Hêtre : défocus 15 (point 1,16) et
@@ -4660,10 +4675,13 @@ _FACTORY_PRESETS = {
         "Similigravure Hêtre -- trame 45° (sans calibration)": {
             # Aucune calibration : le gris est une SURFACE. Mais la promesse
             # « couverture = noirceur » suppose que les lignes se TOUCHENT :
-            # à S1000/F800 le trait brûlé mesure 0,30 mm, d'où le pas 0,30.
+            # à S1000/F800 le trait brûlé mesure 0,18 mm (relevé du 01/08/2026
+            # à l'outil de profil), d'où le pas 0,18. Le 0,30 d'avant venait de
+            # la même colonne fabriquée que la recette « lignes gravées » : les
+            # lignes ne se touchaient pas, et la promesse tombait.
             # Espacement 1,27 mm -> maille k=3, soit 18 niveaux de gris.
             "mode": "simili", "material": u"Hêtre", "width": 120.0,
-            "pitch": 0.30, "line_feed": 800.0, "power": 1000.0,
+            "pitch": 0.18, "line_feed": 800.0, "power": 1000.0,
             "dot_spacing": 1.27, "spot_width": 0.0, "gamma": 1.0,
             "white": 5.0, "invert": False, "dwell_min": 10.0,
             "dwell_max": 60.0, "line_min": 0.10},
@@ -8162,11 +8180,37 @@ def burn_width_range(material, feed):
 SWELL_RAPPORT_MINI = 1.5
 
 
-def swell_max_feed(material):
+def swell_plage(material, feed, power_max=None):
+    """(largeur_mini, largeur_maxi, rapport) SOUS LE PLAFOND, ou None.
+
+    SOURCE UNIQUE de la décision ET de son explication. Le refus se
+    calculait sous le plafond de puissance, le message qui l'explique sans
+    lui : le 01/08/2026 le panneau affichait « le trait ne va que de 0,12 à
+    0,18 mm, soit 1.50x -- sous le rapport 1.5x », une phrase qui se
+    contredit elle-même, parce que le vrai rapport, plafond S900 appliqué,
+    était 1,33. Deux calculs pour une seule question donnent toujours ça."""
+    table = burn_width_power_table(material, feed)
+    if not table:
+        return None
+    if power_max is not None:
+        table = [(s, w) for s, w in table if s <= float(power_max) + 1e-9]
+        if len(table) < 2:
+            return None
+    w_min, w_max = table[0][1], table[-1][1]
+    if w_min <= 1e-9:
+        return None
+    return w_min, w_max, w_max / w_min
+
+
+def swell_max_feed(material, power_max=None):
     """La vitesse mesurée la PLUS RAPIDE à laquelle le trait enfle encore,
     ou None. Sert à ne pas se contenter de dire « trop vite » : au-delà
     d'un seuil la largeur ne dépend plus de la puissance, et l'utile est
-    de nommer la vitesse qui marche, pas celle qui échoue."""
+    de nommer la vitesse qui marche, pas celle qui échoue.
+
+    `power_max` est OBLIGATOIREMENT le même que celui du refus : nommer une
+    vitesse jugée sans le plafond, alors que le tramage la jugera avec,
+    renvoie l'utilisateur vers une vitesse qui refusera à son tour."""
     mat = _burn_width_material(material)
     mesures = load_burn_widths(mat or "").get("focus") if mat else None
     if not mesures:
@@ -8176,13 +8220,29 @@ def swell_max_feed(material):
     for f in vitesses:
         if f <= 0:
             continue
-        p = burn_width_range(material, f)
         # MÊME critère que le refus, sinon le message renvoie vers une
         # vitesse que le tramage refusera à son tour. Constaté aussitôt
         # après avoir posé le seuil : « descendre à F3000 » alors que F3000
         # était lui-même refusé.
-        if p and p[0] > 1e-9 and p[1] / p[0] >= SWELL_RAPPORT_MINI:
+        p = swell_plage(material, f, power_max)
+        if p and p[2] >= SWELL_RAPPORT_MINI:
             return f
+    return None
+
+
+def swell_plafond_suffisant(material, feed):
+    """Le plafond de puissance le plus BAS qui fasse enfler le trait à cette
+    vitesse, ou None si même à pleine puissance il n'enfle pas.
+
+    Quand c'est le plafond qui bloque, changer de vitesse ne sert à rien :
+    il faut nommer la puissance qui débloque, pas envoyer chercher."""
+    table = burn_width_power_table(material, feed)
+    if not table:
+        return None
+    for s, _w in table:
+        p = swell_plage(material, feed, s)
+        if p and p[2] >= SWELL_RAPPORT_MINI:
+            return s
     return None
 
 
@@ -8201,30 +8261,48 @@ def swell_refus_message(material, feed, power_max=None):
                     "mesurée (S{:.0f}) : il ne reste aucune plage où le trait "
                     "puisse enfler. Remonter le plafond."
                     .format(float(power_max), bas))
-    plage = burn_width_range(material, feed)
+    # La plage est lue SOUS LE PLAFOND, exactement comme le refus l'a
+    # calculée. Sinon le message cite un rapport qui n'est pas celui qui a
+    # décidé -- et annonce « 1.50x, sous 1.5x ».
+    plage = swell_plage(material, feed, power_max)
     if plage is None:
         return ("aucune largeur brûlée mesurée pour « {} » -- passer par "
                 "« Calibration du kerf » avant d'utiliser ce tramage."
                 .format(material or "?"))
-    rapide = swell_max_feed(material)
-    if rapide is None:
-        return ("sur « {} » le trait ne varie à AUCUNE vitesse mesurée : la "
-                "table de largeurs est trop pauvre pour ce tramage."
-                .format(material))
-    rapport = plage[1] / plage[0] if plage[0] > 0 else 1.0
+    w_min, w_max, rapport = plage
     if rapport <= 1.0 + 1e-9:
         cause = ("le trait mesure {:.2f} mm à toutes les puissances -- il "
-                 "n'enfle plus".format(plage[0]))
+                 "n'enfle plus".format(w_min))
     else:
         # Nommer le rapport ET le seuil : un refus qui dit « trop peu » sans
         # dire « trop peu par rapport à quoi » se lit comme un caprice.
         cause = ("le trait ne va que de {:.2f} à {:.2f} mm, soit {:.2f}x -- "
                  "sous le rapport {:.1f}x en dessous duquel l'écart n'est "
                  "plus distinguable de la précision de mesure"
-                 .format(plage[0], plage[1], rapport, SWELL_RAPPORT_MINI))
-    return ("à F{:.0f} {}. Descendre à F{:.0f}, la plus rapide où il enfle "
-            "vraiment ({:.2f} à {:.2f} mm)."
-            .format(feed, cause, rapide, *burn_width_range(material, rapide)))
+                 .format(w_min, w_max, rapport, SWELL_RAPPORT_MINI))
+    # Le plafond d'abord : quand c'est lui qui bloque, changer de vitesse ne
+    # débloquera rien, et envoyer chercher ailleurs fait perdre la soirée.
+    if power_max is not None:
+        assez = swell_plafond_suffisant(material, feed)
+        if assez is not None and assez > float(power_max) + 1e-9:
+            large = swell_plage(material, feed, assez)
+            return ("à F{:.0f} {} -- mais c'est le PLAFOND S{:.0f} qui rogne "
+                    "la plage, pas la vitesse. Remonter le plafond à S{:.0f} "
+                    "suffit : le trait y va de {:.2f} à {:.2f} mm ({:.2f}x)."
+                    .format(feed, cause, float(power_max), assez,
+                            large[0], large[1], large[2]))
+    rapide = swell_max_feed(material, power_max)
+    if rapide is None:
+        return ("sur « {} » le trait ne varie à AUCUNE vitesse mesurée : la "
+                "table de largeurs est trop pauvre pour ce tramage."
+                .format(material))
+    autre = swell_plage(material, rapide, power_max)
+    # « Descendre » vers une vitesse PLUS RAPIDE se lisait comme une faute de
+    # frappe et faisait douter du reste du message. Le verbe suit le sens.
+    verbe = "Descendre à" if rapide < feed else "Passer à"
+    return ("à F{:.0f} {}. {} F{:.0f}, la plus rapide où il enfle vraiment "
+            "({:.2f} à {:.2f} mm, {:.2f}x)."
+            .format(feed, cause, verbe, rapide, autre[0], autre[1], autre[2]))
 
 
 def swell_power_levels(material, feed, line_min_mm, niveaux=256,

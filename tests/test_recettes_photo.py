@@ -87,16 +87,29 @@ enfle = [(n, r) for n, r in RECETTES.items() if r["mode"] == "enfle"]
 assert enfle, "aucune recette pour le tramage retenu à l'atelier"
 for nom, r in enfle:
     mat = r["material"]
-    rapide = core.swell_max_feed(mat)
+    # SOUS SON PROPRE PLAFOND. Une recette jugée sans le plafond qu'elle
+    # embarque est jugée sur un régime que personne ne gravera : celle-ci
+    # passait avec 1,50x sans plafond, et refusait à 1,33x avec le sien.
+    pmax = r.get("power_max")
+    plage = core.swell_plage(mat, r["line_feed"], pmax)
+    assert plage is not None, (nom, "aucune largeur mesurée à ce régime")
+    assert plage[2] >= core.SWELL_RAPPORT_MINI, (
+        nom, "recette livrée que le tramage REFUSERA", plage,
+        core.swell_refus_message(mat, r["line_feed"], pmax))
+    rapide = core.swell_max_feed(mat, pmax)
     assert r["line_feed"] <= rapide + 1e-6, (
         nom, "au-delà de F{:.0f} le trait n'enfle plus à fond".format(rapide))
-    plage = core.burn_width_range(mat, r["line_feed"])
-    # Le contraste passe par un maximum au pas = trait le plus épais.
-    assert abs(r["pitch"] - plage[1]) < 1e-6, (
-        nom, "pas non optimal", r["pitch"], plage[1])
-    print("   {:<46} F{:.0f} <= F{:.0f}, pas {:.2f} = trait maxi OK".format(
-        nom[:46], r["line_feed"], rapide, r["pitch"]))
-print("4. la recette « lignes gravées » est au contraste maximal OK")
+    # Le contraste passe par un maximum au pas = trait le plus épais. Il se
+    # lit SANS plafond : le pas est de la géométrie -- si les lignes ne se
+    # touchent pas à pleine puissance, il reste du bois nu, plafond ou pas.
+    large = core.burn_width_range(mat, r["line_feed"])
+    assert abs(r["pitch"] - large[1]) < 1e-6, (
+        nom, "pas non optimal : du bois nu entre les lignes",
+        r["pitch"], large[1])
+    print("   {:<40} F{:.0f} <= F{:.0f}, {:.2f}x sous S{}, pas {:.2f} OK"
+          .format(nom[:40], r["line_feed"], rapide, plage[2],
+                  int(pmax) if pmax else "-", r["pitch"]))
+print("4. la recette « lignes gravées » est gravable ET au contraste maxi OK")
 
 # --- 5. Similigravure : les lignes doivent se TOUCHER -------------------
 for nom, r in RECETTES.items():
@@ -120,10 +133,11 @@ print("5. la similigravure grave des lignes jointives OK")
 p = tp.TaskPanelHalftone()
 
 # Le panneau restaure les DERNIERS réglages de Christophe : son plafond de
-# puissance (v2.8.0) rognerait la plage et ferait tomber le contraste de 67
-# à 58 points. Un test ne doit pas dépendre de ce qu'il a réglé hier -- même
-# leçon que la démonstration de test_interpolation_mesures, éteinte le jour
-# où il a saisi un ton. On repart donc sans plafond, explicitement.
+# puissance rognerait la plage sans que la recette y soit pour rien. Un test
+# ne doit pas dépendre de ce qu'il a réglé hier -- même leçon que la
+# démonstration de test_interpolation_mesures, éteinte le jour où il a saisi
+# un ton. On repart sans plafond ; la recette pose ensuite le SIEN, qu'elle
+# embarque justement pour ne plus dépendre du champ laissé là.
 p.spn_power_max.setValue(core.S_MAX)
 nom_h = "Portrait Hêtre -- lignes gravées (le plus sûr)"
 assert nom_h in RECETTES, sorted(RECETTES)
@@ -135,16 +149,29 @@ assert p.combo_photo_mat.currentData() == u"Hêtre", (
     "le matériau de la recette n'a pas été appliqué",
     p.combo_photo_mat.currentData())
 assert p._tramage()["cle"] == "enfle", p._tramage()["cle"]
-assert abs(p.spn_pitch.value() - 0.30) < 1e-9
-assert abs(p.spn_line_feed.value() - 800.0) < 1e-9
+# Les valeurs se lisent DANS la recette, jamais recopiées ici : un littéral
+# en double périme dès que le bois dit autre chose, et le 01/08/2026 il a
+# dit autre chose -- ce bloc exigeait « pas 0,30, F800, 67 points », trois
+# nombres hérités d'une table fabriquée.
+assert abs(p.spn_pitch.value() - RECETTES[nom_h]["pitch"]) < 1e-9
+assert abs(p.spn_line_feed.value() - RECETTES[nom_h]["line_feed"]) < 1e-9
 # Et le verdict du panneau doit alors être VERT : c'est le régime optimal.
 p._maj_regime()
 assert "#2e7d32" in p.lbl_regime.text(), (
     "la recette « la plus sûre » ne passe pas son propre verdict",
     texte(p.lbl_regime))
-assert "67 points" in texte(p.lbl_regime), texte(p.lbl_regime)
-print("6. recette appliquée : matériau Hêtre, tramage enfle, pas 0.30, F800, "
-      "verdict VERT à 67 points OK")
+# Le contraste annoncé doit être CELUI DU RÉGIME, calculé ici depuis les
+# mêmes mesures : vérifier une relation, pas un nombre gravé dans le test.
+_pl = core.swell_plage(u"Hêtre", RECETTES[nom_h]["line_feed"],
+                       RECETTES[nom_h].get("power_max"))
+_attendu = round(100.0 * (min(1.0, _pl[1] / RECETTES[nom_h]["pitch"])
+                          - _pl[0] / RECETTES[nom_h]["pitch"]))
+assert "{:.0f} points".format(_attendu) in texte(p.lbl_regime), (
+    "le contraste affiché ne suit pas les largeurs mesurées",
+    _attendu, texte(p.lbl_regime))
+print("6. recette appliquée : Hêtre, tramage enfle, pas {:.2f}, F{:.0f}, "
+      "verdict VERT à {:.0f} points OK".format(
+          RECETTES[nom_h]["pitch"], RECETTES[nom_h]["line_feed"], _attendu))
 
 # --- 7. Aller-retour de persistance sur une combo à données -------------
 # `_widget_get` doit rendre le NOM, pas le rang, sinon la sauvegarde annule

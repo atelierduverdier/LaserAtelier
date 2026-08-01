@@ -54,7 +54,10 @@ p.spn_gamma.setValue(1.0)
 
 # Chaque tramage a un régime qui lui convient : imposer la vitesse des
 # lignes calibrées aux « lignes gravées » les fait refuser, à juste titre.
-REGIMES = {"enfle": (0.30, 800.0)}
+# F200 pas 0,34 : sous le plafond S900 de l'atelier, F800 ne donne plus
+# que 1,33x et le tramage refuse -- à juste titre, depuis que la table
+# du hêtre est mesurée et non plus fabriquée (01/08/2026).
+REGIMES = {"enfle": (0.34, 200.0)}
 DEFAUT = (0.80, 2000.0)
 
 assert p.combo_mode.count() == len(tp._TRAMAGES), (

@@ -412,3 +412,41 @@ the thumbnail (recomputed on every settings change) vs `_PREVIEW_MAX_CELLS = 250
 result where ten marks land on one pixel. `_teinte_gravure(..., cache)` memoises on rounded args —
 `darkness_at` re-reads the config on every call, so an un-memoised tone lookup inside a per-mark loop
 is the same catastrophe as a per-pixel config read in a generator.
+
+## A fabricated table is worse than an empty one (2026-08-01)
+
+The beech focus table was re-measured with the new profile tool. Comparing it against the
+morning's backup settled a question nobody had thought to ask: the **old F200, F400 and F800
+columns were three identical ramps**, 0.10 → 0.30 by steps of exactly 0.05. Real calliper
+readings do not land on five equal steps three times over. That column was never measured, and
+everything built on it inherited the fiction:
+
+- two shipped recipes used `pitch: 0.30` "because the trace is 0.30 mm at S1000/F800" — the real
+  trace is **0.18 mm**, so they left 0.12 mm of bare wood between every line, 40 % of the
+  surface. They engraved stripes;
+- the docstring of `swell_power_levels` cited that 0.30 as a bench observation;
+- `test_recettes_photo` froze `pitch 0.30 / F800 / 67 points` as literals, so it guarded the
+  fiction instead of catching it.
+
+An empty table refuses and sends you to the bench. A fabricated one answers, plausibly, forever.
+**When a stored table is suspiciously regular, distrust it before trusting anything derived from
+it** — and prefer asserting a *relation* recomputed from the measurements over a literal copied
+into a test.
+
+Under the workshop's hand-set ceiling **S900**, the only feeds where beech really swells are
+F200 (1.94×) and F1000/F1200; **F800 now refuses**, correctly. `swell_plage(material, feed,
+power_max)` is the single source for that judgement.
+
+## The decision and its explanation must read the same numbers
+
+`swell_power_levels` refused **under the power ceiling** while `swell_refus_message` explained
+**without it**, so the panel printed *"soit 1.50x -- sous le rapport 1.5x"* — a sentence that
+contradicts itself — and then advised *"Descendre à F3000"*, a feed 3.75× **faster** than the one
+in use, whose traces are thinner. Three defects, one cause: two code paths answering one
+question.
+
+`swell_plage` now computes the range once; `swell_max_feed(material, power_max)`,
+`swell_plafond_suffisant` and `swell_refus_message` all read it. When the ceiling is what blocks,
+the message says so and names the **lowest** ceiling that unlocks (interpolated, e.g. S925 — not
+the measured step above). §20 and §21 of `test_lignes_gravees.py` freeze both properties,
+including that the verb matches the direction of the advised feed.

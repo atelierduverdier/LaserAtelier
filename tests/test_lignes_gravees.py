@@ -458,3 +458,62 @@ assert core.swell_power_levels(MAT_R, _rapide, 0.10) is not None, (
 assert "F{:.0f}".format(_rapide) in core.swell_refus_message(MAT_R, 3000.0)
 core.save_burn_widths(MAT_R, {})
 print("19. la vitesse nommee par le refus est elle-meme acceptee OK")
+
+# --- 20. Le refus et son explication lisent la MEME plage ----------------
+# Constate le 01/08/2026 sur la vraie planche du hetre : le panneau refusait
+# sous le plafond S900 (1,33x) et expliquait sans lui (1,50x), d'ou la
+# phrase « soit 1.50x -- sous le rapport 1.5x », qui se contredit seule.
+MAT_P = u"TestPlafond"
+core.save_burn_widths(MAT_P, {"focus": [
+    # Sous S900 la plage est plate ; il faut S1000 pour qu'elle enfle.
+    {"power": s_, "feed": 800.0, "width": w}
+    for s_, w in ((200.0, 0.12), (600.0, 0.13), (900.0, 0.16),
+                  (1000.0, 0.24))], "defocus": []})
+_sans = core.swell_plage(MAT_P, 800.0)
+_avec = core.swell_plage(MAT_P, 800.0, 900.0)
+assert _sans[2] >= core.SWELL_RAPPORT_MINI > _avec[2], (_sans, _avec)
+assert core.swell_power_levels(MAT_P, 800.0, 0.10, power_max=900.0) is None
+_msg = core.swell_refus_message(MAT_P, 800.0, 900.0)
+# Le rapport CITE doit etre celui qui a decide, donc sous le seuil.
+import re as _re
+_cites = [float(x) for x in _re.findall(r"soit ([\d.]+)x", _msg)]
+assert _cites and all(r < core.SWELL_RAPPORT_MINI for r in _cites), (_cites, _msg)
+assert "PLAFOND" in _msg and "S900" in _msg, ("le plafond est la cause, "
+                                              "le message doit le nommer", _msg)
+# Le plafond nomme doit etre le plus BAS qui debloque -- pas le palier
+# mesure au-dessus : on ne demande pas plus de puissance que necessaire.
+_assez = core.swell_plafond_suffisant(MAT_P, 800.0)
+assert _assez is not None and 900.0 < _assez <= 1000.0, _assez
+assert "S{:.0f}".format(_assez) in _msg, ("le message doit nommer CE "
+                                          "plafond-la", _assez, _msg)
+# Et il doit vraiment debloquer, sinon le conseil renvoie dans le mur.
+assert core.swell_power_levels(MAT_P, 800.0, 0.10, power_max=_assez) is not None
+# Un cheveu en dessous, il ne debloque plus : c'est bien le MINIMUM.
+assert core.swell_plage(MAT_P, 800.0, _assez - 5.0)[2] < core.SWELL_RAPPORT_MINI
+core.save_burn_widths(MAT_P, {})
+print("20. le refus et son explication lisent la meme plage OK")
+
+# --- 21. Le verbe suit le sens ------------------------------------------
+# « Descendre a F3000 » depuis F800 se lisait comme une faute de frappe et
+# faisait douter de tout le message : F3000 est plus RAPIDE, pas plus lent.
+MAT_V = u"TestVerbe"
+core.save_burn_widths(MAT_V, {"focus": (
+    # F200 enfle, F800 non : le conseil doit dire « Descendre ».
+    [{"power": s_, "feed": 200.0, "width": w}
+     for s_, w in ((200.0, 0.16), (1000.0, 0.34))]
+    + [{"power": s_, "feed": 800.0, "width": w}
+       for s_, w in ((200.0, 0.12), (1000.0, 0.13))]), "defocus": []})
+_m = core.swell_refus_message(MAT_V, 800.0)
+assert "Descendre a F200" in _m.replace("à", "a"), _m
+core.save_burn_widths(MAT_V, {"focus": (
+    # L'inverse : seule la vitesse HAUTE enfle -> « Passer a ».
+    [{"power": s_, "feed": 200.0, "width": w}
+     for s_, w in ((200.0, 0.12), (1000.0, 0.13))]
+    + [{"power": s_, "feed": 800.0, "width": w}
+       for s_, w in ((200.0, 0.16), (1000.0, 0.34))]), "defocus": []})
+_m = core.swell_refus_message(MAT_V, 200.0)
+assert "Passer a F800" in _m.replace("à", "a"), _m
+assert "Descendre" not in _m, ("nommer une vitesse plus rapide en disant "
+                               "« descendre »", _m)
+core.save_burn_widths(MAT_V, {})
+print("21. le verbe du conseil suit le sens de la vitesse OK")
