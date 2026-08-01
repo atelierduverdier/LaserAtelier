@@ -2906,6 +2906,409 @@ class _VueProfilTrait(QtWidgets.QWidget):
 
 
 
+class _VueNoirceur(QtWidgets.QLabel):
+    """La photo redressée, la grille dessinée dessus, et les deux repères.
+
+    Les repères sont MONTRÉS et DÉPLAÇABLES. Proposés automatiquement, ils
+    peuvent tomber sur un reflet, une ombre ou un bord de planche -- et une
+    ancre fausse décale TOUT le nuancier en rendant des pourcentages
+    d'allure parfaitement normale. Un choix qu'on ne voit pas est un choix
+    qu'on ne peut pas corriger.
+    """
+
+    bouge = QtCore.Signal()
+
+    def __init__(self, parent=None):
+        super(_VueNoirceur, self).__init__(parent)
+        self.setMinimumSize(420, 320)
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.setStyleSheet("background:#1b1b1b;")
+        self._img = None            # QImage d'affichage (l'aperçu)
+        self._cases = []            # [(rect_mm, libellé, valeur ou None)]
+        self._bois = None           # rect en mm image
+        self._noir = None
+        self._pxmm = 1.0
+        self._marge = 0.0
+        self._prise = None          # "bois" | "noir" pendant un glisser
+        self.setMouseTracking(True)
+
+    # -- géométrie : mm image <-> pixels de l'affichage -------------------
+    def _echelle(self):
+        if self._img is None or self._img.isNull():
+            return 1.0, 0, 0
+        k = min(self.width() / float(self._img.width()),
+                self.height() / float(self._img.height()))
+        dx = (self.width() - self._img.width() * k) / 2.0
+        dy = (self.height() - self._img.height() * k) / 2.0
+        return k, dx, dy
+
+    def _mm_vers_ecran(self, r):
+        k, dx, dy = self._echelle()
+        # mm image -> pixels de la photo AFFICHÉE (l'aperçu, pas le PNG de
+        # mesure) : son échelle propre est déjà dans self._pxmm.
+        x0 = (r[0] + self._marge) * self._pxmm * k + dx
+        y0 = (r[1] + self._marge) * self._pxmm * k + dy
+        x1 = (r[2] + self._marge) * self._pxmm * k + dx
+        y1 = (r[3] + self._marge) * self._pxmm * k + dy
+        return QtCore.QRectF(x0, y0, x1 - x0, y1 - y0)
+
+    def _ecran_vers_mm(self, p):
+        k, dx, dy = self._echelle()
+        if k <= 0 or self._pxmm <= 0:
+            return 0.0, 0.0
+        return ((p.x() - dx) / k / self._pxmm - self._marge,
+                (p.y() - dy) / k / self._pxmm - self._marge)
+
+    # -- alimentation ----------------------------------------------------
+    def poser(self, img, pxmm, marge, cases, bois, noir):
+        self._img, self._pxmm, self._marge = img, pxmm, marge
+        self._cases, self._bois, self._noir = cases, bois, noir
+        self.update()
+
+    def valeurs(self):
+        return self._bois, self._noir
+
+    # -- souris ----------------------------------------------------------
+    def _sur(self, pos):
+        for nom, r in (("bois", self._bois), ("noir", self._noir)):
+            if r and self._mm_vers_ecran(r).adjusted(-4, -4, 4, 4).contains(pos):
+                return nom
+        return None
+
+    def mousePressEvent(self, ev):
+        self._prise = self._sur(ev.position() if hasattr(ev, "position")
+                                else ev.pos())
+
+    def mouseMoveEvent(self, ev):
+        p = ev.position() if hasattr(ev, "position") else ev.pos()
+        if self._prise is None:
+            self.setCursor(QtCore.Qt.OpenHandCursor if self._sur(p)
+                           else QtCore.Qt.ArrowCursor)
+            return
+        r = self._bois if self._prise == "bois" else self._noir
+        if not r:
+            return
+        mx, my = self._ecran_vers_mm(p)
+        w, h = r[2] - r[0], r[3] - r[1]
+        neuf = (mx - w / 2.0, my - h / 2.0, mx + w / 2.0, my + h / 2.0)
+        if self._prise == "bois":
+            self._bois = neuf
+        else:
+            self._noir = neuf
+        self.update()
+        self.bouge.emit()
+
+    def mouseReleaseEvent(self, _ev):
+        self._prise = None
+        self.setCursor(QtCore.Qt.ArrowCursor)
+
+    # -- dessin ----------------------------------------------------------
+    def paintEvent(self, ev):
+        super(_VueNoirceur, self).paintEvent(ev)
+        if self._img is None or self._img.isNull():
+            return
+        k, dx, dy = self._echelle()
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        p.drawImage(QtCore.QRectF(dx, dy, self._img.width() * k,
+                                  self._img.height() * k), self._img)
+        # Les cases : cadre fin, et la valeur lue au centre.
+        f = p.font()
+        f.setPointSizeF(max(6.0, min(11.0, 9.0)))
+        p.setFont(f)
+        for r, libelle, val in self._cases:
+            rect = self._mm_vers_ecran(r)
+            p.setPen(QtGui.QPen(QtGui.QColor(255, 138, 0, 200), 1.0))
+            p.drawRect(rect)
+            if val is not None and rect.height() > 12:
+                p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255)))
+                p.drawText(rect, QtCore.Qt.AlignCenter, "{:.0f}".format(val))
+        # Les deux repères, bien visibles et nommés.
+        for nom, r, coul in (("bois nu", self._bois, QtGui.QColor(60, 200, 90)),
+                             ("noir max", self._noir, QtGui.QColor(70, 150, 255))):
+            if not r:
+                continue
+            rect = self._mm_vers_ecran(r)
+            p.setPen(QtGui.QPen(coul, 2.5))
+            p.drawRect(rect)
+            p.drawText(rect.adjusted(0, -16, 0, -16),
+                       QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop, nom)
+        p.end()
+
+
+def _gris_moyen(img, rect_px):
+    """Gris moyen (0-255) d'un rectangle de pixels, ou None hors image.
+
+    Moyenne et non médiane : le grain du bois est un bruit à peu près
+    symétrique, et la moyenne d'un carré de plusieurs milliers de pixels
+    l'écrase déjà. La médiane coûterait un tri par case sans rien apporter
+    ici -- ce qui compte est l'ÉCART entre cases, pas la valeur absolue.
+    """
+    if img is None or img.isNull():
+        return None
+    x0, y0, x1, y1 = rect_px
+    x0, y0 = max(0, x0), max(0, y0)
+    x1, y1 = min(img.width(), x1), min(img.height(), y1)
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        return None
+    # Un pas d'échantillonnage : lire 4 000 pixels par case suffit
+    # largement, et une case de 10 mm à 50 px/mm en contient 250 000.
+    pas = max(1, int(((x1 - x0) * (y1 - y0) / 4000.0) ** 0.5))
+    total, n = 0, 0
+    for y in range(y0, y1, pas):
+        for x in range(x0, x1, pas):
+            c = img.pixelColor(x, y)
+            total += (c.red() * 299 + c.green() * 587 + c.blue() * 114) // 1000
+            n += 1
+    return (total / float(n)) if n else None
+
+
+class _DialogueNoirceur(QtWidgets.QDialog):
+    """Lit la noirceur de TOUTES les cases d'une grille sur sa photo.
+
+    Trois entrées : la photo redressée (qui porte l'échelle px/mm), la
+    fiche de grille déposée à côté du G-code (qui porte la position de
+    chaque case dans le repère de la mire), et les deux repères -- bois nu
+    et noir max -- proposés puis corrigeables.
+
+    Le pourcentage est RELATIF par construction, et c'est ce qui le rend
+    utilisable : un gris brut dépend de l'éclairage, l'écart entre deux
+    gris de la même photo non.
+    """
+
+    def __init__(self, parent=None):
+        super(_DialogueNoirceur, self).__init__(parent)
+        self.setWindowTitle("Lire la noirceur des cases sur photo")
+        self.resize(1000, 680)
+        self._fiche = None
+        self._img_mesure = None     # pleine résolution, pour LIRE
+        self._pxmm = 0.0
+        self._marge = 0.0
+        self._valeurs = {}          # (row, col) -> % ou None
+
+        lay = QtWidgets.QVBoxLayout(self)
+
+        # --- ① les deux fichiers ---------------------------------------
+        haut = QtWidgets.QFormLayout()
+        self.combo_planche = QtWidgets.QComboBox()
+        self.combo_planche.setToolTip(
+            "Les planches redressées du dossier, la plus récente en tête.")
+        haut.addRow("Photo redressée :", self.combo_planche)
+
+        ligne = QtWidgets.QHBoxLayout()
+        self.edt_fiche = QtWidgets.QLineEdit()
+        self.edt_fiche.setPlaceholderText(
+            "…_grille.json, déposé à côté du G-code de la grille")
+        b = QtWidgets.QPushButton("Parcourir…")
+        b.clicked.connect(self._choisir_fiche)
+        ligne.addWidget(self.edt_fiche, 1)
+        ligne.addWidget(b)
+        haut.addRow("Fiche de grille :", ligne)
+        lay.addLayout(haut)
+
+        # --- ② la vue ---------------------------------------------------
+        self.vue = _VueNoirceur(self)
+        self.vue.bouge.connect(self._relire)
+        lay.addWidget(self.vue, 1)
+
+        self.lbl = _WrapLabel("")
+        lay.addWidget(self.lbl)
+
+        # --- ③ le versement --------------------------------------------
+        bas = QtWidgets.QHBoxLayout()
+        self.combo_mat = QtWidgets.QComboBox()
+        self.combo_mat.setEditable(True)
+        bas.addWidget(QtWidgets.QLabel("Matériau :"))
+        bas.addWidget(self.combo_mat, 1)
+        self.btn_verser = QtWidgets.QPushButton("Verser dans le nuancier")
+        self.btn_verser.clicked.connect(self._verser)
+        bas.addWidget(self.btn_verser)
+        fermer = QtWidgets.QPushButton("Fermer")
+        fermer.clicked.connect(self.reject)
+        bas.addWidget(fermer)
+        lay.addLayout(bas)
+
+        self.combo_planche.currentIndexChanged.connect(lambda _i: self._charger())
+        self.edt_fiche.editingFinished.connect(self._charger)
+        self._remplir_planches()
+        self._remplir_materiaux()
+        self._charger()
+
+    # -- alimentation ----------------------------------------------------
+    def _remplir_planches(self):
+        self.combo_planche.blockSignals(True)
+        self.combo_planche.clear()
+        for p in core.planches_redressees():
+            infos = p.get("infos") or {}
+            chemin = infos.get("apercu") or infos.get("fichier")
+            if not chemin:
+                continue
+            self.combo_planche.addItem(p.get("nom") or p["base"],
+                                       {"chemin": chemin, "infos": infos})
+        self.combo_planche.blockSignals(False)
+
+    def _remplir_materiaux(self):
+        self.combo_mat.clear()
+        noms = sorted(set(core.shade_materials()) | set(core.burn_width_materials()))
+        self.combo_mat.addItems(noms)
+
+    def _choisir_fiche(self):
+        chemin, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Fiche de grille", getattr(core, "GCODE_DIR", ""),
+            "Fiche de grille (*_grille.json);;JSON (*.json)")
+        if chemin:
+            self.edt_fiche.setText(chemin)
+            self._charger()
+
+    # -- lecture ---------------------------------------------------------
+    def _charger(self):
+        d = self.combo_planche.currentData()
+        chemin_fiche = self.edt_fiche.text().strip()
+        if not d or not chemin_fiche or not os.path.isfile(chemin_fiche):
+            self._dire("Choisis une photo redressée ET la fiche de grille "
+                       "déposée à côté du G-code.")
+            return
+        try:
+            with open(chemin_fiche) as fh:
+                self._fiche = json.load(fh)
+        except Exception as exc:
+            self._dire("Fiche illisible : {}".format(exc))
+            return
+        cases = (self._fiche or {}).get("cases") or []
+        if not cases:
+            self._dire("Cette fiche ne décrit aucune case.")
+            return
+
+        infos = d["infos"]
+        self._marge = core.marge_photo(infos)
+        # On LIT sur la pleine résolution et on AFFICHE l'aperçu : lire sur
+        # un JPEG réduit perdrait des pixels par case sans rien gagner à
+        # l'écran, et afficher le PNG de 55 Mo figerait la fenêtre.
+        plein = infos.get("fichier") or d["chemin"]
+        self._img_mesure = _image_bornee(plein, 100000, 100000)
+        if self._img_mesure is None or self._img_mesure.isNull():
+            self._img_mesure = _image_bornee(d["chemin"], 100000, 100000)
+        img_vue = _image_bornee(d["chemin"], 1600, 1600)
+        if img_vue is None or img_vue.isNull():
+            self._dire("Photo illisible.")
+            return
+        # L'échelle de l'IMAGE AFFICHÉE, qui n'est pas celle de la mesure.
+        base = float((infos.get("base_mm") or [0])[0] or 0.0)
+        largeur_mm = float(infos.get("largeur_mm") or 0.0)
+        self._pxmm_vue = (img_vue.width() / largeur_mm) if largeur_mm else 1.0
+        self._pxmm = (self._img_mesure.width() / largeur_mm) if largeur_mm else 1.0
+
+        # Repères PROPOSÉS : le bois nu le plus clair parmi les écarts, la
+        # case la plus sombre pour le noir.
+        bois = self._proposer_bois()
+        noir = self._proposer_noir()
+        self.vue._pxmm = self._pxmm_vue
+        self.vue.poser(img_vue, self._pxmm_vue, self._marge, [], bois, noir)
+        self._relire()
+
+    def _px(self, r):
+        return tuple(int(round((v + self._marge) * self._pxmm))
+                     for v in (r[0], r[1], r[2], r[3]))
+
+    def _proposer_bois(self):
+        cands = core.reperes_candidats(self._fiche)
+        best, bestv = None, -1.0
+        for c in cands:
+            g = _gris_moyen(self._img_mesure, self._px(c))
+            if g is not None and g > bestv:
+                best, bestv = c, g
+        return best
+
+    def _proposer_noir(self):
+        best, bestv = None, 1e9
+        for c in (self._fiche.get("cases") or []):
+            r = (c["x0"], c["y0"], c["x1"], c["y1"])
+            g = _gris_moyen(self._img_mesure, self._px(r))
+            if g is not None and g < bestv:
+                best, bestv = r, g
+        return best
+
+    def _relire(self):
+        if not self._fiche or self._img_mesure is None:
+            return
+        bois, noir = self.vue.valeurs()
+        gb = _gris_moyen(self._img_mesure, self._px(bois)) if bois else None
+        gn = _gris_moyen(self._img_mesure, self._px(noir)) if noir else None
+        if gb is None or gn is None:
+            self._dire("Repères hors de la photo : ramène-les sur la planche.")
+            return
+        if gb - gn < core.ECART_REPERES_MINI:
+            self._dire(
+                "<b>Photo trop plate pour mesurer.</b> Le bois nu ({:.0f}) et "
+                "le noir ({:.0f}) ne sont séparés que de {:.0f} niveaux, il en "
+                "faut {:.0f}. Normaliser reviendrait à diviser du bruit par du "
+                "bruit — et les pourcentages auraient l'air normaux. Vérifie "
+                "les deux repères, ou refais la photo mieux éclairée."
+                .format(gb, gn, gb - gn, core.ECART_REPERES_MINI), rouge=True)
+            self.vue.poser(self.vue._img, self._pxmm_vue, self._marge, [],
+                           bois, noir)
+            return
+        dessin, self._valeurs = [], {}
+        for c in (self._fiche.get("cases") or []):
+            r = (c["x0"], c["y0"], c["x1"], c["y1"])
+            g = _gris_moyen(self._img_mesure, self._px(r))
+            v = core.noirceur_normalisee(g, gb, gn) if g is not None else None
+            self._valeurs[(c["row"], c["col"])] = (v, c)
+            dessin.append((r, "", v))
+        self.vue.poser(self.vue._img, self._pxmm_vue, self._marge, dessin,
+                       bois, noir)
+        lus = [v for v, _c in self._valeurs.values() if v is not None]
+        self._dire(
+            "<b>{} cases lues</b> — bois nu {:.0f}, noir max {:.0f} "
+            "({:.0f} niveaux d'écart). Noirceurs de <b>{:.0f} %</b> à "
+            "<b>{:.0f} %</b>. Les deux repères se déplacent à la souris."
+            .format(len(lus), gb, gn, gb - gn, min(lus), max(lus))
+            if lus else "Aucune case lisible.")
+
+    def _dire(self, texte, rouge=False):
+        self.lbl.setText(texte)
+        self.lbl.setStyleSheet("color:#b00020;" if rouge else "")
+
+    # -- versement -------------------------------------------------------
+    def _verser(self):
+        mat = self.combo_mat.currentText().strip()
+        if not mat:
+            QtWidgets.QMessageBox.warning(self, "Matériau",
+                                          "Nomme le matériau d'abord.")
+            return
+        lus = [(v, c) for v, c in self._valeurs.values() if v is not None]
+        if not lus:
+            QtWidgets.QMessageBox.warning(self, "Rien à verser",
+                                          "Aucune case n'a pu être lue.")
+            return
+        rep = QtWidgets.QMessageBox.question(
+            self, "Verser dans le nuancier",
+            "Ajouter {} tons mesurés à « {} » ?\n\n"
+            "Ils s'ajoutent aux tons existants — rien n'est remplacé.\n"
+            "Le défocus et le pas de la grille ne sont PAS dans la fiche :\n"
+            "ces tons porteront le régime de la planche tel qu'il a été\n"
+            "gravé, à compléter à la main si besoin."
+            .format(len(lus), mat),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.Yes)
+        if rep != QtWidgets.QMessageBox.Yes:
+            return
+        tons = list(core.load_shades(mat))
+        for v, c in sorted(lus, key=lambda t: t[0]):
+            tons.append({
+                "darkness": round(float(v), 1),
+                "power": float(c["power"]), "feed": float(c["feed"]),
+                "z_offset": 0.0, "width": 0.0,
+                "label": "grille (photo mesurée) S{:.0f} F{:.0f}".format(
+                    c["power"], c["feed"]),
+            })
+        core.save_shades(mat, tons)
+        QtWidgets.QMessageBox.information(
+            self, "Nuancier",
+            "{} tons ajoutés à « {} » ({} au total).".format(
+                len(lus), mat, len(tons)))
+
+
 class _VueChoixTrait(QtWidgets.QLabel):
     """Vue d'ensemble de la planche : on encadre UN trait à la souris.
 
@@ -10792,6 +11195,20 @@ class TaskPanelTestGrid:
             "les autres côtés.")
         form.addRow(self.chk_mire)
 
+        self.btn_lire_noirceur = QtWidgets.QPushButton(
+            "Lire la noirceur des cases sur photo…")
+        self.btn_lire_noirceur.setToolTip(
+            "Ouvre la photo redressée de la planche et la fiche de grille\n"
+            "déposée à côté du G-code, lit le gris moyen de chaque case et\n"
+            "le convertit en noirceur.\n\n"
+            "Le pourcentage est RELATIF, entre deux repères pris dans la\n"
+            "MÊME photo : un bout de bois nu (0 %) et la case la plus noire\n"
+            "(100 %). Une largeur est géométrique et se lit en absolu ; un\n"
+            "gris dépend de l'éclairage, seul l'écart entre deux gris de la\n"
+            "même photo n'en dépend pas.")
+        self.btn_lire_noirceur.clicked.connect(self._on_lire_noirceur)
+        form.addRow(self.btn_lire_noirceur)
+
         _section(form, "Étiquettes S/F", "sect_labels.svg")
         self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes S/F (colonnes/lignes)")
         self.chk_labels.setChecked(True)
@@ -11393,6 +11810,15 @@ class TaskPanelTestGrid:
         self.edt_measure_mat.lineEdit().editingFinished.connect(
             lambda: self._ton_rapide["reload"]())
         self._ton_rapide["reload"]()
+
+    def _on_lire_noirceur(self):
+        """Ouvre la lecture de noirceur. La fenêtre se débrouille seule :
+        elle liste les planches redressées et demande la fiche de grille."""
+        dlg = _DialogueNoirceur(self.form)
+        dlg.exec()
+        self._mesures.reload()
+        if getattr(self, "_ton_rapide", None):
+            self._ton_rapide["reload"]()
 
     def _kw_mire(self):
         """Les arguments de la mire, pour TOUS les appels au générateur.

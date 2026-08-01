@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.38.3"
+VERSION = "2.39.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9903,6 +9903,60 @@ def fiche_grille_noirceur(cells, cell_size, infos_mire, marge_lecture=0.15):
         "mire_mm": [float(infos_mire["largeur"]), float(infos_mire["hauteur"])],
         "cases": cases,
     }
+
+
+def reperes_candidats(fiche, cote_mm=None):
+    """Emplacements possibles du repère « bois nu », en mm image.
+
+    Le bois nu ne se lit pas dans une case -- elles sont toutes gravées --
+    mais dans les ÉCARTS entre elles, qui sont restés intacts. On propose
+    les croisements d'écarts, c'est-à-dire les carrés situés entre quatre
+    cases voisines : ce sont les endroits les plus éloignés de toute
+    brûlure, donc les moins susceptibles d'attraper une bavure.
+
+    Renvoie une liste de (x0, y0, x1, y1) en mm image, à trier ensuite par
+    clarté sur la photo -- c'est l'appelant qui voit les pixels."""
+    cases = (fiche or {}).get("cases") or []
+    if len(cases) < 2:
+        return []
+    par = {(c["row"], c["col"]): c for c in cases}
+    rows = sorted({c["row"] for c in cases})
+    cols = sorted({c["col"] for c in cases})
+    if len(rows) < 2 or len(cols) < 2:
+        return []
+    # Les cases de la fiche sont déjà ROGNÉES de la marge de lecture : les
+    # prendre telles quelles fait chevaucher l'écart sur la brûlure, et le
+    # « bois nu » proposé contiendrait du bois gravé. On revient d'abord
+    # aux limites RÉELLES du carré.
+    cote = float((fiche or {}).get("cote_case_mm") or cote_mm or 0.0)
+    r = float((fiche or {}).get("marge_lecture") or 0.0) * cote
+    # Puis on se retire encore du bord : la brûlure DÉBORDE du carré (rampe
+    # de bord, et franchement en défocus). Un repère collé au trait
+    # mesurerait la bavure, pas le bois.
+    garde = 0.20
+
+    def vrai(c):
+        return (c["x0"] - r, c["y0"] - r, c["x1"] + r, c["y1"] + r)
+
+    out = []
+    for r0, r1 in zip(rows, rows[1:]):
+        for c0, c1 in zip(cols, cols[1:]):
+            a, b = par.get((r0, c0)), par.get((r1, c1))
+            if a is None or b is None:
+                continue
+            ax0, ay0, ax1, ay1 = vrai(a)
+            bx0, by0, bx1, by1 = vrai(b)
+            # L'écart en X entre deux colonnes, en Y entre deux rangées.
+            # Le Y est retourné : la rangée suivante est PLUS HAUT dans
+            # l'image, donc son y1 est plus petit.
+            x0, x1 = min(ax1, bx1), max(ax0, bx0)
+            y0, y1 = min(ay1, by1), max(ay0, by0)
+            gx, gy = (x1 - x0) * garde, (y1 - y0) * garde
+            x0, x1 = x0 + gx, x1 - gx
+            y0, y1 = y0 + gy, y1 - gy
+            if x1 - x0 > 0.3 and y1 - y0 > 0.3:
+                out.append((x0, y0, x1, y1))
+    return out
 
 
 def case_en_pixels(case, pxmm, marge_mm):

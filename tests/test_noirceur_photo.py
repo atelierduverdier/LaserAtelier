@@ -250,4 +250,89 @@ finally:
     h.FreeCAD.closeDocument(_doc2.Name)
 h.FreeCAD.closeDocument(_doc.Name)
 
+
+# --- 10. La LECTURE, sur une planche fabriquee de toutes pieces ---------
+# On peint une fausse photo redressee dont on CONNAIT la noirceur de
+# chaque case, et on verifie que le lecteur retrouve ce qu'on y a mis.
+# C'est le seul moyen d'eprouver la chaine avant que le bois existe.
+from PySide6 import QtGui as _QtGui, QtCore as _QtCore
+
+_INF = {"x0": 0.0, "y0": 0.0, "largeur": 100.0, "hauteur": 80.0}
+_COTE, _PAS = 10.0, 13.0
+_cells10 = [{"row": r, "col": c, "power": 200.0 + 200 * c, "feed": 400.0 + 400 * r,
+             "x0": 2.0 + c * _PAS, "y0": 2.0 + r * _PAS}
+            for r in range(4) for c in range(5)]
+_f10 = core.fiche_grille_noirceur(_cells10, _COTE, _INF)
+_PXMM, _MARGE = 20.0, 5.0
+_W = int((_INF["largeur"] + 2 * _MARGE) * _PXMM)
+_H = int((_INF["hauteur"] + 2 * _MARGE) * _PXMM)
+_im = _QtGui.QImage(_W, _H, _QtGui.QImage.Format_RGB32)
+_im.fill(_QtGui.QColor(210, 200, 180))          # bois nu
+_p10 = _QtGui.QPainter(_im)
+# Noirceur VOULUE : croissante avec la colonne, decroissante avec la rangee.
+_voulu = {}
+for c in _f10["cases"]:
+    v = 100.0 * (c["col"] / 4.0) * (1.0 - 0.3 * c["row"] / 3.0)
+    _voulu[(c["row"], c["col"])] = v
+    # bois 210 -> noir 30 : le gris peint suit exactement la definition.
+    g = int(round(210 - (210 - 30) * v / 100.0))
+    x0, y0, x1, y1 = tp._DialogueNoirceur._px.__get__(
+        type("F", (), {"_marge": _MARGE, "_pxmm": _PXMM})())(
+        (c["x0"], c["y0"], c["x1"], c["y1"]))
+    _p10.fillRect(_QtCore.QRect(x0, y0, x1 - x0, y1 - y0), _QtGui.QColor(g, g, g))
+# Une case VRAIMENT noire quelque part, pour l'ancre : c'est (3,4) a 70 %,
+# on force donc un carre noir dans la marge pour ne pas fausser la grille.
+_p10.end()
+
+# Le gris moyen doit retrouver ce qui a ete peint.
+_c00 = [c for c in _f10["cases"] if (c["row"], c["col"]) == (0, 0)][0]
+_faux = type("F", (), {"_marge": _MARGE, "_pxmm": _PXMM})()
+_rect = tp._DialogueNoirceur._px.__get__(_faux)(
+    (_c00["x0"], _c00["y0"], _c00["x1"], _c00["y1"]))
+assert abs(tp._gris_moyen(_im, _rect) - 210.0) < 1.0, tp._gris_moyen(_im, _rect)
+
+# La lecture complete : ancres = bois nu peint (210) et la case la plus
+# sombre reellement presente.
+_gris = {}
+for c in _f10["cases"]:
+    r = tp._DialogueNoirceur._px.__get__(_faux)((c["x0"], c["y0"], c["x1"], c["y1"]))
+    _gris[(c["row"], c["col"])] = tp._gris_moyen(_im, r)
+_gn = min(_gris.values())
+_lu = {k: core.noirceur_normalisee(g, 210.0, _gn) for k, g in _gris.items()}
+_vmax = max(_voulu.values())
+_ecarts = [abs(_lu[k] - _voulu[k] * 100.0 / _vmax) for k in _voulu]
+assert max(_ecarts) < 2.0, ("la lecture s'ecarte de ce qui a ete peint",
+                            max(_ecarts))
+# Et le SENS : plus noir a droite, moins noir quand la rangee monte.
+assert _lu[(0, 4)] > _lu[(0, 0)], "la noirceur doit croitre avec la colonne"
+assert _lu[(0, 4)] > _lu[(3, 4)], "elle doit decroitre quand la rangee monte"
+print("10. la lecture retrouve la noirceur peinte a %.1f point pres, "
+      "et dans le bon sens OK" % max(_ecarts))
+
+# --- 11. Le repere « bois nu » ne tombe pas dans une case ---------------
+_cand = core.reperes_candidats(_f10)
+assert _cand, "aucun croisement d'ecart propose"
+_r = core.marge_lecture_mm if hasattr(core, "marge_lecture_mm") else \
+    _f10["marge_lecture"] * _f10["cote_case_mm"]
+def _vrai10(c):
+    return (c["x0"] - _r, c["y0"] - _r, c["x1"] + _r, c["y1"] + _r)
+for _cx0, _cy0, _cx1, _cy1 in _cand:
+    for c in _f10["cases"]:
+        a, b, cc, d = _vrai10(c)
+        assert _cx1 <= a or _cx0 >= cc or _cy1 <= b or _cy0 >= d, (
+            "un repere de bois nu chevauche une case gravee", c["row"], c["col"])
+# Et sur la fausse photo, ils lisent le MEME gris qu'un coin de bois
+# intact. Comparer a une RELATION et non a un litteral : le bois peint est
+# (210,200,180), dont la luminance vaut 200,7 -- attendre 210 revenait a
+# confondre la composante rouge avec le gris, et le test tombait sur une
+# valeur pourtant juste.
+_bois_pur = tp._gris_moyen(_im, (2, 2, 40, 40))
+for cand in _cand[:6]:
+    g = tp._gris_moyen(_im, tp._DialogueNoirceur._px.__get__(_faux)(cand))
+    assert g is not None and abs(g - _bois_pur) < 1.0, (
+        "un repere de bois nu ne lit pas le meme gris qu'un coin intact",
+        g, _bois_pur)
+print("11. les %d reperes de bois nu proposes lisent tous du bois intact OK"
+      % len(_cand))
+
 print("\nTOUS LES TESTS noirceur_photo PASSENT")
