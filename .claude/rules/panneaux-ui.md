@@ -309,3 +309,23 @@ The fallback is now the caller's own `ouvert`. Two rules follow:
 Don't bury a new feature in an existing section either: the user may have folded that one years
 ago, and your addition silently inherits the fold. §7 of `test_noirceur_photo.py` freezes both
 halves — it was verified to go red with the old hardcoded `False`.
+
+## The accordion must not fold the ①②③ steps (2026-08-01)
+
+Opening any section folded all the others — including the numbered **step** sections, which are
+not detail: they carry the mode's actions. The Grille de test's **"Générer et sauvegarder le
+G-code"** button lives in ①, so touching any setting made the panel's primary action vanish.
+Christophe looked for it and could not find it — the *fourth* time in one evening that something
+was hidden behind a fold.
+
+Sections whose title starts with ① ② ③ are now skipped by the accordion, and open by default when
+no state is stored. They can still be folded **by hand**; it is the automatic fold, that nobody
+asked for, that is gone.
+
+The stored `False` for those sections was not a choice either — it was the defect's residue.
+`_depiler_etapes_une_fois()` clears it **once**, behind a marker key, touching only step keys.
+Anything folded after that was folded by a real click and stays folded; §12 checks both halves,
+including that a second run does not re-open a deliberate fold.
+
+Rule of thumb for this panel family: **the button that produces the deliverable never lives behind
+a fold that something else can close.**

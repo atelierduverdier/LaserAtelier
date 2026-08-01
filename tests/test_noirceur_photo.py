@@ -335,4 +335,53 @@ for cand in _cand[:6]:
 print("11. les %d reperes de bois nu proposes lisent tous du bois intact OK"
       % len(_cand))
 
+
+# --- 12. Les etapes ①②③ echappent a l'accordeon ------------------------
+# Le bouton « Generer et sauvegarder le G-code » vit dans ①. Deplier
+# n'importe quel reglage refermait ① : apres avoir touche un champ,
+# l'action principale du panneau avait disparu. Christophe l'a cherchee
+# le 01/08/2026 sans la trouver -- la quatrieme fois de la soiree qu'un
+# element se cachait derriere un pli.
+assert tp._est_etape("① Graver — préréglage recommandé")
+assert tp._est_etape("② Entrer les mesures")
+assert tp._est_etape("③ Photo du résultat")
+assert not tp._est_etape("Options")
+assert not tp._est_etape("Mesure sur photo")
+assert not tp._est_etape("")
+
+# Une etape jamais vue s'ouvre, comme une section neuve.
+tp._section_states().pop("① Etape neuve de test", None)
+assert tp._section_state_get("① Etape neuve de test",
+                             False or tp._est_etape("① Etape neuve de test"))
+
+# Et l'accordeon ne la referme PAS : le code saute les etapes.
+import inspect as _i12
+_src12 = _i12.getsource(tp._activer_sections)
+assert "_est_etape(h2.text())" in _src12, (
+    "l'accordeon ne saute pas les etapes : deplier un reglage refermera "
+    "la section qui porte le bouton Generer")
+# Mais on peut toujours les replier A LA MAIN : rien ne l'interdit.
+assert "continue" in _src12
+
+# La remise a zero unique : elle efface les etapes repliees, une fois.
+_etats = tp._section_states()
+_etats.pop(tp._CLE_MIGRATION_ETAPES, None)
+_etats["① Repliee par l'accordeon"] = False
+_etats["② Repliee aussi"] = False
+_etats["Options"] = False                 # pas une etape : on n'y touche pas
+tp._depiler_etapes_une_fois()
+assert "① Repliee par l'accordeon" not in _etats, "l'etape n'a pas ete rouverte"
+assert "② Repliee aussi" not in _etats
+assert _etats.get("Options") is False, "une section ORDINAIRE ne doit pas bouger"
+assert _etats.get(tp._CLE_MIGRATION_ETAPES) is True, "marqueur non pose"
+# Une SECONDE fois ne doit plus rien effacer : ce qui est replie apres
+# coup l'a ete par un vrai clic.
+_etats["① Repliee a la main"] = False
+tp._depiler_etapes_une_fois()
+assert _etats.get("① Repliee a la main") is False, (
+    "la remise a zero s'est rejouee : un repli volontaire serait annule "
+    "a chaque ouverture de panneau")
+print("12. les etapes ①②③ echappent a l'accordeon, et la remise a zero "
+      "ne joue qu'une fois OK")
+
 print("\nTOUS LES TESTS noirceur_photo PASSENT")

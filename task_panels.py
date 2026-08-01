@@ -2008,6 +2008,52 @@ def _section_states():
     return _SECTION_STATES
 
 
+# Les sections ÉTAPES du parcours guidé, reconnues à leur numéro en tête
+# de titre. Elles ne décrivent pas du détail repliable : elles portent les
+# actions du mode -- dont le bouton « Générer » du panneau.
+_ETAPES = ("\u2460", "\u2461", "\u2462")      # ① ② ③
+
+
+def _est_etape(titre):
+    """Le titre est-il celui d'une étape guidée ①②③ ?"""
+    return (titre or "").lstrip().startswith(_ETAPES)
+
+
+# Marqueur de la remise à zéro unique ci-dessous.
+_CLE_MIGRATION_ETAPES = "__etapes_depliees_v2_39_1"
+
+
+def _depiler_etapes_une_fois():
+    """Rouvre UNE FOIS les sections d'étape que l'accordéon avait repliées.
+
+    Jusqu'à la v2.39.0, ouvrir n'importe quelle section repliait toutes les
+    autres -- y compris les étapes ①②③, qui portent les actions du mode.
+    Le « Générer » de la Grille de test vivait dans ① : toucher un réglage
+    le faisait disparaître. L'état enregistré à « replié » pour ces
+    sections n'est donc pas un choix, c'est la trace du défaut.
+
+    On l'efface une seule fois, marqueur à l'appui. Ce qui sera replié
+    APRÈS le sera par un vrai clic, et restera replié."""
+    etats = _section_states()
+    if etats.get(_CLE_MIGRATION_ETAPES):
+        return
+    touchees = [k for k, v in list(etats.items())
+                if _est_etape(k) and not v]
+    for k in touchees:
+        etats.pop(k, None)
+    etats[_CLE_MIGRATION_ETAPES] = True
+    try:
+        cfg = core.load_config()
+        cfg["sections"] = etats
+        core.save_config(cfg)
+    except Exception:
+        pass
+    if touchees:
+        FreeCAD.Console.PrintMessage(
+            "{} sections d'étape rouvertes : elles avaient été repliées par "
+            "l'accordéon, pas par un clic.\n".format(len(touchees)))
+
+
 def _section_state_get(cle, defaut):
     return bool(_section_states().get(cle, defaut))
 
@@ -2193,6 +2239,8 @@ def _activer_sections(inner):
     la visibilité suit le bouton-titre : cacher le conteneur ne touche
     pas au setVisible() individuel des rangées (logique dynamique des
     styles de trait préservée)."""
+    # La trace de l'accordéon sur les étapes, effacée une seule fois.
+    _depiler_etapes_une_fois()
     form = inner.layout()
     if not isinstance(form, QtWidgets.QFormLayout):
         return
@@ -2244,7 +2292,8 @@ def _activer_sections(inner):
             #
             # Une section qu'il a REPLIÉE lui-même garde son état : c'est
             # son choix, et il prime.
-            etat = _section_state_get(cle, w.ouvert_par_defaut())
+            etat = _section_state_get(
+                cle, w.ouvert_par_defaut() or _est_etape(cle))
             w.setChecked(etat)
             conteneur.setVisible(etat)
             paires.append((w, conteneur))
@@ -2258,6 +2307,18 @@ def _activer_sections(inner):
                 if (on and getattr(core, "SECTIONS_ACCORDEON", True)
                         and not _ACCORDEON_SUSPENDU[0]):
                     for h2, c2 in paires:
+                        # Les ÉTAPES ①②③ échappent à l'accordéon. Le bouton
+                        # « Générer et sauvegarder le G-code » vit dans ① :
+                        # déplier n'importe quel réglage le refermait, si
+                        # bien qu'après avoir touché un champ, l'action
+                        # principale du panneau avait disparu. Christophe
+                        # l'a cherchée le 01/08/2026 sans la trouver.
+                        #
+                        # Les replier reste possible -- à la main, par un
+                        # clic sur leur barre. C'est le repli AUTOMATIQUE,
+                        # que personne n'a demandé, qui est retiré.
+                        if _est_etape(h2.text()):
+                            continue
                         if h2 is not entete and h2.isChecked():
                             h2.setChecked(False)   # sans ré-émettre toggled
                             c2.setVisible(False)
