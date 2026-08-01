@@ -886,3 +886,45 @@ assert abs(_sp6.value() - 0.42) < 1e-9, (
 assert "verrouill" not in _msg6b.lower(), _msg6b
 _gr6._chk.setChecked(True)
 print("verrou : l'outil de mesure respecte le cadenas, et le dit OK")
+
+
+# --- Le job combiné peignait le point OPTIQUE (v2.32.0) --------------
+# Trou ouvert depuis la v2.13.2, documenté comme tel : les trois appels de
+# `_strokes_from_operation` ne passaient PAS le materiau, donc
+# `burn_width_defocus_scaled` renvoyait None des qu'il y a plus d'un
+# materiau mesure -- et l'apercu retombait EN SILENCE sur le point
+# optique, plus large que la brulure reelle.
+#
+# Le materiau voyage A COTE de `params`, jamais dedans : params est le jeu
+# exact de kwargs du generateur, une cle en plus casserait l'appel
+# **params. C'est ce qui avait laisse ce trou ouvert.
+assert len(core.burn_width_materials()) >= 2, (
+    "il faut au moins deux materiaux mesures pour que l'omission se voie -- "
+    "avec un seul, core devine et le defaut reste invisible")
+_op = {"type": "curved", "materiau": u"Hêtre",
+       "params": {"power": 1000.0, "feed": 200.0,
+                  "z_focus": core.Z_WORK_MM + 15.0, "edges": []}}
+_sans = dict(_op); _sans.pop("materiau")
+_pw, _fd, _dz = 1000.0, 200.0, 15.0
+_mesure = core.burn_width_defocus_scaled(_pw, _fd, _dz, u"Hêtre")
+_devine = core.burn_width_defocus_scaled(_pw, _fd, _dz)
+_optique = core.spot_diameter_at_defocus(_dz, core.SPOT_FOCUS_MM,
+                                         core.calibrated_half_angle())
+assert _mesure and abs(_mesure - _optique) > 0.05, (
+    "brulure et point optique doivent differer, sinon ce test ne prouve rien",
+    _mesure, _optique)
+assert _devine is None, (
+    "avec deux materiaux mesures, core DOIT refuser de deviner", _devine)
+# Et le panneau transmet bien la cle.
+_src_tp2 = open(_os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
+                              "task_panels.py")).read()
+assert _src_tp2.count('"materiau":') >= 2, (
+    "les constructeurs d'operation doivent porter le materiau")
+_i2 = _src_tp2.index("def _strokes_from_operation")
+_corps2 = _src_tp2[_i2:_i2 + 4000]
+assert 'op.get("materiau")' in _corps2, "l'apercu doit lire le materiau"
+assert "defocus, mat)" in _corps2 and "coff, mat)" in _corps2 \
+    and "dz, mat)" in _corps2, (
+    "les TROIS appels doivent passer le materiau, pas un ou deux")
+print("job combiné : matériau transmis à l'aperçu ({:.2f} mm mesurés contre "
+      "{:.2f} optiques) OK".format(_mesure, _optique))

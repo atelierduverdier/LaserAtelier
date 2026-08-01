@@ -2625,13 +2625,17 @@ def _strokes_from_operation(op):
     types inconnus ignorés (rien d'utile à peindre ici)."""
     typ = op.get("type")
     p = op.get("params", {})
+    # Sans matériau, `burn_width_defocus_scaled` renvoie None dès qu'il y a
+    # PLUS D'UN matériau mesuré -- et l'aperçu retombait alors en silence
+    # sur le point optique, plus large que la brûlure réelle.
+    mat = op.get("materiau")
     half = core.calibrated_half_angle()
     strokes = []
     if typ == "filled":
         defocus = p.get("defocus", 0.0)
         spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half)
         fp, ff = p.get("fill_power", 0.0), p.get("fill_feed", 1.0)
-        fw = core.burn_width_defocus_scaled(fp, ff, defocus) or spot_fill
+        fw = core.burn_width_defocus_scaled(fp, ff, defocus, mat) or spot_fill
         ft = _tone_burn(fp, ff, fw)
         for e in (p.get("fill_edges") or []):
             pts = _discretize_edge(e)
@@ -2641,7 +2645,7 @@ def _strokes_from_operation(op):
             coff = p.get("contour_z_offset", 0.0)
             spot_c = core.spot_diameter_at_defocus(coff, core.SPOT_FOCUS_MM, half)
             cp, cf = p.get("contour_power", 0.0), p.get("contour_feed", 1.0)
-            cw = core.burn_width_defocus_scaled(cp, cf, coff) or spot_c
+            cw = core.burn_width_defocus_scaled(cp, cf, coff, mat) or spot_c
             ct = _tone_burn(cp, cf, cw)
             for e in p["contour_edges"]:
                 pts = _discretize_edge(e)
@@ -2659,7 +2663,7 @@ def _strokes_from_operation(op):
 
         def _wid(dz):
             dz = max(0.0, dz)
-            return (core.burn_width_defocus_scaled(pw, fd, dz)
+            return (core.burn_width_defocus_scaled(pw, fd, dz, mat)
                     or core.spot_diameter_at_defocus(dz, core.SPOT_FOCUS_MM, half)
                     or core.SPOT_FOCUS_MM)
 
@@ -6578,6 +6582,11 @@ class TaskPanelFilledEngraving:
         _save_last_values("filled", self._last_fields, selection=self.selection)
         return {"type": "filled",
                 "label": "Gravure remplie (S{:.0f})".format(self.spn_fill_power.value()),
+                # HORS de params : celui-ci est le jeu exact de kwargs du
+                # générateur, une clé en plus casserait l'appel **params.
+                # C'est ce qui laissait l'aperçu du job combiné peindre le
+                # point OPTIQUE au lieu de la brûlure mesurée.
+                "materiau": self._materiau(),
                 "params": dict(fill_edges=fill_edges, contour_edges=contour_edges,
                                **self._gen_kwargs(defocus, contour_z_offset))}
 
@@ -11886,6 +11895,8 @@ class TaskPanelCurved:
         _save_last_values("curved", self._last_fields, selection=self.selection)
         return {"type": "curved",
                 "label": "Marquage (S{:.0f})".format(self._effective_power()),
+                "materiau": (self._shade_picker["mat"].currentData()
+                             or self._shade_picker["mat"].currentText() or None),
                 "params": dict(edges=self._edges, power=self._effective_power(),
                                feed=self.spn_feed.value(), z_focus=self._z_focus(),
                                marge_survol=core.TRANSIT_MARGIN_MM, reference_shape=self._reference_shape,

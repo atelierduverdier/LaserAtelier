@@ -356,10 +356,13 @@ on the thin end, which also poisons `_tone_burn(power, feed, width)` fed from it
 now asserts the painted width **differs from the optical spot**, so an omitted material fails the
 test instead of looking plausible.
 
-**Still open**: `_strokes_from_operation` (the combined-job preview) has the same three calls and
-cannot be fixed the same way — a combined operation's `params` are *the exact kwargs its generator
-takes*, so slipping a `"material"` key in would break the `**params` call. Fixing it means threading
-the material separately through `_build_combined_operation`.
+**Closed in v2.32.0**: `_strokes_from_operation` (the combined-job preview) had the same three
+calls and had stayed broken because a combined operation's `params` are *the exact kwargs its
+generator takes*, so slipping a `"material"` key in would break the `**params` call. The material
+now travels as a **sibling of `params`** (`op["materiau"]`), set by the `filled` and `curved`
+builders from the panel's own shade picker. On this workshop (beech *and* MDF measured) the three
+calls returned None every time, so the combined preview painted the **optical spot** — 1.16 mm where
+the measured burn is 1.43 at S1000/F200/defocus 15.
 
 ### Covering-setting search, and its inverse
 
