@@ -83,15 +83,15 @@ bb = core.bbox_grille_test(cells, COTE)
 assert bb == (10.0, 20.0, 10.0 + 3*PAS + COTE, 20.0 + 2*PAS + COTE), bb
 print("5. entrees vides : None plutot qu'une fiche a moitie vraie OK")
 
-print("\nTOUS LES TESTS noirceur_photo PASSENT")
-
 # --- 6. Le panneau : case a cocher, mire gravee, fiche deposee ----------
 from harness import sans_dialogues
 sans_dialogues()
 tp = h.tp
 p = tp.TaskPanelTestGrid()
 assert hasattr(p, "chk_mire"), "la case « mire » manque au panneau Grille"
-assert not p.chk_mire.isChecked(), "la mire ne doit pas etre cochee par defaut"
+# PAS d'assertion sur l'etat COCHE : il est memorise d'une session a
+# l'autre, donc il vaut ce que Christophe a laisse. Un test qui rougit
+# parce qu'il a coche une case apprend a ignorer le rouge.
 assert "mire" in p._last_fields, "la case doit se souvenir entre deux sessions"
 assert hasattr(p, "_deposer_fiche_grille"), "le depot de fiche manque"
 
@@ -133,7 +133,11 @@ assert tp._SectionHeader("Autre", ouvert=False).ouvert_par_defaut() is False
 _e.setChecked(False)
 assert _e.ouvert_par_defaut() is True, "le defaut ne doit pas suivre les clics"
 
-# Et la case de la mire est reellement VISIBLE dans le panneau.
+# Et la case de la mire est reellement VISIBLE dans le panneau -- pour une
+# section NEUVE. L'etat memorise est celui de Christophe : l'accordeon
+# l'enregistre des qu'il deplie autre chose, et un test bati dessus rougit
+# parce qu'il s'est servi du logiciel. On repart donc d'un etat efface.
+tp._section_states().pop("Mesure sur photo", None)
 _p2 = tp.TaskPanelTestGrid()
 assert not _p2.chk_mire.isHidden(), "la case de la mire est cachee"
 _par = _p2.chk_mire.parentWidget()
@@ -148,3 +152,56 @@ assert not _p3.chk_mire.parentWidget().isVisibleTo(
     "une section repliee A LA MAIN doit le rester")
 del tp._section_states()["Mesure sur photo"]
 print("7. une section neuve s'ouvre, une section repliee a la main le reste OK")
+
+# --- 8. Le VRAI bouton, pas les helpers qui l'entourent -----------------
+# Le 01/08/2026 le panneau appelait `self.spn_cell`, un widget qui n'existe
+# pas : cliquer « Generer » creait les objets 3D puis levait une
+# AttributeError avant d'ecrire la moindre ligne de G-code. Rien ne l'a vu,
+# parce que la verification appelait `_deposer_fiche_grille` DIRECTEMENT et
+# enjambait la ligne cassee. On verifie le chemin qu'on CLIQUE.
+import os as _os, tempfile as _tf, json as _json
+_ecrits = []
+_vrai_write = tp._write_gcode_with_dialog
+def _faux_write(parent, gcode, defaut, **kw):
+    d = _tf.mkdtemp()
+    chemin = _os.path.join(d, _os.path.basename(defaut))
+    with open(chemin, "w") as fh:
+        fh.write(gcode)
+    _ecrits.append(chemin)
+    return chemin
+tp._write_gcode_with_dialog = _faux_write
+# Le bouton cree de vrais objets : sans document actif il refuse, et le
+# test croirait avoir eprouve le chemin alors qu'il s'est arrete a la
+# premiere ligne.
+_doc = h.FreeCAD.newDocument("EssaiGrilleMire")
+try:
+    _pg = tp.TaskPanelTestGrid()
+    _pg.chk_mire.setChecked(True)
+    _pg.combo_mode.setCurrentIndex(0)
+    _pg.combo_filltype.setCurrentIndex(2)
+    _pg.spn_hatch_spacing.setValue(1.0)
+    _pg.spn_power_min.setValue(200.0); _pg.spn_power_max.setValue(1000.0)
+    _pg.spn_power_steps.setValue(6)
+    _pg.spn_feed_min.setValue(400.0); _pg.spn_feed_max.setValue(4000.0)
+    _pg.spn_feed_steps.setValue(4)
+    _pg.spn_cell_size.setValue(10.0); _pg.spn_gap.setValue(3.0)
+    _pg._on_generer()                      # LE BOUTON
+finally:
+    tp._write_gcode_with_dialog = _vrai_write
+assert _ecrits, "le bouton Generer n'a produit aucun fichier"
+_g = open(_ecrits[0]).read()
+assert "Mire de mesure" in _g, "case cochee, mais pas de mire dans le G-code"
+_fiche = _os.path.splitext(_ecrits[0])[0] + "_grille.json"
+assert _os.path.isfile(_fiche), ("la fiche n'a pas ete deposee a cote du G-code",
+                                 _ecrits[0])
+_f8 = _json.load(open(_fiche))
+assert len(_f8["cases"]) == 24, len(_f8["cases"])
+# La mire doit aussi exister dans le DOCUMENT : un apercu qui ne montre pas
+# ce qui sera grave ne permet pas de verifier l'encombrement.
+_noms = [o.Name for o in _doc.Objects]
+assert any("Mire" in n for n in _noms), (
+    "la mire n'apparait pas dans la vue 3D", _noms[:8])
+print("8. le bouton Generer produit G-code + fiche + mire visible OK")
+h.FreeCAD.closeDocument(_doc.Name)
+
+print("\nTOUS LES TESTS noirceur_photo PASSENT")

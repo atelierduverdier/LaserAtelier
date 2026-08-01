@@ -188,3 +188,33 @@ first guess (the repeated `F200`) was the wrong word — a constant `F` costs no
 `S` costs a full stop.
 
 Call `core._apply_settings_config()` after `preparer()` whenever the output is going to be cut.
+
+## Test the handler the user clicks, not the helpers around it
+
+On 2026-08-01 the Grille de test's **Générer button was shipped broken**: it read
+`self.spn_cell`, a widget that does not exist. Clicking it created the 3D objects, then raised
+`AttributeError` before writing a single line of G-code. Christophe hit it on the first try.
+
+The edit that should have fixed it had been written, but the script asserted on a *second* anchor,
+that assert failed, and the file was **never written** — only the first "replacement done" message
+was read. The syntax gate passed, because an unchanged file is still valid Python.
+
+Worse, the verification written for it called `_deposer_fiche_grille` **directly**, stepping right
+over the broken line. **The path that was tested was the path being written, not the path being
+clicked.**
+
+So: when a panel gains a feature, drive `_on_generer` (or whatever the button is wired to), with
+`_write_gcode_with_dialog` monkeypatched to a temp file. That needs a real document
+(`FreeCAD.newDocument`) — without one the handler refuses at its first line and the test passes
+for the wrong reason.
+
+Two things that surfaced on the way, both worth keeping:
+
+- `hasattr(obj, "ViewObject")` is **true and useless** headless: the attribute exists and is
+  `None`, so the next line dies on `None.LineColor`. Use
+  `getattr(obj, "ViewObject", None) is not None` — fixed at all 8 sites, not just the one that
+  bled.
+- A test must not assert on a **persisted UI state**. `chk_mire.isChecked()` and the fold state of
+  a section are whatever Christophe last left them; asserting on either goes red because he used
+  the software. Assert that the widget *exists* and is in `_last_fields`; for fold state, clear the
+  key first and set up the case the test actually means.

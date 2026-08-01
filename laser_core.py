@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.38.1"
+VERSION = "2.38.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2642,7 +2642,7 @@ def create_kerf_test_pattern(size):
     obj_name = "Test_Kerf_{}mm".format(str(size).replace(".", "_"))
     obj = doc.addObject("Part::Feature", obj_name)
     obj.Shape = wire
-    if hasattr(obj, 'ViewObject'):
+    if getattr(obj, "ViewObject", None) is not None:
         obj.ViewObject.LineColor = (1.0, 0.6, 0.0)
         obj.ViewObject.LineWidth = 2.0
     doc.recompute()
@@ -3044,12 +3044,55 @@ def create_test_grid_object(mode, cells):
             cell["row"], cell["col"], cell["power"], cell["feed"]).replace(".", "_")
         obj = doc.addObject("Part::Feature", name)
         obj.Shape = Part.Compound(cell["edges"])
-        if hasattr(obj, 'ViewObject'):
+        if getattr(obj, "ViewObject", None) is not None:
             obj.ViewObject.LineColor = (0.0, 0.4, 1.0) if mode == "gravure" else (1.0, 0.6, 0.0)
             obj.ViewObject.LineWidth = 1.0
         objs.append(obj)
     doc.recompute()
     return objs, None
+
+
+def create_mire_object(cells, cell_size, label_edges=None, nom="Test_Grille_Mire"):
+    """Crée dans le document l'objet de la MIRE d'une grille de test.
+
+    La mire n'existait que dans le G-code : la vue 3D montrait la grille
+    seule, sans les croix ni la réglette. On ne pouvait donc pas voir ce
+    qu'on allait graver, ni vérifier que la planche tient sur la chute --
+    alors que la mire l'agrandit de 25 mm en bas. Un aperçu qui ne montre
+    pas ce qui sera gravé ne sert à rien.
+
+    Renvoie (objet ou None, infos de la mire ou None)."""
+    doc = FreeCAD.ActiveDocument
+    if doc is None or not cells or not cell_size:
+        return None, None
+    bb = bbox_grille_test(cells, cell_size, label_edges)
+    if bb is None:
+        return None, None
+    bande, labels, infos = mire_de_mesure(*bb)
+    if bande is None:
+        return None, None
+    aretes = list(labels or [])
+    for chain, _s, _f, _c in bande:
+        for (x1, y1), (x2, y2) in zip(chain, chain[1:]):
+            if abs(x2 - x1) > 1e-7 or abs(y2 - y1) > 1e-7:
+                aretes.append(Part.LineSegment(
+                    FreeCAD.Vector(x1, y1, 0.0),
+                    FreeCAD.Vector(x2, y2, 0.0)).toShape())
+    if not aretes:
+        return None, None
+    obj = doc.addObject("Part::Feature", nom)
+    obj.Shape = Part.Compound(aretes)
+    # `getattr(..., None) is not None` et non `hasattr` : l'attribut EXISTE
+    # toujours, il vaut None quand FreeCAD tourne sans interface. Le test
+    # par hasattr passait donc, et la ligne suivante levait une
+    # AttributeError sur None -- ce qui rendait tout le chemin du bouton
+    # inéprouvable en headless.
+    if getattr(obj, "ViewObject", None) is not None:
+        # Vert : ni le bleu des cellules ni l'orange des étiquettes -- la
+        # mire n'est pas du contenu, c'est le repère qui l'entoure.
+        obj.ViewObject.LineColor = (0.0, 0.6, 0.2)
+        obj.ViewObject.LineWidth = 1.0
+    return obj, infos
 
 
 def create_test_grid_label_object(power_labels, feed_labels):
@@ -3070,7 +3113,7 @@ def create_test_grid_label_object(power_labels, feed_labels):
 
     obj = doc.addObject("Part::Feature", "Test_Grille_Etiquettes")
     obj.Shape = Part.Compound(edges)
-    if hasattr(obj, 'ViewObject'):
+    if getattr(obj, "ViewObject", None) is not None:
         obj.ViewObject.LineColor = (0.1, 0.1, 0.1)
         obj.ViewObject.LineWidth = 1.5
     doc.recompute()
@@ -4534,7 +4577,7 @@ def create_toolpath_preview_objects(doc, rapid_segments, mark_segments, name_pre
         edges = [Part.LineSegment(p1, p2).toShape() for p1, p2 in rapid_segments]
         obj = doc.addObject("Part::Feature", name_prefix + "_Transit")
         obj.Shape = Part.Compound(edges)
-        if hasattr(obj, 'ViewObject'):
+        if getattr(obj, "ViewObject", None) is not None:
             obj.ViewObject.LineColor = (0.6, 0.6, 0.6)
             obj.ViewObject.LineWidth = 1.0
         objs.append(obj)
@@ -4542,7 +4585,7 @@ def create_toolpath_preview_objects(doc, rapid_segments, mark_segments, name_pre
         edges = [Part.LineSegment(p1, p2).toShape() for p1, p2 in mark_segments]
         obj = doc.addObject("Part::Feature", name_prefix + "_Marquage")
         obj.Shape = Part.Compound(edges)
-        if hasattr(obj, 'ViewObject'):
+        if getattr(obj, "ViewObject", None) is not None:
             obj.ViewObject.LineColor = (0.9, 0.1, 0.1)
             obj.ViewObject.LineWidth = 2.0
         objs.append(obj)
@@ -4568,7 +4611,7 @@ def create_collision_markers(doc, points, name_prefix="Apercu_Collision"):
     verts = [Part.Vertex(p) for p in points]
     obj = doc.addObject("Part::Feature", name_prefix)
     obj.Shape = Part.Compound(verts)
-    if hasattr(obj, 'ViewObject'):
+    if getattr(obj, "ViewObject", None) is not None:
         obj.ViewObject.PointColor = (1.0, 0.0, 0.8)
         obj.ViewObject.PointSize = 8
     doc.recompute()

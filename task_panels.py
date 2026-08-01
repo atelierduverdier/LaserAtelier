@@ -11440,8 +11440,17 @@ class TaskPanelTestGrid:
 
         core.print_test_grid_legend(mode, cells, self.spn_power_steps.value(), self.spn_feed_steps.value())
 
-        cote = self.spn_cell.value()
+        cote = self.spn_cell_size.value()
         avec_mire = self.chk_mire.isChecked()
+        # La mire aussi dans le DOCUMENT, pas seulement dans le G-code :
+        # sinon la vue 3D montre une planche plus petite que celle qui
+        # sortira, et l'encombrement annoncé (25 mm de plus en bas) ne peut
+        # pas être vérifié avant de graver.
+        obj_mire = None
+        if avec_mire:
+            obj_mire, _im = core.create_mire_object(
+                cells, cote,
+                label_edges if self.chk_labels.isChecked() else None)
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
@@ -11466,7 +11475,8 @@ class TaskPanelTestGrid:
             # retirés du document -- re-cliquer « Générer » regénère tout,
             # les garder produirait des cellules en double.
             doc = FreeCAD.ActiveDocument
-            for obj in objs + ([label_obj] if label_obj is not None else []):
+            for obj in (objs + ([label_obj] if label_obj is not None else [])
+                        + ([obj_mire] if obj_mire is not None else [])):
                 doc.removeObject(obj.Name)
             doc.recompute()
 

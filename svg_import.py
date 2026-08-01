@@ -712,7 +712,7 @@ def _record_to_object(doc, record, index):
     obj = doc.addObject("Part::Feature", "MotifSVG")
     obj.Shape = Part.Compound(edges)
     obj.Label = _label_for_record(record, index)
-    if hasattr(obj, "ViewObject"):
+    if getattr(obj, "ViewObject", None) is not None:
         obj.ViewObject.LineColor = record["fill_rgb"]
         obj.ViewObject.LineWidth = 1.0
     return obj
