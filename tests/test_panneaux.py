@@ -320,3 +320,38 @@ assert "vue 3D" in _ctrl.lbl_mesure.text(), _ctrl.lbl_mesure.text()
 _ctrl._fin_mesure()          # doit etre sur meme si rien n'est branche
 assert _ctrl._mesure_cb is None
 print("mesure A->B : refus propre sans vue 3D, aucun rappel laisse OK")
+
+
+# --- L'AppImage empoisonne tout sous-processus (v2.16.1) -------------
+# Premier clic sur « Redresser une photo » le 01/08/2026 : « Fatal Python
+# error: Failed to import encodings module ». L'AppImage FreeCAD impose
+# PYTHONHOME à tout son environnement, donc le python SYSTÈME cherchait sa
+# bibliothèque standard dans l'AppImage et mourait avant d'exécuter une
+# ligne. Les variables Qt/LD sont tout aussi dangereuses ici : OpenCV 5
+# ouvre sa fenêtre avec Qt6, et lui faire charger les Qt de l'AppImage
+# plante sans message utile.
+import subprocess as _sp
+
+for _v in ("PYTHONHOME", "LD_LIBRARY_PATH", "QT_PLUGIN_PATH"):
+    assert _v in tp._VARS_APPIMAGE, _v
+_pollue = dict(_os.environ)
+_pollue["PYTHONHOME"] = "/tmp/.mount_FreeCAxxxxx/usr"
+_propre = {k: v for k, v in _pollue.items() if k not in tp._VARS_APPIMAGE}
+assert "PYTHONHOME" not in _propre
+
+_py = tp._python_systeme()
+if _py:
+    # Le contrôle se DÉMONTRE : pollué, ça meurt ; assaini, ça marche.
+    _ko = _sp.run([_py, "-c", "print(1)"], env=_pollue,
+                  capture_output=True, text=True)
+    _ok = _sp.run([_py, "-c", "print(1)"], env=_propre,
+                  capture_output=True, text=True)
+    assert _ko.returncode != 0, (
+        "PYTHONHOME de l'AppImage devrait tuer le python systeme -- si ce "
+        "test passe un jour, c'est que l'environnement a change, pas que le "
+        "correctif est inutile")
+    assert _ok.returncode == 0, _ok.stderr[-300:]
+    print("environnement : pollue -> code {}, assaini -> code {} OK".format(
+        _ko.returncode, _ok.returncode))
+else:
+    print("environnement : pas de python systeme, controle saute")

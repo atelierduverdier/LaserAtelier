@@ -533,6 +533,30 @@ def _python_systeme():
     return None
 
 
+# Variables que l'AppImage FreeCAD impose à tout son environnement et qui
+# EMPOISONNENT un python système lancé depuis elle.
+#
+# PYTHONHOME est la plus brutale : le python du système va alors chercher
+# sa bibliothèque standard dans l'AppImage et meurt sur « No module named
+# 'encodings' » avant même d'exécuter une ligne (constaté le 01/08/2026 au
+# premier clic sur le bouton). Les variables Qt et LD_LIBRARY_PATH sont
+# tout aussi importantes ici : OpenCV 5 ouvre sa fenêtre avec Qt6, et lui
+# faire charger les Qt de l'AppImage au lieu de celles du système est le
+# genre de mélange qui plante sans message utile.
+_VARS_APPIMAGE = ("PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONEXECUTABLE",
+                  "LD_LIBRARY_PATH", "LD_PRELOAD", "QT_PLUGIN_PATH",
+                  "QML2_IMPORT_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH")
+
+
+def _env_systeme_propre():
+    """Environnement débarrassé de ce que l'AppImage a injecté, pour lancer
+    un vrai processus système."""
+    env = dict(os.environ)
+    for cle in _VARS_APPIMAGE:
+        env.pop(cle, None)
+    return env
+
+
 def _importer_image_a_l_echelle(chemin, largeur_mm, hauteur_mm):
     """Pose l'image redressée dans le document courant, à SA taille en mm.
 
@@ -612,7 +636,8 @@ def _redresser_photo_planche(parent):
             r = subprocess.run([py, script, photo, "--base", base,
                                 "--pxmm", "50", "--sortie", sortie,
                                 "--json", infos],
-                               capture_output=True, text=True, timeout=900)
+                               capture_output=True, text=True, timeout=900,
+                               env=_env_systeme_propre())
         except Exception as e:
             rates.append("{} : {}".format(os.path.basename(photo), e))
             continue
