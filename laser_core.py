@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.30.2"
+VERSION = "2.31.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9996,33 +9996,43 @@ def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="",
          generate_gcode_planche_defocus(z_focus=z_focus, quiet=quiet, body_only=True)),
     ]
     empilees = [(label, c) for label, c in empilees if c]
-    spot = generate_gcode_planche_spot(z_focus=z_focus, quiet=quiet, body_only=True)
-    if not empilees and not spot:
+    # COLONNE DE DROITE : la 3 (haute et étroite) et la 2b (étroite aussi).
+    # Les empiler à gauche donnerait une planche de 30 cm de long ; à
+    # droite, elles tiennent dans la hauteur déjà occupée par 1 + 2.
+    droite = [
+        ("Planche 3 : point",
+         generate_gcode_planche_spot(z_focus=z_focus, quiet=quiet, body_only=True)),
+        ("Planche 2b : defocus profond",
+         generate_gcode_planche_defocus_profond(z_focus=z_focus, quiet=quiet,
+                                                body_only=True)),
+    ]
+    droite = [(label, c) for label, c in droite if c]
+    if not empilees and not droite:
         return None
 
-    y_offset, x_max = 0.0, 0.0
-    corps_decales = []
-    for label, c in empilees:
-        bbox = gcode_bbox_xy(c)
-        dy = 0.0
-        if bbox is not None:
-            xmin, xmax, ymin, ymax = bbox
-            dy = y_offset - ymin
-            y_offset = ymax + dy + gap_mm
-            x_max = max(x_max, xmax)
-        corps_decales.append((label, shift_gcode_xy(c, 0.0, dy)))
+    def _empiler(items, dx, corps_decales):
+        """Empile verticalement une colonne, renvoie sa largeur maxi."""
+        y_off, x_max = 0.0, 0.0
+        for label, c in items:
+            bbox = gcode_bbox_xy(c)
+            dy = 0.0
+            if bbox is not None:
+                xmin, xmax, ymin, ymax = bbox
+                dy = y_off - ymin
+                y_off = ymax + dy + gap_mm
+                x_max = max(x_max, xmax + dx - xmin if dx else xmax)
+            corps_decales.append(
+                (label, shift_gcode_xy(c, dx - (bbox[0] if bbox and dx else 0.0), dy)))
+        return x_max
 
-    if spot:
-        bbox = gcode_bbox_xy(spot)
-        dx = dy = 0.0
-        if bbox is not None:
-            xmin, _, ymin, _ = bbox
-            dx = (x_max + gap_mm - xmin) if corps_decales else 0.0
-            dy = -ymin
-        corps_decales.append(("Planche 3 : point", shift_gcode_xy(spot, dx, dy)))
+    corps_decales = []
+    x_max = _empiler(empilees, 0.0, corps_decales)
+    if droite:
+        _empiler(droite, (x_max + gap_mm) if empilees else 0.0, corps_decales)
 
     lines = []
-    lines.append("(G-Code Laser - Planches de calibration combinees (foyer + defocus + point))")
+    lines.append("(G-Code Laser - Planches de calibration combinees "
+                 "(foyer + defocus + defocus profond + point))")
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")

@@ -445,3 +445,31 @@ for _dz, _rangs in _par_z.items():
         "trait fait {:.2f} mm : elles se touchent".format(_dz, _mini, _w))
     print("13. defocus {:.0f} : rangees a {:.2f} mm, trait {:.2f} mm OK".format(
         _dz, _mini, _w))
+
+
+# --- 14. Le fichier combiné contient les QUATRE planches (v2.31.0) ----
+# « Toutes les planches en 1 seul fichier » n'en contenait que trois : la
+# 2b avait ete ajoutee aux boutons et pas au combine. Un bouton qui dit
+# « toutes » doit dire vrai.
+_comb = core.generate_gcode_planches_combinees(quiet=True)
+_NOMS = ["Planche 1 : foyer", "Planche 2 : defocus", "Planche 3 : point",
+         "Planche 2b : defocus profond"]
+for _n in _NOMS:
+    assert "(===== {} =====)".format(_n) in _comb, ("bloc absent du combine", _n)
+
+# Et surtout : AUCUN CHEVAUCHEMENT. Deux planches superposees, c'est du
+# bois perdu et des mesures impossibles -- et ca ne se voit qu'a l'apercu.
+_pos = sorted(((_n, _comb.index("(===== {} =====)".format(_n))) for _n in _NOMS),
+              key=lambda t: t[1])
+_boites = []
+for _k, (_n, _i) in enumerate(_pos):
+    _j = _pos[_k + 1][1] if _k + 1 < len(_pos) else len(_comb)
+    _boites.append((_n, core.gcode_bbox_xy(_comb[_i:_j])))
+for _k, (_n1, _a) in enumerate(_boites):
+    for _n2, _b in _boites[_k + 1:]:
+        assert not (_a[0] < _b[1] and _b[0] < _a[1]
+                    and _a[2] < _b[3] and _b[2] < _a[3]), (
+            "« {} » et « {} » se chevauchent".format(_n1, _n2), _a, _b)
+_bb = core.gcode_bbox_xy(_comb)
+print("14. combine : {} planches, aucun chevauchement, {:.0f} x {:.0f} mm OK"
+      .format(len(_boites), _bb[1] - _bb[0], _bb[3] - _bb[2]))
