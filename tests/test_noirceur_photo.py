@@ -202,6 +202,52 @@ _noms = [o.Name for o in _doc.Objects]
 assert any("Mire" in n for n in _noms), (
     "la mire n'apparait pas dans la vue 3D", _noms[:8])
 print("8. le bouton Generer produit G-code + fiche + mire visible OK")
+
+# --- 9. LES QUATRE appels au generateur, pas seulement celui du bouton --
+# Trois aperçus -- duree, cadrage, trajet -- ignoraient la mire et
+# decrivaient donc une planche plus PETITE que celle qui sortira. Le
+# cadrage est le pire : il sert justement a verifier que la piece tient,
+# et il tracait un rectangle amputee des 25 mm de reglette.
+import inspect as _insp
+_src = _insp.getsource(tp.TaskPanelTestGrid)
+_appels = _src.count("core.generate_gcode_test_grid(")
+_avec = _src.count("self._kw_mire()")
+assert _appels >= 4, ("moins d'appels que prevu", _appels)
+assert _avec >= _appels, (
+    "un appel au generateur n'emporte pas la mire : l'apercu decrirait "
+    "une planche plus petite que la vraie", _appels, _avec)
+
+# Et le CADRAGE, en vrai : avec mire, le rectangle doit etre plus grand.
+_doc2 = h.FreeCAD.newDocument("EssaiCadrageMire")
+try:
+    _pc = tp.TaskPanelTestGrid()
+    _pc.spn_power_min.setValue(200.0); _pc.spn_power_max.setValue(1000.0)
+    _pc.spn_power_steps.setValue(3)
+    _pc.spn_feed_min.setValue(400.0); _pc.spn_feed_max.setValue(2000.0)
+    _pc.spn_feed_steps.setValue(2)
+    _pc.spn_cell_size.setValue(10.0); _pc.spn_gap.setValue(3.0)
+    _mode, _ft, _cl, _dz = _pc._build_cells(silent=True)
+    _, _, _le = _pc._build_label_edges(_cl)
+
+    def _cadre(avec):
+        _pc.chk_mire.setChecked(avec)
+        g = core.generate_gcode_test_grid(
+            _cl, _pc.spn_zwork.value(), label_edges=_le,
+            cell_z_offset=_dz, frame_only=True,
+            **dict(_pc._border_kwargs(), **_pc._kw_mire()))
+        ys = [float(m.group(1)) for l in g.split("\n")
+              for m in [__import__("re").search(r"Y(-?[\d.]+)", l)] if m]
+        return min(ys), max(ys)
+
+    _sans_y = _cadre(False)
+    _avec_y = _cadre(True)
+    assert _avec_y[0] < _sans_y[0] - 10.0, (
+        "le cadrage avec mire doit descendre BIEN plus bas (la reglette)",
+        _sans_y, _avec_y)
+    print("9. les 4 appels emportent la mire ; le cadrage descend de "
+          "%.0f mm de plus OK" % (_sans_y[0] - _avec_y[0]))
+finally:
+    h.FreeCAD.closeDocument(_doc2.Name)
 h.FreeCAD.closeDocument(_doc.Name)
 
 print("\nTOUS LES TESTS noirceur_photo PASSENT")

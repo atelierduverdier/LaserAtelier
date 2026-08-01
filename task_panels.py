@@ -11096,7 +11096,8 @@ class TaskPanelTestGrid:
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
-            quiet=True, line_style=self._line_style(), **self._border_kwargs()
+            quiet=True, line_style=self._line_style(),
+            **dict(self._border_kwargs(), **self._kw_mire())
         )
         if not gcode:
             self.lbl_duration.setText("Durée estimée : --")
@@ -11186,7 +11187,8 @@ class TaskPanelTestGrid:
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
-            cell_z_offset=cell_z_offset, frame_only=True, **self._border_kwargs()
+            cell_z_offset=cell_z_offset, frame_only=True,
+            **dict(self._border_kwargs(), **self._kw_mire())
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -11205,7 +11207,8 @@ class TaskPanelTestGrid:
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
             cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(), quiet=True,
-            line_style=self._line_style(), **self._border_kwargs()
+            line_style=self._line_style(),
+            **dict(self._border_kwargs(), **self._kw_mire())
         )
         if not gcode:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
@@ -11391,6 +11394,17 @@ class TaskPanelTestGrid:
             lambda: self._ton_rapide["reload"]())
         self._ton_rapide["reload"]()
 
+    def _kw_mire(self):
+        """Les arguments de la mire, pour TOUS les appels au générateur.
+
+        Ils manquaient aux trois aperçus -- durée, cadrage et trajet --
+        qui décrivaient donc une planche plus petite que celle qui sortira.
+        Le cadrage est le pire des trois : il sert à vérifier que la pièce
+        tient, et il traçait un rectangle amputé des 25 mm de réglette. On
+        aurait cadré, jugé que ça passe, puis gravé dans le serre-joint."""
+        return {"mire": self.chk_mire.isChecked(),
+                "cell_size": self.spn_cell_size.value()}
+
     def _reload_measures(self):
         self._mesures.reload()
 
@@ -11454,7 +11468,7 @@ class TaskPanelTestGrid:
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
-            mire=avec_mire, cell_size=cote,
+            **self._kw_mire(),
             cell_z_offset=cell_z_offset,
             use_proximity=self.chk_proximity.isChecked(),
             line_style=self._line_style(), **self._border_kwargs()
