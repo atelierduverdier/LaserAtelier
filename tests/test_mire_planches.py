@@ -200,3 +200,60 @@ for nom, gen in (("Planche 1", core.generate_gcode_planche_focus),
         nom, "les cotes gravees ne sont pas sous la reglette", min(ys), infos["y0"])
     print("8. {} : cotes « {} » gravees sur la planche elle-meme, "
           "sous la reglette OK".format(nom, attendu))
+
+
+# --- 9. LE LASER EST GRAVE SUR LA PLANCHE (v2.24.0) -------------------
+# Meme raisonnement que les cotes, applique a la donnee qui decide du SENS
+# des mesures : une largeur brulee n'a de valeur que pour le module qui l'a
+# produite. Le nom etait dans le nom du fichier REDRESSE -- lequel ne suit
+# pas le bois. Christophe l'a vu tout de suite en regardant l'apercu :
+# « ou apparait le champ nom de laser ? sur les deux il n'y a rien ».
+NOM = "LT-80W-AA-PRO"
+
+
+def _bbox(aretes):
+    xs = [v.Point.x for a in aretes for v in a.Vertexes]
+    ys = [v.Point.y for a in aretes for v in a.Vertexes]
+    return min(xs), max(xs), min(ys), max(ys)
+
+
+_b0, _l0, _i0 = core.mire_de_mesure(0, 0, 120, 40, laser="")
+_b1, _l1, _i1 = core.mire_de_mesure(0, 0, 120, 40, laser=NOM)
+
+# Sans nom, la planche est EXACTEMENT celle d'avant : l'ajout est isole.
+assert len(_l1) > len(_l0), "le nom du laser n'est pas grave"
+assert [tuple(v.Point.x for v in e.Vertexes) for e in _l1[:len(_l0)]] == \
+       [tuple(v.Point.x for v in e.Vertexes) for e in _l0], \
+    "l'ajout du laser a deplace les etiquettes existantes"
+
+# La police 7 segments ne connait que les chiffres, S, F, '.' et '-'.
+# Utilisee ici, elle produirait un nom quasi VIDE -- grave dans le bois,
+# ca ne se verrait qu'apres coup. Le controle se demontre : on compare.
+_sept = core.text_to_edges(NOM, 0.0, 0.0, 2.5)
+_mono = _l1[len(_l0):]
+assert len(_mono) > 3 * max(1, len(_sept)), (
+    "le nom doit etre grave en police MONO-TRAIT : la 7 segments ne sait "
+    "ecrire ni L ni T ni W ({} aretes contre {})".format(len(_sept), len(_mono)))
+
+# Sur la meme ligne de base que les cotes, et JAMAIS au-dela du repere
+# bas-droite : la croix est la reference, elle ne se fait pas recouvrir.
+_xa, _xb, _ya, _yb = _bbox(_mono)
+_droite = _i1["x0"] + _i1["largeur"] - 2.0
+assert _xb <= _droite, ("le nom deborde sur la croix bas-droite", _xb, _droite)
+assert abs((_yb - _ya) - 2.5) < 0.2, ("hauteur du nom", _yb - _ya)
+
+# Un nom absurde doit RETRECIR, pas deborder.
+_bl, _ll, _il = core.mire_de_mesure(
+    0, 0, 120, 40, laser="UN-NOM-VRAIMENT-BEAUCOUP-TROP-LONG-POUR-CETTE-PLANCHE")
+_xa2, _xb2, _ya2, _yb2 = _bbox(_ll[len(_l0):])
+assert _xb2 <= _il["x0"] + _il["largeur"] - 2.0, ("nom long deborde", _xb2)
+assert (_yb2 - _ya2) < 2.5, "un nom trop long doit etre reduit en hauteur"
+
+# Et l'en-tete le dit aussi -- le bois fait foi, le fichier confirme.
+_g = core.generate_gcode_planche_focus(quiet=True)
+assert re.search(r"\(Mire : gravee avec le laser [^)\n]+\)", _g), \
+    "l'en-tete doit nommer le laser, sur UNE ligne refermee"
+for _l in _g.splitlines():
+    assert _l.count("(") == _l.count(")"), ("commentaire non referme", _l)
+print("9. laser grave sur la planche (mono-trait), sans deborder, "
+      "+ en-tete OK")

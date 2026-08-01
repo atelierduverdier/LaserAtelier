@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.23.0"
+VERSION = "2.24.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9355,8 +9355,18 @@ def _powers_capped(powers):
     return tuple(sorted({min(float(p), float(S_MAX)) for p in powers}))
 
 
+def _largeur_aretes(aretes):
+    """Largeur en X occupée par une liste d'arêtes Part (0 si vide).
+
+    Les polices mono-trait n'exposent pas de largeur calculée : on mesure
+    ce qui a été produit plutôt que de refaire une avance de caractères en
+    parallèle, qui pourrait diverger de la police."""
+    xs = [v.Point.x for a in (aretes or []) for v in a.Vertexes]
+    return (max(xs) - min(xs)) if xs else 0.0
+
+
 def mire_de_mesure(x_min, y_min, x_max, y_max, power=None, feed=None,
-                   marge=6.0, bras=2.0, garde=3.0):
+                   marge=6.0, bras=2.0, garde=3.0, laser=None):
     """Mire de mesure à graver AUTOUR d'une planche : une réglette graduée
     au millimètre sous le contenu, et QUATRE repères en croix aux coins
     d'un rectangle de dimensions RONDES.
@@ -9435,12 +9445,40 @@ def mire_de_mesure(x_min, y_min, x_max, y_max, power=None, feed=None,
     # Une planche vit des années, un fichier est réécrit : la planche doit
     # donc se suffire à elle-même. Le tiret plutôt qu'un « x » parce que
     # la police 7 segments ne connaît que les chiffres, S, F, '.' et '-'.
-    labels.extend(text_to_edges(
-        "{:.0f}-{:.0f}".format(largeur, hauteur),
-        x0 + bras + 2.0, y0 - num_h / 2.0, num_h))
+    cotes = "{:.0f}-{:.0f}".format(largeur, hauteur)
+    y_cotes = y0 - num_h / 2.0
+    labels.extend(text_to_edges(cotes, x0 + bras + 2.0, y_cotes, num_h))
+
+    # ET LE LASER QUI L'A GRAVÉE, juste après les cotes.
+    #
+    # Même raisonnement que ci-dessus, appliqué à la donnée qui décide du
+    # SENS des mesures : une largeur brûlée n'a de valeur que pour le
+    # module qui l'a produite. Une planche retrouvée sur l'établi six mois
+    # plus tard ne dit pas de quelle diode elle vient -- sauf si c'est
+    # écrit dessus. Le nom du fichier ne suffit pas : il ne suit pas le
+    # bois, et c'est le bois qui survit.
+    #
+    # Police MONO-TRAIT (Hershey) et non 7 segments : cette dernière ne
+    # connaît que les chiffres, S, F, '.' et '-' -- donc pas une référence
+    # comme « LT-80W-AA-PRO ».
+    nom_laser = (active_laser_name() if laser is None else str(laser)).strip()
+    if nom_laser:
+        x_laser = x0 + bras + 2.0 + text_width(cotes, num_h) + 3.0
+        # Jusqu'au repère bas-droite, jamais au-delà : un nom trop long
+        # doit rétrécir, pas passer sur la croix qui sert de référence.
+        dispo = (x0 + largeur - bras - 1.0) - x_laser
+        h_laser = num_h
+        aretes = single_line_text_to_edges(nom_laser, height=h_laser,
+                                           x0=x_laser, y0=y_cotes)
+        larg = _largeur_aretes(aretes)
+        if dispo > 1.0 and larg > dispo:
+            h_laser = max(1.2, h_laser * dispo / larg)
+            aretes = single_line_text_to_edges(nom_laser, height=h_laser,
+                                               x0=x_laser, y0=y_cotes)
+        labels.extend(aretes)
 
     infos = {"x0": x0, "y0": y0, "largeur": largeur, "hauteur": hauteur,
-             "power": s, "feed": f,
+             "power": s, "feed": f, "laser": nom_laser,
              "garde": y_min - (y_reg + tick_max + num_dy + num_h)}
     # Le contenu ne doit jamais retomber sur la mire : c'est arrivé au
     # premier essai (le trait le plus large gravé en travers des chiffres,
@@ -9494,7 +9532,13 @@ def _entete_mire(infos):
         " ENTRE CENTRES)".format(infos["largeur"], infos["hauteur"]),
         "(Mire : reglette au mm sous la planche, gravee a S{:.0f} F{:.0f})".format(
             infos["power"], infos["feed"]),
-    ]
+    ] + ([
+        # Le laser est GRAVÉ sur la planche ; il est aussi ici pour que le
+        # fichier le dise, mais c'est le bois qui fait foi -- lui seul
+        # survit à la régénération du .ngc.
+        "(Mire : gravee avec le laser {})".format(
+            sanitize_gcode_for_linuxcnc("(" + infos["laser"] + ")")[1:-1]),
+    ] if infos.get("laser") else [])
 
 
 def _emit_flat_marks(lines, bands, z_safe):
