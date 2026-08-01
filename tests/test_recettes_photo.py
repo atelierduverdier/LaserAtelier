@@ -162,10 +162,12 @@ assert "#2e7d32" in p.lbl_regime.text(), (
     texte(p.lbl_regime))
 # Le contraste annoncé doit être CELUI DU RÉGIME, calculé ici depuis les
 # mêmes mesures : vérifier une relation, pas un nombre gravé dans le test.
-_pl = core.swell_plage(u"Hêtre", RECETTES[nom_h]["line_feed"],
-                       RECETTES[nom_h].get("power_max"))
-_attendu = round(100.0 * (min(1.0, _pl[1] / RECETTES[nom_h]["pitch"])
-                          - _pl[0] / RECETTES[nom_h]["pitch"]))
+_niv = core.swell_power_levels(u"Hêtre", RECETTES[nom_h]["line_feed"],
+                               RECETTES[nom_h]["line_min"],
+                               power_max=RECETTES[nom_h].get("power_max"))
+_, _w_min, _w_max = _niv
+_attendu = round(100.0 * (min(1.0, _w_max / RECETTES[nom_h]["pitch"])
+                          - _w_min / RECETTES[nom_h]["pitch"]))
 assert "{:.0f} points".format(_attendu) in texte(p.lbl_regime), (
     "le contraste affiché ne suit pas les largeurs mesurées",
     _attendu, texte(p.lbl_regime))

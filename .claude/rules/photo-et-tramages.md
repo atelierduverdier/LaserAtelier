@@ -450,3 +450,29 @@ question.
 the message says so and names the **lowest** ceiling that unlocks (interpolated, e.g. S925 — not
 the measured step above). §20 and §21 of `test_lignes_gravees.py` freeze both properties,
 including that the verb matches the direction of the advised feed.
+
+## Measurement margin is not burn margin (2026-08-01, engraved)
+
+The same gradient, engraved twice side by side on beech: **F200 pitch 0.34 carbonised the wood;
+F1000 pitch 0.14 came out a clean black.** F1000 also runs twice as fast, so it wins outright.
+
+The shipped recipe had been moved to F200 and called *"le plus sûr"* on the grounds that it had
+the largest ratio (1.94×) above the **measurement** floor. That conflated two different safeties.
+A wide trace at low feed is wide largely *because the dwell is long*, and dwell is what burns.
+Reasoning that ranks regimes from a width table will keep making this mistake — it has now made
+it twice in one session.
+
+The workshop already had the number that predicts it. `energie_surfacique` = S/(pitch × F), used
+by filled engraving since the carbonised square of 30/07, gives **5.7×** the most economical
+measured black at F200 and **2.8×** at F1000. It was simply never shown on this tramage, whose
+verdict spoke only of contrast and coverage — two ways of looking at *width*.
+
+`energie_lignes_gravees` now feeds that line into the "Lignes gravées" verdict.
+`SEUIL_ENERGIE_LIGNES_GRAVEES = 4.0` is deliberately **not** the filled-engraving threshold (2.0):
+that one would cry wolf on F1000, the regime the wood just certified. 4.0 sits between the two
+engraved anchors, and both anchors are printed in the message — a threshold you cannot trace back
+to wood reads as a caprice. It is a two-point threshold, not a curve; tighten it when a third
+board gives a third point.
+
+§22 and §23 of `test_lignes_gravees.py` freeze it: the burning regime must cost more than the
+working one, the threshold must fall **between** them, and no shipped recipe may start above it.

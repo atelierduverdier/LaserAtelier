@@ -10113,6 +10113,36 @@ class TaskPanelHalftone:
                 # quand on laisse vraiment du contraste sur la table.
                 if ecart < 0.8 * ecart_max:
                     return False, False
+            # L'ÉNERGIE, enfin. Le panneau ne parlait ici que de contraste et
+            # de couverture -- deux façons de regarder la LARGEUR. Le
+            # 01/08/2026 une recette à F200 a carbonisé le hêtre là où F1000
+            # le rendait noir : rien dans ce verdict ne pouvait le prédire,
+            # alors que l'indice existait depuis la gravure remplie et valait
+            # 5,7x contre 2,8x. Une grande largeur à basse vitesse, c'est
+            # d'abord un long temps de pose.
+            en = core.energie_lignes_gravees(mat, feed, pas,
+                                             self.spn_power_max.value())
+            if en is not None:
+                e, ref, rapport = en
+                # Les deux ancres MESURÉES sont citées à chaque fois : un
+                # seuil qu'on ne peut pas rattacher à du bois se lit comme un
+                # caprice, et un chiffre seul ne dit pas de quel côté on est.
+                ancres = ("Repères gravés sur hêtre : <b>{:.1f}x → noir "
+                          "franc</b>, <b>{:.1f}x → carbonisé</b>.".format(
+                              core.ENERGIE_LG_ANCRE_NOIR,
+                              core.ENERGIE_LG_ANCRE_CARBONISE))
+                if rapport > core.SEUIL_ENERGIE_LIGNES_GRAVEES:
+                    msgs.append(
+                        "<b>Énergie {:.1f}x le noir le plus économe mesuré</b> "
+                        "(S{:.0f}/F{:.0f}/pas {:.2f}). Au-delà du noir, "
+                        "l'énergie en trop ne noircit plus : elle CREUSE, puis "
+                        "carbonise. Une vitesse plus haute, au pas qui lui "
+                        "correspond, brûle moins pour un noir égal. {}".format(
+                            rapport, ref["power"], ref["feed"], ref["spacing"],
+                            ancres))
+                    return False, False
+                msgs.append("Énergie {:.1f}x le noir le plus économe mesuré. "
+                            "{}".format(rapport, ancres))
             return True, False
         # À partir d'ici : similigravure seule (les lignes gravées ont rendu
         # leur verdict au-dessus). Un point brûlé à fond, donc la largeur du

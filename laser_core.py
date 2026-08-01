@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.36.1"
+VERSION = "2.37.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4660,25 +4660,31 @@ _FACTORY_PRESETS = {
             # Le tramage retenu à l'atelier : le gris est une LARGEUR lue sur
             # les largeurs brûlées mesurées, sans nuancier, sans bois nu.
             #
-            # RÉGIME REFAIT le 01/08/2026 sur la planche mesurée à l'outil de
-            # profil. L'ancien (F800, pas 0,30) reposait sur trois colonnes
-            # F200/F400/F800 IDENTIQUES, 0,10 à 0,30 par pas de 0,05 exacts :
-            # ce n'était pas un relevé. Le vrai trait à F800 monte à 0,18 mm,
-            # pas 0,30 -- la recette laissait donc 0,12 mm de bois nu entre
-            # chaque ligne, 40 % de la surface. Elle gravait des rayures.
+            # RÉGIME TRANCHÉ PAR LE BOIS le 01/08/2026, planche témoin des
+            # deux régimes côte à côte : à F200 le bois CARBONISE, à F1000 il
+            # sort NOIR. F1000 gagne donc sur les deux tableaux -- meilleur
+            # résultat ET deux fois plus rapide.
             #
-            # F200, plafond S900 (le plafond de l'atelier, posé à la main
-            # parce qu'à fond le trait creuse et strie) : 0,16 à 0,31 mm, soit
-            # 1,94x -- la plus grosse marge au-dessus du plancher de mesure,
-            # d'où « le plus sûr ». Pas 0,34 = le trait le plus épais SANS
-            # plafond, pour que les lignes se touchent même à pleine puissance.
-            # C'est plus lent que F800 ; F1000 et F1200 sont plus rapides ET
-            # plus contrastés SUR LE PAPIER, mais la noirceur ne dépend pas que
-            # de la largeur (le temps de pose compte), et le papier est
-            # exactement ce qui vient d'être démenti : à essayer sur chute.
+            # J'avais choisi F200 en le nommant « le plus sûr » parce qu'il
+            # offrait la plus grosse marge (1,94x) au-dessus du plancher de
+            # MESURE. C'était confondre deux sûretés : celle du relevé et
+            # celle de la gravure. Un trait large à basse vitesse, c'est
+            # surtout un temps de pose énorme -- 5,7x l'énergie du noir le
+            # plus économe mesuré, contre 2,8x à F1000. L'atelier avait ce
+            # chiffre et ne l'affichait pas sur ce tramage ; il l'affiche
+            # maintenant (cf. `energie_lignes_gravees`).
+            #
+            # Avant ça, l'ancien régime (F800, pas 0,30) reposait sur trois
+            # colonnes F200/F400/F800 IDENTIQUES, 0,10 à 0,30 par pas de 0,05
+            # exacts : ce n'était pas un relevé. Le vrai trait à F800 monte à
+            # 0,18 mm -- la recette laissait 0,12 mm de bois nu entre chaque
+            # ligne, 40 % de la surface. Elle gravait des rayures.
+            #
+            # Pas 0,14 = le trait le plus épais à F1000 sans plafond, pour que
+            # les lignes se touchent même à pleine puissance.
             # 120 mm de large : sous 100 mm le grain se voit plus que le sujet.
             "mode": "enfle", "material": u"Hêtre", "width": 120.0,
-            "pitch": 0.34, "line_feed": 200.0, "line_min": 0.10,
+            "pitch": 0.14, "line_feed": 1000.0, "line_min": 0.10,
             "spot_width": 0.0, "gamma": 1.0, "white": 5.0, "invert": False,
             "power": 1000.0, "power_max": 900.0,
             "dwell_min": 10.0, "dwell_max": 60.0,
@@ -8263,6 +8269,53 @@ def swell_plafond_suffisant(material, feed):
         if p and p[2] >= SWELL_RAPPORT_MINI:
             return s
     return None
+
+
+# Au-dessus de ce rapport, « Lignes gravées » alerte sur l'énergie.
+#
+# NE PAS reprendre SEUIL_ENERGIE_REMPLISSAGE (2,0) : il ferait crier le
+# panneau sur un régime MESURÉ BON. Les deux seuls points que le bois a
+# donnés, planche témoin du 01/08/2026 sur hêtre :
+#   F200 pas 0,34 -> 5,7x -> CARBONISÉ
+#   F1000 pas 0,14 -> 2,8x -> NOIR franc
+# 4,0 est posé ENTRE les deux. C'est un seuil à deux points, pas une
+# courbe : le resserrer quand une troisième planche donnera un point de
+# plus. Un seuil qui alerte sur ce qui marche s'apprend à s'ignorer, et
+# c'est pire que pas de seuil.
+SEUIL_ENERGIE_LIGNES_GRAVEES = 4.0
+
+# Les deux ancres mesurées, citées dans le message : un seuil qu'on ne peut
+# pas rattacher à du bois se lit comme un caprice.
+ENERGIE_LG_ANCRE_NOIR = 2.8
+ENERGIE_LG_ANCRE_CARBONISE = 5.7
+
+
+def energie_lignes_gravees(material, feed, pitch, power_max=None):
+    """(énergie, référence, rapport) du ton le plus NOIR des lignes gravées,
+    ou None faute de mesure à quoi se comparer.
+
+    Même indice que le remplissage -- S/(pas x F) -- appliqué au régime le
+    plus chargé du tramage : trait le plus épais, donc puissance la plus
+    haute autorisée. Il existait déjà et n'était affiché que sur la gravure
+    remplie. Le 01/08/2026 une recette livrée à F200 a CARBONISÉ le hêtre
+    là où F1000 le rendait noir ; l'indice valait 5,7x le noir le plus
+    économe à F200 contre 2,8x à F1000. Le chiffre était calculable avant
+    de graver, il n'était simplement montré nulle part sur ce tramage.
+
+    Une marge de largeur au-dessus du plancher de MESURE n'est pas une
+    marge de GRAVURE : à basse vitesse le trait est large parce que le
+    temps de pose est long, et c'est ce temps qui brûle."""
+    if not material or feed <= 0 or pitch <= 0:
+        return None
+    plage = swell_plage(material, feed, power_max)
+    if plage is None:
+        return None
+    s_noir = float(power_max) if power_max is not None else S_MAX
+    e = energie_surfacique(s_noir, feed, pitch)
+    ref = remplissage_noir_le_plus_econome(material)
+    if e is None or not ref or not ref.get("energie"):
+        return None
+    return e, ref, e / ref["energie"]
 
 
 def swell_refus_message(material, feed, power_max=None):
