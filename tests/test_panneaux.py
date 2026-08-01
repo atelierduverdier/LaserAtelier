@@ -604,3 +604,28 @@ if _py:
         _ko.returncode, _ok.returncode))
 else:
     print("environnement : pas de python systeme, controle saute")
+
+
+# --- Cotes saisies contre planche choisie (v2.25.0) ------------------
+# La planche est choisie AVANT de voir la photo : on peut cliquer
+# « Planche 1 » et photographier la 2. C'est arrive le 01/08/2026 --
+# echelle juste (elle vient des cotes, qui sont lues sur le bois), mais
+# photo rangee sous la mauvaise planche et fichier au nom mensonger.
+_cotes = {c: tp._cotes_mire_defaut(c).replace("-", "x")
+          for _l, c in tp._PLANCHES if c != "planche_autre"}
+assert set(_cotes) == {"planche1", "planche2"}, _cotes
+# Le controle se demontre : les deux planches doivent avoir des cotes
+# DIFFERENTES, sinon il n'y a rien a distinguer et le garde-fou est vide.
+assert _cotes["planche1"] != _cotes["planche2"], (
+    "les deux planches ont les memes cotes : le garde-fou ne peut rien "
+    "detecter, et ce test ne prouve rien")
+# Et il doit bien exister dans le code, avec la bascule vers l'autre.
+_src_tp = open(_os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
+                             "task_panels.py")).read()
+_i = _src_tp.index("def _redresser_photo_planche")
+_corps = _src_tp[_i:_i + 9000]
+assert "planche = _autre" in _corps, (
+    "le garde-fou doit pouvoir CORRIGER le rangement, pas seulement avertir")
+assert "QtWidgets.QMessageBox.Cancel" in _corps, "et pouvoir annuler"
+print("redressement : cotes {} / {} -> les deux planches sont distinguables, "
+      "garde-fou en place OK".format(_cotes["planche1"], _cotes["planche2"]))

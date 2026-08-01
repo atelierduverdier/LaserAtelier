@@ -885,6 +885,43 @@ def _redresser_photo_planche(parent, on_range=None):
         return
     base = base.strip().replace("-", "x").replace(",", ".")
 
+    # LES COTES SAISIES DÉSIGNENT-ELLES UNE AUTRE PLANCHE ?
+    #
+    # La planche est choisie AVANT de voir la photo, donc on peut très bien
+    # cliquer « Planche 1 » et photographier la 2 -- c'est arrivé le
+    # 01/08/2026. Les cotes, elles, sont lues sur le bois : elles sont donc
+    # la source la plus fiable des deux, et quand les deux se contredisent,
+    # c'est le choix initial qui a tort.
+    #
+    # Rien n'est faussé dans ce cas (l'échelle vient des cotes, qui sont
+    # bonnes) -- mais la photo est RANGÉE sous la mauvaise planche, et son
+    # fichier porte un nom qui ment. Or tout le travail de ce matin
+    # consistait à rendre chaque planche identifiable sans mémoire.
+    _connues = {cle: _cotes_mire_defaut(cle).replace("-", "x")
+                for _lib, cle in _PLANCHES if cle != "planche_autre"}
+    if planche in _connues and _connues[planche] != base:
+        _autre = next((c for c, v in _connues.items()
+                       if c != planche and v == base), None)
+        if _autre is not None:
+            _lib_autre = dict((c, l) for l, c in _PLANCHES)[_autre]
+            _lib_choisi = dict((c, l) for l, c in _PLANCHES)[planche]
+            rep = QtWidgets.QMessageBox.question(
+                parent, "Ce sont les cotes d'une autre planche",
+                "Tu as choisi « {} », mais les cotes saisies ({}) sont "
+                "celles de « {} ».\n\n"
+                "L'échelle sera juste dans les deux cas — elle vient des "
+                "cotes. Mais la photo serait rangée sous « {} », et son "
+                "fichier porterait ce nom-là.\n\n"
+                "La ranger sous « {} » ?".format(
+                    _lib_choisi, base.replace("x", "-"), _lib_autre,
+                    _lib_choisi, _lib_autre),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+                | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Yes)
+            if rep == QtWidgets.QMessageBox.Cancel:
+                return
+            if rep == QtWidgets.QMessageBox.Yes:
+                planche = _autre
+
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "outils", "redresser_photo.py")
     horo = time.strftime("%Y%m%d-%H%M")
