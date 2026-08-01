@@ -1035,26 +1035,6 @@ def _boutons_planches(form, ecrire):
                                       "/tmp/planche2_defocus.ngc"))
     form.addRow(b2)
 
-    b3 = QtWidgets.QPushButton("Planche 3 — Largeur du point (défocus)")
-    b3.setToolTip(
-        "Bande de calibration du POINT : Ø net au foyer + Ø à une hauteur\n"
-        "connue -> le modèle d'élargissement du point. Réglages fins dans le\n"
-        "mode « Bande de calibration défocus » (Préférences > Calibration du\n"
-        "point) ; ce bouton grave la bande par défaut, recadrée au zéro pièce.")
-    b3.clicked.connect(lambda: ecrire(core.generate_gcode_planche_spot(),
-                                      "/tmp/planche3_point.ngc"))
-    form.addRow(b3)
-
-    b4 = QtWidgets.QPushButton("Toutes les planches (1 seul fichier)")
-    b4.setToolTip(
-        "Planches 1+2+3 empilées dans UN SEUL fichier -- un seul armement\n"
-        "au début, une seule fin, au lieu de charger trois fichiers l'un\n"
-        "après l'autre sur la machine. Même contenu que les trois boutons\n"
-        "séparés ci-dessus, juste réunis.")
-    b4.clicked.connect(lambda: ecrire(core.generate_gcode_planches_combinees(),
-                                      "/tmp/planches_combinees.ngc"))
-    form.addRow(b4)
-
     b_prof = QtWidgets.QPushButton("Planche 2b — Défocus PROFOND (40/55/60 mm)")
     b_prof.setToolTip(
         "Donne une SECONDE puissance aux niveaux 40, 55 et 60 mm, pour les\n"
@@ -1077,6 +1057,27 @@ def _boutons_planches(form, ecrire):
         lambda: ecrire(core.generate_gcode_planche_defocus_profond(),
                        "/tmp/planche2b_defocus_profond.ngc"))
     form.addRow(b_prof)
+
+    b3 = QtWidgets.QPushButton("Planche 3 — Largeur du point (défocus)")
+    b3.setToolTip(
+        "Bande de calibration du POINT : Ø net au foyer + Ø à une hauteur\n"
+        "connue -> le modèle d'élargissement du point. Réglages fins dans le\n"
+        "mode « Bande de calibration défocus » (Préférences > Calibration du\n"
+        "point) ; ce bouton grave la bande par défaut, recadrée au zéro pièce.")
+    b3.clicked.connect(lambda: ecrire(core.generate_gcode_planche_spot(),
+                                      "/tmp/planche3_point.ngc"))
+    form.addRow(b3)
+
+    b4 = QtWidgets.QPushButton("Toutes les planches (1 seul fichier)")
+    b4.setToolTip(
+        "Planches 1+2+3 empilées dans UN SEUL fichier -- un seul armement\n"
+        "au début, une seule fin, au lieu de charger trois fichiers l'un\n"
+        "après l'autre sur la machine. Même contenu que les trois boutons\n"
+        "séparés ci-dessus, juste réunis.")
+    b4.clicked.connect(lambda: ecrire(core.generate_gcode_planches_combinees(),
+                                      "/tmp/planches_combinees.ngc"))
+    form.addRow(b4)
+
 
     # --- mesurer une planche GRAVÉE, à partir d'une photo ---------------
     b5 = QtWidgets.QPushButton("Redresser une photo de planche…")

@@ -775,6 +775,14 @@ for _b in _boutons_planche:
             _b.text()), _pos[_b], _r_titre)
 assert any("2b" in b.text() for b in _boutons_planche), \
     [b.text() for b in _boutons_planche]
+# La 2b est une VARIANTE de la 2 (mêmes grilles, niveaux profonds), pas une
+# quatrième planche : elle doit suivre immédiatement la 2, l'ordre des
+# boutons devant dire la parenté. Demande de Christophe le 01/08/2026.
+_ordre = sorted(_boutons_planche, key=lambda b: _pos[b])
+_txt = [b.text() for b in _ordre]
+_i2 = next(i for i, t in enumerate(_txt) if t.startswith("Planche 2 "))
+assert _txt[_i2 + 1].startswith("Planche 2b"), (
+    "la Planche 2b doit suivre immédiatement la Planche 2", _txt)
 print("boutons de planche : les {} restent HORS des sections repliables OK"
       .format(len(_boutons_planche)))
 
