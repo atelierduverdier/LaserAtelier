@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.29.2"
+VERSION = "2.29.3"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9809,7 +9809,14 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
             _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
         _lab("d{:.0f}".format(dz), 0.0, y_head, 5.0)
         y = y_head + block_gap
-    _lab(nom_planche, 0.0, y_head + 6.0, 5.0)
+    # Police MONO-TRAIT pour le numéro de planche.
+    #
+    # La 7 segments ne connaît que les chiffres, S, F, '.' et '-' : elle a
+    # gravé « 2b » en « 2 », le 'b' disparaissant EN SILENCE -- vu sur le
+    # bois le 01/08/2026, pas avant. Une planche qui ne dit pas laquelle
+    # elle est vaut la planche 2, et on mesure la mauvaise grille.
+    label_edges.extend(single_line_text_to_edges(
+        str(nom_planche), height=5.0, x0=0.0, y0=y_head + 6.0))
     # La mire est gravée AU FOYER, comme les étiquettes : les cellules
     # peuvent être défocalisées, la référence de mesure doit rester nette.
     infos_mire = None

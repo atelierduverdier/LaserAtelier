@@ -380,3 +380,24 @@ assert re.search(r"rectangle de [\d.]+ x [\d.]+ mm ENTRE CENTRES", _g2b), \
 print("11. planche 2b : {} cellules, niveaux {}, {} puissances/niveau, "
       "toutes saisissables dans ② OK".format(
           len(_cel), sorted(_par_niv), sorted(len(v) for v in _par_niv.values())))
+
+
+# --- 12. Le NUMÉRO de planche ne doit pas perdre de lettres (v2.29.3) -
+# La police 7 segments ne connait que les chiffres, S, F, '.' et '-'.
+# « 2b » s'est grave « 2 », le 'b' disparaissant EN SILENCE -- vu sur le
+# BOIS le 01/08/2026, apres gravure. Une planche qui ne dit pas laquelle
+# elle est vaut la planche 2, et on mesure la mauvaise grille.
+_sept_2b = core.text_to_edges("2b", 0.0, 0.0, 5.0)
+_sept_2 = core.text_to_edges("2", 0.0, 0.0, 5.0)
+assert len(_sept_2b) == len(_sept_2), (
+    "si la 7 segments savait ecrire 'b', ce test ne prouverait plus rien")
+
+_g_2b = core.generate_gcode_planche_defocus(nom_planche="2b", quiet=True,
+                                            defocus_levels_mm=(40.0,))
+_g_2 = core.generate_gcode_planche_defocus(nom_planche="2", quiet=True,
+                                           defocus_levels_mm=(40.0,))
+# Le 'b' doit coûter de la géométrie : sinon il n'est pas gravé.
+assert len(_g_2b.splitlines()) > len(_g_2.splitlines()) + 5, (
+    "« 2b » et « 2 » produisent la meme planche : le 'b' n'est pas grave",
+    len(_g_2b.splitlines()), len(_g_2.splitlines()))
+print("12. le numero de planche est grave en entier, lettres comprises OK")
