@@ -473,3 +473,28 @@ for _k, (_n1, _a) in enumerate(_boites):
 _bb = core.gcode_bbox_xy(_comb)
 print("14. combine : {} planches, aucun chevauchement, {:.0f} x {:.0f} mm OK"
       .format(len(_boites), _bb[1] - _bb[0], _bb[3] - _bb[2]))
+
+# --- 15. Un libelle d'etiquette ne peut pas devenir un mouvement ---------
+# `_emit_flat_marks` ecrivait le commentaire TEL QUEL. Un libelle nu comme
+# « A F200 pas 0.34 » sortait donc en ligne de G-code, et LinuxCNC y lit un
+# mot d'axe A suivi d'une avance : un MOUVEMENT. Constate le 01/08/2026 en
+# fabriquant la planche temoin.
+_li = []
+core._emit_flat_marks(_li, [(8.0, [
+    ([(0.0, 0.0), (1.0, 0.0)], 150.0, 300.0, "A F200 pas 0.34"),
+    ([(2.0, 0.0), (3.0, 0.0)], 150.0, 300.0, "(deja parenthese)"),
+    ([(4.0, 0.0), (5.0, 0.0)], 150.0, 300.0, "avec (parentheses) dedans"),
+])], 18.0)
+for _l in _li:
+    _n = _l.strip()
+    if not _n or _n.startswith("(") or _n[0] in "GMSF":
+        continue
+    raise AssertionError("ligne ni commentaire ni G-code : %r" % _l)
+_com = [l for l in _li if l.strip().startswith("(")]
+assert any("A F200 pas 0.34" in c for c in _com), _com
+assert any(c.strip() == "(deja parenthese)" for c in _com), _com
+# Les parentheses ne s'imbriquent pas en RS274 : celles du texte doivent
+# disparaitre, sinon le commentaire se referme et la suite s'execute.
+_d = [c for c in _com if "parentheses" in c][0]
+assert _d.count("(") == 1 and _d.count(")") == 1, _d
+print("15. un libelle d'etiquette reste un commentaire OK")

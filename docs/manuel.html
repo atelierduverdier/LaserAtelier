@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.36.0</span><br>
+      <span class="ver">Version 2.36.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.36.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.36.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -579,6 +579,7 @@
     <p><b>Les cotes sont proposées, jamais imposées.</b> Le dialogue pré-remplit ce que la mise en page <em>actuelle</em> produirait, mais la planche qu'on tient peut être plus ancienne — ses vraies cotes sont gravées dessus, sous la réglette. On lit sur le bois, on corrige si besoin.</p>
     <p><b>Et pour mesurer sans changer de panneau&nbsp;:</b> l'outil Ligne du Draft affiche bien la distance, mais il occupe le panneau des tâches — qui est <em>exclusif</em> dans FreeCAD, donc impossible de garder la grille de saisie ouverte à côté. D'où le bouton <b>«&nbsp;Mesurer A&nbsp;→&nbsp;B dans la vue 3D&nbsp;»</b> placé <i>dans</i> la saisie des mesures&nbsp;: on clique la case à remplir, puis le bouton, puis les deux extrémités dans la vue — et la distance atterrit dans la case. Aucun aller-retour. La case visée est <b>nommée à l'écran</b> («&nbsp;<i>Cible&nbsp;: S1000 / F800 (foyer)</i>&nbsp;») avant que vous pointiez&nbsp;: une valeur tombée dans la mauvaise case ne se voit pas, elle ressemble à une mesure.</p>
     <p><b>Mesurer à la LIGNE, sur le profil moyenné (v2.33.0).</b> Le bouton «&nbsp;Mesurer sur l'image redressée…&nbsp;» ouvre la planche, on encadre <em>un</em> trait à la souris, et l'atelier affiche à côté de lui son <b>profil de noirceur moyenné sur toute sa longueur</b>. Deux lignes horizontales, qu'on fait glisser (flèches ↑↓ pour affiner au pixel), traversent l'image <em>et</em> la courbe&nbsp;; la largeur s'affiche en direct.</p>
+    <p><b>Une étiquette pouvait devenir un mouvement (v2.36.1).</b> Les deux émetteurs de traits à plat écrivaient le commentaire d'une bande <em>tel quel</em>. Un libellé non parenthésé — «&nbsp;<code>A F200 pas 0.34</code>&nbsp;» — sortait donc en ligne de G-code, et LinuxCNC y lit un mot d'axe <b>A</b> suivi d'une avance&nbsp;: un <b>mouvement</b>, pas un texte. Sur une machine sans axe rotatif c'est une erreur au chargement&nbsp;; sur une machine qui en a un, ça bouge. Trouvé en fabriquant une planche témoin, dans le fichier produit — pas dans le code. Les commentaires sont désormais parenthésés d'office, et les parenthèses internes remplacées par des crochets (elles ne s'imbriquent pas en RS274&nbsp;: une seule refermerait le commentaire et rendrait la suite exécutable).</p>
     <p><b>Le tableau des largeurs du hêtre était en partie fabriqué (v2.36.0).</b> La planche remesurée à l'outil de profil a été comparée à la sauvegarde du matin : les colonnes <b>F200, F400 et F800 y étaient identiques</b>, 0,10 à 0,30 mm par pas de 0,05 exactement. Trois fois la même rampe parfaite : ce n'était pas un relevé. Le vrai trait à S1000/F800 mesure <b>0,18 mm</b>, pas 0,30.</p>
     <p>Deux recettes livrées en dépendaient. «&nbsp;Portrait Hêtre — lignes gravées&nbsp;» et la similigravure gravaient au pas 0,30 pour un trait de 0,18 : 0,12 mm de bois nu entre chaque ligne, <b>40&nbsp;% de la surface</b>. Elles gravaient des rayures. Les deux sont recalées sur la mesure ; la première passe à F200 au pas 0,34, le seul régime qui fasse vraiment enfler le trait sous le plafond S900 de l'atelier (1,94×). C'est plus lent, et c'est le prix de la vérité&nbsp;: à F800 le trait n'enfle plus que de 1,33× sous ce plafond, et le tramage refuse — à juste titre.</p>
     <p><b>Un tableau inventé est pire qu'un tableau vide.</b> Vide, l'atelier refuse et renvoie à l'établi. Inventé, il répond — de façon plausible, et pour toujours.</p>
@@ -1084,7 +1085,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.36.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.36.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

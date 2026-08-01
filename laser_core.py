@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.36.0"
+VERSION = "2.36.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3122,6 +3122,25 @@ def _apply_grid_line_style(chains, style, sp):
     return chains
 
 
+def _commentaire_gcode(texte):
+    """Un commentaire G-code sûr : parenthésé, sans parenthèse interne.
+
+    Le commentaire d'une bande était écrit TEL QUEL par les deux émetteurs
+    de traits à plat. Un libellé nu comme « A F200 pas 0.34 » sortait donc
+    en ligne de G-code, et LinuxCNC y lit un mot d'axe A suivi d'une
+    avance : un MOUVEMENT, pas un texte. Sur une machine sans axe A c'est
+    une erreur au chargement ; sur une machine qui en a un, ça bouge.
+
+    Les parenthèses ne s'imbriquent pas en RS274 : une seule parenthèse
+    dans le texte referme le commentaire et rend la suite exécutable, d'où
+    le remplacement par des crochets."""
+    t = (texte or "").strip()
+    if (t.startswith("(") and t.endswith(")")
+            and "(" not in t[1:-1] and ")" not in t[1:-1]):
+        return t
+    return "(" + t.strip("()").replace("(", "[").replace(")", "]") + ")"
+
+
 def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, label_feed=None,
                               cell_z_offset=0.0, use_proximity=False,
                               line_style="plein", line_style_params=None,
@@ -3323,7 +3342,7 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, 
         last_comment = None
         for chain, power, feed, comment in band:
             if comment != last_comment:
-                lines.append(comment)
+                lines.append(_commentaire_gcode(comment))
                 last_comment = comment
             p0 = chain[0]
             _travel_to(p0.x, p0.y, target_z)
@@ -9715,7 +9734,7 @@ def _emit_flat_marks(lines, bands, z_safe):
     for target_z, band in bands:
         for chain, power, feed, comment in band:
             if comment != last_comment:
-                lines.append(comment)
+                lines.append(_commentaire_gcode(comment))
                 last_comment = comment
             x0, y0 = chain[0]
             _travel_to(x0, y0, target_z)
