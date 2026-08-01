@@ -120,3 +120,31 @@ _h = _hauteurs(_defoc)
 assert core.Z_WORK_MM in _h, ("la mire doit rester au foyer", _h)
 assert len(_h) == 3, ("foyer + defocus + retrait, pas une de plus", _h)
 print("6. la case grave la mire, au foyer, et seulement si on la coche OK")
+
+# --- 7. Une section NEUVE s'ouvre : sinon la nouveaute nait invisible ----
+# Le defaut demande par l'appelant etait ignore (`_section_state_get(cle,
+# False)` en dur), si bien qu'une section que PERSONNE n'a jamais repliee
+# -- puisqu'elle vient d'exister -- s'ouvrait fermee. Trois fonctionnalites
+# ont ete cherchees sans etre trouvees pour cette raison le 01/08/2026.
+_e = tp._SectionHeader("Section neuve de test", ouvert=True)
+assert _e.ouvert_par_defaut() is True
+assert tp._SectionHeader("Autre", ouvert=False).ouvert_par_defaut() is False
+# Le clic bouge l'etat COURANT, jamais le defaut.
+_e.setChecked(False)
+assert _e.ouvert_par_defaut() is True, "le defaut ne doit pas suivre les clics"
+
+# Et la case de la mire est reellement VISIBLE dans le panneau.
+_p2 = tp.TaskPanelTestGrid()
+assert not _p2.chk_mire.isHidden(), "la case de la mire est cachee"
+_par = _p2.chk_mire.parentWidget()
+assert _par is not None and _par.isVisibleTo(_par.parentWidget() or _par), (
+    "la case est dans une section repliee : elle existe et ne se voit pas")
+# Un etat MEMORISE prime toujours sur le defaut : replier reste un choix.
+tp._section_states()["Mesure sur photo"] = False
+_p3 = tp.TaskPanelTestGrid()
+assert _p3.chk_mire.parentWidget() is not None
+assert not _p3.chk_mire.parentWidget().isVisibleTo(
+    _p3.chk_mire.parentWidget().parentWidget()), (
+    "une section repliee A LA MAIN doit le rester")
+del tp._section_states()["Mesure sur photo"]
+print("7. une section neuve s'ouvre, une section repliee a la main le reste OK")

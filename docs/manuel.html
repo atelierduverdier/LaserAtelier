@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.38.0</span><br>
+      <span class="ver">Version 2.38.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.38.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.38.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -579,6 +579,8 @@
     <p><b>Les cotes sont proposées, jamais imposées.</b> Le dialogue pré-remplit ce que la mise en page <em>actuelle</em> produirait, mais la planche qu'on tient peut être plus ancienne — ses vraies cotes sont gravées dessus, sous la réglette. On lit sur le bois, on corrige si besoin.</p>
     <p><b>Et pour mesurer sans changer de panneau&nbsp;:</b> l'outil Ligne du Draft affiche bien la distance, mais il occupe le panneau des tâches — qui est <em>exclusif</em> dans FreeCAD, donc impossible de garder la grille de saisie ouverte à côté. D'où le bouton <b>«&nbsp;Mesurer A&nbsp;→&nbsp;B dans la vue 3D&nbsp;»</b> placé <i>dans</i> la saisie des mesures&nbsp;: on clique la case à remplir, puis le bouton, puis les deux extrémités dans la vue — et la distance atterrit dans la case. Aucun aller-retour. La case visée est <b>nommée à l'écran</b> («&nbsp;<i>Cible&nbsp;: S1000 / F800 (foyer)</i>&nbsp;») avant que vous pointiez&nbsp;: une valeur tombée dans la mauvaise case ne se voit pas, elle ressemble à une mesure.</p>
     <p><b>Mesurer à la LIGNE, sur le profil moyenné (v2.33.0).</b> Le bouton «&nbsp;Mesurer sur l'image redressée…&nbsp;» ouvre la planche, on encadre <em>un</em> trait à la souris, et l'atelier affiche à côté de lui son <b>profil de noirceur moyenné sur toute sa longueur</b>. Deux lignes horizontales, qu'on fait glisser (flèches ↑↓ pour affiner au pixel), traversent l'image <em>et</em> la courbe&nbsp;; la largeur s'affiche en direct.</p>
+    <p><b>Une section neuve naissait fermée (v2.38.1).</b> Le repliage des sections lisait l'état mémorisé avec un défaut <em>en dur</em> à «&nbsp;repliée&nbsp;». Le paramètre prévu pour dire le contraire n'était jamais consulté&nbsp;: une section que <b>personne n'a jamais repliée</b> — puisqu'elle vient d'exister — s'ouvrait fermée. Toute nouveauté naissait donc invisible derrière un chevron que rien n'invite à cliquer. C'est arrivé <b>trois fois dans la même journée</b>&nbsp;: le bouton Planche 2b, puis la case de la mire. <b>Un réglage qu'on ne trouve pas est un réglage qui n'existe pas.</b></p>
+    <p>Le défaut vient désormais de l'appelant. Une section qui porte l'entrée d'un nouveau chantier s'ouvre la première fois&nbsp;; une section repliée <em>à la main</em> le reste, parce que c'est un choix et qu'il prime. La case de la mire a sa propre section, «&nbsp;Mesure sur photo&nbsp;».</p>
     <p><b>La Grille de test peut porter sa mire (v2.38.0).</b> Première pièce de la lecture automatique de la noirceur : une case à cocher ajoute autour de la grille les quatre repères en croix et la réglette au millimètre, la même mire que les planches de calibration. Sans elle une planche n'est pas redressable — l'homographie a besoin de quatre correspondances et la réglette donne l'échelle.</p>
     <p>La mire est gravée <b>au foyer</b> même quand les cellules sont défocalisées : une référence de mesure floue ne se mesure pas. À côté du G-code, l'atelier dépose une <b>fiche</b> qui donne chaque case dans le <em>repère de la mire</em> — jamais en coordonnées machine, puisque le fichier est recadré au zéro pièce à l'écriture et qu'une coordonnée machine serait fausse d'une translation dès le fichier suivant.</p>
     <p><b>Pourquoi la noirceur ne se lit pas comme une largeur.</b> Un millimètre reste un millimètre quelle que soit la lampe, et c'est pour ça que l'outil de profil sort un chiffre absolu. Un gris, non : change l'exposition et tout se décale en bloc. La mesure se fera donc entre <b>deux repères pris dans la même photo</b> — un bout de bois nu et la case la plus noire — ce qui est exactement l'échelle que le panneau annonce déjà, «&nbsp;0 = matériau intact, 100 = noir max&nbsp;». En dessous de 30 niveaux d'écart entre les deux repères, l'atelier refuse de chiffrer plutôt que de diviser du bruit par du bruit.</p>
@@ -1094,7 +1096,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.38.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.38.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

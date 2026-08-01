@@ -2036,6 +2036,9 @@ class _SectionHeader(QtWidgets.QFrame):
         super().__init__()
         self._titre = titre
         self._open = bool(ouvert)
+        # Mémorisé à part : `_open` bouge au premier clic, alors que le
+        # défaut sert de repli quand la config ne dit rien.
+        self._ouvert_defaut = bool(ouvert)
         self.setProperty("laser_section", True)
         self.setObjectName("laserSection")
         self.setCursor(QtCore.Qt.PointingHandCursor)
@@ -2092,6 +2095,11 @@ class _SectionHeader(QtWidgets.QFrame):
         lay.addStretch(1)
         lay.addWidget(self._picto)
         self._maj_picto()
+
+
+    def ouvert_par_defaut(self):
+        """Ce que l'appelant a demandé, quand la config ne dit rien."""
+        return self._ouvert_defaut
 
     def _maj_picto(self):
         self._picto.setText("▾" if self._open else "▸")  # ▾ / ▸
@@ -2226,7 +2234,17 @@ def _activer_sections(inner):
             # le panneau s'ouvre court, les étapes ①②③ surlignées guident,
             # et l'accordéon (activé par défaut) fait le reste au clic.
             cle = w.text()
-            etat = _section_state_get(cle, False)
+            # Le défaut DEMANDÉ par l'appelant, et non False en dur : il
+            # était ignoré, si bien qu'une section neuve -- que personne
+            # n'a jamais repliée, puisqu'elle vient d'exister -- s'ouvrait
+            # fermée. Toute nouveauté naissait donc invisible derrière un
+            # chevron que rien n'invite à cliquer. Constaté trois fois le
+            # 01/08/2026 : le bouton Planche 2b, puis la case de la mire,
+            # que Christophe a cherchés sans les trouver.
+            #
+            # Une section qu'il a REPLIÉE lui-même garde son état : c'est
+            # son choix, et il prime.
+            etat = _section_state_get(cle, w.ouvert_par_defaut())
             w.setChecked(etat)
             conteneur.setVisible(etat)
             paires.append((w, conteneur))
@@ -10751,6 +10769,12 @@ class TaskPanelTestGrid:
             "mélangées) afin de garder un minimum de changements de Z.")
         form.addRow(self.chk_proximity)
 
+        # SA PROPRE SECTION, ouverte par défaut. Posée sous « Options »,
+        # elle était invisible : cette section-là, Christophe l'avait
+        # repliée il y a longtemps, et une case ajoutée dedans hérite du
+        # pli. Une porte d'entrée de chantier ne se range pas derrière un
+        # chevron fermé.
+        _section(form, "Mesure sur photo", "sect_labels.svg", ouvert=True)
         self.chk_mire = QtWidgets.QCheckBox(
             "Graver la mire de mesure (pour lire la noirceur sur photo)")
         self.chk_mire.setChecked(False)

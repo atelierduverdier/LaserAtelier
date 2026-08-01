@@ -287,3 +287,25 @@ froze the GUI for many minutes to interpolate… a constant (flat work has all z
 now detects the constant-Z cloud in `__init__` and answers O(1); relief clouds keep the exact original
 IDW. Measured: skull fill G-code 0.6 s vs >10 min. When profiling generation, remember
 `heapq.nsmallest` shows up as cheap per call — the cost is the list comprehension feeding it.
+
+## A brand-new section must open (2026-08-01)
+
+`_activer_sections` read the stored fold state with a hardcoded fallback: `_section_state_get(cle,
+False)`. The `ouvert` argument `_section` accepts was therefore **never honoured**, and a section
+that nobody has ever folded — because it has only just come into existence — was born closed.
+
+Every new control inherits that: it exists, it is correctly wired, it passes its tests, and the
+user cannot find it. This happened **three times in one day**: the Planche 2b button, then the
+mire checkbox, which Christophe searched for and reported missing both times. A control the user
+cannot find is a control that does not ship.
+
+The fallback is now the caller's own `ouvert`. Two rules follow:
+
+- A section holding the entry point of a new workflow gets `ouvert=True`. It opens the first time,
+  because no stored state exists for a name that has never existed.
+- A section the user has folded **himself** stays folded — that is his choice and it wins. Only the
+  absence of a stored state is filled by the caller's default.
+
+Don't bury a new feature in an existing section either: the user may have folded that one years
+ago, and your addition silently inherits the fold. §7 of `test_noirceur_photo.py` freezes both
+halves — it was verified to go red with the old hardcoded `False`.
