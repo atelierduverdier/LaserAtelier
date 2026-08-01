@@ -670,7 +670,20 @@ def _importer_image_a_l_echelle(chemin, largeur_mm, hauteur_mm):
     return obj
 
 
-def _redresser_photo_planche(parent):
+# Les planches et leur clé de rangement des photos.
+#
+# SOURCE UNIQUE, et ça compte : le bouton de redressement RANGE sous ces
+# clés, la galerie LIT sous ces clés. Tant que les deux listes étaient
+# écrites séparément, elles pouvaient diverger -- et pire, la galerie
+# n'existait pas du tout : les photos étaient rangées quelque part que
+# rien n'affichait, et le message promettait pourtant « rangée dans les
+# photos du résultat » (constaté le 01/08/2026).
+_PLANCHES = (("Planche 1 — foyer", "planche1"),
+             ("Planche 2 — défocus", "planche2"),
+             ("Autre planche", "planche_autre"))
+
+
+def _redresser_photo_planche(parent, on_range=None):
     """Choisir une photo, la redresser via OpenCV, la ranger et la poser
     dans le document à l'échelle exacte.
 
@@ -683,11 +696,10 @@ def _redresser_photo_planche(parent):
         parent, "Quelle planche ?",
         "La planche photographiée détermine les cotes proposées et le\n"
         "rangement de la photo dans les résultats.",
-        ["Planche 1 — foyer", "Planche 2 — défocus", "Autre planche"], 0, False)
+        [lib for lib, _c in _PLANCHES], 0, False)
     if not ok:
         return
-    planche = {"Planche 1 — foyer": "planche1",
-               "Planche 2 — défocus": "planche2"}.get(choix, "planche_autre")
+    planche = dict(_PLANCHES).get(choix, "planche_autre")
     base_defaut = _cotes_mire_defaut(planche)
 
     py = _python_systeme()
@@ -747,13 +759,18 @@ def _redresser_photo_planche(parent):
         reg = d.get("reglette")
         controle = ("réglette vérifiée à {:+.2f} %".format(reg["erreur_pct"])
                     if reg else "réglette NON détectée, échelle non vérifiée")
+        # On range l'APERÇU, pas le PNG de mesure : celui-ci pèse 55 Mo
+        # (12800 x 4300 sans perte) et la galerie n'a pas à le dupliquer --
+        # 290 Mo se sont accumulés en une matinée avant qu'on s'en aperçoive,
+        # le 01/08/2026. Le fichier de mesure reste à sa place, et son chemin
+        # part dans la description pour qu'on le retrouve depuis la galerie.
         core.add_result_photo(
-            planche, d["fichier"],
+            planche, d.get("apercu") or d["fichier"],
             "redressée le {} — échelle {:.0f} px/mm, mire {:.0f}x{:.0f}, "
-            "écart de diagonales {:.2f} %, {}".format(
+            "écart de diagonales {:.2f} %, {} — fichier de mesure : {}".format(
                 time.strftime("%d/%m/%Y %H:%M"), d["pxmm"],
                 d["base_mm"][0], d["base_mm"][1], d["ecart_diagonales_pct"],
-                controle))
+                controle, d["fichier"]))
         try:
             _importer_image_a_l_echelle(d["fichier"], d["largeur_mm"], d["hauteur_mm"])
         except Exception as e:
@@ -781,6 +798,10 @@ def _redresser_photo_planche(parent):
             "fenêtre.\n\nContrôle des repères écrit à côté de chaque photo "
             "(_reperes.jpg) : regarde-le avant de croire une mesure.".format(
                 len(faits), verdict))
+        if on_range is not None:
+            # La galerie doit montrer la photo qu'on VIENT de ranger : sans
+            # ça il faut fermer et rouvrir le panneau pour la voir.
+            on_range(planche)
 
 
 def _boutons_planches(form, ecrire):
@@ -841,8 +862,35 @@ def _boutons_planches(form, ecrire):
         "Il ne reste qu'à mesurer à l'outil Ligne du Draft. Indispensable\n"
         "parce que FreeCAD met une image à l'échelle de façon UNIFORME : il\n"
         "ne corrige pas une photo prise de biais, et rien ne le signale.")
-    b5.clicked.connect(lambda: _redresser_photo_planche(form.parentWidget() or form))
     form.addRow(b5)
+
+    # --- Voir les planches redressées ---------------------------------
+    # Sans ça, les photos rangées par le bouton ci-dessus n'étaient
+    # affichées NULLE PART : le message annonçait « rangée dans les photos
+    # du résultat » et il fallait aller ouvrir le dossier à la main
+    # (constaté le 01/08/2026). Une donnée qu'on range sans jamais la
+    # remontrer n'est pas rangée, elle est perdue poliment.
+    combo_planche = QtWidgets.QComboBox()
+    for libelle, cle in _PLANCHES:
+        combo_planche.addItem(libelle, cle)
+    combo_planche.setToolTip("Quelle planche afficher dans la galerie ci-dessous.")
+    form.addRow("Photos de :", combo_planche)
+    photo_pl = _make_photo_section(form, lambda: combo_planche.currentData(),
+                                   titre="Planches redressées")
+    combo_planche.currentIndexChanged.connect(lambda _i: photo_pl["reload"]())
+    photo_pl["reload"]()
+
+    def _apres_redressement(planche):
+        i = combo_planche.findData(planche)
+        if i >= 0:
+            combo_planche.blockSignals(True)
+            combo_planche.setCurrentIndex(i)
+            combo_planche.blockSignals(False)
+        # On sélectionne la DERNIÈRE : c'est celle qui vient d'être rangée.
+        photo_pl["reload"](max(0, len(core.result_photos(planche)) - 1))
+
+    b5.clicked.connect(lambda: _redresser_photo_planche(
+        form.parentWidget() or form, on_range=_apres_redressement))
     return b1, b2, b3, b4
 
 

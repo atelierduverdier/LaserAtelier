@@ -390,10 +390,25 @@ def main():
 
     sortie = a.sortie or (base + "_redresse.png")
     cv2.imwrite(sortie, out)
+
+    # Aperçu léger, à côté du PNG de mesure.
+    #
+    # Le PNG fait 55 Mo (12800 x 4300 sans perte) : c'est ce qu'il faut pour
+    # MESURER, mais pas pour REGARDER. Le garder tel quel dans la galerie de
+    # l'atelier faisait 55 Mo de copie par redressement -- 290 Mo en une
+    # matinée le 01/08/2026. L'aperçu est un JPEG de ~1 Mo, assez fin pour
+    # se souvenir de quoi il s'agit, et assez petit pour s'envoyer.
+    apercu = os.path.splitext(sortie)[0] + "_apercu.jpg"
+    k = min(1.0, 2400.0 / max(W, Ht))
+    cv2.imwrite(apercu, cv2.resize(out, (max(1, int(W * k)), max(1, int(Ht * k))),
+                                   interpolation=cv2.INTER_AREA),
+                [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+
     if a.json:
         import json
         with open(a.json, "w") as fh:
             json.dump({"fichier": os.path.abspath(sortie),
+                       "apercu": os.path.abspath(apercu),
                        "largeur_mm": W / a.pxmm, "hauteur_mm": Ht / a.pxmm,
                        "pxmm": a.pxmm, "base_mm": [L, H],
                        "ecart_diagonales_pct": ecart,

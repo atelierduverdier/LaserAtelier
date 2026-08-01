@@ -303,7 +303,33 @@ assert _os.path.exists(_script), _script
 _src = open(_script).read()
 for opt in ("--json", "--base", "--sortie", "--pxmm", "--gcode"):
     assert '"{}"'.format(opt) in _src, opt
+# L'apercu leger : le PNG de mesure pese 55 Mo et la galerie ne doit pas le
+# dupliquer (290 Mo accumules en une matinee le 01/08/2026).
+assert '"apercu"' in _src, "le script doit annoncer un apercu dans son JSON"
+assert 'IMWRITE_JPEG_QUALITY' in _src, "l'apercu doit etre un JPEG, pas un PNG"
 print("redressement : outils/redresser_photo.py present, options du contrat OK")
+
+# La galerie des planches lit sous LES MEMES cles que celles sous
+# lesquelles le redressement range. Tant que les deux listes etaient
+# ecrites separement, elles pouvaient diverger -- et la galerie n'existait
+# meme pas : les photos partaient quelque part que rien n'affichait, sous
+# un message promettant « rangee dans les photos du resultat ».
+assert hasattr(tp, "_PLANCHES")
+_cles = {c for _l, c in tp._PLANCHES}
+assert _cles == {"planche1", "planche2", "planche_autre"}, _cles
+_hote2 = _Qt.QWidget()
+_form2 = _Qt.QFormLayout(_hote2)
+tp._boutons_planches(_form2, lambda *a, **k: None)
+_combos = [w for w in _hote2.findChildren(_Qt.QComboBox)
+           if {w.itemData(i) for i in range(w.count())} == _cles]
+assert _combos, (
+    "aucune liste deroulante n'offre les cles des planches : la galerie "
+    "n'est pas branchee, les photos rangees ne sont affichees NULLE PART")
+# ... et une vignette cliquable pour les regarder, pas seulement une liste.
+assert any(l.cursor().shape() == tp.QtCore.Qt.PointingHandCursor
+           for l in _hote2.findChildren(_Qt.QLabel)), \
+    "pas de vignette cliquable dans la galerie des planches"
+print("redressement : galerie des planches branchee sur les memes cles OK")
 
 # Mesure A→B : sans vue 3D, le bouton doit REFUSER proprement et ne
 # laisser aucun rappel branché -- un callback oublié sur la vue rend
