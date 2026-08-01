@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.37.1"
+VERSION = "2.38.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3142,6 +3142,7 @@ def _commentaire_gcode(texte):
 
 
 def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, label_feed=None,
+                              mire=False, cell_size=None,
                               cell_z_offset=0.0, use_proximity=False,
                               line_style="plein", line_style_params=None,
                               draw_border=False, z_border=None, border_power=300.0, border_feed=1000.0,
@@ -3253,12 +3254,41 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, 
         cell_chains = [(chain, cell["power"], cell["feed"], comment) for chain in chains]
         cell_band.extend(_order_band(cell_chains))
 
+    # MIRE DE MESURE, avant la mise en bande des étiquettes : ses propres
+    # étiquettes (cotes, réglette, nom du laser) rejoignent les leurs.
+    #
+    # Sans elle la planche n'est pas REDRESSABLE, donc la noirceur de ses
+    # cases ne peut pas être lue sur photo : c'est la mire qui donne les
+    # quatre correspondances de l'homographie et l'échelle px/mm.
+    infos_mire = None
+    mire_band = []
+    if mire and cell_size:
+        label_edges = list(label_edges or [])
+        bb = bbox_grille_test(cells, cell_size, label_edges)
+        if bb is not None:
+            mb, ml, infos_mire = mire_de_mesure(*bb)
+            if mb is not None:
+                label_edges.extend(ml)
+                # La mire arrive en chaînes de (x, y) ; cette grille
+                # travaille en Vector. Convertir ici, une fois, plutôt que
+                # d'apprendre deux formats à l'émetteur.
+                #
+                # Elle rejoint la bande des ÉTIQUETTES, pas celle des
+                # cellules : les cellules peuvent être défocalisées (c'est
+                # tout l'objet du mode Défocus), et une mire floue ne se
+                # mesure pas. La référence de mesure reste au foyer.
+                mire_band = [([FreeCAD.Vector(px, py, 0.0)
+                               for px, py in chain], s_m, f_m, com)
+                             for chain, s_m, f_m, com in mb]
+
     label_band = []  # [(chain, power, feed, comment), ...] à z_work (toujours au foyer)
     if label_edges:
         label_comment = "(-- Étiquettes de repérage (puissance/vitesse) : S={:.0f} F={:.0f} --)".format(
             label_power, label_feed)
         for chain in chain_edges(label_edges):
             label_band.append((chain, label_power, label_feed, label_comment))
+    if mire_band:
+        label_band.extend(mire_band)
     label_band = _order_band(label_band)
 
     # Cadre net (contour carré au foyer) : même ordre de cellules que la
@@ -3291,6 +3321,7 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, 
     lines = []
     lines.append("(G-Code Laser - Grille de test puissance/vitesse)")
     lines.append("(Cellules : {})".format(len(cells)))
+    lines.extend(_entete_mire(infos_mire))
     if cell_z_offset:
         lines.append("(Z cellules (défocus) : {:.4f}mm -- Z étiquettes (foyer) : {:.4f}mm)".format(z_cells, z_work))
     else:
@@ -9770,6 +9801,116 @@ def _entete_mire(infos):
         "(Mire : gravee avec le laser {})".format(
             sanitize_gcode_for_linuxcnc("(" + infos["laser"] + ")")[1:-1]),
     ] if infos.get("laser") else [])
+
+
+def bbox_grille_test(cells, cell_size, label_edges=None):
+    """Emprise (x_min, y_min, x_max, y_max) d'une grille de test.
+
+    `_bbox_planche` ne sait lire que des chaînes de (x, y) ; la grille de
+    test travaille en `Vector`. Plutôt que de convertir ses milliers de
+    points, on lit la géométrie DÉCLARÉE des cases -- leur coin et leur
+    côté -- qui est la même chose et ne dépend pas du remplissage."""
+    if not cells:
+        return None
+    xs = [c["x0"] for c in cells] + [c["x0"] + cell_size for c in cells]
+    ys = [c["y0"] for c in cells] + [c["y0"] + cell_size for c in cells]
+    for e in label_edges or []:
+        for v in e.Vertexes:
+            xs.append(v.Point.x)
+            ys.append(v.Point.y)
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def fiche_grille_noirceur(cells, cell_size, infos_mire, marge_lecture=0.15):
+    """Chaque case de la grille dans le REPÈRE DE LA MIRE, pour la lecture
+    de noirceur sur une photo redressée.
+
+    Le repère de la photo redressée n'est pas celui de la machine : le
+    G-code a Y VERS LE HAUT, l'image Y VERS LE BAS. La croix haut-gauche de
+    la photo est donc le coin (x0, y0 + hauteur) de la mire en millimètres
+    machine. Se tromper là-dessus retourne la grille de haut en bas sans
+    rien casser d'autre : on lirait des cases voisines, avec des valeurs
+    plausibles. C'est le genre d'erreur qu'aucune exception ne signale.
+
+    `marge_lecture` rogne chaque case de cette fraction de son côté avant
+    de lire : le bord d'un carré gravé porte la rampe de brûlure et, sur
+    une planche défocalisée, déborde. On mesure le CENTRE de la case.
+
+    Renvoie un dict sérialisable en JSON."""
+    if not cells or not infos_mire:
+        return None
+    y_haut = infos_mire["y0"] + infos_mire["hauteur"]
+    r = max(0.0, min(0.45, float(marge_lecture))) * cell_size
+    cases = []
+    for c in sorted(cells, key=lambda c: (c["row"], c["col"])):
+        # Coin haut-gauche DANS L'IMAGE = (x le plus petit, y machine le
+        # plus GRAND) : d'où le côté du carré retranché à y_haut.
+        cases.append({
+            "row": int(c["row"]), "col": int(c["col"]),
+            "power": float(c["power"]), "feed": float(c["feed"]),
+            "x0": c["x0"] - infos_mire["x0"] + r,
+            "y0": y_haut - (c["y0"] + cell_size) + r,
+            "x1": c["x0"] + cell_size - infos_mire["x0"] - r,
+            "y1": y_haut - c["y0"] - r,
+        })
+    return {
+        "version": 1,
+        "cote_case_mm": float(cell_size),
+        "marge_lecture": float(marge_lecture),
+        "mire_mm": [float(infos_mire["largeur"]), float(infos_mire["hauteur"])],
+        "cases": cases,
+    }
+
+
+def case_en_pixels(case, pxmm, marge_mm):
+    """(x0, y0, x1, y1) en PIXELS d'une case dans la photo redressée.
+
+    Le redressement place la croix haut-gauche à (marge, marge) millimètres
+    puis multiplie par `pxmm` -- cf. `outils/redresser_photo.py`. La marge
+    n'est pas écrite dans la fiche de la photo ; elle se retrouve par
+    `(largeur_mm - base_mm[0]) / 2`, ce que fait `marge_photo`."""
+    return tuple(int(round((v + marge_mm) * pxmm))
+                 for v in (case["x0"], case["y0"], case["x1"], case["y1"]))
+
+
+def marge_photo(infos_photo):
+    """La marge en mm ajoutée autour de la mire par le redressement.
+
+    Elle n'est pas enregistrée telle quelle : la fiche donne la largeur
+    TOTALE et la base de la mire, et la marge est la moitié de l'écart."""
+    try:
+        return max(0.0, (float(infos_photo["largeur_mm"])
+                         - float(infos_photo["base_mm"][0])) / 2.0)
+    except (KeyError, TypeError, ValueError, IndexError):
+        return 0.0
+
+
+# Écart minimal, en niveaux de gris (0-255), entre le repère « bois nu » et
+# le repère « noir max » pour qu'un pourcentage veuille dire quelque chose.
+# En dessous, la photo est trop plate -- sous-exposée, voilée, ou les deux
+# repères posés sur la même chose -- et normaliser reviendrait à diviser du
+# bruit par du bruit, en rendant des pourcentages d'allure parfaitement
+# normale. Mieux vaut refuser et le dire.
+ECART_REPERES_MINI = 30.0
+
+
+def noirceur_normalisee(gris_case, gris_bois, gris_noir):
+    """Noirceur en % sur l'échelle de l'atelier : 0 = bois intact,
+    100 = le plus noir de la planche. None si les deux repères sont trop
+    proches pour que la division ait un sens.
+
+    POURQUOI normaliser plutôt que lire le gris brut : une LARGEUR est
+    géométrique, un millimètre reste un millimètre quelle que soit la
+    lampe. Une NOIRCEUR non -- change l'exposition et tous les gris se
+    décalent en bloc. Deux repères pris DANS LA MÊME PHOTO rendent la
+    mesure insensible à l'éclairage, et c'est exactement la définition que
+    le panneau affiche déjà : « 0 = matériau intact, 100 = noir max »."""
+    ecart = float(gris_bois) - float(gris_noir)
+    if ecart < ECART_REPERES_MINI:
+        return None
+    return max(0.0, min(100.0, 100.0 * (float(gris_bois) - float(gris_case))
+                        / ecart))
+
 
 
 def _emit_flat_marks(lines, bands, z_safe):

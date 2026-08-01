@@ -3501,8 +3501,8 @@ def _avertir_collision_detectee(parent_widget, count, quoi="gravure", determinan
 
 def _write_gcode_with_dialog(parent_widget, gcode, default_path, recadrer_origine=True):
     """Estime la durée, propose un fichier de sauvegarde, écrit le G-code
-    si un chemin est choisi. Retourne True si le fichier a été écrit,
-    False si l'utilisateur a renoncé. Un clic sur Annuler dans le dialogue
+    si un chemin est choisi. Retourne LE CHEMIN écrit (chaîne, donc vraie)
+    ou False si l'utilisateur a renoncé. Un clic sur Annuler dans le dialogue
     de fichier propose une relance au lieu d'abandonner en silence : le
     G-code généré n'existe nulle part ailleurs, le perdre sur un simple
     Annuler (peut-être accidentel) forçait à refaire tous les réglages du
@@ -3560,7 +3560,11 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path, recadrer_origin
         parent_widget, "G-code généré",
         "Fichier écrit :\n{}\n\nDurée estimée (approximative, rapide supposé à "
         "{:.0f}mm/min) :\n{}".format(path, core.RAPID_FEED_MM_MIN, duration_text))
-    return True
+    # Le CHEMIN plutôt que True : un appelant qui doit déposer une fiche à
+    # côté du G-code (la grille de test et sa géométrie de cases) en a
+    # besoin. Une chaîne est vraie, donc les 24 appels qui ne testent que
+    # la vérité continuent de marcher sans changer d'un caractère.
+    return path
 
 
 # --- Mémorisation des derniers réglages par panneau ----------------------
@@ -10747,6 +10751,23 @@ class TaskPanelTestGrid:
             "mélangées) afin de garder un minimum de changements de Z.")
         form.addRow(self.chk_proximity)
 
+        self.chk_mire = QtWidgets.QCheckBox(
+            "Graver la mire de mesure (pour lire la noirceur sur photo)")
+        self.chk_mire.setChecked(False)
+        self.chk_mire.setToolTip(
+            "Ajoute autour de la grille les 4 repères en croix et la\n"
+            "réglette au millimètre — la même mire que les planches de\n"
+            "calibration.\n\n"
+            "Sans elle la planche n'est pas REDRESSABLE : l'homographie a\n"
+            "besoin de quatre correspondances, et l'échelle px/mm de la\n"
+            "réglette. « Lire la noirceur sur photo » ne pourra donc rien\n"
+            "faire d'une planche gravée sans mire.\n\n"
+            "La mire est gravée AU FOYER même si les cellules sont\n"
+            "défocalisées : une référence de mesure floue ne se mesure pas.\n"
+            "Elle agrandit la planche d'environ 25 mm en bas et 6 mm sur\n"
+            "les autres côtés.")
+        form.addRow(self.chk_mire)
+
         _section(form, "Étiquettes S/F", "sect_labels.svg")
         self.chk_labels = QtWidgets.QCheckBox("Graver les étiquettes S/F (colonnes/lignes)")
         self.chk_labels.setChecked(True)
@@ -10852,6 +10873,7 @@ class TaskPanelTestGrid:
             "line_style": self.combo_line_style,
             "hatch_spacing": self.spn_hatch_spacing, "hatch_angle": self.spn_hatch_angle,
             "proximity": self.chk_proximity,
+            "mire": self.chk_mire,
             "labels": self.chk_labels, "border": self.chk_border,
             "border_power": self.spn_border_power,
             "border_feed": self.spn_border_feed,
@@ -11394,9 +11416,12 @@ class TaskPanelTestGrid:
 
         core.print_test_grid_legend(mode, cells, self.spn_power_steps.value(), self.spn_feed_steps.value())
 
+        cote = self.spn_cell.value()
+        avec_mire = self.chk_mire.isChecked()
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
+            mire=avec_mire, cell_size=cote,
             cell_z_offset=cell_z_offset,
             use_proximity=self.chk_proximity.isChecked(),
             line_style=self._line_style(), **self._border_kwargs()
@@ -11407,7 +11432,12 @@ class TaskPanelTestGrid:
             return
 
         FreeCAD.Console.PrintMessage("Succès : {} cellules créées.\n".format(len(objs)))
-        if not _write_gcode_with_dialog(self.form, gcode, "/tmp/grille_test.ngc"):
+        chemin = _write_gcode_with_dialog(self.form, gcode, "/tmp/grille_test.ngc")
+        if chemin and avec_mire:
+            self._deposer_fiche_grille(chemin, cells, cote,
+                                       label_edges if self.chk_labels.isChecked()
+                                       else None)
+        if not chemin:
             # Sauvegarde abandonnée : les objets tout juste créés sont
             # retirés du document -- re-cliquer « Générer » regénère tout,
             # les garder produirait des cellules en double.
@@ -11415,6 +11445,39 @@ class TaskPanelTestGrid:
             for obj in objs + ([label_obj] if label_obj is not None else []):
                 doc.removeObject(obj.Name)
             doc.recompute()
+
+    def _deposer_fiche_grille(self, chemin_gcode, cells, cote, label_edges):
+        """Écrit, à côté du G-code, la fiche géométrique des cases.
+
+        Elle donne à la lecture de noirceur la position de chaque case DANS
+        LE REPÈRE DE LA MIRE, avec sa puissance et sa vitesse. Le repère de
+        la mire, et non celui de la machine : le G-code est recadré au zéro
+        pièce à l'écriture, donc toute coordonnée machine écrite ici serait
+        fausse d'une translation dès le fichier suivant.
+
+        Un échec d'écriture n'annule pas le G-code : la planche reste
+        gravable, seule la lecture automatique manquera -- et le dire vaut
+        mieux que faire échouer une génération réussie."""
+        try:
+            bb = core.bbox_grille_test(cells, cote, label_edges)
+            if bb is None:
+                return
+            _mb, _ml, infos = core.mire_de_mesure(*bb)
+            fiche = core.fiche_grille_noirceur(cells, cote, infos)
+            if not fiche:
+                return
+            fiche["gcode"] = os.path.abspath(chemin_gcode)
+            dest = os.path.splitext(chemin_gcode)[0] + "_grille.json"
+            with open(dest, "w") as fh:
+                json.dump(fiche, fh, indent=2, ensure_ascii=False)
+            FreeCAD.Console.PrintMessage(
+                "Fiche de grille écrite : {} ({} cases)\n".format(
+                    dest, len(fiche["cases"])))
+        except Exception as exc:
+            FreeCAD.Console.PrintWarning(
+                "Fiche de grille non écrite ({}) : la planche reste gravable, "
+                "mais la lecture automatique de la noirceur ne pourra pas "
+                "s'en servir.\n".format(exc))
 
     def accept(self):
         # OK = mémoriser les réglages et fermer (génération : bouton de ①).
