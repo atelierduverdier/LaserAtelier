@@ -184,9 +184,16 @@ no longer *exactly* flat, so `swell_power_levels` stops refusing and `swell_max_
 Treat that 1.30× as **noise, not contrast**: the rectified image is 0.02 mm/px and a click is worth
 ~1 px, so 0.13 vs 0.10 is one and a half pixels. A column reading the same value at five different
 powers is the signature of a quantity below the measuring floor, not of a physical plateau with
-structure. **The open question is whether `swell_power_levels` should require a minimum ratio
-(~1.5×) instead of merely "not exactly flat"** — today a table within measurement noise makes the
-panel promise a modulation the wood will not deliver.
+structure. **Answered in v2.27.0**: `SWELL_RAPPORT_MINI = 1.5` — `swell_power_levels` refuses
+below that ratio instead of only when the range is *exactly* flat. On the workshop's fresh beech
+this restores `swell_max_feed` to **800** (F1000 1.00×, F1200 1.08×, F1500 1.30×, F3000 1.44× all
+refused; F200/F400/F800 at 3.00× all pass). 1.5× sits far from the noise while keeping every regime
+that ever worked — F1200 measured 1.7× in July.
+
+**`swell_max_feed` must use the SAME criterion**, and did not for the first minute of that change:
+the refusal read *"descendre à F3000"* while F3000 was itself refused. A message and a verdict that
+contradict each other are worse than no message. `tests/test_lignes_gravees.py` §19 freezes it — the
+feed the refusal names must itself be accepted.
 
 The first portrait engraved in this tramage was burned at **F1000 at pitch 0.30** — a third of the
 range lost, and "pas concluant du tout". The panel refused nothing (the range wasn't flat) and its

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.26.0"
+VERSION = "2.27.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -8141,6 +8141,27 @@ def burn_width_range(material, feed):
     return table[0][1], table[-1][1]
 
 
+# Rapport minimal largeur_maxi / largeur_mini pour que « Lignes gravées »
+# accepte une vitesse.
+#
+# Le critère était « la plage n'est pas EXACTEMENT plate ». Il suffisait
+# donc d'un centième d'écart pour que l'atelier promette une modulation.
+# Le 01/08/2026, la nouvelle planche du hêtre a donné 0,10 -> 0,13 mm à
+# F1500 : `swell_max_feed` a bondi de 800 à 3000 et le panneau s'est mis à
+# accepter des vitesses où le trait ne module rien.
+#
+# Or ces 0,03 mm ne sont pas une mesure : sur l'image redressée à 50 px/mm
+# un clic vaut ~0,02 mm, donc l'écart fait UN PIXEL ET DEMI. La colonne
+# F1000 le dit encore mieux -- 0,14 aux cinq puissances, cinq fois la même
+# valeur sur une plage de 1 à 5 : c'est la signature d'une grandeur passée
+# sous le plancher de mesure, pas d'un plateau structuré.
+#
+# 1,5x est choisi pour rester loin du bruit sans écarter de vrais régimes
+# utiles : sur hêtre au foyer, F800 donne 3,0x et F1200 (mesuré en juillet)
+# 1,7x -- tous deux passent largement.
+SWELL_RAPPORT_MINI = 1.5
+
+
 def swell_max_feed(material):
     """La vitesse mesurée la PLUS RAPIDE à laquelle le trait enfle encore,
     ou None. Sert à ne pas se contenter de dire « trop vite » : au-delà
@@ -8156,7 +8177,11 @@ def swell_max_feed(material):
         if f <= 0:
             continue
         p = burn_width_range(material, f)
-        if p and p[1] - p[0] > 1e-9:
+        # MÊME critère que le refus, sinon le message renvoie vers une
+        # vitesse que le tramage refusera à son tour. Constaté aussitôt
+        # après avoir posé le seuil : « descendre à F3000 » alors que F3000
+        # était lui-même refusé.
+        if p and p[0] > 1e-9 and p[1] / p[0] >= SWELL_RAPPORT_MINI:
             return f
     return None
 
@@ -8186,10 +8211,20 @@ def swell_refus_message(material, feed, power_max=None):
         return ("sur « {} » le trait ne varie à AUCUNE vitesse mesurée : la "
                 "table de largeurs est trop pauvre pour ce tramage."
                 .format(material))
-    return ("à F{:.0f} le trait mesure {:.2f} mm à toutes les puissances -- il "
-            "n'enfle plus, ce tramage n'a plus d'objet. Descendre à "
-            "F{:.0f}, la plus rapide où il enfle encore ({:.2f} à {:.2f} mm)."
-            .format(feed, plage[0], rapide, *burn_width_range(material, rapide)))
+    rapport = plage[1] / plage[0] if plage[0] > 0 else 1.0
+    if rapport <= 1.0 + 1e-9:
+        cause = ("le trait mesure {:.2f} mm à toutes les puissances -- il "
+                 "n'enfle plus".format(plage[0]))
+    else:
+        # Nommer le rapport ET le seuil : un refus qui dit « trop peu » sans
+        # dire « trop peu par rapport à quoi » se lit comme un caprice.
+        cause = ("le trait ne va que de {:.2f} à {:.2f} mm, soit {:.2f}x -- "
+                 "sous le rapport {:.1f}x en dessous duquel l'écart n'est "
+                 "plus distinguable de la précision de mesure"
+                 .format(plage[0], plage[1], rapport, SWELL_RAPPORT_MINI))
+    return ("à F{:.0f} {}. Descendre à F{:.0f}, la plus rapide où il enfle "
+            "vraiment ({:.2f} à {:.2f} mm)."
+            .format(feed, cause, rapide, *burn_width_range(material, rapide)))
 
 
 def swell_power_levels(material, feed, line_min_mm, niveaux=256,
@@ -8224,7 +8259,11 @@ def swell_power_levels(material, feed, line_min_mm, niveaux=256,
         if len(table) < 2:
             return None
     w_min_mes, w_max = table[0][1], table[-1][1]
-    if w_max - w_min_mes < 1e-9:
+    # Pas « strictement plat » mais « pas assez creusé » : sous
+    # SWELL_RAPPORT_MINI, l'écart entre le trait le plus fin et le plus gros
+    # n'est plus distinguable de la précision de mesure, et la promesse de
+    # modulation serait faite sur du bruit.
+    if w_min_mes <= 1e-9 or w_max / w_min_mes < SWELL_RAPPORT_MINI:
         return None
     w_min = min(max(float(line_min_mm), w_min_mes), w_max)
     puissances = []

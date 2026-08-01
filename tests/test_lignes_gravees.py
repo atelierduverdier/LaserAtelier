@@ -394,3 +394,67 @@ print("18. plafond S150 (sous la plus faible mesure) : refus net, et le "
       "message nomme le PLAFOND, pas la vitesse OK")
 
 print("\nTOUS LES TESTS lignes_gravees PASSENT")
+
+
+# --- 18. Un rapport insuffisant n'est pas une modulation (v2.27.0) ----
+# Le critere etait « la plage n'est pas EXACTEMENT plate » : un centieme
+# d'ecart suffisait a promettre une modulation. Le 01/08/2026 la nouvelle
+# planche du hetre a donne 0,10 -> 0,13 mm a F1500 (un pixel et demi sur
+# l'image redressee) et le panneau s'est mis a accepter des vitesses ou le
+# trait ne module rien.
+MAT_R = "TestRapport"
+
+
+def _table(rapport):
+    """Materiau ou F400 module franchement (3x) et F800 au rapport voulu.
+
+    Deux vitesses et non une : avec une seule, un refus tombe dans la
+    branche « le trait ne varie a AUCUNE vitesse mesuree » et on ne teste
+    plus le seuil mais le cas degenere."""
+    core.save_burn_widths(MAT_R, {"focus": (
+        [{"power": s_, "feed": 400.0, "width": w}
+         for s_, w in ((200.0, 0.10), (600.0, 0.20), (1000.0, 0.30))]
+        + [{"power": s_, "feed": 800.0,
+            "width": round(0.10 * (1 + (rapport - 1) * (s_ - 200.0) / 800.0), 4)}
+           for s_ in (200.0, 600.0, 1000.0)]), "defocus": []})
+
+
+# Le controle se DEMONTRE : de part et d'autre du seuil, verdicts opposes.
+_table(core.SWELL_RAPPORT_MINI - 0.2)
+assert core.swell_power_levels(MAT_R, 800.0, 0.10) is None, (
+    "un rapport sous le seuil doit etre refuse",
+    core.burn_width_range(MAT_R, 800.0))
+_msg = core.swell_refus_message(MAT_R, 800.0)
+assert "{:.1f}x".format(core.SWELL_RAPPORT_MINI) in _msg, _msg
+assert "F400" in _msg, ("le refus doit nommer la vitesse qui marche", _msg)
+
+_table(core.SWELL_RAPPORT_MINI + 0.2)
+assert core.swell_power_levels(MAT_R, 800.0, 0.10) is not None, (
+    "un rapport au-dessus du seuil doit passer : sinon le test ne prouve rien",
+    core.burn_width_range(MAT_R, 800.0))
+print("18. seuil de rapport {:.1f}x : {:.1f}x refuse, {:.1f}x accepte OK".format(
+    core.SWELL_RAPPORT_MINI, core.SWELL_RAPPORT_MINI - 0.2,
+    core.SWELL_RAPPORT_MINI + 0.2))
+
+# --- 19. Le refus ne doit pas renvoyer vers une vitesse REFUSEE -------
+# Defaut constate a la minute ou le seuil a ete pose : swell_max_feed
+# gardait l'ancien critere (« pas exactement plat ») et le message disait
+# « descendre a F3000 » alors que F3000 etait lui-meme refuse. Un message
+# et un verdict qui se contredisent sont pires que pas de message.
+core.save_burn_widths(MAT_R, {"focus": (
+    # F800 module vraiment...
+    [{"power": s_, "feed": 800.0, "width": w}
+     for s_, w in ((200.0, 0.10), (600.0, 0.20), (1000.0, 0.30))]
+    # ...F1500 et F3000 juste un peu, sous le seuil.
+    + [{"power": s_, "feed": f_, "width": w}
+       for f_ in (1500.0, 3000.0)
+       for s_, w in ((200.0, 0.10), (600.0, 0.11), (1000.0, 0.13))]),
+    "defocus": []})
+_rapide = core.swell_max_feed(MAT_R)
+assert _rapide == 800.0, ("swell_max_feed doit appliquer le MEME seuil",
+                          _rapide, core.burn_width_range(MAT_R, 3000.0))
+assert core.swell_power_levels(MAT_R, _rapide, 0.10) is not None, (
+    "la vitesse nommee par le refus doit elle-meme etre acceptee")
+assert "F{:.0f}".format(_rapide) in core.swell_refus_message(MAT_R, 3000.0)
+core.save_burn_widths(MAT_R, {})
+print("19. la vitesse nommee par le refus est elle-meme acceptee OK")
