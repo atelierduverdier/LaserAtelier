@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.29.3"
+VERSION = "2.30.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9749,6 +9749,30 @@ def generate_gcode_planche_focus(z_focus=None, mire=True,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
+def ecart_rangees_defocus(dz, plancher=4.0, marge=1.6):
+    """Écart entre deux rangées de traits, pour un niveau de défocus donné.
+
+    Un pas fixe ne peut pas convenir : au foyer le trait fait 0,30 mm, à
+    60 mm de défocus il en fait 4,4. Les rangées de la Planche 2b se
+    TOUCHAIENT à 55 et 60 mm (vu sur le bois le 01/08/2026) -- deux traits
+    qui se rejoignent ne se mesurent plus, et la planche est perdue.
+
+    L'estimation part du point OPTIQUE, calculé par le cône calibré, et
+    non de la largeur brûlée : celle-ci exige un matériau, que le
+    générateur ne connaît pas, et retomberait sur None dès que deux
+    matériaux sont mesurés. Le rapport brûlure/point est remarquablement
+    stable sur les mesures de l'atelier -- 1,23 à 15 mm, 1,19 à 36, 1,19 à
+    60 -- d'où le facteur 1,2.
+
+    `marge` = 1,6 : il reste 0,6 largeur de bois propre entre deux bords.
+    Proportionnel à ce qu'on mesure, ce qui est le bon critère -- une marge
+    fixe serait trop serrée en haut et gaspillée en bas."""
+    angle = defocus_divergence_half_angle(
+        SPOT_FOCUS_MM, SPOT_TEST_DIAMETER_MM, SPOT_TEST_DEFOCUS_MM)
+    point = spot_diameter_at_defocus(abs(float(dz)), SPOT_FOCUS_MM, angle)
+    return max(float(plancher), point * 1.2 * float(marge))
+
+
 def generate_gcode_planche_defocus(mire=True, z_focus=None,
                                    powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
                                    feeds=(200.0, 400.0, 600.0, 800.0),
@@ -9795,8 +9819,11 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
     y = 4.0
     for dz in defocus_levels_mm:
         band = []
+        # Écart PAR NIVEAU : serrer les blocs peu défocalisés et écarter
+        # les profonds, au lieu d'un compromis qui ne va à aucun des deux.
+        gap = ecart_rangees_defocus(dz, plancher=row_gap)
         for i, s in enumerate(powers):
-            yy = y + i * row_gap
+            yy = y + i * gap
             _lab("S{:.0f}".format(s), 6.0, yy - label_height / 2.0)
             for j, f in enumerate(feeds):
                 x = x0 + j * col_pitch
@@ -9804,11 +9831,13 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
                     nom_planche, dz, s, f)
                 band.append(([(x, yy), (x + trait_len, yy)], s, f, comment))
         bands.append((z_focus + dz, band))
-        y_head = y + len(powers) * row_gap + 1.0
+        y_head = y + len(powers) * gap + 1.0
         for j, f in enumerate(feeds):
             _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
         _lab("d{:.0f}".format(dz), 0.0, y_head, 5.0)
-        y = y_head + block_gap
+        # Entre deux blocs aussi : la dernière rangée du bloc courant ne
+        # doit pas venir mordre l'étiquette du suivant.
+        y = y_head + max(block_gap, gap)
     # Police MONO-TRAIT pour le numéro de planche.
     #
     # La 7 segments ne connaît que les chiffres, S, F, '.' et '-' : elle a

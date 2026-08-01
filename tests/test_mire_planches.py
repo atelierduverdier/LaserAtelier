@@ -401,3 +401,47 @@ assert len(_g_2b.splitlines()) > len(_g_2.splitlines()) + 5, (
     "« 2b » et « 2 » produisent la meme planche : le 'b' n'est pas grave",
     len(_g_2b.splitlines()), len(_g_2.splitlines()))
 print("12. le numero de planche est grave en entier, lettres comprises OK")
+
+
+# --- 13. Les rangées ne doivent pas se toucher (v2.30.0) --------------
+# Le pas etait FIXE a 4 mm, dimensionne pour des traits de 0,30 mm au
+# foyer. A 55 et 60 mm de defocus la brulure fait 4,1 et 4,4 mm : les
+# rangees se rejoignaient, et deux traits qui se touchent ne se mesurent
+# plus. Vu sur le bois le 01/08/2026, sur la premiere Planche 2b.
+for _dz in (15.0, 36.0, 40.0, 55.0, 60.0):
+    _g = core.ecart_rangees_defocus(_dz)
+    _w = core.burn_width_defocus_scaled(1000.0, 200.0, _dz, u"Hêtre")
+    if _w:
+        assert _g > _w * 1.2, (
+            "ecart {:.2f} mm pour une brulure de {:.2f} mm a {:.0f} mm de "
+            "defocus : trop serre".format(_g, _w, _dz))
+# Il CROIT avec le defocus -- sinon rien n'a ete corrige.
+_ecarts = [core.ecart_rangees_defocus(z) for z in (15.0, 36.0, 55.0, 60.0)]
+assert _ecarts == sorted(_ecarts) and _ecarts[-1] > _ecarts[0] * 1.5, _ecarts
+# ... et jamais SOUS le plancher demande : les niveaux faibles restent
+# compacts, la compaction du 31/07 n'est pas reperdue.
+assert core.ecart_rangees_defocus(0.0) == 4.0
+assert core.ecart_rangees_defocus(60.0, plancher=9.0) == 9.0
+
+# Sur la vraie planche : deux rangees voisines d'un meme bloc doivent
+# etre separees d'au moins la brulure attendue.
+_g2b = core.generate_gcode_planche_defocus_profond(quiet=True)
+_par_z = {}
+for _l in _g2b.splitlines():
+    _m = re.search(r"-- Planche 2b : d(\d+) S(\d+) F(\d+) --", _l)
+    if _m:
+        _cur = (float(_m.group(1)), float(_m.group(2)))
+    elif _l.startswith("G1 X") and "_cur" in dir():
+        _my = re.search(r"Y(-?[\d.]+)", _l)
+        if _my:
+            _par_z.setdefault(_cur[0], {}).setdefault(_cur[1], set()).add(
+                round(float(_my.group(1)), 2))
+for _dz, _rangs in _par_z.items():
+    _ys = sorted(min(v) for v in _rangs.values())
+    _mini = min(b - a for a, b in zip(_ys, _ys[1:]))
+    _w = core.burn_width_defocus_scaled(1000.0, 200.0, _dz, u"Hêtre") or 0
+    assert _mini > _w, (
+        "a {:.0f} mm de defocus, deux rangees sont a {:.2f} mm alors que le "
+        "trait fait {:.2f} mm : elles se touchent".format(_dz, _mini, _w))
+    print("13. defocus {:.0f} : rangees a {:.2f} mm, trait {:.2f} mm OK".format(
+        _dz, _mini, _w))
