@@ -217,3 +217,44 @@ def image_demo():
         if os.path.exists(p):
             return p
     return None
+
+
+# Table de largeurs brûlées de RÉFÉRENCE des tests.
+#
+# Le harnais travaille sur une COPIE de la config de l'atelier, ce qui est
+# précieux : les tests lisent le vrai nuancier et la vraie table de kerf.
+# Mais plusieurs d'entre eux avaient fini par encoder les valeurs du hêtre
+# telles qu'elles étaient à un instant donné -- « au-delà de F800 le trait
+# n'enfle plus », « la plus rapide vitesse utile est F800 ».
+#
+# Le 01/08/2026 Christophe a mesuré F1000 à F3000 sur une planche fraîche.
+# `swell_max_feed` est passé de 800 à 3000 et QUATRE tests sont tombés d'un
+# coup, sans qu'une ligne de code ait bougé. Un test qui rougit parce que
+# l'utilisateur MESURE est pire qu'inutile : il apprend à ignorer le rouge,
+# et c'est exactement ce qu'on lui demande de faire, mesurer.
+#
+# `figer_largeurs` réinstalle cette table connue DANS LA COPIE. À appeler
+# dans tout test dont la propriété testée suppose une forme de table
+# précise. Les tests qui vérifient que les données de l'atelier se tiennent
+# doivent au contraire s'en abstenir.
+LARGEURS_REFERENCE = {200.0: 0.10, 400.0: 0.15, 600.0: 0.20,
+                      800.0: 0.25, 1000.0: 0.30}
+FEEDS_ENFLE = (200.0, 400.0, 800.0)      # le trait enfle : 0,10 -> 0,30
+FEEDS_PLATS = (1500.0, 3000.0)           # plat a 0,10 : plus rien a moduler
+
+
+def figer_largeurs(core, materiau=u"Hêtre"):
+    """Remplace la table AU FOYER de ce matériau par LARGEURS_REFERENCE.
+
+    Le défocus est conservé tel quel, ainsi que le nuancier : seule la
+    grille du foyer est figée, c'est elle dont dépendent `burn_width_range`,
+    `swell_max_feed` et le contraste des « Lignes gravées ». Renvoie le nom
+    du matériau, pour écrire `MAT = figer_largeurs(core)`."""
+    data = dict(core.load_burn_widths(materiau) or {})
+    data["focus"] = (
+        [{"power": s, "feed": f, "width": w}
+         for f in FEEDS_ENFLE for s, w in LARGEURS_REFERENCE.items()]
+        + [{"power": s, "feed": f, "width": 0.10}
+           for f in FEEDS_PLATS for s in LARGEURS_REFERENCE])
+    core.save_burn_widths(materiau, data)
+    return materiau

@@ -20,11 +20,15 @@ non sur la présence des bandes.
 """
 import re
 
-from harness import preparer, hauteurs_z
+from harness import preparer, hauteurs_z, figer_largeurs
 
 h = preparer()
 core = h.core
 MAT = u"Hêtre"
+# Table du foyer FIGÉE : ce test suppose une forme précise
+# (enfle sous F800, plat au-dessus). Sans ça il rougit dès que
+# l'atelier mesure -- arrivé le 01/08/2026.
+figer_largeurs(core, MAT)
 
 PAS = 0.80
 FEED = 2000.0

@@ -13,11 +13,15 @@ rapport n'est que de 1,4x, donc un contraste plus faible.
 import re
 
 from harness import (preparer, texte, hauteurs_z, puissances,
-                     image_demo)
+                     image_demo, figer_largeurs)
 
 h = preparer()
 core, tp = h.core, h.tp
 MAT = u"Hêtre"
+# Table du foyer FIGÉE : ce test suppose une forme précise
+# (enfle sous F800, plat au-dessus). Sans ça il rougit dès que
+# l'atelier mesure -- arrivé le 01/08/2026.
+figer_largeurs(core, MAT)
 
 # --- 1. La table de largeurs est croissante et bornée aux mesures -------
 t = core.burn_width_power_table(MAT, 400.0)

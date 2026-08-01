@@ -975,7 +975,7 @@ def _redresser_photo_planche(parent, on_range=None):
             "écart de diagonales {:.2f} %, {} — fichier de mesure : {}".format(
                 time.strftime("%d/%m/%Y %H:%M"), d["pxmm"],
                 d["base_mm"][0], d["base_mm"][1], d["ecart_diagonales_pct"],
-                controle, d["fichier"]))
+                controle, os.path.basename(d["fichier"])))
         try:
             _importer_image_a_l_echelle(d["fichier"], d["largeur_mm"], d["hauteur_mm"])
         except Exception as e:
@@ -1105,10 +1105,13 @@ def _boutons_planches(form, ecrire):
     combo_planche = QtWidgets.QComboBox()
     for libelle, cle in _PLANCHES:
         combo_planche.addItem(libelle, cle)
-    combo_planche.setToolTip("Quelle planche afficher dans la galerie ci-dessous.")
-    form.addRow("Photos de :", combo_planche)
-    photo_pl = _make_photo_section(form, lambda: combo_planche.currentData(),
-                                   titre="Planches redressées")
+    combo_planche.setToolTip(
+        "Quelle planche afficher dans cette galerie. CHAQUE planche a sa\n"
+        "propre liste : une photo rangée sous la Planche 2 n'apparaît pas\n"
+        "tant que la Planche 1 est sélectionnée ici.")
+    photo_pl = _make_photo_section(
+        form, lambda: combo_planche.currentData(), titre="Planches redressées",
+        entete=lambda f: f.addRow("Photos de :", combo_planche))
     combo_planche.currentIndexChanged.connect(lambda _i: photo_pl["reload"]())
     photo_pl["reload"]()
 
@@ -2292,7 +2295,25 @@ def _show_image_dialog(img, title):
     dlg.exec()
 
 
-def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
+class _ZoneTexte(QtWidgets.QPlainTextEdit):
+    """Zone de texte de quelques lignes, qui prévient quand on la quitte.
+
+    Remplace le champ d'UNE ligne : depuis que l'atelier écrit lui-même les
+    descriptions de photo (échelle, cotes, contrôle de réglette, fichier de
+    mesure), elles dépassent 200 caractères. Dans un QLineEdit on n'en
+    voyait que la fin -- « vérifiée à +0.11 % » -- et compléter revenait à
+    naviguer à l'aveugle dans un texte invisible. Constaté le 01/08/2026,
+    juste après avoir conseillé à l'utilisateur d'y ajouter ses conditions
+    de gravure."""
+
+    edition_terminee = QtCore.Signal()
+
+    def focusOutEvent(self, ev):
+        super().focusOutEvent(ev)
+        self.edition_terminee.emit()
+
+
+def _make_photo_section(form, cle_getter, titre="Photo du résultat", entete=None):
     """Section réutilisable « Photo du résultat » pour les modes de test :
     une LISTE DÉROULANTE de toutes les photos mémorisées + une vignette
     cliquable (agrandissement) + une description libre (défocus, focale…,
@@ -2303,6 +2324,14 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
     {"reload": fn} : l'appelant appelle reload() en fin d'__init__ et à
     chaque changement de matériau."""
     _section(form, titre, "sect_photo.svg")
+    # Ce que l'appelant veut voir JUSTE SOUS le titre -- typiquement le
+    # sélecteur de planche. Placé avant l'appel, il atterrissait au-dessus
+    # de la carte de section, donc visuellement rattaché à la section
+    # PRÉCÉDENTE : on croyait alors que la galerie ne montrait qu'une seule
+    # liste, et une planche rangée ailleurs passait pour perdue (constaté le
+    # 01/08/2026).
+    if entete is not None:
+        entete(form)
     form.addRow(_WrapLabel(
         "Garde une ou plusieurs photos de la pièce gravée + mesurée, pour "
         "comparer au réel plus tard. Choisis-en une dans la liste ; clique la "
@@ -2320,8 +2349,11 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
     lbl.setToolTip("Clique pour agrandir.")
     form.addRow(lbl)
 
-    edt_desc = QtWidgets.QLineEdit()
-    edt_desc.setPlaceholderText("ex. « défocus 15 mm », « au foyer »…")
+    edt_desc = _ZoneTexte()
+    edt_desc.setFixedHeight(78)
+    edt_desc.setPlaceholderText(
+        "ex. « sans air, lentille nettoyée le 31/07 » — complète le texte "
+        "existant, ne l'efface pas.")
     edt_desc.setToolTip(
         "Note libre pour retrouver le réglage utilisé pour CETTE photo "
         "(défocus, focale…) -- surtout utile si tu en gardes plusieurs.")
@@ -2346,13 +2378,13 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
                 lbl.setPixmap(pm.scaled(320, 180, QtCore.Qt.KeepAspectRatio,
                                         QtCore.Qt.SmoothTransformation))
                 lbl.setText("")
-                edt_desc.setText(items[i]["description"])
+                edt_desc.setPlainText(items[i]["description"])
                 edt_desc.setEnabled(True)
                 btn_del.setEnabled(True)
                 return
         lbl.setPixmap(QtGui.QPixmap())
         lbl.setText("— aucune photo —")
-        edt_desc.setText("")
+        edt_desc.setPlainText("")
         edt_desc.setEnabled(False)
         btn_del.setEnabled(False)
 
@@ -2395,8 +2427,8 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
         items = state["items"]
         if 0 <= i < len(items):
             core.set_photo_description(
-                (cle_getter() or "").strip(), items[i]["file"], edt_desc.text())
-            items[i]["description"] = edt_desc.text()
+                (cle_getter() or "").strip(), items[i]["file"], edt_desc.toPlainText().strip())
+            items[i]["description"] = edt_desc.toPlainText().strip()
 
     def _on_click(_ev):
         i = combo.currentIndex()
@@ -2408,7 +2440,7 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat"):
     lbl.mousePressEvent = _on_click
 
     combo.currentIndexChanged.connect(lambda _i: _show_thumb())
-    edt_desc.editingFinished.connect(_on_desc_edited)
+    edt_desc.edition_terminee.connect(_on_desc_edited)
     btn_add.clicked.connect(_on_add)
     btn_del.clicked.connect(_on_del)
     return {"reload": reload}

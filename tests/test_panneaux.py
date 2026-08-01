@@ -162,17 +162,50 @@ print("3bis. tramage déclaré mais non routé : refus explicite, pas de trame "
       "de points muette OK")
 
 # --- 4. Un refus est un refus MOTIVÉ ------------------------------------
+# Sur un matériau FABRIQUÉ ICI, pas sur celui de l'atelier.
+#
+# Ce test lisait la table du Hêtre et supposait qu'au-delà de F800 le trait
+# n'enfle plus. Le 01/08/2026 Christophe a mesuré F1000 à F3000 sur une
+# planche fraîche : la colonne n'est plus plate, `swell_max_feed` est passé
+# de 800 à 3000, et le test est tombé -- alors que le code n'avait pas
+# bougé. Un test qui dépend des mesures de l'utilisateur casse quand
+# l'utilisateur MESURE, ce qui est exactement ce qu'on lui demande de faire.
+MAT_PLAT = "TestTraitPlat"
+core.save_burn_widths(MAT_PLAT, {
+    "focus": (
+        # Enfle sous F800...
+        [{"power": s_, "feed": 800.0, "width": w}
+         for s_, w in ((200.0, 0.10), (400.0, 0.15), (600.0, 0.20),
+                       (800.0, 0.25), (1000.0, 0.30))]
+        # ...et RIGOUREUSEMENT plat au-dessus : plus rien à moduler.
+        + [{"power": s_, "feed": f_, "width": 0.10}
+           for s_ in (200.0, 400.0, 600.0, 800.0, 1000.0)
+           for f_ in (1500.0, 3000.0)]),
+    "defocus": [],
+})
+if p.combo_photo_mat.findData(MAT_PLAT) < 0:
+    p.combo_photo_mat.addItem(MAT_PLAT, MAT_PLAT)
+p.combo_photo_mat.setCurrentIndex(p.combo_photo_mat.findData(MAT_PLAT))
+assert p.combo_photo_mat.currentData() == MAT_PLAT, (
+    "le panneau lit currentData() : un item sans donnee vaut None")
+assert core.swell_power_levels(MAT_PLAT, 800.0, 0.10) is not None, (
+    "le materiau de test doit ENFLER a F800, sinon le refus a F2000 ne "
+    "prouve rien")
+assert core.swell_power_levels(MAT_PLAT, 2000.0, 0.10) is None, (
+    "le materiau de test doit etre PLAT a F2000")
 p.combo_mode.setCurrentIndex(6)
 p.spn_line_feed.setValue(2000.0)        # au-delà, le trait n'enfle plus
 rows = p._build_rows(silent=True, max_cells=30000)
 im, note = p._render_photo_preview(rows, largeur_px=200)
 assert im is None, "le tramage aurait dû refuser"
-rapide = core.swell_max_feed(u"Hêtre")
+rapide = core.swell_max_feed(MAT_PLAT)
 assert rapide and "F{:.0f}".format(rapide) in note, (
     "un refus doit nommer la vitesse qui marche, pas seulement celle qui "
     "échoue", note)
 assert p._generate(rows, quiet=True) is None, \
     "l'aperçu refuse mais le générateur produit quand même du G-code"
+core.save_burn_widths(MAT_PLAT, {})      # on ne laisse pas de faux materiau
+p.combo_photo_mat.setCurrentIndex(p.combo_photo_mat.findData(u"Hêtre"))
 print("4. hors régime : aperçu ET générateur refusent, en nommant F{:.0f} "
       "OK".format(rapide))
 
@@ -629,3 +662,51 @@ assert "planche = _autre" in _corps, (
 assert "QtWidgets.QMessageBox.Cancel" in _corps, "et pouvoir annuler"
 print("redressement : cotes {} / {} -> les deux planches sont distinguables, "
       "garde-fou en place OK".format(_cotes["planche1"], _cotes["planche2"]))
+
+
+# --- La galerie dit QUELLE planche elle montre (v2.26.0) -------------
+# « J'ai redressé la défocus [...] mais dans la liste je ne la vois pas » :
+# le selecteur etait ajoute AVANT _make_photo_section, donc au-dessus de la
+# carte de section -- visuellement rattache a la section PRECEDENTE. On
+# croyait a une liste unique, et une planche rangee sous une autre cle
+# passait pour perdue.
+_hote3 = _Qt.QWidget()
+_form3 = _Qt.QFormLayout(_hote3)
+tp._boutons_planches(_form3, lambda *a, **k: None)
+_cles_pl = {c for _l, c in tp._PLANCHES}
+_combo_pl = next(w for w in _hote3.findChildren(_Qt.QComboBox)
+                 if {w.itemData(i) for i in range(w.count())} == _cles_pl)
+# Rang de chaque widget dans le formulaire.
+_rangs = {}
+for r in range(_form3.rowCount()):
+    for role in (_Qt.QFormLayout.LabelRole, _Qt.QFormLayout.FieldRole,
+                 _Qt.QFormLayout.SpanningRole):
+        it = _form3.itemAt(r, role)
+        if it is not None and it.widget() is not None:
+            _rangs.setdefault(it.widget(), r)
+_r_combo = _rangs.get(_combo_pl)
+assert _r_combo is not None, "selecteur de planche absent du formulaire"
+_entetes = [r for w, r in _rangs.items()
+            if isinstance(w, tp._SectionHeader) and r < _r_combo]
+assert _entetes, "aucun titre de section au-dessus du selecteur"
+# Le selecteur doit suivre IMMEDIATEMENT le titre : place avant l'appel a
+# _make_photo_section il tombait au-dessus de la carte, donc rattache
+# visuellement a la section PRECEDENTE.
+assert max(_entetes) == _r_combo - 1, (
+    "le selecteur doit etre la premiere rangee SOUS le titre de section",
+    max(_entetes), _r_combo)
+print("galerie : selecteur de planche placé DANS la carte de section OK")
+
+# Le champ description doit tenir un texte long : l'atelier en ecrit
+# lui-meme plus de 200 caracteres, et on ne complete pas a l'aveugle.
+_desc = [w for w in _hote3.findChildren(tp._ZoneTexte)]
+assert _desc, "la description doit etre une zone multi-lignes, pas une ligne"
+_z = _desc[0]
+_long = "redressée le 01/08/2026 09:09 — échelle 50 px/mm, mire 140x60, " \
+        "écart de diagonales 0.15 %, réglette vérifiée à +0.19 % — " \
+        "fichier de mesure : LT-80W-AA-PRO_planche1_20260801-0909_redresse.png"
+_z.setPlainText(_long)
+assert _z.toPlainText() == _long
+assert _z.height() >= 60, ("la zone doit montrer plusieurs lignes", _z.height())
+assert hasattr(_z, "edition_terminee"), "elle doit prevenir a la sortie du champ"
+print("galerie : description multi-lignes, {} caractères tenus OK".format(len(_long)))

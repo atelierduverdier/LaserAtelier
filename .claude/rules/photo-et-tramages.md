@@ -175,6 +175,19 @@ The feed cliff is not a cliff, it's a slope, and that is the trap of this mode:
 | F1200 | 0.10 → 0.17 mm | 1.7× | 24 points |
 | F1500+ | 0.10 mm, flat | 1.0× | refused |
 
+**The F1500-is-flat row above is the 2026-07 measurement, and the 2026-08-01 board contradicts it
+— weakly.** Measured on the rectified photo chain: F1000 reads **0.14 for every power from S200 to
+S1000** (five identical values), F1200 0.13–0.14, F1500 0.10–0.13, F3000 0.09–0.13. The column is
+no longer *exactly* flat, so `swell_power_levels` stops refusing and `swell_max_feed(Hêtre)` jumps
+**800 → 3000**, offering a 1.30× ratio at F3000.
+
+Treat that 1.30× as **noise, not contrast**: the rectified image is 0.02 mm/px and a click is worth
+~1 px, so 0.13 vs 0.10 is one and a half pixels. A column reading the same value at five different
+powers is the signature of a quantity below the measuring floor, not of a physical plateau with
+structure. **The open question is whether `swell_power_levels` should require a minimum ratio
+(~1.5×) instead of merely "not exactly flat"** — today a table within measurement noise makes the
+panel promise a modulation the wood will not deliver.
+
 The first portrait engraved in this tramage was burned at **F1000 at pitch 0.30** — a third of the
 range lost, and "pas concluant du tout". The panel refused nothing (the range wasn't flat) and its
 advice targeted *the pitch* ("contraste maximal au pas 0,23"). Exact, and yet misleading: that advice

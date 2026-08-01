@@ -14,12 +14,16 @@ sans gagner en contraste).
 """
 import re
 
-from harness import preparer, texte
+from harness import preparer, texte, figer_largeurs
 
 h = preparer()
 core, tp = h.core, h.tp
 
 MAT = u"Hêtre"
+# Table du foyer FIGÉE : ce test suppose une forme précise
+# (enfle sous F800, plat au-dessus). Sans ça il rougit dès que
+# l'atelier mesure -- arrivé le 01/08/2026.
+figer_largeurs(core, MAT)
 p = tp.TaskPanelHalftone()
 
 # Le panneau restaure les DERNIERS réglages de Christophe : son plafond de

@@ -114,6 +114,29 @@ dict on every `itemData()` call, so two reads of one item are never the same obj
 bisection to find (2026-07-31, `test_fuseau.py`, the first test in the repo to need `Part` at module
 level). Put `h = preparer()` first, then `import Part` / `import FreeCAD` below it.
 
+## A test must not go red because the user MEASURED
+
+The harness copies the **real** config, which is valuable — tests read the real nuancier and the
+real kerf table. But several tests had quietly encoded the workshop's beech numbers *as of a
+date*: "above F800 the trace no longer swells", "the fastest usable feed is F800".
+
+On 2026-08-01 Christophe measured F1000–F3000 on a fresh board. `swell_max_feed` went from 800 to
+3000 and **four tests fell at once**, with no line of code changed:
+`test_lignes_gravees` (F1500 flat), `test_mire` (band 7 must slow down), `test_contraste_pas`,
+`test_interpolation_mesures` (§5 assumed the grids were full).
+
+A suite that reddens because the user does the one thing you keep asking them to do — measure — is
+worse than no suite: it teaches you to ignore red.
+
+`harness.figer_largeurs(core, materiau)` reinstalls a known focus table (`LARGEURS_REFERENCE`:
+0.10→0.30 under F800, flat 0.10 at F1500/F3000) **in the throwaway copy**, keeping the defocus
+table and the nuancier intact. Call it in any test whose property assumes a table *shape*. Tests
+that check the workshop's data hangs together must deliberately NOT call it.
+
+Same idea for a property that needs a **complete** grid: build one in the test
+(`test_interpolation_mesures` §5 now does) and, on the real grids, **count and print** rather than
+assert — a divergence there is information about the measurements, not a defect in the code.
+
 ## Two rules for new tests here
 
 1. **Test the property over the family, not the case that was reported.** A test written for the one
