@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.24.0"
+VERSION = "2.24.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -6572,6 +6572,19 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         label_chains.extend(chain_edges(text_to_edges(
             plank_label, z_col_x, feed_label_y, max(5.0, label_height * 1.5))))
 
+    # Le laser, sur une rangée À PART au-dessus de tout le reste.
+    #
+    # Cette planche n'a pas de mire (elle se juge à l'oeil, pas par photo),
+    # donc elle n'héritait pas du nom gravé par la mire et sortait anonyme.
+    # Or c'est LA planche qui calibre le point de ce laser-là : sans son
+    # nom, le bois ne dit pas à quel module appartient la mesure.
+    #
+    # Rangée séparée et non à côté du numéro : au-dessus, rien n'est
+    # dessiné, donc aucune collision possible avec les libellés F<vitesse>
+    # quel que soit le nombre de bandes.
+    label_chains.extend(chain_edges(etiquette_laser(
+        z_col_x, feed_label_y + label_height * 2.2, label_height)))
+
     all_pts = [p for chain, _, _, _ in marks for p in chain] + [p for chain in label_chains for p in chain]
     z_safe = max([z for _, z, _, _ in marks] + [label_z]) + TRAVEL_CLEARANCE_MM
 
@@ -9363,6 +9376,23 @@ def _largeur_aretes(aretes):
     parallèle, qui pourrait diverger de la police."""
     xs = [v.Point.x for a in (aretes or []) for v in a.Vertexes]
     return (max(xs) - min(xs)) if xs else 0.0
+
+
+def etiquette_laser(x, y, hauteur=2.5, laser=None):
+    """Le nom du laser actif, en arêtes prêtes à graver (vide si pas de nom).
+
+    Toute planche de calibration devrait le porter : ce qu'elle mesure
+    n'a de valeur que pour le module qui l'a gravée. Les planches 1 et 2
+    l'obtiennent par leur mire ; la 3 n'a pas de mire -- elle se juge à
+    l'oeil, pas par photo -- et se retrouvait donc anonyme (vu par
+    Christophe sur l'aperçu, le 01/08/2026).
+
+    Police MONO-TRAIT : la 7 segments ne connaît que les chiffres, S, F,
+    '.' et '-', donc elle graverait un nom presque vide."""
+    nom = (active_laser_name() if laser is None else str(laser)).strip()
+    if not nom:
+        return []
+    return single_line_text_to_edges(nom, height=hauteur, x0=x, y0=y)
 
 
 def mire_de_mesure(x_min, y_min, x_max, y_max, power=None, feed=None,

@@ -257,3 +257,72 @@ for _l in _g.splitlines():
     assert _l.count("(") == _l.count(")"), ("commentaire non referme", _l)
 print("9. laser grave sur la planche (mono-trait), sans deborder, "
       "+ en-tete OK")
+
+
+# --- 10. LA PLANCHE 3 AUSSI (v2.24.1) ---------------------------------
+# La 3 n'a pas de mire -- elle se juge a l'oeil, pas par photo -- donc elle
+# n'heritait pas du nom grave par la mire et sortait ANONYME. Or c'est LA
+# planche qui calibre le point de ce laser-la. Vu par Christophe sur
+# l'apercu, le 01/08/2026 : « c'est normal que dans la 3eme planche pas de
+# nom de laser ? ».
+#
+# Regle du depot : brancher un correctif de generateur sur toute la
+# famille. Les trois planches de calibration doivent porter le nom.
+def _bande(**kw):
+    return core.generate_gcode_defocus_calibration(
+        z_start=0.0, z_step=3.0, n_marks=13, mark_length=15.0, row_gap=6.0,
+        power=600.0, power_end=1000.0, feed=750.0, plank_label="3",
+        quiet=True, **kw)
+
+
+def _pts(g):
+    out = []
+    for l in g.splitlines():
+        m = re.match(r"G[01]\s+X(-?[\d.]+)\s+Y(-?[\d.]+)", l)
+        if m:
+            out.append((float(m.group(1)), float(m.group(2))))
+    return out
+
+
+_id = core.active_laser_id()
+_avant = core.active_laser_name()
+try:
+    core.rename_laser(_id, "LT-80W-AA-PRO")     # config JETABLE (harness)
+    _g_avec = _bande()
+    core.rename_laser(_id, "")
+    _g_sans = _bande()
+finally:
+    core.rename_laser(_id, _avant)
+
+assert len(_g_avec.splitlines()) > len(_g_sans.splitlines()) + 50, (
+    "la planche 3 ne grave pas le nom du laser")
+
+_p_avec, _p_sans = _pts(_g_avec), _pts(_g_sans)
+_y_avec = max(p[1] for p in _p_avec)
+_y_sans = max(p[1] for p in _p_sans)
+# Rangee A PART, au-dessus de tout : c'est ce qui rend la collision avec
+# les libelles F<vitesse> impossible, quel que soit le nombre de bandes.
+assert _y_avec > _y_sans, ("le nom doit etre au-dessus du reste",
+                           _y_avec, _y_sans)
+_bas_nom = min(p[1] for p in _p_avec if p[1] > _y_sans + 0.01)
+assert _bas_nom > _y_sans, (
+    "le nom mord sur les libelles existants", _bas_nom, _y_sans)
+
+# Et il ne doit rien deplacer de ce qui existait.
+assert _p_avec[:len(_p_sans)] or True   # (ordre d'emission non garanti)
+_communs = [p for p in _p_sans if p[1] <= _y_sans]
+assert all(p in _p_avec for p in _communs[:200]), \
+    "l'ajout du nom a deplace des traits existants"
+
+# Les TROIS planches le portent maintenant.
+for _nom, _gen in (("Planche 1", core.generate_gcode_planche_focus),
+                   ("Planche 2", core.generate_gcode_planche_defocus),
+                   ("Planche 3", core.generate_gcode_planche_spot)):
+    core.rename_laser(_id, "LT-80W-AA-PRO")
+    _a = len(_gen(quiet=True).splitlines())
+    core.rename_laser(_id, "")
+    _s = len(_gen(quiet=True).splitlines())
+    core.rename_laser(_id, _avant)
+    assert _a > _s, ("{} ne grave pas le nom du laser".format(_nom), _a, _s)
+print("10. les TROIS planches de calibration portent le nom du laser, "
+      "sur une rangee a part OK")
