@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.28.0"
+VERSION = "2.29.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9754,7 +9754,7 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
                                    feeds=(200.0, 400.0, 600.0, 800.0),
                                    defocus_levels_mm=DEFOCUS_LEVELS_MM,
                                    trait_len=12.0, row_gap=4.0, block_gap=7.0,
-                                   label_height=2.5,
+                                   label_height=2.5, nom_planche="2",
                                    pre_gcode="", post_gcode="", quiet=False, body_only=False):
     """PLANCHE 2 -- DÉFOCUS (balayage du feed). Pour CHAQUE niveau de défocus
     (defocus_levels_mm, ~15 et 36 mm), une grille de traits S x F gravés à
@@ -9800,7 +9800,8 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
             _lab("S{:.0f}".format(s), 6.0, yy - label_height / 2.0)
             for j, f in enumerate(feeds):
                 x = x0 + j * col_pitch
-                comment = "(-- Planche 2 : d{:.0f} S{:.0f} F{:.0f} --)".format(dz, s, f)
+                comment = "(-- Planche {} : d{:.0f} S{:.0f} F{:.0f} --)".format(
+                    nom_planche, dz, s, f)
                 band.append(([(x, yy), (x + trait_len, yy)], s, f, comment))
         bands.append((z_focus + dz, band))
         y_head = y + len(powers) * row_gap + 1.0
@@ -9808,7 +9809,7 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
             _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
         _lab("d{:.0f}".format(dz), 0.0, y_head, 5.0)
         y = y_head + block_gap
-    _lab("2", 0.0, y_head + 6.0, 5.0)
+    _lab(nom_planche, 0.0, y_head + 6.0, 5.0)
     # La mire est gravée AU FOYER, comme les étiquettes : les cellules
     # peuvent être défocalisées, la référence de mesure doit rester nette.
     infos_mire = None
@@ -9820,7 +9821,8 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
             if mb is not None:
                 bands.append((z_focus, mb))
                 label_edges.extend(ml)
-    labels = _label_band(label_edges, "(-- Planche 2 : etiquettes --)")
+    labels = _label_band(label_edges,
+                         "(-- Planche {} : etiquettes --)".format(nom_planche))
     bands.append((z_focus, labels))
 
     if not any(band for _, band in bands):
@@ -9829,7 +9831,8 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
     z_safe = max([z for z, _ in bands] + [z_focus]) + TRAVEL_CLEARANCE_MM
     lines = []
     if not body_only:
-        lines.append("(G-Code Laser - Planche 2 : defocus (S x F par niveau))")
+        lines.append("(G-Code Laser - Planche {} : defocus (S x F par niveau))"
+                     .format(nom_planche))
         lines.extend(_entete_mire(infos_mire))
         lines.append("G21")
         lines.append("G90")
@@ -9855,6 +9858,52 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
         lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
         lines.append("M2")
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
+# Niveaux de défocus PROFONDS, et pourquoi ceux-là.
+#
+# Au-dessus du plus haut niveau mesuré (36 mm), le modèle n'interpole plus :
+# il extrapole le cône optique. Les quatre points isolés venus de la Rampe
+# (30, 40, 55, 60 mm) l'avaient CONFIRMÉ à +2 à +10 % près -- mais un
+# niveau qui ne porte qu'UNE puissance ne peut pas servir d'ancre : il
+# ferait croire que la largeur ne dépend pas de la puissance, et
+# aplatirait toute la plage qu'il borde (règle _niveaux_exploitables).
+#
+# 30 est écarté : il tombe ENTRE 15 et 36, donc déjà interpolé. Le manque
+# est au-dessus.
+DEFOCUS_LEVELS_PROFONDS_MM = (40.0, 55.0, 60.0)
+
+
+def generate_gcode_planche_defocus_profond(
+        z_focus=None, mire=True,
+        powers=(600.0, 800.0, 1000.0), feeds=(200.0, 400.0),
+        defocus_levels_mm=DEFOCUS_LEVELS_PROFONDS_MM,
+        pre_gcode="", post_gcode="", quiet=False, body_only=False):
+    """PLANCHE 2b -- DÉFOCUS PROFOND, pour donner une SECONDE puissance aux
+    niveaux 40, 55 et 60 mm et les promouvoir en ancres du modèle.
+
+    Les puissances et vitesses ne sont pas choisies au hasard, et surtout
+    pas au large : à ces hauteurs, la même énergie est étalée sur un point
+    de 3 à 4 mm, donc la fenêtre où le trait marque encore est mince. Les
+    points isolés de la Rampe donnent le seuil déjà constaté -- S716/F600 à
+    40 mm, S909/F400 à 55, S980/F200 à 60 -- et cette planche s'organise
+    autour : puissances HAUTES (le plafond est à S_MAX, il n'y a pas de
+    place au-dessus) et vitesses LENTES (ralentir est le seul moyen de
+    remonter la fluence quand la puissance est déjà au plafond).
+
+    S600/S800/S1000 et F200/F400, et pas d'autres valeurs : ce sont
+    exactement des lignes et des colonnes de la grille de saisie ②. Une
+    planche qui grave S850 produirait une mesure que le tableau ne sait
+    pas afficher -- le défaut corrigé en v2.28.0, qu'il serait absurde de
+    recréer en gravant du bois pour ça.
+
+    Une case blanche est une DONNÉE : à 60 mm, S600 ne marquera
+    probablement pas, et c'est le seuil du matériau à cette hauteur."""
+    return generate_gcode_planche_defocus(
+        mire=mire, z_focus=z_focus, powers=powers, feeds=feeds,
+        defocus_levels_mm=defocus_levels_mm, nom_planche="2b",
+        pre_gcode=pre_gcode, post_gcode=post_gcode, quiet=quiet,
+        body_only=body_only)
 
 
 def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet=False,

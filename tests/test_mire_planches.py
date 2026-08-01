@@ -326,3 +326,57 @@ for _nom, _gen in (("Planche 1", core.generate_gcode_planche_focus),
     assert _a > _s, ("{} ne grave pas le nom du laser".format(_nom), _a, _s)
 print("10. les TROIS planches de calibration portent le nom du laser, "
       "sur une rangee a part OK")
+
+
+# --- 11. PLANCHE 2b : défocus profond (v2.29.0) -----------------------
+# Les niveaux 40, 55 et 60 mm ne portaient qu'UN point chacun, venus de la
+# Rampe : ils ne peuvent pas servir d'ancre au modèle (un niveau à une
+# seule puissance ferait croire que la largeur n'en dépend pas). Cette
+# planche leur donne une seconde puissance.
+import sys as _sys
+_sys.path.insert(0, __import__("os").path.dirname(
+    __import__("os").path.dirname(__import__("os").path.abspath(__file__))))
+from task_panels import _MesuresPlanchesControleur as _Ctrl   # noqa: E402
+
+_g2b = core.generate_gcode_planche_defocus_profond(quiet=True)
+assert _g2b, "la planche 2b ne produit rien"
+_cel = re.findall(r"-- Planche 2b : d(\d+) S(\d+) F(\d+) --", _g2b)
+assert _cel, "aucune cellule identifiée « Planche 2b »"
+
+# LA propriété : ne graver QUE ce que la grille de saisie ② sait afficher.
+# Une planche qui grave S850 produirait une mesure invisible dans le
+# tableau -- exactement le défaut corrigé en v2.28.0, qu'il serait absurde
+# de recréer en brûlant du bois pour ça.
+for _d, _s, _f in _cel:
+    assert float(_s) in [float(x) for x in _Ctrl.POWERS], (
+        "S{} n'est pas une ligne de la grille ②".format(_s), _Ctrl.POWERS)
+    assert float(_f) in [float(x) for x in _Ctrl.FEEDS_DEFOCUS], (
+        "F{} n'est pas une colonne de la grille ②".format(_f),
+        _Ctrl.FEEDS_DEFOCUS)
+
+# Chaque niveau doit pouvoir DEVENIR une ancre : au moins deux puissances.
+_par_niv = {}
+for _d, _s, _f in _cel:
+    _par_niv.setdefault(float(_d), set()).add(float(_s))
+assert set(_par_niv) == set(core.DEFOCUS_LEVELS_PROFONDS_MM), (
+    _par_niv.keys(), core.DEFOCUS_LEVELS_PROFONDS_MM)
+assert 30.0 not in _par_niv, (
+    "30 mm tombe ENTRE 15 et 36 : il est déjà interpolé, le graver "
+    "n'apporte rien")
+for _dz, _ps in _par_niv.items():
+    assert len(_ps) >= 2, (
+        "niveau {:.0f} : une seule puissance, il ne pourra pas servir "
+        "d'ancre -- c'est précisément le problème que cette planche "
+        "existe pour résoudre".format(_dz), _ps)
+
+# Les traits sont bien gravés à z_focus + le niveau.
+_zs = {float(m) for m in re.findall(r"Z(-?\d+\.?\d*)", _g2b)}
+for _dz in core.DEFOCUS_LEVELS_PROFONDS_MM:
+    assert (core.Z_WORK_MM + _dz) in _zs, (_dz, sorted(_zs))
+# Et la mire reste AU FOYER : la référence de mesure doit être nette.
+assert core.Z_WORK_MM in _zs
+assert re.search(r"rectangle de [\d.]+ x [\d.]+ mm ENTRE CENTRES", _g2b), \
+    "la planche 2b doit porter une mire"
+print("11. planche 2b : {} cellules, niveaux {}, {} puissances/niveau, "
+      "toutes saisissables dans ② OK".format(
+          len(_cel), sorted(_par_niv), sorted(len(v) for v in _par_niv.values())))

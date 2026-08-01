@@ -1124,6 +1124,29 @@ def _boutons_planches(form, ecrire):
         # On sélectionne la DERNIÈRE : c'est celle qui vient d'être rangée.
         photo_pl["reload"](max(0, len(core.result_photos(planche)) - 1))
 
+    b_prof = QtWidgets.QPushButton("Planche 2b — Défocus PROFOND (40/55/60 mm)")
+    b_prof.setToolTip(
+        "Donne une SECONDE puissance aux niveaux 40, 55 et 60 mm, pour les\n"
+        "promouvoir en ancres du modèle : un niveau qui ne porte qu'une\n"
+        "puissance ferait croire que la largeur n'en dépend pas, et\n"
+        "aplatirait toute la plage qu'il borde.\n"
+        "\n"
+        "S600/S800/S1000 x F200/F400 seulement : à ces hauteurs le point\n"
+        "fait 3 à 4 mm, la fenêtre où ça marque encore est mince, et il n'y\n"
+        "a pas de place au-dessus de S_MAX -- ralentir est le seul moyen de\n"
+        "remonter la fluence. Ces valeurs sont exactement des lignes et des\n"
+        "colonnes de la grille de saisie ② : une planche qui graverait S850\n"
+        "produirait une mesure que le tableau ne saurait pas afficher.\n"
+        "\n"
+        "Une case blanche est une DONNÉE : à 60 mm, S600 ne marquera sans\n"
+        "doute pas, et c'est le seuil du matériau à cette hauteur.\n"
+        "\n"
+        "30 mm n'y est pas : il tombe ENTRE 15 et 36, donc déjà interpolé.")
+    b_prof.clicked.connect(
+        lambda: ecrire(core.generate_gcode_planche_defocus_profond(),
+                       "/tmp/planche2b_defocus_profond.ngc"))
+    form.addRow(b_prof)
+
     b5.clicked.connect(lambda: _redresser_photo_planche(
         form.parentWidget() or form, on_range=_apres_redressement))
     b7.clicked.connect(lambda: _gerer_planches_redressees(
