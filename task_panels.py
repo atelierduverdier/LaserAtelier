@@ -546,7 +546,7 @@ class _BlocMesure(QtWidgets.QWidget):
     centaines : le bloc affiche donc son message juste au-dessous, là où
     l'oeil est déjà."""
 
-    def __init__(self, on_mesurer, on_perp, parent=None):
+    def __init__(self, on_mesurer, on_perp, on_mesure_image, parent=None):
         super().__init__(parent)
         v = QtWidgets.QVBoxLayout(self)
         v.setContentsMargins(0, 2, 0, 8)
@@ -571,6 +571,23 @@ class _BlocMesure(QtWidgets.QWidget):
             "Re-cliquer le bouton annule une mesure en cours.")
         self.btn.clicked.connect(lambda: on_mesurer(self))
         v.addWidget(self.btn)
+        self.btn_image = QtWidgets.QPushButton("Mesurer sur l'image redressée…")
+        self.btn_image.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.btn_image.setToolTip(
+            "Ouvre la planche redressée, encadre UN trait, et place deux\n"
+            "lignes horizontales sur son profil moyenné.\n"
+            "\n"
+            "Pourquoi c'est mieux qu'un clic : le bord d'une brûlure n'est\n"
+            "pas une ligne mais une RAMPE -- 0,7 mm à 60 mm de défocus. Une\n"
+            "lecture prise sur une seule colonne varie de ±0,6 mm sur un\n"
+            "même trait ; moyennée sur sa longueur, elle ne bouge plus que\n"
+            "de ±0,16 mm quand on déplace le seuil de 40 à 60 %.\n"
+            "\n"
+            "Les repères 40/50/60 % sont indicatifs : c'est TOI qui décides\n"
+            "où s'arrête la brûlure, et la seule règle est de t'y tenir sur\n"
+            "toute la planche.")
+        self.btn_image.clicked.connect(lambda: on_mesure_image(self))
+        v.addWidget(self.btn_image)
         self.chk_perp = QtWidgets.QCheckBox(
             "Mesurer en travers du trait (ignorer le décalage latéral)")
         self.chk_perp.setChecked(True)
@@ -1275,7 +1292,8 @@ class _MesuresPlanchesControleur:
     # ------------------------------------------------------------------
     def _creer_bloc(self, grille):
         """Un bloc de mesure attaché à cette grille, mémorisé dans _blocs."""
-        bloc = _BlocMesure(self._on_mesurer, self._on_perp)
+        bloc = _BlocMesure(self._on_mesurer, self._on_perp,
+                           self._on_mesure_image)
         bloc.grille = grille
         bloc.chk_perp.setChecked(self._perp)
         self._blocs.append(bloc)
@@ -1431,6 +1449,49 @@ class _MesuresPlanchesControleur:
         self._mesure_pts = []
         for b in self._blocs_vivants():
             b.btn.setText("Mesurer A → B dans la vue 3D")
+
+    def _on_mesure_image(self, bloc=None):
+        """Mesurer une largeur sur la planche redressée, à la ligne."""
+        self._bloc_courant = bloc or self._blocs[0]
+        cible = self._derniere_case
+        if cible is None:
+            self._dire("Clique d'abord la <b>case à remplir</b> dans une "
+                       "grille, puis reviens sur ce bouton.")
+            return
+        if cible.isReadOnly():
+            self._dire("Grille <b>verrouillée</b> : décoche « 🔒 Verrouiller "
+                       "les résultats » avant de mesurer.")
+            return
+        chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
+            self._parent.form if getattr(self._parent, "form", None) else None,
+            "Planche redressée", core.dossier_planches(),
+            "Images redressées (*.png *.jpg);;Tous (*)")
+        if not chemin:
+            return
+        # L'échelle vient de la FICHE écrite à côté de l'image, jamais d'une
+        # valeur supposée : une échelle devinée donnerait des millimètres
+        # faux sans que rien ne le signale.
+        pxmm = 50.0
+        fiche = os.path.splitext(chemin)[0] + ".json"
+        if os.path.exists(fiche):
+            try:
+                with open(fiche) as fh:
+                    pxmm = float(json.load(fh).get("pxmm") or pxmm)
+            except Exception:
+                pass
+        else:
+            pxmm, ok = QtWidgets.QInputDialog.getDouble(
+                None, "Échelle de l'image",
+                "Pas de fiche .json à côté de cette image.\n"
+                "Échelle du redressement, en pixels par millimètre :",
+                50.0, 1.0, 1000.0, 1)
+            if not ok:
+                return
+        dlg = _DialogueMesureTrait(chemin, pxmm)
+        if not dlg.exec():
+            return
+        self._dire(self._encaisser_mesure(dlg.valeur_mm(), 0.0,
+                                          dlg.valeur_mm()))
 
     def _on_mesurer(self, bloc=None):
         self._bloc_courant = bloc or self._blocs[0]
@@ -2448,6 +2509,363 @@ def _image_bornee(chemin, largeur_max, hauteur_max):
     if img.isNull():
         return None, (lecteur.errorString() or "format non reconnu")
     return img, None
+
+
+def profil_trait(img, largeur_max=4000):
+    """Profil de noirceur d'un trait, MOYENNÉ sur toute sa longueur.
+
+    `img` : QImage du trait seul (recadré par l'utilisateur). Renvoie
+    (profil, bois) où `profil[i]` est le niveau moyen de la rangée i,
+    normalisé par `bois` = le niveau du bois nu (90e centile). 1,00 = bois
+    nu, 0,20 = noyau noir.
+
+    POURQUOI MOYENNER. Le bord d'une brûlure n'est pas une ligne : à 60 mm
+    de défocus, c'est une RAMPE de 0,7 mm entre le bois franc et le noir
+    franc. Une lecture prise sur une seule colonne varie de 2,28 à 2,90 mm
+    sur un même trait (mesuré le 01/08/2026) -- soit ±0,6 mm de hasard
+    selon l'endroit visé. Moyennée sur les 13 mm de longueur, la même
+    mesure ne bouge plus que de ±0,16 mm quand on déplace le seuil de 40 à
+    60 %. Moyenner divise l'incertitude par QUATRE, et c'est l'idée de
+    Christophe : placer une ligne sur la moyenne visible plutôt qu'un point
+    sur un pixel flou.
+    """
+    import numpy as np
+    g = img.convertToFormat(QtGui.QImage.Format_Grayscale8)
+    w, h = g.width(), g.height()
+    if w < 2 or h < 2:
+        return None, 0.0
+    # Sous-échantillonnage en X seulement : on moyenne des colonnes, en
+    # garder 4000 suffit largement et borne le coût sur une planche entière.
+    pas = max(1, w // largeur_max)
+    ptr = g.constBits()
+    a = np.frombuffer(ptr, dtype=np.uint8, count=g.bytesPerLine() * h)
+    a = a.reshape(h, g.bytesPerLine())[:, :w:pas].astype(np.float32)
+    bois = float(np.percentile(a, 90)) or 1.0
+    return (a.mean(axis=1) / bois), bois
+
+
+def largeur_au_seuil(profil, seuil):
+    """Largeur, EN RANGÉES, de la zone sous `seuil` (0 si rien).
+
+    Sert de REPÈRE, jamais de verdict : c'est l'utilisateur qui décide où
+    s'arrête la brûlure -- bord du noir franc ou bord du roussi -- et aucun
+    seuil ne sait faire ce choix à sa place. Ce que la machine sait faire,
+    c'est moyenner sans se fatiguer."""
+    import numpy as np
+    if profil is None or not len(profil):
+        return 0, 0, 0
+    dedans = np.flatnonzero(profil < float(seuil))
+    if not len(dedans):
+        return 0, 0, 0
+    return int(dedans[0]), int(dedans[-1]), int(dedans[-1] - dedans[0] + 1)
+
+
+class _VueProfilTrait(QtWidgets.QWidget):
+    """Le trait à gauche, son profil moyenné à droite, deux lignes qu'on
+    fait glisser d'un bord à l'autre.
+
+    Placer une ligne sur une COURBE LISSE est incomparablement plus facile
+    que viser un pixel dans un dégradé : c'est tout l'intérêt. Les deux
+    lignes traversent l'image ET le graphe, donc l'oeil vérifie sur le bois
+    ce que la courbe raconte."""
+
+    bouge = QtCore.Signal()
+
+    MARGE = 8
+    PART_IMAGE = 0.58            # le reste au profil
+
+    def __init__(self, image, pxmm, parent=None):
+        super().__init__(parent)
+        self._img = image
+        self._pxmm = float(pxmm)
+        self._profil, self._bois = profil_trait(image)
+        n = image.height()
+        # Départ AUX SEUILS 50 % : une proposition, jamais un verdict --
+        # l'utilisateur les déplace, et c'est son geste qui mesure.
+        a, b, _ = largeur_au_seuil(self._profil, 0.5)
+        self._y = [float(a) if b > a else n * 0.35,
+                   float(b) if b > a else n * 0.65]
+        self._prise = None
+        self.setMinimumHeight(360)
+        self.setMouseTracking(True)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.SizeVerCursor))
+
+    # -- géométrie ----------------------------------------------------
+    def _boite(self):
+        m = self.MARGE
+        return QtCore.QRect(m, m, max(1, self.width() - 2 * m),
+                            max(1, self.height() - 2 * m))
+
+    def _y_ecran(self, y_img):
+        b = self._boite()
+        return b.top() + b.height() * (y_img / max(1.0, self._img.height()))
+
+    def _y_image(self, y_ecran):
+        b = self._boite()
+        return max(0.0, min(float(self._img.height()),
+                            (y_ecran - b.top()) * self._img.height()
+                            / max(1.0, b.height())))
+
+    def distance_mm(self):
+        return abs(self._y[1] - self._y[0]) / self._pxmm
+
+    def positions(self):
+        return sorted(self._y)
+
+    def repere_seuil(self, seuil):
+        """(largeur en mm, y0, y1) au seuil donné -- le repère proposé."""
+        a, b, n = largeur_au_seuil(self._profil, seuil)
+        return (n / self._pxmm, a, b)
+
+    # -- peinture ------------------------------------------------------
+    def paintEvent(self, _ev):
+        p = QtGui.QPainter(self)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        b = self._boite()
+        larg_img = int(b.width() * self.PART_IMAGE)
+        r_img = QtCore.QRect(b.left(), b.top(), larg_img, b.height())
+        r_pro = QtCore.QRect(b.left() + larg_img + 10, b.top(),
+                             max(20, b.width() - larg_img - 10), b.height())
+        p.drawImage(r_img, self._img)
+        p.setPen(QtGui.QPen(QtGui.QColor(150, 150, 150), 1))
+        p.drawRect(r_img)
+
+        # Graphe : valeur en X (sombre à gauche), rangée en Y.
+        p.fillRect(r_pro, QtGui.QColor(250, 250, 250))
+        p.drawRect(r_pro)
+        if self._profil is not None and len(self._profil) > 1:
+            for s, txt in ((0.4, "40"), (0.5, "50"), (0.6, "60")):
+                x = r_pro.left() + r_pro.width() * min(1.0, s)
+                p.setPen(QtGui.QPen(QtGui.QColor(200, 200, 200), 1,
+                                    QtCore.Qt.DashLine))
+                p.drawLine(int(x), r_pro.top(), int(x), r_pro.bottom())
+                p.setPen(QtGui.QColor(150, 150, 150))
+                p.drawText(int(x) - 6, r_pro.top() - 1, txt + "%")
+            poly = QtGui.QPolygonF()
+            n = len(self._profil)
+            for i in range(n):
+                v = max(0.0, min(1.2, float(self._profil[i])))
+                poly.append(QtCore.QPointF(
+                    r_pro.left() + r_pro.width() * min(1.0, v),
+                    r_pro.top() + r_pro.height() * (i / max(1.0, n - 1.0))))
+            p.setPen(QtGui.QPen(QtGui.QColor(255, 138, 0), 2))
+            p.drawPolyline(poly)
+
+        for k, y in enumerate(self._y):
+            ye = int(self._y_ecran(y))
+            p.setPen(QtGui.QPen(QtGui.QColor(0, 120, 255), 2))
+            p.drawLine(b.left(), ye, b.right(), ye)
+            p.setPen(QtGui.QColor(0, 90, 200))
+            p.drawText(b.left() + 3, ye - 3, "A" if k == 0 else "B")
+        p.end()
+
+    # -- souris --------------------------------------------------------
+    def mousePressEvent(self, ev):
+        y = ev.position().y() if hasattr(ev, "position") else ev.y()
+        d = [abs(self._y_ecran(v) - y) for v in self._y]
+        self._prise = 0 if d[0] <= d[1] else 1
+        self._deplacer(y)
+
+    def mouseMoveEvent(self, ev):
+        if self._prise is not None:
+            self._deplacer(ev.position().y() if hasattr(ev, "position") else ev.y())
+
+    def mouseReleaseEvent(self, _ev):
+        self._prise = None
+
+    def _deplacer(self, y_ecran):
+        if self._prise is None:
+            return
+        self._y[self._prise] = self._y_image(y_ecran)
+        self.update()
+        self.bouge.emit()
+
+    def keyPressEvent(self, ev):
+        """Flèches : ajustement au pixel, là où la souris ne suffit plus."""
+        pas = {QtCore.Qt.Key_Up: -1.0, QtCore.Qt.Key_Down: 1.0}.get(ev.key())
+        if pas is None:
+            return super().keyPressEvent(ev)
+        i = self._prise if self._prise is not None else 0
+        self._y[i] = max(0.0, min(float(self._img.height()), self._y[i] + pas))
+        self.update()
+        self.bouge.emit()
+
+
+
+
+class _VueChoixTrait(QtWidgets.QLabel):
+    """Vue d'ensemble de la planche : on encadre UN trait à la souris.
+
+    Recadrer soi-même plutôt que laisser l'atelier détecter : la détection
+    automatique des traits est ce qui a échoué le plus souvent sur ce
+    projet (étiquettes prises pour des traits, roussi compté comme
+    brûlure). Le pas fragile va à l'oeil, le calcul exact à la machine."""
+
+    choisi = QtCore.Signal(QtCore.QRect)
+
+    def __init__(self, image, parent=None):
+        super().__init__(parent)
+        self._img = image
+        self._a = self._b = None
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.setMinimumSize(520, 300)
+        self.setCursor(QtGui.QCursor(QtCore.Qt.CrossCursor))
+        self.setStyleSheet("background:#202020;")
+
+    def _rect_affiche(self):
+        pm = self.pixmap()
+        if pm is None or pm.isNull():
+            return None
+        return QtCore.QRect((self.width() - pm.width()) // 2,
+                            (self.height() - pm.height()) // 2,
+                            pm.width(), pm.height())
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        self.setPixmap(QtGui.QPixmap.fromImage(self._img).scaled(
+            self.size(), QtCore.Qt.KeepAspectRatio,
+            QtCore.Qt.SmoothTransformation))
+
+    def _vers_image(self, pt):
+        r = self._rect_affiche()
+        if r is None or not r.width():
+            return None
+        x = (pt.x() - r.left()) * self._img.width() / r.width()
+        y = (pt.y() - r.top()) * self._img.height() / r.height()
+        return QtCore.QPoint(int(max(0, min(self._img.width() - 1, x))),
+                             int(max(0, min(self._img.height() - 1, y))))
+
+    def mousePressEvent(self, ev):
+        self._a = self._vers_image(ev.position().toPoint()
+                                   if hasattr(ev, "position") else ev.pos())
+        self._b = self._a
+
+    def mouseMoveEvent(self, ev):
+        if self._a is not None:
+            self._b = self._vers_image(ev.position().toPoint()
+                                       if hasattr(ev, "position") else ev.pos())
+            self.update()
+
+    def mouseReleaseEvent(self, _ev):
+        if self._a is None or self._b is None:
+            return
+        r = QtCore.QRect(self._a, self._b).normalized()
+        self._a = self._b = None
+        self.update()
+        # Un rectangle minuscule est un clic raté, pas un choix.
+        if r.width() >= 8 and r.height() >= 8:
+            self.choisi.emit(r)
+
+    def paintEvent(self, ev):
+        super().paintEvent(ev)
+        if self._a is None or self._b is None:
+            return
+        r = self._rect_affiche()
+        if r is None:
+            return
+        def _ecran(p):
+            return QtCore.QPoint(
+                int(r.left() + p.x() * r.width() / max(1, self._img.width())),
+                int(r.top() + p.y() * r.height() / max(1, self._img.height())))
+        p = QtGui.QPainter(self)
+        p.setPen(QtGui.QPen(QtGui.QColor(255, 138, 0), 2))
+        p.drawRect(QtCore.QRect(_ecran(self._a), _ecran(self._b)).normalized())
+        p.end()
+
+
+class _DialogueMesureTrait(QtWidgets.QDialog):
+    """Mesurer une largeur brûlée sur l'image redressée, à la ligne.
+
+    L'idée est de Christophe, le 01/08/2026 : « si à la place du curseur
+    j'avais une ligne horizontale que je place là où il me semble être la
+    moyenne sur toute la brûlure ». C'est exactement le bon geste -- une
+    lecture prise sur une seule colonne varie de ±0,6 mm sur un trait
+    défocalisé, la même moyennée sur sa longueur ne bouge plus que de
+    ±0,16 mm.
+
+    Deux temps : on encadre un trait, puis on place les deux lignes sur le
+    profil moyenné. `valeur_mm` renvoie la distance retenue."""
+
+    def __init__(self, chemin, pxmm, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Mesurer une largeur sur l'image redressée")
+        self.resize(980, 620)
+        self._pxmm = float(pxmm)
+        # PLEINE résolution : c'est une image de MESURE. La borner à
+        # 4000 px ramenait une planche de 3800 x 6300 à 31,7 px/mm au lieu
+        # de 50 -- un tiers de precision perdu pour rien, alors que les
+        # 96 Mo qu'elle occupe passent largement sous le plafond.
+        self._plein, souci = _image_bornee(chemin, 100000, 100000)
+        self._vue = None
+        v = QtWidgets.QVBoxLayout(self)
+        if self._plein is None:
+            v.addWidget(_WrapLabel("Image illisible : {}".format(souci)))
+            b = QtWidgets.QPushButton("Fermer")
+            b.clicked.connect(self.reject)
+            v.addWidget(b)
+            return
+        # Si le plafond mémoire a tout de même réduit l'image, l'échelle
+        # DOIT suivre : sans ça les millimètres seraient faux en silence.
+        declaree = QtGui.QImageReader(chemin).size().width()
+        if declaree > 0 and self._plein.width() != declaree:
+            self._pxmm *= self._plein.width() / float(declaree)
+        self._pile = QtWidgets.QStackedWidget()
+        self._choix = _VueChoixTrait(self._plein)
+        self._choix.choisi.connect(self._on_choisi)
+        self._pile.addWidget(self._choix)
+        v.addWidget(_WrapLabel(
+            "<b>1.</b> Encadre UN trait à la souris — englobe toute sa "
+            "longueur et un peu de bois de chaque côté."))
+        v.addWidget(self._pile, 1)
+        self.lbl = _WrapLabel("")
+        v.addWidget(self.lbl)
+        ligne = QtWidgets.QHBoxLayout()
+        self.btn_retour = QtWidgets.QPushButton("◀ Choisir un autre trait")
+        self.btn_retour.clicked.connect(self._retour)
+        self.btn_retour.setEnabled(False)
+        self.btn_ok = QtWidgets.QPushButton("Retenir cette largeur")
+        self.btn_ok.setEnabled(False)
+        self.btn_ok.clicked.connect(self.accept)
+        b_non = QtWidgets.QPushButton("Annuler")
+        b_non.clicked.connect(self.reject)
+        ligne.addWidget(self.btn_retour)
+        ligne.addStretch(1)
+        ligne.addWidget(self.btn_ok)
+        ligne.addWidget(b_non)
+        v.addLayout(ligne)
+
+    def _on_choisi(self, rect):
+        self._vue = _VueProfilTrait(self._plein.copy(rect), self._pxmm)
+        self._vue.bouge.connect(self._maj)
+        self._pile.addWidget(self._vue)
+        self._pile.setCurrentWidget(self._vue)
+        self._vue.setFocus()
+        self.btn_retour.setEnabled(True)
+        self.btn_ok.setEnabled(True)
+        self._maj()
+
+    def _retour(self):
+        self._pile.setCurrentWidget(self._choix)
+        self.btn_retour.setEnabled(False)
+        self.btn_ok.setEnabled(False)
+        self.lbl.setText("")
+
+    def _maj(self):
+        if self._vue is None:
+            return
+        rep = " · ".join("{:.0f} % : {:.2f}".format(s * 100,
+                                                    self._vue.repere_seuil(s)[0])
+                         for s in (0.4, 0.5, 0.6))
+        self.lbl.setText(
+            "<b>2.</b> Fais glisser les lignes <b>A</b> et <b>B</b> (flèches "
+            "↑↓ pour affiner au pixel).<br>"
+            "Largeur retenue : <b>{:.3f} mm</b><br>"
+            "<span style='color:#777'>Repères automatiques, à titre "
+            "indicatif — {} mm. C'est toi qui décides où s'arrête la "
+            "brûlure.</span>".format(self.valeur_mm(), rep))
+
+    def valeur_mm(self):
+        return self._vue.distance_mm() if self._vue is not None else 0.0
 
 
 class _ZoneTexte(QtWidgets.QPlainTextEdit):

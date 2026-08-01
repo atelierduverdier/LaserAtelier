@@ -928,3 +928,70 @@ assert "defocus, mat)" in _corps2 and "coff, mat)" in _corps2 \
     "les TROIS appels doivent passer le materiau, pas un ou deux")
 print("job combiné : matériau transmis à l'aperçu ({:.2f} mm mesurés contre "
       "{:.2f} optiques) OK".format(_mesure, _optique))
+
+
+# --- Mesurer à la LIGNE, sur le profil moyenné (v2.33.0) -------------
+# Idee de Christophe le 01/08/2026 : « si a la place du curseur j'avais une
+# ligne horizontale que je place la ou il me semble etre la moyenne sur
+# toute la brulure ». Le bord d'une brulure n'est pas une ligne mais une
+# RAMPE ; une lecture prise sur UNE colonne varie enormement, la meme
+# moyennee sur la longueur du trait est stable.
+from PySide6 import QtCore as _QtC3
+assert hasattr(tp, "profil_trait") and hasattr(tp, "largeur_au_seuil")
+assert hasattr(tp, "_VueProfilTrait") and hasattr(tp, "_DialogueMesureTrait")
+
+# Trait SYNTHETIQUE : noyau noir, bords en rampe, et du bruit colonne par
+# colonne -- exactement ce qui rend un clic unique instable.
+import numpy as _np
+_H, _W, _PX = 300, 600, 50.0
+_rng = _np.random.default_rng(4)
+_a = _np.full((_H, _W), 200.0)
+for _x in range(_W):
+    _c = 150 + _rng.integers(-12, 13)          # le trait ondule
+    _demi = 50 + _rng.integers(-6, 7)          # ... et sa largeur varie
+    # LE GRAIN : une colonne sur dix, la brulure part beaucoup plus loin.
+    # C'est lui qui rend une lecture ponctuelle instable -- et c'est
+    # exactement ce que moyenner supprime, puisqu'il ne pese qu'un dixieme.
+    if _rng.random() < 0.10:
+        _demi += 28
+    for _y in range(_H):
+        _d = abs(_y - _c)
+        if _d < _demi - 10:
+            _a[_y, _x] = 30
+        elif _d < _demi + 10:                   # la rampe
+            _a[_y, _x] = 30 + 170 * (_d - (_demi - 10)) / 20.0
+_a = _np.clip(_a + _rng.integers(-6, 7, _a.shape), 0, 255).astype(_np.uint8)
+_img = _QtG.QImage(_a.tobytes(), _W, _H, _W, _QtG.QImage.Format_Grayscale8).copy()
+
+_prof, _bois = tp.profil_trait(_img)
+assert _prof is not None and len(_prof) == _H, (len(_prof) if _prof is not None else None)
+assert 0.9 < _bois / 200.0 < 1.1, _bois
+
+# LE controle qui compte, et il se demontre : moyenner doit ETRE plus
+# stable que lire une colonne. Si les deux se valaient, la fenetre entiere
+# n'aurait aucune raison d'exister.
+_par_seuil = [tp.largeur_au_seuil(_prof, s)[2] / _PX for s in (0.4, 0.5, 0.6)]
+_etendue_profil = max(_par_seuil) - min(_par_seuil)
+_cols = []
+# TOUTES les colonnes, pas une sur vingt : un clic tombe n'importe ou, et
+# echantillonner large ratait justement les colonnes a grain (50 sur 600,
+# aucune parmi les 30 tirees -- le test se mesurait mal lui-meme).
+for _x in range(_W):
+    _d = _np.flatnonzero(_a[:, _x] / _bois < 0.5)
+    if len(_d):
+        _cols.append((_d[-1] - _d[0] + 1) / _PX)
+_etendue_col = max(_cols) - min(_cols)
+assert _etendue_col > 3 * _etendue_profil, (
+    "le profil moyenné doit être NETTEMENT plus stable qu'une colonne, "
+    "sinon cette fenêtre ne sert à rien", _etendue_col, _etendue_profil)
+
+# La conversion pixels -> mm est l'enjeu : une erreur ici fausse tout en
+# silence.
+_vue = tp._VueProfilTrait(_img, _PX)
+_vue._y = [30.0, 30.0 + 2.5 * _PX]
+assert abs(_vue.distance_mm() - 2.5) < 1e-9, _vue.distance_mm()
+# Et le placement de depart doit tomber sur le repere 50 %, pas n'importe ou.
+_vue2 = tp._VueProfilTrait(_img, _PX)
+assert abs(_vue2.distance_mm() - tp.largeur_au_seuil(_prof, 0.5)[2] / _PX) < 0.05
+print("mesure à la ligne : colonne ±{:.2f} mm contre profil ±{:.2f} mm, "
+      "conversion exacte OK".format(_etendue_col, _etendue_profil))
