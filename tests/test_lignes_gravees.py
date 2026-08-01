@@ -551,3 +551,30 @@ assert _er and _er[2] <= core.SEUIL_ENERGIE_LIGNES_GRAVEES, (
     _r["line_feed"], _r["pitch"], _er[2] if _er else None)
 print("23. la recette livree reste sous le seuil d'energie ({:.1f}x) OK"
       .format(_er[2]))
+
+# --- 24. Une table de largeurs = UNE lecture de la config ----------------
+# Le 01/08/2026 le panneau Gravure photo mettait 14 s a s'ouvrir, le PC
+# soufflait -- entendu par Christophe, pas vu par un test. Deux fautes
+# empilees, toutes deux dans du code ecrit le matin meme :
+#   - `burn_width_power_table` echantillonnait via `burn_width_at`, qui
+#     RECHARGE la config a chaque point : 161 lectures pour une table,
+#     alors que les mesures etaient deja chargees deux lignes plus haut ;
+#   - `swell_plafond_suffisant` reconstruisait une table entiere par
+#     plafond candidat, soit 161 tables -> ~26 000 lectures par appel.
+# On compte les LECTURES et non les secondes : un seuil en temps est
+# bruite par la machine, un compteur ne l'est pas.
+_n = [0]
+_vrai = core.load_config
+core.load_config = lambda *a, **k: (_n.__setitem__(0, _n[0] + 1), _vrai(*a, **k))[1]
+try:
+    _n[0] = 0
+    core.burn_width_power_table(MAT, 800.0)
+    assert _n[0] <= 2, ("une table de largeurs doit tenir en une lecture de "
+                        "config, pas une par echantillon", _n[0])
+    _n[0] = 0
+    core.swell_plafond_suffisant(MAT, 800.0)
+    assert _n[0] <= 2, ("chercher le plafond suffisant ne doit pas "
+                        "reconstruire une table par candidat", _n[0])
+finally:
+    core.load_config = _vrai
+print("24. table de largeurs et plafond suffisant : 1 lecture chacun OK")

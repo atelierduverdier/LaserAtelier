@@ -476,3 +476,27 @@ board gives a third point.
 
 §22 and §23 of `test_lignes_gravees.py` freeze it: the burning regime must cost more than the
 working one, the threshold must fall **between** them, and no shipped recipe may start above it.
+
+## `burn_width_at` re-reads the config on every call
+
+Not a cache miss — there is no cache. `burn_width_at` → `load_burn_widths` → `load_config` →
+`json.load` opens and parses the whole config file, every single call. That is fine when
+something asks for one width; it is ruinous when something samples a curve.
+
+Two v2.36.0 additions did exactly that, and on 2026-08-01 the **Gravure photo panel took 14
+seconds to open with the fan spinning** — Christophe heard the machine, no test noticed:
+
+- `burn_width_power_table` sampled 161 points through `burn_width_at`, though it had already
+  loaded the measurements two lines above. It now calls `_bilinear_burn(mesures, …)` directly.
+- `swell_plafond_suffisant` rebuilt a whole table **per candidate ceiling** — 161 tables, ~26 000
+  config reads for one call. It now builds the table once and scans it; the ratio is monotone in
+  the table index, so a single pass is the same answer.
+
+**14.17 s → 0.12 s** to build the panel (118×), and `test_recettes_photo` fell from 16.7 s to
+1.1 s as a side effect — the suite had been paying it too, silently.
+
+§24 of `test_lignes_gravees.py` counts `load_config` calls rather than seconds: a wall-clock
+threshold is noise on a shared machine, a counter is not. One table, one read.
+
+Anything that samples a width curve must load the measurements **once** and work on the list. If
+you find yourself calling `burn_width_at` in a loop, that loop is a file-parsing loop.

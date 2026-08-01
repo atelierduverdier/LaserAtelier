@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.37.0"
+VERSION = "2.37.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -8166,7 +8166,11 @@ def burn_width_power_table(material, feed, pas_s=5.0):
         s = k * pas_s
         if s < s_dep - 1e-9:
             continue
-        w = burn_width_at(s, feed, material)
+        # `_bilinear_burn` sur les mesures DÉJÀ en main, et non
+        # `burn_width_at` qui rechargerait la config à chaque échantillon :
+        # 161 lectures de JSON pour une seule table, payées par tout ce qui
+        # appelle cette fonction.
+        w = _bilinear_burn(mesures, s, feed)
         if w is None:
             return []
         plafond = max(plafond, float(w))
@@ -8262,11 +8266,19 @@ def swell_plafond_suffisant(material, feed):
     Quand c'est le plafond qui bloque, changer de vitesse ne sert à rien :
     il faut nommer la puissance qui débloque, pas envoyer chercher."""
     table = burn_width_power_table(material, feed)
-    if not table:
+    if not table or table[0][1] <= 1e-9:
         return None
-    for s, _w in table:
-        p = swell_plage(material, feed, s)
-        if p and p[2] >= SWELL_RAPPORT_MINI:
+    # UN SEUL balayage. La version d'origine rappelait `swell_plage` -- donc
+    # reconstruisait la table entière -- pour chaque plafond candidat : 161
+    # tables de 161 points, soit ~26 000 lectures de la config pour un seul
+    # appel, et le panneau Gravure photo mettait 14 s à s'ouvrir.
+    #
+    # C'est exactement le même calcul : sous le plafond `s`, la plage va de
+    # `table[0][1]` à la largeur du dernier palier retenu, et la table est
+    # croissante en largeur -- le rapport l'est donc aussi.
+    w_min = table[0][1]
+    for s, w in table:
+        if w / w_min >= SWELL_RAPPORT_MINI:
             return s
     return None
 
