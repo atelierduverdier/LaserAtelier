@@ -42,6 +42,15 @@ Ce choix est délibéré : la détection automatique des croix est ce qui a
 échoué le plus souvent (repères pollués par la réglette, étiquettes
 prises pour des traits). Le pas fragile est confié à l'oeil, le calcul
 exact à la machine.
+
+La planche se vérifie elle-même
+-------------------------------
+Après redressement, `mesurer_reglette` mesure le pas de la réglette
+gravée et le compare à l'échelle annoncée. Cette mesure-là n'entre PAS
+dans le calcul de l'homographie : elle est indépendante, donc elle
+contrôle vraiment le résultat. Au-delà de 1,5 % d'écart le fichier n'est
+même pas écrit -- une image fausse qui n'existe pas ne peut pas être
+mesurée par erreur trois jours plus tard.
 """
 import argparse
 import os
@@ -155,6 +164,94 @@ def controle(img, pts, chemin):
     cv2.imwrite(chemin, cv2.resize(v, (int(w * k), int(h * k))))
 
 
+def mesurer_reglette(redressee, pxmm, L, marge):
+    """Mesure le pas de la réglette gravée SUR L'IMAGE REDRESSÉE.
+
+    La planche porte sa propre vérification : sa réglette est gravée au
+    millimètre, dans le même repère machine que les quatre croix. Si le
+    redressement est juste, ses traits tombent à `pxmm` pixels d'écart --
+    et comme elle n'entre pas dans le calcul de l'homographie, c'est une
+    mesure INDÉPENDANTE. Elle contrôle donc vraiment quelque chose, ce que
+    ni l'écart de diagonales ni le rapport des cotes ne faisaient.
+
+    Ce qu'elle attrape, et qui est arrivé le 01/08/2026 : « 256-86 » (la
+    taille de l'IMAGE redressée) saisi à la place de « 240-70 » (les cotes
+    de la MIRE). L'image sortait 6 % trop large et 23 % trop haute -- soit
+    un trait de 0,30 mm lu 0,37 -- sans le moindre avertissement, les deux
+    contrôles existants étant tous les deux passés.
+
+    Renvoie (pas_px, n_traits, dispersion_pct, y) ou None si la réglette
+    n'a pas été trouvée -- auquel cas on ne conclut RIEN.
+    """
+    gris = cv2.cvtColor(redressee, cv2.COLOR_BGR2GRAY)
+    h, w = gris.shape
+    # On n'analyse que la bande comprise ENTRE les croix : la réglette y
+    # tient exactement, et au-delà c'est la marge, qui peut contenir du
+    # noir (hors photo) et fausserait le seuil de détection.
+    xa = max(0, int((marge - 1.0) * pxmm))
+    xb = min(w, int((marge + L + 1.0) * pxmm))
+    if xb - xa < 40:
+        return None
+    # Les traits du millimètre ne font que 1 mm de haut (2 mm tous les 5,
+    # 3 mm tous les 10) : au-dessus de cette bande on ne croiserait qu'un
+    # trait sur 5 ou sur 10, et on lirait un pas cinq ou dix fois trop
+    # grand. D'où le pas de balayage lié à l'échelle, et le minimum de
+    # traits exigé ci-dessous, qui écartent ces lignes-là.
+    mini = max(20, int(0.5 * L))
+    pas_scan = max(1, int(round(pxmm / 15.0)))
+
+    def debuts(y):
+        ligne = gris[y, xa:xb].astype(np.float32)
+        sombre = ligne < ligne.mean() - 0.6 * ligne.std()
+        return (np.flatnonzero(sombre[1:] & ~sombre[:-1]) + 1).astype(np.float64)
+
+    meilleur = None
+    for y in range(0, h, pas_scan):
+        d = debuts(y)
+        if len(d) < mini:
+            continue
+        e = np.diff(d)
+        med = float(np.median(e))
+        if med <= 1.0:
+            continue
+        # RÉGULARITÉ : fraction des écarts à moins de 20 % de la médiane.
+        # Une réglette donne ~1. Du bois nu donne ~0,14, ses transitions
+        # étant réparties au hasard (écarts en loi exponentielle).
+        #
+        # C'est ce critère-là qui les sépare, et surtout PAS le nombre de
+        # transitions : le grain en produit dix fois plus que la réglette,
+        # donc toute note qui récompense la quantité désigne une ligne de
+        # bois. Essayé, et pris en défaut par le test : sur du grain
+        # uniforme la note tombait sur un pas de 4 px au lieu de 50.
+        regulier = float(np.mean(np.abs(e - med) < 0.2 * med))
+        if regulier < 0.6:
+            continue
+        # Parmi les lignes périodiques, la plus fournie est celle qui
+        # croise les traits du MILLIMÈTRE : au-dessus de 1 mm de hauteur
+        # on ne croise plus qu'un trait sur 5, puis sur 10.
+        if meilleur is None or len(d) > len(meilleur[1]):
+            meilleur = (y, d, med)
+
+    if meilleur is None:
+        return None
+    y, d, med = meilleur
+
+    # Pas sous-pixel : régression des positions sur leur rang. L'écart
+    # médian est quantifié au pixel entier -- 2,5 % à 40 px/mm --, bien
+    # trop grossier pour arbitrer un écart de 1 %. Sur 240 traits la
+    # régression descend sous 0,05 %.
+    rang = np.round((d - d[0]) / med)
+    pas, ori = np.polyfit(rang, d, 1)
+    res = d - (ori + pas * rang)
+    bons = np.abs(res) < 0.35 * pas          # écarte grain et chiffres gravés
+    if int(bons.sum()) >= mini:
+        pas, ori = np.polyfit(rang[bons], d[bons], 1)
+        res = d[bons] - (ori + pas * rang[bons])
+    if pas <= 0:
+        return None
+    return float(pas), int(len(d)), float(100.0 * res.std() / pas), int(y)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -257,6 +354,40 @@ def main():
     M = cv2.getPerspectiveTransform(src, dst)
     out = cv2.warpPerspective(img, M, (W, Ht), flags=cv2.INTER_CUBIC)
 
+    # --- verification par la reglette gravee ---------------------------
+    # AVANT d'ecrire le fichier : une image fausse qui n'existe pas ne
+    # peut pas etre mesuree par erreur trois jours plus tard.
+    reglette = None
+    mesure = mesurer_reglette(out, a.pxmm, L, m)
+    if mesure is None:
+        print()
+        print("reglette : NON DETECTEE -- l'echelle n'est verifiee par rien")
+        print("  d'autre que les 4 croix. Regarde le controle des reperes.")
+    else:
+        pas, n, disp, yr = mesure
+        err = 100.0 * (pas / a.pxmm - 1.0)
+        reglette = {"pas_px": pas, "traits": n, "dispersion_pct": disp,
+                    "erreur_pct": err, "y_px": yr}
+        print()
+        print("reglette gravee : {} traits a y={} px, pas {:.3f} px/mm "
+              "(dispersion {:.2f} %)".format(n, yr, pas, disp))
+        print("  echelle annoncee {:.3f} px/mm  ->  ecart {:+.2f} %".format(
+            a.pxmm, err))
+        if abs(err) > 1.5:
+            # Le pas de la reglette ne depend PAS des cotes saisies : s'il
+            # est faux, ce sont les cotes qui le sont.
+            sys.exit(
+                "ECHELLE FAUSSE : la reglette gravee donne {:.2f} px/mm au lieu "
+                "de {:.2f} ({:+.1f} %). Les cotes saisies ({:.0f}x{:.0f}) ne sont "
+                "pas celles de la mire : lis-les sur le bois, gravees sous la "
+                "reglette. Largeur probable : {:.0f} mm. Aucun fichier ecrit."
+                .format(pas, a.pxmm, err, L, H, L * a.pxmm / pas))
+        if abs(err) > 0.4:
+            print("  ATTENTION : au-dela de 0,4 % l'ecart n'est plus imputable")
+            print("  au clic. Verifie les cotes et le controle des reperes.")
+        else:
+            print("  -> echelle VERIFIEE independamment des croix.")
+
     sortie = a.sortie or (base + "_redresse.png")
     cv2.imwrite(sortie, out)
     if a.json:
@@ -266,6 +397,7 @@ def main():
                        "largeur_mm": W / a.pxmm, "hauteur_mm": Ht / a.pxmm,
                        "pxmm": a.pxmm, "base_mm": [L, H],
                        "ecart_diagonales_pct": ecart,
+                       "reglette": reglette,
                        "controle": os.path.abspath(base + "_reperes.jpg")}, fh)
 
     print()
@@ -279,9 +411,14 @@ def main():
     print("  L'echelle est alors exacte partout : plus de calibration a")
     print("  faire, l'outil Ligne du Draft donne directement des mm.")
     print()
-    print("  Verification a faire toi-meme : mesure les deux diagonales")
-    print("  entre croix opposees, elles doivent valoir {:.3f} mm.".format(
-        math.hypot(L, H)))
+    if reglette is None:
+        print("  A verifier toi-meme, faute de reglette detectee : mesure les")
+        print("  deux diagonales entre croix opposees, elles doivent valoir")
+        print("  {:.3f} mm.".format(math.hypot(L, H)))
+    else:
+        print("  Et ZOOME avant de pointer : un clic vaut ~1 pixel a l'ecran,")
+        print("  soit {:.2f} mm si toute la planche tient dans la fenetre.".format(
+            (L + 2 * m) / 1600.0))
 
 
 if __name__ == "__main__":

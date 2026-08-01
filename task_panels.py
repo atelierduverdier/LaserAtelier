@@ -648,12 +648,20 @@ def _redresser_photo_planche(parent):
         with open(infos) as fh:
             d = json.load(fh)
         os.remove(infos)
+        # La vérification par la réglette est ce qui distingue une échelle
+        # CONTRÔLÉE d'une échelle simplement calculée : elle est écrite
+        # dans la description, parce que c'est elle qu'on relira dans six
+        # mois pour savoir si on peut croire les mesures de cette photo.
+        reg = d.get("reglette")
+        controle = ("réglette vérifiée à {:+.2f} %".format(reg["erreur_pct"])
+                    if reg else "réglette NON détectée, échelle non vérifiée")
         core.add_result_photo(
             planche, d["fichier"],
             "redressée le {} — échelle {:.0f} px/mm, mire {:.0f}x{:.0f}, "
-            "écart de diagonales {:.2f} %".format(
+            "écart de diagonales {:.2f} %, {}".format(
                 time.strftime("%d/%m/%Y %H:%M"), d["pxmm"],
-                d["base_mm"][0], d["base_mm"][1], d["ecart_diagonales_pct"]))
+                d["base_mm"][0], d["base_mm"][1], d["ecart_diagonales_pct"],
+                controle))
         try:
             _importer_image_a_l_echelle(d["fichier"], d["largeur_mm"], d["hauteur_mm"])
         except Exception as e:
@@ -665,14 +673,22 @@ def _redresser_photo_planche(parent):
         QtWidgets.QMessageBox.warning(
             parent, "Redressement", "Photos non traitées :\n\n" + "\n".join(rates))
     if faits:
+        ecarts = [d["reglette"]["erreur_pct"] for d in faits if d.get("reglette")]
+        verdict = ("Échelle contrôlée sur la réglette gravée : {} — une mesure "
+                   "INDÉPENDANTE des quatre croix.".format(
+                       ", ".join("{:+.2f} %".format(e) for e in ecarts))
+                   if ecarts else
+                   "Réglette non détectée : l'échelle ne repose que sur les "
+                   "quatre croix, rien ne la contrôle.")
         QtWidgets.QMessageBox.information(
             parent, "Redressement",
             "{} photo(s) redressée(s), rangée(s) dans les photos du résultat "
-            "et posée(s) dans le document à l'échelle exacte.\n\n"
+            "et posée(s) dans le document à l'échelle exacte.\n\n{}\n\n"
             "Mesure à l'outil Ligne du Draft — et ZOOME : à l'écran un clic "
             "vaut ~1 pixel, soit 0,16 mm si toute la planche tient dans la "
             "fenêtre.\n\nContrôle des repères écrit à côté de chaque photo "
-            "(_reperes.jpg) : regarde-le avant de croire une mesure.".format(len(faits)))
+            "(_reperes.jpg) : regarde-le avant de croire une mesure.".format(
+                len(faits), verdict))
 
 
 def _boutons_planches(form, ecrire):

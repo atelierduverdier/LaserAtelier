@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.16.1</span><br>
+      <span class="ver">Version 2.17.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.16.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.17.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -588,6 +588,8 @@
     <p><b>La planche porte ses propres cotes (v2.16.1).</b> Les dimensions de la mire sont <em>gravées</em> sous la réglette, au format «&nbsp;largeur-hauteur&nbsp;» (par exemple <code>140-60</code>). Ce n'est pas un ornement&nbsp;: le 31/07/2026 les planches ont été resserrées quelques heures après avoir été gravées, et le fichier <code>.ngc</code> régénéré ne décrivait plus le bois posé sur l'établi — redresser sa photo avec cette cote-là aurait donné une échelle fausse <em>en silence</em>. Une planche vit des années, un fichier est réécrit&nbsp;: la planche doit donc se suffire à elle-même. Le tiret plutôt qu'un «&nbsp;×&nbsp;» parce que la police 7&nbsp;segments ne connaît que les chiffres, S, F, le point et le tiret.</p>
     <p><b>ZOOMEZ — c'est la seule chose qui limite vraiment la précision.</b> À l'écran, un clic vaut environ <em>un pixel</em>. Si la planche entière tient dans la fenêtre, ce pixel représente ~0,16&nbsp;mm, soit la moitié d'un trait de 0,30&nbsp;: mesurer à ce zoom-là donnerait ±50&nbsp;% d'erreur. La calibration, elle, est excellente — sur l'essai du 31/07/2026, deux repères espacés de 240,00&nbsp;mm ont été mesurés à <b>239,85</b>, soit 0,06&nbsp;% d'écart, ce qui ne représente que 0,0002&nbsp;mm sur un trait de 0,3. <b>L'échelle n'est jamais le problème&nbsp;; le zoom l'est.</b> Zoomez jusqu'à voir le grain du bois et jusqu'à ce que le bord de la brûlure devienne une transition large de plusieurs pixels — c'est là, et seulement là, que se décide où vous placez la limite.</p>
     <p><b>Vérification.</b> Mesurez les deux diagonales entre croix opposées&nbsp;: dans un rectangle elles sont rigoureusement égales, donc un écart trahit une photo de biais. Sur l'essai du 31/07, le redressement a ramené la perspective de 1&nbsp;% à <b>0,05&nbsp;%</b>, et les intervalles de 10&nbsp;mm de la réglette sortent à 499,8&nbsp;px pour 500 attendus, dispersés de 0,37&nbsp;% — soit 0,04&nbsp;mm sur 10.</p>
+    <p><b>La planche se vérifie elle-même (v2.17.0).</b> Après redressement, l'outil <em>mesure</em> le pas de la réglette gravée et le compare à l'échelle annoncée. Cette mesure-là ne sert pas au redressement&nbsp;: elle est <b>indépendante</b> des quatre croix, donc elle contrôle vraiment le résultat. Au-delà de 1,5&nbsp;% d'écart le fichier n'est même pas écrit — une image fausse qui n'existe pas ne peut pas être mesurée par erreur trois jours plus tard. Le verdict est repris dans la description de la photo du résultat, parce que c'est lui qu'on relira dans six mois pour savoir si l'on peut croire ces mesures.</p>
+    <p>Ce contrôle est né d'un défaut, le 01/08/2026&nbsp;: <code>256-86</code> — la taille de l'<em>image</em> redressée — saisi à la place de <code>240-70</code>, les cotes de la <em>mire</em>. L'image sortait 6&nbsp;% trop large et <b>23&nbsp;% trop haute</b>, soit un trait de 0,30&nbsp;mm lu 0,37. Les deux contrôles qui existaient — écart des diagonales (0,03&nbsp;%) et rapport des cotes — étaient passés tous les deux, et pour la même raison&nbsp;: <b>ils se calculent sur les mêmes quatre points que le redressement lui-même.</b> Un contrôle qui relit ses propres données ne contrôle rien.</p>
     <p><b>Un piège corrigé, qui vaut d'être connu&nbsp;:</b> passés dans un ordre croisé, les quatre points produisaient un redressement en «&nbsp;nœud papillon&nbsp;» — image détruite, chiffres parfaitement plausibles, aucun avertissement. Le script remet donc les points en ordre tout seul, refuse un quadrilatère croisé, et contrôle que les proportions ressemblent au rectangle annoncé. <b>L'ordre des clics n'a plus d'importance.</b></p>
 
     <h4>La mire de mesure gravée sur les planches</h4>
@@ -1043,7 +1045,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.16.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.17.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
