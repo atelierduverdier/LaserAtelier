@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.22.0"
+VERSION = "2.23.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1107,6 +1107,93 @@ def nom_planche_redressee(planche, horodatage, suffixe="", laser=None):
     return "{}_{}_{}{}_redresse".format(
         slug_fichier(active_laser_name() if laser is None else laser, "laser"),
         slug_fichier(planche, "planche"), horodatage, suffixe)
+
+
+def _fichiers_planche(base):
+    """Tous les fichiers d'une planche redressée : l'image de mesure, sa
+    fiche, son aperçu, le contrôle des repères. `base` = chemin sans
+    extension, se terminant par « _redresse ».
+
+    On n'accepte que `base+extension` et `base+"_"+suite` : un simple
+    startswith prendrait une planche voisine dont le nom commencerait
+    pareil, et une suppression n'a pas droit à l'à-peu-près."""
+    d = os.path.dirname(base) or "."
+    tige = os.path.basename(base)
+    out = []
+    if not os.path.isdir(d):
+        return out
+    for nom in sorted(os.listdir(d)):
+        racine, _ext = os.path.splitext(nom)
+        if racine == tige or racine.startswith(tige + "_"):
+            out.append(os.path.join(d, nom))
+    return out
+
+
+def planches_redressees():
+    """Les planches redressées présentes dans le dossier, les plus récentes
+    d'abord. Chaque entrée : base, nom, fichiers, octets, date, et le
+    contenu de la fiche .json quand elle existe (laser, cotes, réglette)."""
+    d = dossier_planches(creer=False)
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for nom in sorted(os.listdir(d)):
+        racine, ext = os.path.splitext(nom)
+        if not racine.endswith("_redresse") or ext.lower() not in (".png", ".jpg", ".jpeg"):
+            continue
+        base = os.path.join(d, racine)
+        fichiers = _fichiers_planche(base)
+        infos = {}
+        fiche = base + ".json"
+        if os.path.isfile(fiche):
+            try:
+                with open(fiche) as fh:
+                    infos = json.load(fh)
+            except Exception:
+                infos = {}
+        try:
+            date = os.path.getmtime(os.path.join(d, nom))
+        except OSError:
+            date = 0.0
+        out.append({
+            "base": base, "nom": racine, "fichiers": fichiers, "infos": infos,
+            "date": date,
+            "octets": sum(os.path.getsize(f) for f in fichiers
+                          if os.path.isfile(f)),
+        })
+    out.sort(key=lambda p: p["date"], reverse=True)
+    return out
+
+
+def supprimer_planche(base):
+    """Supprime une planche redressée : TOUS ses fichiers, et les entrées de
+    galerie qui la désignent. Renvoie (nb fichiers, octets libérés).
+
+    Les deux ensemble, sinon la suppression est un demi-mensonge : effacer
+    l'aperçu de la galerie laissait les 55 Mo de l'image de mesure sur le
+    disque, et effacer les fichiers laissait une vignette morte dans la
+    galerie."""
+    fichiers = _fichiers_planche(base)
+    octets = n = 0
+    for f in fichiers:
+        try:
+            octets += os.path.getsize(f)
+            os.remove(f)
+            n += 1
+        except OSError as exc:
+            FreeCAD.Console.PrintWarning(
+                "Fichier non supprimé ({}) : {}\n".format(f, exc))
+    # La galerie retient l'aperçu ; c'est la DESCRIPTION qui porte le chemin
+    # de l'image de mesure, donc c'est par là qu'on retrouve les entrées.
+    cible = os.path.abspath(base)
+    cfg = load_config()
+    for cle, lst in list((cfg.get("photos") or {}).items()):
+        for e in list(lst if isinstance(lst, list) else []):
+            if not isinstance(e, dict):
+                continue
+            if cible in (e.get("description") or ""):
+                delete_result_photo(cle, e.get("file"))
+    return n, octets
 
 
 def active_laser_id():

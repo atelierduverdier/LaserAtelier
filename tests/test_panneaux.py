@@ -391,6 +391,52 @@ assert "core.dossier_planches()" in _corps and "core.nom_planche_redressee" in _
 assert '"--laser"' in _corps, "le laser doit partir dans la fiche du redressement"
 print("redressement : dossier a part + laser dans le nom du fichier OK")
 
+# --- Supprimer une planche, fichiers compris (v2.23.0) ---------------
+# Regraver une planche mieux reussie est le cas NORMAL : l'ancienne doit
+# pouvoir partir. Le bouton « Supprimer la photo affichee » de la galerie
+# n'enlevait que l'apercu et laissait les 55 Mo de l'image de mesure.
+import json as _js
+_ancien2 = core.PLANCHES_DIR
+core.PLANCHES_DIR = _os.path.join(_tf.mkdtemp(), "planches")
+_d = core.dossier_planches()
+
+
+def _faux_planche(nom, taille, err):
+    b = _os.path.join(_d, nom)
+    open(b + ".png", "wb").write(b"x" * taille)
+    open(b + "_apercu.jpg", "wb").write(b"x" * 100)
+    open(b + "_reperes.jpg", "wb").write(b"x" * 100)
+    _js.dump({"fichier": b + ".png", "laser": "LT-80W-AA-PRO",
+              "largeur_mm": 256.0, "hauteur_mm": 86.0,
+              "reglette": {"erreur_pct": err}}, open(b + ".json", "w"))
+    return b
+
+
+_a = _faux_planche("LT-80W-AA-PRO_planche1_20260801-0745_redresse", 4000, 0.12)
+_b = _faux_planche("LT-80W-AA-PRO_planche1_20260801-0745_2_redresse", 3000, 1.30)
+_lst = core.planches_redressees()
+assert len(_lst) == 2, _lst
+assert all(len(p["fichiers"]) == 4 for p in _lst), "4 fichiers par planche"
+assert _lst[0]["infos"]["laser"] == "LT-80W-AA-PRO"
+assert _lst[0]["octets"] > 0
+
+# LE piege : « ..._0745_redresse » est un prefixe possible d'un voisin.
+# Un startswith brut emporterait la planche d'a cote, et une suppression
+# n'a pas droit a l'a-peu-pres.
+_n, _o = core.supprimer_planche(_a)
+assert _n == 4, _n
+assert _o >= 4000, _o
+_restant = core.planches_redressees()
+assert [p["base"] for p in _restant] == [_b], (
+    "la planche voisine a ete emportee par la suppression : " + str(_restant))
+assert _os.path.isfile(_b + ".png") and _os.path.isfile(_b + "_apercu.jpg")
+core.PLANCHES_DIR = _ancien2
+assert hasattr(tp, "_gerer_planches_redressees")
+assert any("supprimer" in b.text().lower()
+           for b in _hote2.findChildren(_Qt.QPushButton)), \
+    "pas de bouton pour gerer/supprimer des planches"
+print("planches : inventaire, suppression des 4 fichiers, voisine intacte OK")
+
 # Mesure A→B : sans vue 3D, le bouton doit REFUSER proprement et ne
 # laisser aucun rappel branché -- un callback oublié sur la vue rend
 # FreeCAD inutilisable jusqu'au redemarrage.

@@ -683,6 +683,104 @@ _PLANCHES = (("Planche 1 — foyer", "planche1"),
              ("Autre planche", "planche_autre"))
 
 
+def _gerer_planches_redressees(parent, apres=None):
+    """Lister et supprimer des planches redressées, fichiers compris.
+
+    Refaire une planche mieux gravée est le cas NORMAL de ce chantier : on
+    grave, on mesure, on n'aime pas, on regrave. Sans moyen d'effacer,
+    l'ancienne reste au milieu des bonnes -- et à 56 Mo la planche, le
+    dossier gonfle. Le bouton « Supprimer la photo affichée » de la galerie
+    ne suffisait pas : il n'enlève que l'aperçu, laissant l'image de mesure
+    sur le disque."""
+    planches = core.planches_redressees()
+    if not planches:
+        QtWidgets.QMessageBox.information(
+            parent, "Planches redressées",
+            "Aucune planche dans {}.".format(core.dossier_planches(creer=False)))
+        return
+
+    dlg = QtWidgets.QDialog(parent)
+    dlg.setWindowTitle("Planches redressées")
+    dlg.resize(820, 460)
+    v = QtWidgets.QVBoxLayout(dlg)
+    v.addWidget(_WrapLabel(
+        "Dossier : <code>{}</code> — {} planche(s), {:.0f} Mo au total. "
+        "Sélection multiple possible (Ctrl / Maj).".format(
+            core.dossier_planches(creer=False), len(planches),
+            sum(p["octets"] for p in planches) / 1e6)))
+    liste = QtWidgets.QListWidget()
+    liste.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+    for p in planches:
+        infos = p["infos"] or {}
+        reg = infos.get("reglette") or {}
+        detail = []
+        if infos.get("laser"):
+            detail.append(infos["laser"])
+        if infos.get("largeur_mm"):
+            detail.append("{:.0f} × {:.0f} mm".format(
+                infos["largeur_mm"], infos.get("hauteur_mm", 0)))
+        # L'écart de réglette est LE critère pour choisir laquelle garder :
+        # c'est la seule mesure indépendante des croix cliquées.
+        detail.append("réglette {:+.2f} %".format(reg["erreur_pct"])
+                      if reg.get("erreur_pct") is not None
+                      else "réglette non vérifiée")
+        detail.append("{:.0f} Mo, {} fichier(s)".format(
+            p["octets"] / 1e6, len(p["fichiers"])))
+        it = QtWidgets.QListWidgetItem("{}\n    {}".format(
+            p["nom"], "  —  ".join(detail)))
+        it.setData(QtCore.Qt.UserRole, p["base"])
+        liste.addItem(it)
+    v.addWidget(liste, 1)
+
+    btns = QtWidgets.QHBoxLayout()
+    btn_sup = QtWidgets.QPushButton("Supprimer les planches sélectionnées")
+    btn_fermer = QtWidgets.QPushButton("Fermer")
+    btns.addWidget(btn_sup, 1)
+    btns.addWidget(btn_fermer, 0)
+    v.addLayout(btns)
+
+    def _supprimer():
+        choisies = liste.selectedItems()
+        if not choisies:
+            QtWidgets.QMessageBox.information(
+                dlg, "Supprimer", "Sélectionne d'abord une ou plusieurs planches.")
+            return
+        bases = [it.data(QtCore.Qt.UserRole) for it in choisies]
+        detail = "\n".join(
+            "  • " + os.path.basename(b) for b in bases[:12])
+        if len(bases) > 12:
+            detail += "\n  … et {} autre(s)".format(len(bases) - 12)
+        # Une suppression NOMME ce qu'elle va détruire, et le nombre de
+        # fichiers : une planche, c'est quatre fichiers, pas un.
+        n_fic = sum(len(core._fichiers_planche(b)) for b in bases)
+        if QtWidgets.QMessageBox.question(
+                dlg, "Supprimer définitivement ?",
+                "{} planche(s), soit {} fichier(s) :\n\n{}\n\n"
+                "Image de mesure, fiche, aperçu et contrôle des repères "
+                "seront effacés du disque, ainsi que les vignettes "
+                "correspondantes de la galerie. Irréversible.".format(
+                    len(bases), n_fic, detail),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
+            return
+        total_n = total_o = 0
+        for b in bases:
+            n, o = core.supprimer_planche(b)
+            total_n += n
+            total_o += o
+        QtWidgets.QMessageBox.information(
+            dlg, "Supprimé",
+            "{} fichier(s) effacé(s), {:.0f} Mo libérés.".format(
+                total_n, total_o / 1e6))
+        if apres is not None:
+            apres()
+        dlg.accept()
+
+    btn_sup.clicked.connect(_supprimer)
+    btn_fermer.clicked.connect(dlg.reject)
+    dlg.exec()
+
+
 def _reposer_planche_redressee(parent):
     """Reposer dans le document une planche DÉJÀ redressée, à son échelle.
 
@@ -946,6 +1044,21 @@ def _boutons_planches(form, ecrire):
         lambda: _reposer_planche_redressee(form.parentWidget() or form))
     form.addRow(b6)
 
+    b7 = QtWidgets.QPushButton("Gérer / supprimer des planches…")
+    b7.setToolTip(
+        "Liste les planches redressées du dossier, avec leur laser, leurs\n"
+        "cotes, l'écart mesuré sur la réglette et leur poids -- puis permet\n"
+        "d'en supprimer.\n"
+        "\n"
+        "Regraver une planche mieux réussie est le cas normal : l'ancienne\n"
+        "doit pouvoir partir, fichiers compris. L'écart de réglette est le\n"
+        "bon critère pour choisir laquelle garder, c'est la seule mesure\n"
+        "indépendante des croix cliquées.\n"
+        "\n"
+        "Supprime l'image de mesure, sa fiche, son aperçu, le contrôle des\n"
+        "repères ET la vignette correspondante de la galerie.")
+    form.addRow(b7)
+
     # --- Voir les planches redressées ---------------------------------
     # Sans ça, les photos rangées par le bouton ci-dessus n'étaient
     # affichées NULLE PART : le message annonçait « rangée dans les photos
@@ -973,6 +1086,8 @@ def _boutons_planches(form, ecrire):
 
     b5.clicked.connect(lambda: _redresser_photo_planche(
         form.parentWidget() or form, on_range=_apres_redressement))
+    b7.clicked.connect(lambda: _gerer_planches_redressees(
+        form.parentWidget() or form, apres=photo_pl["reload"]))
     return b1, b2, b3, b4
 
 
@@ -13733,12 +13848,26 @@ class TaskPanelSettings:
         self._reload_active_laser_fields()
 
     def _rename_laser(self):
-        name, ok = QtWidgets.QInputDialog.getText(
-            self.form, "Renommer le laser", "Nouveau nom :",
-            text=core.active_laser_name())
-        if ok and name.strip():
-            core.rename_laser(core.active_laser_id(), name.strip())
-            self._refresh_laser_combo()
+        # Champ LARGE, et une consigne : ce nom n'est plus une étiquette
+        # interne depuis la v2.22, il part dans le nom de fichier des
+        # planches redressées. Une case de 15 caractères invitait à taper
+        # « Bleu » là où il faut une référence de matériel.
+        dlg = QtWidgets.QInputDialog(self.form)
+        dlg.setWindowTitle("Renommer le laser")
+        dlg.setInputMode(QtWidgets.QInputDialog.TextInput)
+        dlg.setLabelText(
+            "Nom du module laser — mets sa RÉFÉRENCE, pas une couleur.\n\n"
+            "Il part dans le nom des planches redressées et dans leur fiche :\n"
+            "c'est lui qui dit à quel matériel appartiennent les mesures, et\n"
+            "ce qui permet à quelqu'un ayant le même module de les reprendre.\n\n"
+            "Exemple : LT-80W-AA-PRO")
+        dlg.setTextValue(core.active_laser_name())
+        for champ in dlg.findChildren(QtWidgets.QLineEdit):
+            champ.setMinimumWidth(420)       # le dialogue s'élargit pour suivre
+        if not dlg.exec() or not dlg.textValue().strip():
+            return
+        core.rename_laser(core.active_laser_id(), dlg.textValue().strip())
+        self._refresh_laser_combo()
 
     def _delete_laser(self):
         if len(core.laser_profiles()) <= 1:

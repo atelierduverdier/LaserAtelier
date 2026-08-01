@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.22.0</span><br>
+      <span class="ver">Version 2.23.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.22.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.23.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -579,6 +579,8 @@
     <p><b>Les cotes sont proposées, jamais imposées.</b> Le dialogue pré-remplit ce que la mise en page <em>actuelle</em> produirait, mais la planche qu'on tient peut être plus ancienne — ses vraies cotes sont gravées dessus, sous la réglette. On lit sur le bois, on corrige si besoin.</p>
     <p><b>Et pour mesurer sans changer de panneau&nbsp;:</b> l'outil Ligne du Draft affiche bien la distance, mais il occupe le panneau des tâches — qui est <em>exclusif</em> dans FreeCAD, donc impossible de garder la grille de saisie ouverte à côté. D'où le bouton <b>«&nbsp;Mesurer A&nbsp;→&nbsp;B dans la vue 3D&nbsp;»</b> placé <i>dans</i> la saisie des mesures&nbsp;: on clique la case à remplir, puis le bouton, puis les deux extrémités dans la vue — et la distance atterrit dans la case. Aucun aller-retour. La case visée est <b>nommée à l'écran</b> («&nbsp;<i>Cible&nbsp;: S1000 / F800 (foyer)</i>&nbsp;») avant que vous pointiez&nbsp;: une valeur tombée dans la mauvaise case ne se voit pas, elle ressemble à une mesure.</p>
     <p><b>Moyenner, parce que le trait n'est pas droit (v2.18.0).</b> Les bords d'une brûlure ondulent — c'est le grain qui décide, pas la machine. Des mesures successives sur la <em>même</em> case sont donc cumulées&nbsp;: la case reçoit la <b>moyenne courante</b>, et le panneau affiche l'<b>étendue</b> entre vos mesures. Trois pointés à trois endroits du trait valent bien mieux qu'un seul. L'étendue n'invalide rien&nbsp;: elle vous dit si votre critère «&nbsp;où s'arrête la brûlure&nbsp;» a tenu d'un bout à l'autre, ce qu'une valeur seule ne dit jamais. Re-cliquer la case repart de zéro.</p>
+    <p><b>Supprimer une planche, fichiers compris (v2.23.0).</b> Regraver une planche mieux réussie est le cas <em>normal</em> de ce travail&nbsp;: on grave, on mesure, on n'aime pas, on regrave. Le bouton <b>«&nbsp;Gérer / supprimer des planches…&nbsp;»</b> liste celles du dossier avec leur laser, leurs cotes, leur poids et surtout <b>l'écart mesuré sur la réglette</b> — c'est le bon critère pour choisir laquelle garder, puisque c'est la seule mesure indépendante des croix cliquées. Sélection multiple, confirmation nommant les fichiers, puis suppression de <em>l'ensemble</em>&nbsp;: image de mesure, fiche, aperçu, contrôle des repères, et la vignette correspondante de la galerie. «&nbsp;Supprimer la photo affichée&nbsp;» de la galerie n'enlevait que l'aperçu et laissait les 55&nbsp;Mo sur le disque — une suppression qui n'efface que ce qui se voit est un demi-mensonge.</p>
+    <p><b>Et le champ du nom de laser est enfin large</b>, avec la consigne qui va avec&nbsp;: une case de quinze caractères invitait à taper «&nbsp;Bleu&nbsp;» là où il faut une référence de matériel.</p>
     <p><b>Un dossier à elles, et le laser dans le nom (v2.22.0).</b> Les planches redressées ne sont plus déposées à côté de la photo d'origine mais dans un <b>dossier dédié</b>, réglable en Préférences (<i>Dossier des planches</i>, par défaut <code>~/Planches-LaserAtelier</code>). Elles s'y retrouvent sans avoir à se rappeler d'où venait la photo — et cessent de s'empiler au milieu des <code>IMG_*.JPG</code>.</p>
     <p>Le nom du fichier porte désormais le <b>laser actif</b>&nbsp;: <code>LT-80W-AA-PRO_planche1_20260801-0745_redresse.png</code>, et la fiche <code>.json</code> le répète. Ce n'est pas de l'étiquetage&nbsp;: une largeur brûlée <em>n'a de sens que pour le module qui l'a gravée</em>. Deux diodes différentes donnent deux tables différentes — et à l'inverse, quelqu'un qui possède le <b>même</b> module peut reprendre ces mesures telles quelles, sans refaire une heure d'établi. Sans le nom du laser sur le fichier, cette réutilisation demande de se souvenir, ce qui revient à dire qu'elle n'aura pas lieu. Le nom vient du <b>profil laser actif</b>&nbsp;: renommez-le avec la référence de votre module (Préférences → Profils laser) et tout le reste suit.</p>
     <p><b>Reposer une planche déjà redressée (v2.21.0).</b> Redresser est un travail qu'on fait une fois&nbsp;: cliquer quatre croix, contrôler l'échelle sur la réglette. Rouvrir FreeCAD ne doit pas obliger à tout recommencer pour la seule raison que le document n'a pas été enregistré — l'image, elle, est toujours sur le disque. Le bouton <b>«&nbsp;Reposer une planche déjà redressée…&nbsp;»</b> la repose à son échelle exacte, sans un seul clic sur une croix. La taille en&nbsp;mm vient d'une <b>fiche <code>.json</code> écrite systématiquement à côté de l'image</b> — même raisonnement que les cotes gravées sur la planche, un cran plus loin&nbsp;: le fichier porte ce qu'il faut pour être relu. Sans fiche (image antérieure), l'atelier déduit la taille des pixels et demande l'échelle, 50&nbsp;px/mm par défaut.</p>
@@ -1055,7 +1057,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.22.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.23.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
