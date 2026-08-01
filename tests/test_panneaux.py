@@ -1044,3 +1044,55 @@ if _planches:
 else:
     print("mesure sur image : largeur écrite dans la case OK (aucune planche "
           "redressée pour tester l'ouverture automatique)")
+
+
+# --- Enchaîner les cases sans fermer la fenêtre (v2.34.0) ------------
+# « Il faut pour chaque ligne ouvrir et fermer [...] la difficulte c'est de
+# savoir dans quelle case va la mesure que je viens de faire »
+# -- 01/08/2026. Deux choses : la case visee doit etre ECRITE dans la
+# fenetre, et « Retenir -> case suivante » doit avancer tout seul.
+_hote8 = _Qt.QWidget()
+_form8 = _Qt.QFormLayout(_hote8)
+_c8 = tp._MesuresPlanchesControleur(_form8, _FauxParent(), lambda: u"Hêtre")
+_c8.reload()
+_gr8 = _c8.grille_focus
+_gr8._chk.setChecked(False)
+_dep = _gr8.cells()[(1000.0, 200.0)]
+_QtC.QCoreApplication.sendEvent(_dep, _QtG.QFocusEvent(_QtC.QEvent.FocusIn))
+_c8._mesure_cible = _c8._derniere_case
+
+# L'ORDRE suit celui du bois : une colonne de vitesse a la fois, du haut
+# vers le bas. Un ordre par lignes ferait sauter d'une colonne a l'autre
+# entre chaque mesure, alors que les traits sont empiles par colonne.
+_vus, _cur, _n = [], _c8._mesure_cible, 0
+while _cur is not None and _n < 7:
+    _vus.append(_c8._nom_case(_cur))
+    _c8._mesure_cible = _cur
+    _c8._serie = []
+    _suiv, _ = _c8._retenir_depuis_image(1.0 + _n * 0.1)
+    _cur = _c8._mesure_cible if _suiv else None
+    _n += 1
+assert _vus[:5] == ["S{} / F200 (foyer)".format(s) for s in (1000, 800, 600, 400, 200)], _vus
+assert _vus[5].startswith("S1000 / F400"), (
+    "après la dernière puissance d'une colonne, on passe à la vitesse "
+    "suivante -- pas à la ligne suivante", _vus)
+
+# Et chaque valeur est allee dans SA case, pas toutes dans la meme.
+_ecrits = [_gr8.cells()[(float(s), 200.0)].value()
+           for s in (1000, 800, 600, 400, 200)]
+assert _ecrits == [1.0, 1.1, 1.2, 1.3, 1.4], _ecrits
+
+# La fenetre AFFICHE la case visee : sans ca, une valeur qui atterrit dans
+# la mauvaise case ne se voit pas, elle ressemble a une mesure.
+import inspect as _insp2
+_sig8 = _insp2.signature(tp._DialogueMesureTrait.__init__)
+assert "nom_cible" in _sig8.parameters and "on_retenir" in _sig8.parameters, _sig8
+_src8 = open(_os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
+                           "task_panels.py")).read()
+_i8 = _src8.index("class _DialogueMesureTrait")
+_fin8 = _src8.find("\nclass ", _i8 + 10)
+_corps8 = _src8[_i8:_fin8 if _fin8 > 0 else len(_src8)]
+assert "La mesure ira dans" in _corps8, "la case visée doit être écrite dans la fenêtre"
+assert "_retenir_et_suivant" in _corps8 and "Retenir → case suivante" in _corps8
+print("enchaînement : {} cases dans l'ordre du bois, chacune sa valeur OK".format(
+    len(_vus)))

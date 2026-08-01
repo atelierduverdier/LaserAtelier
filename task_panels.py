@@ -1478,6 +1478,51 @@ class _MesuresPlanchesControleur:
             self._image_mesure = chemin
         return chemin
 
+    def _grille_de(self, sp):
+        for gr in [self.grille_focus] + list(self.grilles_defocus.values()):
+            try:
+                if gr.contient(sp):
+                    return gr
+            except RuntimeError:
+                continue
+        return None
+
+    def _case_suivante(self, sp):
+        """La case d'après, DANS L'ORDRE DU BOIS.
+
+        Colonne par colonne (une vitesse à la fois), et du haut vers le bas
+        à l'intérieur : c'est exactement la disposition des traits sur la
+        planche, donc l'oeil suit la même trajectoire à l'écran et sur le
+        bois. Un ordre par lignes obligerait à sauter d'une colonne de
+        vitesse à l'autre entre chaque mesure."""
+        gr = self._grille_de(sp)
+        if gr is None:
+            return None
+        feeds = self.FEEDS_FOCUS if gr is self.grille_focus else self.FEEDS_DEFOCUS
+        ordre = [gr.cells()[(float(p_), float(f_))]
+                 for f_ in feeds for p_ in self.POWERS
+                 if (float(p_), float(f_)) in gr.cells()]
+        for i, w in enumerate(ordre):
+            if w is sp:
+                return ordre[i + 1] if i + 1 < len(ordre) else None
+        return None
+
+    def _retenir_depuis_image(self, valeur):
+        """Range la largeur, passe à la case suivante, renvoie son nom.
+
+        C'est la boucle de travail : encadrer, ajuster, valider, encadrer
+        le suivant. Sans elle il fallait fermer la fenêtre, cliquer une
+        case dans le panneau, la rouvrir -- quarante fois."""
+        txt = self._encaisser_mesure(valeur, 0.0, valeur)
+        self._dire(txt)
+        suiv = self._case_suivante(self._mesure_cible)
+        if suiv is None or suiv.isReadOnly():
+            return None, txt
+        self._derniere_case = suiv
+        self._mesure_cible = suiv
+        self._serie = []
+        return self._nom_case(suiv), txt
+
     def _changer_image(self):
         """L'utilisateur veut une AUTRE planche : on oublie la retenue."""
         self._image_mesure = None
@@ -1522,14 +1567,12 @@ class _MesuresPlanchesControleur:
                 50.0, 1.0, 1000.0, 1)
             if not ok:
                 return
-        dlg = _DialogueMesureTrait(chemin, pxmm)
+        dlg = _DialogueMesureTrait(chemin, pxmm, self._nom_case(cible),
+                                   self._retenir_depuis_image)
         dlg.changer_image.connect(self._changer_image)
-        if not dlg.exec():
-            if getattr(dlg, "veut_changer", False):
-                return self._on_mesure_image(bloc)
-            return
-        self._dire(self._encaisser_mesure(dlg.valeur_mm(), 0.0,
-                                          dlg.valeur_mm()))
+        dlg.exec()
+        if getattr(dlg, "veut_changer", False):
+            return self._on_mesure_image(bloc)
 
     def _on_mesurer(self, bloc=None):
         self._bloc_courant = bloc or self._blocs[0]
@@ -2826,9 +2869,12 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
 
     changer_image = QtCore.Signal()
 
-    def __init__(self, chemin, pxmm, parent=None):
+    def __init__(self, chemin, pxmm, nom_cible=None, on_retenir=None,
+                 parent=None):
         super().__init__(parent)
         self.veut_changer = False
+        self._nom_cible = nom_cible or "case visée"
+        self._on_retenir = on_retenir
         # Le NOM de la planche dans le titre : elle s'ouvre toute seule, il
         # faut donc pouvoir vérifier d'un coup d'oeil que c'est la bonne.
         self.setWindowTitle("Mesurer sur {}".format(os.path.basename(chemin)))
@@ -2856,6 +2902,17 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         self._choix = _VueChoixTrait(self._plein)
         self._choix.choisi.connect(self._on_choisi)
         self._pile.addWidget(self._choix)
+        # La case visée, écrite EN GRAND et en permanence. « La difficulté
+        # c'est de savoir dans quelle case va la mesure que je viens de
+        # faire » -- 01/08/2026. Une valeur qui atterrit dans la mauvaise
+        # case ne se voit pas : elle ressemble à une mesure.
+        self.lbl_cible = QtWidgets.QLabel()
+        self.lbl_cible.setStyleSheet(
+            "font-weight:bold; font-size:15px; color:#ff8a00;"
+            "background-color: rgba(255,138,0,0.14);"
+            "border:1px solid #ff8a00; border-radius:4px; padding:6px 10px;")
+        v.addWidget(self.lbl_cible)
+        self._maj_cible()
         v.addWidget(_WrapLabel(
             "<b>1.</b> Encadre UN trait à la souris — englobe toute sa "
             "longueur et un peu de bois de chaque côté."))
@@ -2866,9 +2923,19 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         self.btn_retour = QtWidgets.QPushButton("◀ Choisir un autre trait")
         self.btn_retour.clicked.connect(self._retour)
         self.btn_retour.setEnabled(False)
-        self.btn_ok = QtWidgets.QPushButton("Retenir cette largeur")
+        self.btn_suiv = QtWidgets.QPushButton("Retenir → case suivante")
+        self.btn_suiv.setEnabled(False)
+        self.btn_suiv.setToolTip(
+            "Range la largeur, avance à la case suivante et revient au\n"
+            "choix du trait -- SANS fermer la fenêtre.\n"
+            "\n"
+            "L'ordre suit celui du bois : une colonne de vitesse à la fois,\n"
+            "du haut vers le bas. L'oeil parcourt donc la planche et l'écran\n"
+            "de la même façon.")
+        self.btn_suiv.clicked.connect(self._retenir_et_suivant)
+        self.btn_ok = QtWidgets.QPushButton("Retenir et fermer")
         self.btn_ok.setEnabled(False)
-        self.btn_ok.clicked.connect(self.accept)
+        self.btn_ok.clicked.connect(self._retenir_et_fermer)
         b_non = QtWidgets.QPushButton("Annuler")
         b_non.clicked.connect(self.reject)
         b_img = QtWidgets.QPushButton("Changer de planche…")
@@ -2878,6 +2945,7 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         ligne.addWidget(b_img)
         ligne.addWidget(self.btn_retour)
         ligne.addStretch(1)
+        ligne.addWidget(self.btn_suiv)
         ligne.addWidget(self.btn_ok)
         ligne.addWidget(b_non)
         v.addLayout(ligne)
@@ -2890,12 +2958,14 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         self._vue.setFocus()
         self.btn_retour.setEnabled(True)
         self.btn_ok.setEnabled(True)
+        self.btn_suiv.setEnabled(self._on_retenir is not None)
         self._maj()
 
     def _retour(self):
         self._pile.setCurrentWidget(self._choix)
         self.btn_retour.setEnabled(False)
         self.btn_ok.setEnabled(False)
+        self.btn_suiv.setEnabled(False)
         self.lbl.setText("")
 
     def _maj(self):
@@ -2911,6 +2981,34 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
             "<span style='color:#777'>Repères automatiques, à titre "
             "indicatif — {} mm. C'est toi qui décides où s'arrête la "
             "brûlure.</span>".format(self.valeur_mm(), rep))
+
+    def _maj_cible(self):
+        self.lbl_cible.setText("La mesure ira dans :  {}".format(self._nom_cible))
+
+    def _retenir_et_fermer(self):
+        if self._on_retenir is not None:
+            self._on_retenir(self.valeur_mm())
+        self.accept()
+
+    def _retenir_et_suivant(self):
+        """Range, avance, et revient au choix du trait sans fermer."""
+        if self._on_retenir is None:
+            return self.accept()
+        suivant, _txt = self._on_retenir(self.valeur_mm())
+        if suivant is None:
+            QtWidgets.QMessageBox.information(
+                self, "Mesure",
+                "Largeur rangée. Dernière case de cette grille — ou grille "
+                "verrouillée : la fenêtre se ferme.")
+            return self.accept()
+        self._nom_cible = suivant
+        self._maj_cible()
+        # Retour au choix du trait : la case a changé, le recadrage aussi.
+        if self._vue is not None:
+            self._pile.removeWidget(self._vue)
+            self._vue.deleteLater()
+            self._vue = None
+        self._retour()
 
     def _on_changer(self):
         self.veut_changer = True
