@@ -683,6 +683,66 @@ _PLANCHES = (("Planche 1 — foyer", "planche1"),
              ("Autre planche", "planche_autre"))
 
 
+def _reposer_planche_redressee(parent):
+    """Reposer dans le document une planche DÉJÀ redressée, à son échelle.
+
+    Le redressement est un travail fait une fois : cliquer quatre croix,
+    contrôler l'échelle sur la réglette. Rouvrir FreeCAD ne doit pas
+    obliger à tout recommencer pour la seule raison que le document n'a pas
+    été enregistré -- l'image, elle, est toujours sur le disque (constaté le
+    01/08/2026 : document « Nouveau » jamais enregistré, et le seul moyen de
+    remettre l'image était de recliquer les croix pour rien).
+
+    La taille en mm vient de la fiche `.json` écrite à côté de l'image. Sans
+    fiche (image d'avant la v2.21), on la déduit des pixels et de l'échelle
+    demandée -- c'est exact tant que l'échelle est la bonne, et le panneau
+    redresse toujours à 50 px/mm."""
+    chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
+        parent, "Planche déjà redressée (…_redresse.png)",
+        os.path.expanduser("~"), "Images redressées (*.png *.jpg);;Tous (*)")
+    if not chemin:
+        return
+    fiche = os.path.splitext(chemin)[0] + ".json"
+    largeur = hauteur = None
+    if os.path.exists(fiche):
+        try:
+            with open(fiche) as fh:
+                d = json.load(fh)
+            largeur, hauteur = float(d["largeur_mm"]), float(d["hauteur_mm"])
+            note = "fiche {} — {:.0f} px/mm".format(
+                os.path.basename(fiche), d.get("pxmm", 0))
+        except Exception as e:
+            FreeCAD.Console.PrintWarning("Fiche illisible ({}).\n".format(e))
+    if largeur is None:
+        taille = QtGui.QImageReader(chemin).size()   # en-tête seul, pas l'image
+        if not taille.isValid():
+            QtWidgets.QMessageBox.critical(
+                parent, "Reposer une planche", "Image illisible : " + chemin)
+            return
+        pxmm, ok = QtWidgets.QInputDialog.getDouble(
+            parent, "Échelle de l'image",
+            "Pas de fiche .json à côté de cette image (redressement antérieur\n"
+            "à la v2.21). Échelle utilisée lors du redressement, en px/mm :",
+            50.0, 1.0, 1000.0, 1)
+        if not ok:
+            return
+        largeur, hauteur = taille.width() / pxmm, taille.height() / pxmm
+        note = "déduite de {} x {} px à {:.0f} px/mm".format(
+            taille.width(), taille.height(), pxmm)
+    try:
+        _importer_image_a_l_echelle(chemin, largeur, hauteur)
+    except Exception as e:
+        QtWidgets.QMessageBox.critical(
+            parent, "Reposer une planche", "Image non posée : {}".format(e))
+        return
+    QtWidgets.QMessageBox.information(
+        parent, "Reposer une planche",
+        "Posée à {:.3f} × {:.3f} mm ({}).\n\n"
+        "Mesure à l'outil « Mesurer A → B » du bloc ② — et ZOOME avant de "
+        "pointer.\n\nPense à ENREGISTRER ce document : tu n'auras plus à "
+        "reposer l'image la prochaine fois.".format(largeur, hauteur, note))
+
+
 def _redresser_photo_planche(parent, on_range=None):
     """Choisir une photo, la redresser via OpenCV, la ranger et la poser
     dans le document à l'échelle exacte.
@@ -863,6 +923,18 @@ def _boutons_planches(form, ecrire):
         "parce que FreeCAD met une image à l'échelle de façon UNIFORME : il\n"
         "ne corrige pas une photo prise de biais, et rien ne le signale.")
     form.addRow(b5)
+
+    b6 = QtWidgets.QPushButton("Reposer une planche déjà redressée…")
+    b6.setToolTip(
+        "Repose dans le document une image DÉJÀ redressée, à son échelle\n"
+        "exacte -- sans recliquer les quatre croix.\n"
+        "\n"
+        "À utiliser quand FreeCAD a été rouvert sans que le document ait\n"
+        "été enregistré : le redressement, lui, est toujours sur le disque.\n"
+        "La taille en mm vient de la fiche .json écrite à côté de l'image.")
+    b6.clicked.connect(
+        lambda: _reposer_planche_redressee(form.parentWidget() or form))
+    form.addRow(b6)
 
     # --- Voir les planches redressées ---------------------------------
     # Sans ça, les photos rangées par le bouton ci-dessus n'étaient

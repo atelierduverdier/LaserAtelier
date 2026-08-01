@@ -404,16 +404,26 @@ def main():
                                    interpolation=cv2.INTER_AREA),
                 [int(cv2.IMWRITE_JPEG_QUALITY), 90])
 
+    import json
+    infos = {"fichier": os.path.abspath(sortie),
+             "apercu": os.path.abspath(apercu),
+             "largeur_mm": W / a.pxmm, "hauteur_mm": Ht / a.pxmm,
+             "pxmm": a.pxmm, "base_mm": [L, H],
+             "ecart_diagonales_pct": ecart,
+             "reglette": reglette,
+             "controle": os.path.abspath(base + "_reperes.jpg")}
+    # Fiche d'accompagnement, TOUJOURS écrite à côté de l'image.
+    #
+    # Une image redressée sans sa taille en mm est inutilisable : il faut
+    # soit refaire tout le redressement (recliquer les quatre croix pour
+    # rien), soit retaper la cote de mémoire. L'image porte donc sa propre
+    # fiche, comme la planche porte ses propres cotes gravées -- même
+    # raisonnement, un cran plus loin.
+    with open(os.path.splitext(sortie)[0] + ".json", "w") as fh:
+        json.dump(infos, fh, indent=1)
     if a.json:
-        import json
         with open(a.json, "w") as fh:
-            json.dump({"fichier": os.path.abspath(sortie),
-                       "apercu": os.path.abspath(apercu),
-                       "largeur_mm": W / a.pxmm, "hauteur_mm": Ht / a.pxmm,
-                       "pxmm": a.pxmm, "base_mm": [L, H],
-                       "ecart_diagonales_pct": ecart,
-                       "reglette": reglette,
-                       "controle": os.path.abspath(base + "_reperes.jpg")}, fh)
+            json.dump(infos, fh)
 
     print()
     print("=== {} ===".format(sortie))

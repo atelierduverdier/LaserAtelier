@@ -331,6 +331,22 @@ assert any(l.cursor().shape() == tp.QtCore.Qt.PointingHandCursor
     "pas de vignette cliquable dans la galerie des planches"
 print("redressement : galerie des planches branchee sur les memes cles OK")
 
+# Reposer une planche DEJA redressee, sans recliquer les quatre croix.
+# Le 01/08/2026, FreeCAD rouvert sans que le document ait ete enregistre :
+# l'image etait toujours sur le disque, et le seul moyen de la remettre
+# etait de refaire tout le redressement.
+assert hasattr(tp, "_reposer_planche_redressee")
+assert any("Reposer" in b.text() for b in _hote2.findChildren(_Qt.QPushButton)), \
+    "pas de bouton pour reposer une planche deja redressee"
+# La fiche .json doit etre ecrite TOUJOURS, pas seulement quand le panneau
+# demande --json : sinon une image redressee a la main n'a pas sa taille.
+_i_fiche = _src.index('os.path.splitext(sortie)[0] + ".json"')
+_i_opt = _src.index("if a.json:")
+assert _i_fiche < _i_opt, (
+    "la fiche .json doit etre ecrite avant/hors du bloc « if a.json », "
+    "sinon elle depend de l'appelant")
+print("redressement : bouton « Reposer » + fiche .json toujours ecrite OK")
+
 # Mesure A→B : sans vue 3D, le bouton doit REFUSER proprement et ne
 # laisser aucun rappel branché -- un callback oublié sur la vue rend
 # FreeCAD inutilisable jusqu'au redemarrage.
