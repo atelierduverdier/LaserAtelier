@@ -377,6 +377,67 @@ assert _ctrl._derniere_case is None, (
     "d'etre detruite cote C++")
 print("mesure A->B : cible oubliee a la reconstruction des grilles OK")
 
+# --- Un bloc de mesure SOUS CHAQUE grille (v2.19.0) ------------------
+# Un seul bouton en bas obligeait a faire defiler le panneau entre chaque
+# valeur. Les blocs des grilles de defocus sont detruits a chaque
+# reconstruction : la liste doit etre elaguee, sinon on parle a un widget
+# C++ mort au milieu d'une mesure.
+_ctrl._reconstruire_niveaux([15.0, 36.0, 60.0])
+assert len(_ctrl._blocs) == 4, "1 bloc foyer + 3 defocus : " + str(len(_ctrl._blocs))
+assert _ctrl._blocs[0].grille is _ctrl.grille_focus
+_ctrl._reconstruire_niveaux([15.0])
+assert len(_ctrl._blocs) == 2, "1 bloc foyer + 1 defocus : " + str(len(_ctrl._blocs))
+assert len(_ctrl._blocs_vivants()) == 2, "aucun bloc mort ne doit rester"
+
+# Le message part dans le bloc de LA grille concernee, pas trois grilles
+# plus bas -- sinon le bouton rapproche ne sert a rien.
+_case_d = _ctrl.grilles_defocus[15.0].cells()[(800.0, 400.0)]
+_QtC.QCoreApplication.sendEvent(_case_d, _QtG.QFocusEvent(_QtC.QEvent.FocusIn))
+_bloc_d = _ctrl._bloc_de(_case_d)
+assert _bloc_d is not _ctrl._blocs[0], "le bloc du defocus n'est pas celui du foyer"
+assert "S800 / F400" in _bloc_d.lbl.text(), _bloc_d.lbl.text()
+assert "S800 / F400" not in _ctrl.lbl_mesure.text(), (
+    "le message ne doit pas partir dans le bloc du foyer")
+print("mesure A->B : un bloc par grille, message dans le bon bloc OK")
+
+# --- Mesurer EN TRAVERS, pas en diagonale (v2.19.0) ------------------
+# La distance directe vaut hypot(dx, dy) : elle est TOUJOURS >= la largeur
+# reelle des que les deux clics sont decales lateralement, et rien ne le
+# signale. Le controle se demontre : les deux modes doivent differer.
+import types as _types
+_A = _types.SimpleNamespace(x=10.000, y=20.000)
+_B = _types.SimpleNamespace(x=10.200, y=20.300)   # trait de 0,30, clic decale de 0,20
+
+_ctrl._perp = True
+_d_perp, _dx, _dy = _ctrl._distance(_A, _B)
+assert abs(_d_perp - 0.300) < 1e-9, _d_perp
+assert abs(_dx - 0.200) < 1e-9 and abs(_dy - 0.300) < 1e-9
+
+_ctrl._perp = False
+_d_dir = _ctrl._distance(_A, _B)[0]
+assert abs(_d_dir - 0.3605551) < 1e-6, _d_dir
+assert _d_dir > _d_perp, (
+    "si les deux modes donnent la meme chose, ce test ne prouve rien")
+assert (_d_dir / _d_perp - 1) > 0.20, (
+    "20 % d'ecart attendu sur ce cas : c'est l'erreur que le mode en "
+    "travers supprime")
+
+# Un trait VERTICAL doit marcher aussi : c'est la plus grande composante
+# qui est retenue, pas dy en dur.
+_ctrl._perp = True
+_V = _types.SimpleNamespace(x=10.300, y=20.200)
+assert abs(_ctrl._distance(_A, _V)[0] - 0.300) < 1e-9
+print("mesure A->B : en travers 0,300 mm contre 0,361 en direct (+20 %) OK")
+
+# Le mode est UN reglage : les cases a cocher se suivent, sinon deux blocs
+# annonceraient deux modes differents pour la meme mesure.
+_ctrl._blocs[1].chk_perp.setChecked(False)
+assert _ctrl._perp is False
+assert not _ctrl._blocs[0].chk_perp.isChecked(), "les cases doivent se suivre"
+_ctrl._blocs[0].chk_perp.setChecked(True)
+assert all(b.chk_perp.isChecked() for b in _ctrl._blocs)
+print("mesure A->B : le mode reste unique sur tous les blocs OK")
+
 
 # --- L'AppImage empoisonne tout sous-processus (v2.16.1) -------------
 # Premier clic sur « Redresser une photo » le 01/08/2026 : « Fatal Python

@@ -515,6 +515,10 @@ class _GrilleResultats(QtWidgets.QGroupBox):
         """Dict {(ligne, colonne): QDoubleSpinBox}."""
         return self._cells
 
+    def contient(self, sp):
+        """Cette cellule est-elle une des miennes ?"""
+        return any(w is sp for w in self._cells.values())
+
     def values(self):
         """{(ligne, colonne): valeur} des cellules saisies (> 0 ; « — » ignoré)."""
         return {k: sp.value() for k, sp in self._cells.items() if sp.value() > 0}
@@ -527,6 +531,68 @@ class _GrilleResultats(QtWidgets.QGroupBox):
             sp = self._cells.get((float(cle[0]), float(cle[1])))
             if sp is not None:
                 sp.setValue(float(v))
+
+
+class _BlocMesure(QtWidgets.QWidget):
+    """Bouton « Mesurer A → B » + son message + le mode de mesure, placé SOUS
+    CHAQUE grille.
+
+    Un seul bloc en bas du panneau obligeait à faire défiler la fenêtre entre
+    chaque valeur, la grille du haut et le bouton ne tenant pas ensemble à
+    l'écran (constaté à l'établi le 01/08/2026, après une seule séance de
+    saisie). Le bouton doit être là où sont les cases.
+
+    Les cases mesurées sont hautes de quelques millimètres et larges de
+    centaines : le bloc affiche donc son message juste au-dessous, là où
+    l'oeil est déjà."""
+
+    def __init__(self, on_mesurer, on_perp, parent=None):
+        super().__init__(parent)
+        v = QtWidgets.QVBoxLayout(self)
+        v.setContentsMargins(0, 2, 0, 8)
+        v.setSpacing(2)
+        self.btn = QtWidgets.QPushButton("Mesurer A → B dans la vue 3D")
+        # NoFocus : le bouton ne vole pas le cadre de focus à la case, qui
+        # reste ainsi visiblement désignée pendant toute la mesure.
+        self.btn.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.btn.setToolTip(
+            "Clique d'abord la CASE à remplir, puis ce bouton, puis les deux\n"
+            "bords à mesurer dans la vue 3D. La valeur est écrite dans la case.\n"
+            "\n"
+            "MOYENNE : mesures successives sur la MÊME case = moyenne\n"
+            "courante, avec l'étendue entre elles. Un trait gravé n'a pas des\n"
+            "bords droits (le grain décide), donc trois mesures à des endroits\n"
+            "différents valent mieux qu'une. Re-cliquer la case repart de zéro.\n"
+            "\n"
+            "ZOOME avant de pointer : à l'écran un clic vaut ~1 pixel, soit\n"
+            "0,16 mm si toute la planche tient dans la fenêtre -- la moitié\n"
+            "d'un trait de 0,30.\n"
+            "\n"
+            "Re-cliquer le bouton annule une mesure en cours.")
+        self.btn.clicked.connect(lambda: on_mesurer(self))
+        v.addWidget(self.btn)
+        self.chk_perp = QtWidgets.QCheckBox(
+            "Mesurer en travers du trait (ignorer le décalage latéral)")
+        self.chk_perp.setChecked(True)
+        self.chk_perp.setToolTip(
+            "COCHÉ (recommandé) : seule la composante PERPENDICULAIRE au trait\n"
+            "est retenue -- la plus grande de dx et dy. Un trait horizontal se\n"
+            "mesure en dy, un trait vertical en dx.\n"
+            "\n"
+            "Pourquoi ça compte : la distance directe A→B vaut hypot(dx, dy),\n"
+            "donc elle est TOUJOURS plus grande que la largeur réelle dès que\n"
+            "les deux clics ne sont pas l'un au-dessus de l'autre. Sur un trait\n"
+            "de 0,30 mm, 0,20 mm de décalage latéral donne 0,36 -- 20 % de trop,\n"
+            "et rien ne le signale.\n"
+            "\n"
+            "DÉCOCHÉ : vraie distance A→B, pour mesurer autre chose qu'une\n"
+            "largeur (une diagonale, un entraxe).\n"
+            "\n"
+            "Les deux valeurs sont toujours affichées dans le message.")
+        self.chk_perp.toggled.connect(on_perp)
+        v.addWidget(self.chk_perp)
+        self.lbl = _WrapLabel("")
+        v.addWidget(self.lbl)
 
 
 def _cotes_mire_defaut(planche):
@@ -830,19 +896,6 @@ class _MesuresPlanchesControleur:
         # même si ce niveau n'a encore aucune mesure.
         self._get_niveau_cible = get_niveau_cible
         self._levels = []
-        self.grille_focus = _GrilleResultats(
-            "Traits au FOYER : largeur (mm)",
-            rows=self.POWERS, cols=self.FEEDS_FOCUS)
-        self.grille_focus.caseFocus.connect(self._on_case_focus)
-        form.addRow(self.grille_focus)
-        # Les grilles de défocus sont RECONSTRUITES à chaque reload() : leurs
-        # niveaux suivent les mesures du matériau courant, qui change quand
-        # on change de matériau ou qu'on grave un nouveau niveau.
-        self.grilles_defocus = {}
-        self._boite_niveaux = QtWidgets.QWidget()
-        self._pile_niveaux = QtWidgets.QVBoxLayout(self._boite_niveaux)
-        self._pile_niveaux.setContentsMargins(0, 0, 0, 0)
-        form.addRow(self._boite_niveaux)
         # --- mesurer A -> B SANS quitter cette saisie ------------------
         # L'outil Ligne du Draft affiche bien la distance, mais il occupe le
         # panneau des tâches -- or celui-ci est EXCLUSIF dans FreeCAD, donc
@@ -853,6 +906,9 @@ class _MesuresPlanchesControleur:
         self._mesure_cb = None
         self._mesure_pts = []
         self._mesure_cible = None
+        self._perp = True
+        self._blocs = []
+        self._bloc_courant = None
         # Case visée, MÉMORISÉE au moment où elle prend le focus.
         #
         # La lire au clic sur le bouton ne pouvait pas marcher : à cet
@@ -867,31 +923,24 @@ class _MesuresPlanchesControleur:
         # y déplace le focus), et seulement ensuite on mesure.
         self._derniere_case = None
         self._serie = []
-        self.btn_mesurer = QtWidgets.QPushButton("Mesurer A → B dans la vue 3D")
-        # NoFocus : le bouton ne vole pas le cadre de focus à la case, qui
-        # reste ainsi visiblement désignée pendant toute la mesure.
-        self.btn_mesurer.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.btn_mesurer.setToolTip(
-            "Clique d'abord la CASE à remplir, puis ce bouton, puis les deux\n"
-            "extrémités à mesurer dans la vue 3D. La distance est écrite dans\n"
-            "la case.\n"
-            "\n"
-            "MOYENNE : mesures successives sur la MÊME case = moyenne\n"
-            "courante, avec l'écart entre elles. Un trait gravé n'a pas des\n"
-            "bords parfaitement droits (le grain décide), donc trois mesures\n"
-            "à des endroits différents valent mieux qu'une. Re-cliquer la\n"
-            "case repart de zéro.\n"
-            "\n"
-            "Pensé pour mesurer sur une photo redressée posée à l'échelle :\n"
-            "ZOOME avant de pointer -- à l'écran un clic vaut ~1 pixel, soit\n"
-            "0,16 mm si toute la planche tient dans la fenêtre, la moitié\n"
-            "d'un trait de 0,30.\n"
-            "\n"
-            "Re-cliquer le bouton annule une mesure en cours.")
-        self.btn_mesurer.clicked.connect(self._on_mesurer)
-        form.addRow(self.btn_mesurer)
-        self.lbl_mesure = _WrapLabel("")
-        form.addRow(self.lbl_mesure)
+        self.grille_focus = _GrilleResultats(
+            "Traits au FOYER : largeur (mm)",
+            rows=self.POWERS, cols=self.FEEDS_FOCUS)
+        self.grille_focus.caseFocus.connect(self._on_case_focus)
+        form.addRow(self.grille_focus)
+        form.addRow(self._creer_bloc(self.grille_focus))
+        # Les panneaux hôtes et les tests parlent d'UN bouton : celui de la
+        # grille du foyer, la seule qui ne soit jamais reconstruite.
+        self.btn_mesurer = self._blocs[0].btn
+        self.lbl_mesure = self._blocs[0].lbl
+        # Les grilles de défocus sont RECONSTRUITES à chaque reload() : leurs
+        # niveaux suivent les mesures du matériau courant, qui change quand
+        # on change de matériau ou qu'on grave un nouveau niveau.
+        self.grilles_defocus = {}
+        self._boite_niveaux = QtWidgets.QWidget()
+        self._pile_niveaux = QtWidgets.QVBoxLayout(self._boite_niveaux)
+        self._pile_niveaux.setContentsMargins(0, 0, 0, 0)
+        form.addRow(self._boite_niveaux)
 
         self.btn_save = QtWidgets.QPushButton("Enregistrer les mesures")
         self.btn_save.setToolTip(
@@ -912,6 +961,57 @@ class _MesuresPlanchesControleur:
     # laisser un callback branché sur la vue est le moyen le plus sûr de
     # rendre FreeCAD inutilisable jusqu'au redémarrage.
     # ------------------------------------------------------------------
+    def _creer_bloc(self, grille):
+        """Un bloc de mesure attaché à cette grille, mémorisé dans _blocs."""
+        bloc = _BlocMesure(self._on_mesurer, self._on_perp)
+        bloc.grille = grille
+        bloc.chk_perp.setChecked(self._perp)
+        self._blocs.append(bloc)
+        return bloc
+
+    def _blocs_vivants(self):
+        """Les blocs dont le widget C++ existe encore.
+
+        Les grilles de défocus sont DÉTRUITES à chaque reconstruction, et
+        leurs blocs avec : parler à un objet C++ mort lève une RuntimeError
+        au milieu d'une mesure. On filtre plutôt que de faire confiance."""
+        vivants = []
+        for b in self._blocs:
+            try:
+                b.btn.text()
+            except RuntimeError:
+                continue
+            vivants.append(b)
+        self._blocs = vivants
+        return vivants
+
+    def _on_perp(self, coche):
+        """Le mode de mesure est UN réglage, affiché à plusieurs endroits :
+        les cases se suivent, sinon deux blocs pourraient annoncer deux
+        modes différents pour la même mesure."""
+        self._perp = bool(coche)
+        for b in self._blocs_vivants():
+            if b.chk_perp.isChecked() != self._perp:
+                b.chk_perp.blockSignals(True)
+                b.chk_perp.setChecked(self._perp)
+                b.chk_perp.blockSignals(False)
+
+    def _bloc_de(self, sp):
+        """Le bloc de la grille qui contient cette case, sinon celui du
+        foyer -- il existe toujours."""
+        for b in self._blocs_vivants():
+            try:
+                if b.grille.contient(sp):
+                    return b
+            except RuntimeError:
+                continue
+        return self._blocs[0]
+
+    def _dire(self, texte, bloc=None):
+        """Écrit le message DANS LE BLOC concerné : à quoi bon un bouton
+        près de la grille si sa réponse s'affiche trois grilles plus bas."""
+        (bloc or self._bloc_courant or self._blocs[0]).lbl.setText(texte)
+
     def _on_case_focus(self, sp):
         """Une case vient de prendre le focus : elle devient la cible, et la
         série de moyennage repart de zéro. Re-cliquer une case est donc le
@@ -920,9 +1020,24 @@ class _MesuresPlanchesControleur:
         self._serie = []
         nom = self._nom_case(sp)
         if nom:
-            self.lbl_mesure.setText(
-                "Case visée : <b>{}</b>. Clique « Mesurer A → B », puis les "
-                "deux bords du trait.".format(nom))
+            self._dire("Case visée : <b>{}</b>. Clique « Mesurer A → B », "
+                       "puis les deux bords du trait.".format(nom),
+                       self._bloc_de(sp))
+
+    def _distance(self, a, b):
+        """(valeur retenue, dx, dy) selon le mode de mesure.
+
+        EN TRAVERS (par défaut) : on ne garde que la plus grande des deux
+        composantes, c'est-à-dire celle perpendiculaire au trait -- dy pour
+        un trait horizontal, dx pour un vertical.
+
+        La distance directe vaut hypot(dx, dy) : elle est donc TOUJOURS
+        supérieure ou égale à la largeur réelle, et d'autant plus que les
+        deux clics sont décalés latéralement. Sur un trait de 0,30 mm,
+        0,20 mm de décalage donne 0,36 -- 20 % de trop, sans rien qui le
+        signale. Une mesure de largeur ne doit pas dépendre de la main."""
+        dx, dy = abs(b.x - a.x), abs(b.y - a.y)
+        return (max(dx, dy) if self._perp else math.hypot(dx, dy)), dx, dy
 
     def _encaisser_mesure(self, d, dx, dy):
         """Range une mesure dans la case visée et renvoie le texte à afficher.
@@ -941,8 +1056,13 @@ class _MesuresPlanchesControleur:
         m = sum(self._serie) / len(self._serie)
         if self._mesure_cible is not None:
             self._mesure_cible.setValue(m)
-        txt = "Mesure <b>{:.3f} mm</b>  (dx {:.3f}, dy {:.3f}) → {}".format(
-            d, dx, dy, self._nom_case(self._mesure_cible) or "la case visée")
+        # dx ET dy sont toujours donnés, quel que soit le mode : c'est ce
+        # qui permet de voir qu'on a pointé de travers.
+        txt = "Mesure <b>{:.3f} mm</b> ({}) — dx {:.3f}, dy {:.3f}, directe " \
+              "{:.3f} → {}".format(
+                  d, "en travers" if self._perp else "distance directe",
+                  dx, dy, math.hypot(dx, dy),
+                  self._nom_case(self._mesure_cible) or "la case visée")
         if len(self._serie) > 1:
             txt += " — <b>moyenne de {} : {:.3f} mm</b> (étendue {:.3f})".format(
                 len(self._serie), m, max(self._serie) - min(self._serie))
@@ -957,7 +1077,10 @@ class _MesuresPlanchesControleur:
         if nom:
             return nom + " (foyer)"
         for dz, gr in self.grilles_defocus.items():
-            nom = gr.nom_case(sp)
+            try:
+                nom = gr.nom_case(sp)
+            except RuntimeError:
+                continue
             if nom:
                 return "{} (défocus {:g} mm)".format(nom, dz)
         return None
@@ -978,18 +1101,19 @@ class _MesuresPlanchesControleur:
                 pass
         self._mesure_cb = None
         self._mesure_pts = []
-        self.btn_mesurer.setText("Mesurer A → B dans la vue 3D")
+        for b in self._blocs_vivants():
+            b.btn.setText("Mesurer A → B dans la vue 3D")
 
-    def _on_mesurer(self):
+    def _on_mesurer(self, bloc=None):
+        self._bloc_courant = bloc or self._blocs[0]
         if self._mesure_cb is not None:          # 2e clic = annulation
             self._fin_mesure()
-            self.lbl_mesure.setText("Mesure annulée.")
+            self._dire("Mesure annulée.")
             return
         vue = self._vue3d()
         if vue is None:
-            self.lbl_mesure.setText(
-                "Aucune vue 3D active : ouvre le document contenant la photo "
-                "redressée.")
+            self._dire("Aucune vue 3D active : ouvre le document contenant "
+                       "la photo redressée.")
             return
         # La case visée est celle MÉMORISÉE à son dernier focus, pas celle
         # que `focusWidget()` renvoie maintenant : à cet instant le focus
@@ -997,11 +1121,12 @@ class _MesuresPlanchesControleur:
         self._mesure_cible = self._derniere_case
         self._mesure_pts = []
         if self._mesure_cible is None:
-            self.lbl_mesure.setText(
+            self._dire(
                 "Clique d'abord la <b>case à remplir</b> dans une grille "
-                "ci-dessus (décoche « Verrouiller les résultats » si elles "
-                "sont grisées), puis reviens sur ce bouton.")
+                "(décoche « Verrouiller les résultats » si elles sont "
+                "grisées), puis reviens sur ce bouton.")
             return
+        self._bloc_courant = self._bloc_de(self._mesure_cible)
 
         def _clic(info):
             try:
@@ -1012,27 +1137,26 @@ class _MesuresPlanchesControleur:
                 p = vue.getPoint(*info["Position"])
                 self._mesure_pts.append(p)
                 if len(self._mesure_pts) == 1:
-                    self.btn_mesurer.setText("Point A pris — clique B (ou annule)")
-                    self.lbl_mesure.setText(
-                        "A = ({:.2f}, {:.2f})".format(
-                            self._mesure_pts[0].x, self._mesure_pts[0].y))
+                    self._bloc_courant.btn.setText(
+                        "Point A pris — clique B (ou annule)")
+                    self._dire("A = ({:.2f}, {:.2f})".format(
+                        self._mesure_pts[0].x, self._mesure_pts[0].y))
                     return
                 a, b = self._mesure_pts[0], self._mesure_pts[1]
-                d = math.hypot(b.x - a.x, b.y - a.y)
+                d, dx, dy = self._distance(a, b)
                 self._fin_mesure()
-                self.lbl_mesure.setText(
-                    self._encaisser_mesure(d, abs(b.x - a.x), abs(b.y - a.y)))
+                self._dire(self._encaisser_mesure(d, dx, dy))
             except Exception as e:                # jamais laisser le rappel branché
                 self._fin_mesure()
-                self.lbl_mesure.setText("Mesure interrompue : {}".format(e))
+                self._dire("Mesure interrompue : {}".format(e))
 
         try:
             self._mesure_cb = vue.addEventCallback("SoMouseButtonEvent", _clic)
         except Exception as e:
             self._mesure_cb = None
-            self.lbl_mesure.setText("Mesure indisponible sur cette vue : {}".format(e))
+            self._dire("Mesure indisponible sur cette vue : {}".format(e))
             return
-        self.btn_mesurer.setText("Clique le point A (ou annule)")
+        self._bloc_courant.btn.setText("Clique le point A (ou annule)")
         # La cible est RAPPELÉE ici : c'est le dernier moment où la corriger
         # coûte un clic, et une valeur tombée dans la mauvaise case ne se
         # voit pas -- elle ressemble à une mesure.
@@ -1072,6 +1196,12 @@ class _MesuresPlanchesControleur:
         rafraîchissement effacerait une saisie en cours."""
         if niveaux == self._levels:
             return
+        # Une mesure en cours pointerait sur des widgets qu'on s'apprête à
+        # détruire : on la termine proprement AVANT, sinon son rappel reste
+        # branché sur la vue 3D et FreeCAD devient inutilisable.
+        self._fin_mesure()
+        self._blocs = [b for b in self._blocs if b.grille is self.grille_focus]
+        self._bloc_courant = None
         while self._pile_niveaux.count():
             item = self._pile_niveaux.takeAt(0)
             w = item.widget()
@@ -1086,6 +1216,7 @@ class _MesuresPlanchesControleur:
             gr.caseFocus.connect(self._on_case_focus)
             self.grilles_defocus[dz] = gr
             self._pile_niveaux.addWidget(gr)
+            self._pile_niveaux.addWidget(self._creer_bloc(gr))
         self._levels = list(niveaux)
         # Les cases visées viennent d'être détruites : garder un pointeur
         # dessus ferait planter le prochain setValue sur un objet C++ mort.

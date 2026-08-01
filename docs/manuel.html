@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.18.0</span><br>
+      <span class="ver">Version 2.19.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.18.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.19.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -579,6 +579,8 @@
     <p><b>Les cotes sont proposées, jamais imposées.</b> Le dialogue pré-remplit ce que la mise en page <em>actuelle</em> produirait, mais la planche qu'on tient peut être plus ancienne — ses vraies cotes sont gravées dessus, sous la réglette. On lit sur le bois, on corrige si besoin.</p>
     <p><b>Et pour mesurer sans changer de panneau&nbsp;:</b> l'outil Ligne du Draft affiche bien la distance, mais il occupe le panneau des tâches — qui est <em>exclusif</em> dans FreeCAD, donc impossible de garder la grille de saisie ouverte à côté. D'où le bouton <b>«&nbsp;Mesurer A&nbsp;→&nbsp;B dans la vue 3D&nbsp;»</b> placé <i>dans</i> la saisie des mesures&nbsp;: on clique la case à remplir, puis le bouton, puis les deux extrémités dans la vue — et la distance atterrit dans la case. Aucun aller-retour. La case visée est <b>nommée à l'écran</b> («&nbsp;<i>Cible&nbsp;: S1000 / F800 (foyer)</i>&nbsp;») avant que vous pointiez&nbsp;: une valeur tombée dans la mauvaise case ne se voit pas, elle ressemble à une mesure.</p>
     <p><b>Moyenner, parce que le trait n'est pas droit (v2.18.0).</b> Les bords d'une brûlure ondulent — c'est le grain qui décide, pas la machine. Des mesures successives sur la <em>même</em> case sont donc cumulées&nbsp;: la case reçoit la <b>moyenne courante</b>, et le panneau affiche l'<b>étendue</b> entre vos mesures. Trois pointés à trois endroits du trait valent bien mieux qu'un seul. L'étendue n'invalide rien&nbsp;: elle vous dit si votre critère «&nbsp;où s'arrête la brûlure&nbsp;» a tenu d'un bout à l'autre, ce qu'une valeur seule ne dit jamais. Re-cliquer la case repart de zéro.</p>
+    <p><b>En travers du trait, pas en diagonale (v2.19.0).</b> Une case à cocher — <b>active par défaut</b> — ne retient que la composante <em>perpendiculaire</em> au trait, c'est-à-dire la plus grande de dx et dy (dy pour un trait horizontal, dx pour un vertical). C'est important&nbsp;: la distance directe A→B vaut <code>hypot(dx, dy)</code>, donc elle est <b>toujours supérieure</b> à la largeur réelle dès que les deux clics ne sont pas exactement l'un au-dessus de l'autre. Sur un trait de 0,30&nbsp;mm, 0,20&nbsp;mm de décalage latéral donne 0,36 — <b>20&nbsp;% de trop</b>, et rien ne le signalait. Une largeur ne doit pas dépendre de la fermeté de la main. Décochez pour mesurer autre chose qu'une largeur (une diagonale, un entraxe)&nbsp;; dx, dy et la distance directe sont de toute façon toujours affichés.</p>
+    <p><b>Un bouton sous chaque grille (v2.19.0).</b> Un seul bloc en bas du panneau obligeait à faire défiler la fenêtre entre chaque valeur, la grille du haut et le bouton ne tenant pas ensemble à l'écran. Chaque grille — foyer et chaque niveau de défocus — a maintenant le sien, et son message s'affiche juste au-dessous, là où l'œil est déjà.</p>
     <p><b>Un défaut trouvé au premier usage réel, le 01/08/2026.</b> La case visée était lue au moment du clic sur le bouton — c'est-à-dire <em>après</em> que le bouton ait pris le focus, donc jamais. Le panneau répondait «&nbsp;aucune case n'avait le focus&nbsp;: clique une case AVANT&nbsp;» à quelqu'un qui venait exactement de le faire. Elle est maintenant <b>mémorisée</b> quand la case prend le focus, ce qui couvre aussi le geste normal&nbsp;: désigner la case, <em>puis</em> zoomer dans la vue 3D (ce qui y déplace le focus), et seulement ensuite mesurer.</p>
 
 
@@ -1047,7 +1049,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.18.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.19.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
