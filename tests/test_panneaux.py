@@ -267,3 +267,56 @@ print("6. les 5 panneaux à sélection ont bouton + indicateur, et l'indicateur 
       "s'allume quand la vue 3D diverge OK")
 
 print("\nTOUS LES TESTS panneaux PASSENT")
+
+
+# --- Redressement de photo + mesure A→B (v2.16.0) --------------------
+# Ces deux fonctions parlent à OpenCV (absent du python FreeCAD) et à la
+# vue 3D (inexistante en headless) : on ne peut donc PAS les exécuter
+# ici. Ce qu'on vérifie, c'est ce qui casserait en silence -- une fonction
+# disparue, un bouton débranché, un rappel Coin laissé accroché.
+import os as _os
+import re as _re2
+from PySide6 import QtWidgets as _Qt
+
+assert hasattr(tp, "_redresser_photo_planche")
+assert hasattr(tp, "_cotes_mire_defaut")
+assert hasattr(tp, "_python_systeme")
+assert hasattr(tp, "_importer_image_a_l_echelle")
+
+# Les cotes proposees viennent du generateur COURANT, jamais d'un nombre
+# ecrit en dur : c'est ce qui les empeche de se perimer.
+for planche, gen in (("planche1", core.generate_gcode_planche_focus),
+                     ("planche2", core.generate_gcode_planche_defocus)):
+    prop = tp._cotes_mire_defaut(planche)
+    m = _re2.search(r"rectangle de ([\d.]+) x ([\d.]+) mm", gen(quiet=True))
+    assert prop == "{:.0f}-{:.0f}".format(float(m.group(1)), float(m.group(2))), (
+        planche, prop, m.group(1), m.group(2))
+assert tp._cotes_mire_defaut("inconnue") == "140-60"
+print("redressement : cotes proposees tirees du generateur courant OK")
+
+# Le script externe existe, et il expose bien le contrat que le panneau
+# consomme (--json, --base, --sortie). Un renommage silencieux la-bas
+# casserait le bouton ici.
+_script = _os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
+                        "outils", "redresser_photo.py")
+assert _os.path.exists(_script), _script
+_src = open(_script).read()
+for opt in ("--json", "--base", "--sortie", "--pxmm", "--gcode"):
+    assert '"{}"'.format(opt) in _src, opt
+print("redressement : outils/redresser_photo.py present, options du contrat OK")
+
+# Mesure A→B : sans vue 3D, le bouton doit REFUSER proprement et ne
+# laisser aucun rappel branché -- un callback oublié sur la vue rend
+# FreeCAD inutilisable jusqu'au redemarrage.
+class _FauxParent:
+    form = None
+_hote = _Qt.QWidget()          # garder une reference : sans elle, Qt
+_form = _Qt.QFormLayout(_hote)  # detruit le widget et le layout avec
+_ctrl = tp._MesuresPlanchesControleur(_form, _FauxParent(), lambda: "Hêtre")
+assert _ctrl._vue3d() is None, "pas de vue 3D attendue en headless"
+_ctrl._on_mesurer()
+assert _ctrl._mesure_cb is None, "aucun rappel ne doit rester branché"
+assert "vue 3D" in _ctrl.lbl_mesure.text(), _ctrl.lbl_mesure.text()
+_ctrl._fin_mesure()          # doit etre sur meme si rien n'est branche
+assert _ctrl._mesure_cb is None
+print("mesure A->B : refus propre sans vue 3D, aucun rappel laisse OK")

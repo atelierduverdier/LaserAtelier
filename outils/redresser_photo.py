@@ -172,6 +172,10 @@ def main():
     ap.add_argument("--marge", type=float, default=8.0,
                     help="mm conserves autour du rectangle des croix (defaut 8)")
     ap.add_argument("--sortie", default=None)
+    ap.add_argument("--json", default=None,
+                    help="ecrit un petit JSON decrivant le resultat (fichier, "
+                         "taille en mm, px/mm) -- c'est le contrat que lit le "
+                         "panneau FreeCAD, plus sur que de relire stdout")
     ap.add_argument("--reperes", default=None,
                     help="4 points x,y separes par des espaces, au lieu des clics "
                          "(pour rejouer sans interface)")
@@ -255,6 +259,14 @@ def main():
 
     sortie = a.sortie or (base + "_redresse.png")
     cv2.imwrite(sortie, out)
+    if a.json:
+        import json
+        with open(a.json, "w") as fh:
+            json.dump({"fichier": os.path.abspath(sortie),
+                       "largeur_mm": W / a.pxmm, "hauteur_mm": Ht / a.pxmm,
+                       "pxmm": a.pxmm, "base_mm": [L, H],
+                       "ecart_diagonales_pct": ecart,
+                       "controle": os.path.abspath(base + "_reperes.jpg")}, fh)
 
     print()
     print("=== {} ===".format(sortie))

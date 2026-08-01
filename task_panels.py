@@ -16,6 +16,10 @@ de validation, afin de ne pas perdre la saisie de l'utilisateur)."""
 import json
 import math
 import os
+import re
+import subprocess
+import tempfile
+import time
 import FreeCAD
 import FreeCADGui as Gui
 from PySide6 import QtWidgets, QtGui, QtCore
@@ -499,6 +503,153 @@ class _GrilleResultats(QtWidgets.QGroupBox):
                 sp.setValue(float(v))
 
 
+def _cotes_mire_defaut(planche):
+    """Cotes de la mire que le générateur ACTUEL produirait pour cette
+    planche, lues dans l'en-tête du G-code qu'il sort. Proposées à
+    l'utilisateur, jamais imposées : la planche qu'il a en main peut avoir
+    été gravée avant une évolution de la mise en page, et ses vraies cotes
+    sont GRAVÉES dessus."""
+    gen = {"planche1": core.generate_gcode_planche_focus,
+           "planche2": core.generate_gcode_planche_defocus}.get(planche)
+    if gen is None:
+        return "140-60"
+    try:
+        m = re.search(r"rectangle de ([\d.]+) x ([\d.]+) mm",
+                      gen(quiet=True) or "")
+        return "{:.0f}-{:.0f}".format(float(m.group(1)), float(m.group(2))) if m else "140-60"
+    except Exception:
+        return "140-60"
+
+
+def _python_systeme():
+    """Interpréteur SYSTÈME, pas celui de FreeCAD.
+
+    Le redressement passe par OpenCV, qui n'existe PAS dans le python
+    embarqué de l'AppImage FreeCAD. On sous-traite donc à /usr/bin/python3,
+    ce qui a l'avantage de ne rien ajouter aux dépendances du workbench."""
+    for c in ("/usr/bin/python3", "/usr/local/bin/python3"):
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def _importer_image_a_l_echelle(chemin, largeur_mm, hauteur_mm):
+    """Pose l'image redressée dans le document courant, à SA taille en mm.
+
+    C'est le point de la manoeuvre : l'image sortant du redressement a une
+    échelle exacte et connue, donc l'atelier peut la placer lui-même au bon
+    format. Plus de taille à recopier à la main, donc plus d'occasion de se
+    tromper d'un facteur."""
+    doc = FreeCAD.ActiveDocument or FreeCAD.newDocument("Mesures")
+    obj = doc.addObject("Image::ImagePlane", "PlancheRedressee")
+    obj.ImageFile = chemin
+    obj.XSize = largeur_mm
+    obj.YSize = hauteur_mm
+    obj.Label = os.path.splitext(os.path.basename(chemin))[0]
+    doc.recompute()
+    try:
+        Gui.SendMsgToActiveView("ViewFit")
+    except Exception:
+        pass
+    return obj
+
+
+def _redresser_photo_planche(parent):
+    """Choisir une photo, la redresser via OpenCV, la ranger et la poser
+    dans le document à l'échelle exacte.
+
+    `base_defaut` = cotes de la mire telles que le générateur ACTUEL les
+    produirait. Elles sont proposées, pas imposées : une planche gravée il
+    y a six mois n'a pas forcément la mise en page d'aujourd'hui (c'est
+    arrivé le 31/07/2026), et ses vraies cotes sont GRAVÉES dessus. On
+    lit sur le bois, on corrige si besoin."""
+    choix, ok = QtWidgets.QInputDialog.getItem(
+        parent, "Quelle planche ?",
+        "La planche photographiée détermine les cotes proposées et le\n"
+        "rangement de la photo dans les résultats.",
+        ["Planche 1 — foyer", "Planche 2 — défocus", "Autre planche"], 0, False)
+    if not ok:
+        return
+    planche = {"Planche 1 — foyer": "planche1",
+               "Planche 2 — défocus": "planche2"}.get(choix, "planche_autre")
+    base_defaut = _cotes_mire_defaut(planche)
+
+    py = _python_systeme()
+    if py is None:
+        QtWidgets.QMessageBox.critical(
+            parent, "Python système introuvable",
+            "Le redressement a besoin d'OpenCV, absent du python de FreeCAD.\n"
+            "Aucun /usr/bin/python3 trouvé.")
+        return
+    photos, _f = QtWidgets.QFileDialog.getOpenFileNames(
+        parent, "Photo(s) de la planche — plusieurs possibles (gros plans)",
+        os.path.expanduser("~"),
+        "Images (*.jpg *.jpeg *.JPG *.png *.PNG *.tif *.tiff);;Tous (*)")
+    if not photos:
+        return
+    base, ok = QtWidgets.QInputDialog.getText(
+        parent, "Cotes de la mire",
+        "Cotes du rectangle ENTRE CENTRES des 4 croix.\n\n"
+        "Elles sont GRAVÉES sur la planche, sous la réglette (ex. « 140-60 ») :\n"
+        "lis-les sur le bois plutôt que de faire confiance à cette proposition,\n"
+        "qui vient de la mise en page ACTUELLE et peut ne pas correspondre à\n"
+        "une planche gravée avant une évolution.",
+        text=base_defaut)
+    if not ok or not base.strip():
+        return
+    base = base.strip().replace("-", "x").replace(",", ".")
+
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "outils", "redresser_photo.py")
+    horo = time.strftime("%Y%m%d-%H%M")
+    faits, rates = [], []
+    for i, photo in enumerate(photos, 1):
+        suffixe = "" if len(photos) == 1 else "_{}".format(i)
+        sortie = os.path.join(os.path.dirname(photo),
+                              "{}_{}{}_redresse.png".format(planche, horo, suffixe))
+        infos = os.path.join(tempfile.gettempdir(), "redresse_{}.json".format(i))
+        try:
+            r = subprocess.run([py, script, photo, "--base", base,
+                                "--pxmm", "50", "--sortie", sortie,
+                                "--json", infos],
+                               capture_output=True, text=True, timeout=900)
+        except Exception as e:
+            rates.append("{} : {}".format(os.path.basename(photo), e))
+            continue
+        if r.returncode != 0 or not os.path.exists(infos):
+            rates.append("{} : {}".format(os.path.basename(photo),
+                                          (r.stderr or r.stdout or "").strip()[-300:]))
+            continue
+        with open(infos) as fh:
+            d = json.load(fh)
+        os.remove(infos)
+        core.add_result_photo(
+            planche, d["fichier"],
+            "redressée le {} — échelle {:.0f} px/mm, mire {:.0f}x{:.0f}, "
+            "écart de diagonales {:.2f} %".format(
+                time.strftime("%d/%m/%Y %H:%M"), d["pxmm"],
+                d["base_mm"][0], d["base_mm"][1], d["ecart_diagonales_pct"]))
+        try:
+            _importer_image_a_l_echelle(d["fichier"], d["largeur_mm"], d["hauteur_mm"])
+        except Exception as e:
+            FreeCAD.Console.PrintWarning(
+                "Image non posée dans le document : {}\n".format(e))
+        faits.append(d)
+
+    if rates:
+        QtWidgets.QMessageBox.warning(
+            parent, "Redressement", "Photos non traitées :\n\n" + "\n".join(rates))
+    if faits:
+        QtWidgets.QMessageBox.information(
+            parent, "Redressement",
+            "{} photo(s) redressée(s), rangée(s) dans les photos du résultat "
+            "et posée(s) dans le document à l'échelle exacte.\n\n"
+            "Mesure à l'outil Ligne du Draft — et ZOOME : à l'écran un clic "
+            "vaut ~1 pixel, soit 0,16 mm si toute la planche tient dans la "
+            "fenêtre.\n\nContrôle des repères écrit à côté de chaque photo "
+            "(_reperes.jpg) : regarde-le avant de croire une mesure.".format(len(faits)))
+
+
 def _boutons_planches(form, ecrire):
     """Les boutons « Planche 1/2/3 » + « toutes en 1 fichier » (partagés
     entre la Grille de test et l'Assistant matériau) : chacun génère son
@@ -544,6 +695,21 @@ def _boutons_planches(form, ecrire):
     b4.clicked.connect(lambda: ecrire(core.generate_gcode_planches_combinees(),
                                       "/tmp/planches_combinees.ngc"))
     form.addRow(b4)
+
+    # --- mesurer une planche GRAVÉE, à partir d'une photo ---------------
+    b5 = QtWidgets.QPushButton("Redresser une photo de planche…")
+    b5.setToolTip(
+        "Choisir une ou plusieurs photos d'une planche gravée (gros plans\n"
+        "acceptés), cliquer ses 4 croix de mire, et l'atelier :\n"
+        "  - redresse la perspective (OpenCV, python système) ;\n"
+        "  - range l'image dans les photos du résultat ;\n"
+        "  - la POSE dans le document à l'échelle exacte, en mm.\n"
+        "\n"
+        "Il ne reste qu'à mesurer à l'outil Ligne du Draft. Indispensable\n"
+        "parce que FreeCAD met une image à l'échelle de façon UNIFORME : il\n"
+        "ne corrige pas une photo prise de biais, et rien ne le signale.")
+    b5.clicked.connect(lambda: _redresser_photo_planche(form.parentWidget() or form))
+    form.addRow(b5)
     return b1, b2, b3, b4
 
 
@@ -609,6 +775,33 @@ class _MesuresPlanchesControleur:
         self._pile_niveaux = QtWidgets.QVBoxLayout(self._boite_niveaux)
         self._pile_niveaux.setContentsMargins(0, 0, 0, 0)
         form.addRow(self._boite_niveaux)
+        # --- mesurer A -> B SANS quitter cette saisie ------------------
+        # L'outil Ligne du Draft affiche bien la distance, mais il occupe le
+        # panneau des tâches -- or celui-ci est EXCLUSIF dans FreeCAD, donc
+        # impossible d'avoir la grille de saisie ouverte en même temps.
+        # D'où une mesure intégrée ICI : on clique la case à remplir, on
+        # clique « Mesurer », on pointe deux fois dans la vue, et la valeur
+        # tombe dans la case. Aucun aller-retour entre deux panneaux.
+        self._mesure_cb = None
+        self._mesure_pts = []
+        self._mesure_cible = None
+        self.btn_mesurer = QtWidgets.QPushButton("Mesurer A → B dans la vue 3D")
+        self.btn_mesurer.setToolTip(
+            "Clique d'abord la CASE à remplir, puis ce bouton, puis les deux\n"
+            "extrémités à mesurer dans la vue 3D. La distance est écrite dans\n"
+            "la case.\n"
+            "\n"
+            "Pensé pour mesurer sur une photo redressée posée à l'échelle :\n"
+            "ZOOME avant de pointer -- à l'écran un clic vaut ~1 pixel, soit\n"
+            "0,16 mm si toute la planche tient dans la fenêtre, la moitié\n"
+            "d'un trait de 0,30.\n"
+            "\n"
+            "Re-cliquer le bouton annule une mesure en cours.")
+        self.btn_mesurer.clicked.connect(self._on_mesurer)
+        form.addRow(self.btn_mesurer)
+        self.lbl_mesure = _WrapLabel("")
+        form.addRow(self.lbl_mesure)
+
         self.btn_save = QtWidgets.QPushButton("Enregistrer les mesures")
         self.btn_save.setToolTip(
             "Range ces largeurs pour le matériau indiqué. Indépendant de "
@@ -617,6 +810,90 @@ class _MesuresPlanchesControleur:
             "ou\ndéfocus hors grille) sont CONSERVÉES telles quelles.")
         self.btn_save.clicked.connect(self._on_save)
         form.addRow(self.btn_save)
+
+    # ------------------------------------------------------------------
+    # Mesure A -> B dans la vue 3D
+    #
+    # Motif Coin/Quarter NOUVEAU dans ce dépôt : la règle 5 du CLAUDE.md
+    # interdit d'essayer ça pour la première fois dans la session vivante
+    # de Christophe, et il n'existe pas de vue 3D en headless. Tout est
+    # donc défensif, et le rappel est retiré dans TOUS les chemins --
+    # laisser un callback branché sur la vue est le moyen le plus sûr de
+    # rendre FreeCAD inutilisable jusqu'au redémarrage.
+    # ------------------------------------------------------------------
+    def _vue3d(self):
+        try:
+            return Gui.ActiveDocument.ActiveView
+        except Exception:
+            return None
+
+    def _fin_mesure(self):
+        """Débranche le rappel, quoi qu'il arrive."""
+        vue = self._vue3d()
+        if vue is not None and self._mesure_cb is not None:
+            try:
+                vue.removeEventCallback("SoMouseButtonEvent", self._mesure_cb)
+            except Exception:
+                pass
+        self._mesure_cb = None
+        self._mesure_pts = []
+        self.btn_mesurer.setText("Mesurer A → B dans la vue 3D")
+
+    def _on_mesurer(self):
+        if self._mesure_cb is not None:          # 2e clic = annulation
+            self._fin_mesure()
+            self.lbl_mesure.setText("Mesure annulée.")
+            return
+        vue = self._vue3d()
+        if vue is None:
+            self.lbl_mesure.setText(
+                "Aucune vue 3D active : ouvre le document contenant la photo "
+                "redressée.")
+            return
+        # La case à remplir est celle qui avait le FOCUS avant le clic sur le
+        # bouton -- après, le focus est sur le bouton puis sur la vue.
+        w = QtWidgets.QApplication.focusWidget()
+        self._mesure_cible = w if isinstance(w, QtWidgets.QDoubleSpinBox) else None
+        self._mesure_pts = []
+
+        def _clic(info):
+            try:
+                if info.get("Type") != "SoMouseButtonEvent":
+                    return
+                if info.get("Button") != "BUTTON1" or info.get("State") != "DOWN":
+                    return
+                p = vue.getPoint(*info["Position"])
+                self._mesure_pts.append(p)
+                if len(self._mesure_pts) == 1:
+                    self.btn_mesurer.setText("Point A pris — clique B (ou annule)")
+                    self.lbl_mesure.setText(
+                        "A = ({:.2f}, {:.2f})".format(
+                            self._mesure_pts[0].x, self._mesure_pts[0].y))
+                    return
+                a, b = self._mesure_pts[0], self._mesure_pts[1]
+                d = math.hypot(b.x - a.x, b.y - a.y)
+                self._fin_mesure()
+                txt = "Distance <b>{:.3f} mm</b>  (dx {:.3f}, dy {:.3f})".format(
+                    d, abs(b.x - a.x), abs(b.y - a.y))
+                if self._mesure_cible is not None:
+                    self._mesure_cible.setValue(d)
+                    txt += " — écrite dans la case sélectionnée."
+                else:
+                    txt += " — aucune case n'avait le focus : clique une case AVANT."
+                self.lbl_mesure.setText(txt)
+            except Exception as e:                # jamais laisser le rappel branché
+                self._fin_mesure()
+                self.lbl_mesure.setText("Mesure interrompue : {}".format(e))
+
+        try:
+            self._mesure_cb = vue.addEventCallback("SoMouseButtonEvent", _clic)
+        except Exception as e:
+            self._mesure_cb = None
+            self.lbl_mesure.setText("Mesure indisponible sur cette vue : {}".format(e))
+            return
+        self.btn_mesurer.setText("Clique le point A (ou annule)")
+        self.lbl_mesure.setText(
+            "Pointe A puis B dans la vue 3D. <b>Zoome</b> avant de pointer.")
 
     def _boite(self):
         return getattr(self._parent, "form", None)
