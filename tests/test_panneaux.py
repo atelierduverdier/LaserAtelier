@@ -995,3 +995,52 @@ _vue2 = tp._VueProfilTrait(_img, _PX)
 assert abs(_vue2.distance_mm() - tp.largeur_au_seuil(_prof, 0.5)[2] / _PX) < 0.05
 print("mesure à la ligne : colonne ±{:.2f} mm contre profil ±{:.2f} mm, "
       "conversion exacte OK".format(_etendue_col, _etendue_profil))
+
+
+# --- « Retenir cette largeur » n'écrivait nulle part (v2.33.1) --------
+# `_encaisser_mesure` ecrit dans `self._mesure_cible`, et `_on_mesure_image`
+# ne le posait JAMAIS : il lisait la case dans une variable locale. Le
+# bouton disait « Retenir cette largeur » et n'ecrivait nulle part -- ou,
+# pire, dans la case d'une mesure precedente restee la. Vu au premier usage
+# reel, le 01/08/2026.
+_hote7 = _Qt.QWidget()
+_form7 = _Qt.QFormLayout(_hote7)
+_c7 = tp._MesuresPlanchesControleur(_form7, _FauxParent(), lambda: u"Hêtre")
+_c7.reload()
+_c7.grille_focus._chk.setChecked(False)
+_sp7 = _c7.grille_focus.cells()[(600.0, 400.0)]
+_QtC.QCoreApplication.sendEvent(_sp7, _QtG.QFocusEvent(_QtC.QEvent.FocusIn))
+# Le chemin que suit `_on_mesure_image` : viser, PUIS encaisser.
+assert _c7._derniere_case is _sp7
+_c7._mesure_cible = _c7._derniere_case
+_c7._serie = []
+_c7._encaisser_mesure(3.740, 0.0, 3.740)
+assert abs(_sp7.value() - 3.740) < 1e-6, (
+    "la largeur retenue doit atterrir dans la case visée", _sp7.value())
+# Le controle se demontre : SANS poser la cible, rien n'est ecrit -- c'est
+# exactement le defaut, et il ne doit pas pouvoir revenir sans que ce test
+# le voie.
+_sp7.setValue(0.0)
+_c7._mesure_cible = None
+_c7._serie = []
+_c7._encaisser_mesure(3.740, 0.0, 3.740)
+assert _sp7.value() == 0.0, "sans cible posée, rien ne doit être écrit"
+
+# L'image s'ouvre toute seule : la plus recente du dossier, puis retenue
+# pour la seance -- on mesure des dizaines de cases sur une meme planche.
+assert hasattr(_c7, "_image_mesure") and hasattr(_c7, "_image_de_mesure")
+_planches = core.planches_redressees()
+if _planches:
+    _img7 = _c7._image_de_mesure()
+    assert _img7 and _os.path.isfile(_img7), _img7
+    assert _os.path.splitext(_img7)[0] == _planches[0]["base"], (
+        "ce doit être l'image de MESURE de la planche la plus récente, pas "
+        "son aperçu ni son contrôle de repères", _img7)
+    assert _c7._image_de_mesure() == _img7, "et elle doit être retenue"
+    _c7._changer_image()
+    assert _c7._image_mesure is None, "« Changer de planche » doit l'oublier"
+    print("mesure sur image : largeur écrite dans la case, planche {} ouverte "
+          "d'office OK".format(_os.path.basename(_img7)[:34]))
+else:
+    print("mesure sur image : largeur écrite dans la case OK (aucune planche "
+          "redressée pour tester l'ouverture automatique)")

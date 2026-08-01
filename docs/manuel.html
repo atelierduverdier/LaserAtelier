@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.33.0</span><br>
+      <span class="ver">Version 2.33.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.33.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.33.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -579,6 +579,7 @@
     <p><b>Les cotes sont proposées, jamais imposées.</b> Le dialogue pré-remplit ce que la mise en page <em>actuelle</em> produirait, mais la planche qu'on tient peut être plus ancienne — ses vraies cotes sont gravées dessus, sous la réglette. On lit sur le bois, on corrige si besoin.</p>
     <p><b>Et pour mesurer sans changer de panneau&nbsp;:</b> l'outil Ligne du Draft affiche bien la distance, mais il occupe le panneau des tâches — qui est <em>exclusif</em> dans FreeCAD, donc impossible de garder la grille de saisie ouverte à côté. D'où le bouton <b>«&nbsp;Mesurer A&nbsp;→&nbsp;B dans la vue 3D&nbsp;»</b> placé <i>dans</i> la saisie des mesures&nbsp;: on clique la case à remplir, puis le bouton, puis les deux extrémités dans la vue — et la distance atterrit dans la case. Aucun aller-retour. La case visée est <b>nommée à l'écran</b> («&nbsp;<i>Cible&nbsp;: S1000 / F800 (foyer)</i>&nbsp;») avant que vous pointiez&nbsp;: une valeur tombée dans la mauvaise case ne se voit pas, elle ressemble à une mesure.</p>
     <p><b>Mesurer à la LIGNE, sur le profil moyenné (v2.33.0).</b> Le bouton «&nbsp;Mesurer sur l'image redressée…&nbsp;» ouvre la planche, on encadre <em>un</em> trait à la souris, et l'atelier affiche à côté de lui son <b>profil de noirceur moyenné sur toute sa longueur</b>. Deux lignes horizontales, qu'on fait glisser (flèches ↑↓ pour affiner au pixel), traversent l'image <em>et</em> la courbe&nbsp;; la largeur s'affiche en direct.</p>
+    <p><b>La planche s'ouvre toute seule (v2.33.1)</b>&nbsp;: la plus récente du dossier, puis retenue pour toute la séance — on mesure des dizaines de cases sur une même planche, redemander le fichier à chaque fois est un clic de trop répété quarante fois. Son nom est dans le titre de la fenêtre, pour vérifier d'un coup d'œil que c'est la bonne, et un bouton «&nbsp;Changer de planche…&nbsp;» permet d'en ouvrir une autre.</p>
     <p><b>Pourquoi c'est bien mieux qu'un clic.</b> Le bord d'une brûlure n'est pas une ligne&nbsp;: à 60&nbsp;mm de défocus c'est une <b>rampe de 0,7&nbsp;mm</b> entre le bois franc et le noir franc. Mesuré sur une planche réelle&nbsp;: une lecture prise sur <em>une</em> colonne va de 2,36 à 3,96&nbsp;mm — <b>1,60&nbsp;mm de hasard</b> selon l'endroit visé — quand la même largeur lue sur le profil moyenné ne bouge que de 0,22&nbsp;mm lorsqu'on déplace le seuil de 40 à 60&nbsp;%. Moyenner divise l'incertitude par sept.</p>
     <p>Les repères 40/50/60&nbsp;% sont tracés sur la courbe et les lignes démarrent au seuil 50&nbsp;%, mais ce ne sont que des <em>propositions</em>&nbsp;: c'est vous qui décidez où s'arrête la brûlure — bord du noir franc ou bord du roussi — et la seule règle est de vous y tenir sur toute la planche. Le recadrage est manuel lui aussi&nbsp;: la détection automatique des traits est ce qui a échoué le plus souvent sur ce projet.</p>
     <p><b>Moyenner, parce que le trait n'est pas droit (v2.18.0).</b> Les bords d'une brûlure ondulent — c'est le grain qui décide, pas la machine. Des mesures successives sur la <em>même</em> case sont donc cumulées&nbsp;: la case reçoit la <b>moyenne courante</b>, et le panneau affiche l'<b>étendue</b> entre vos mesures. Trois pointés à trois endroits du trait valent bien mieux qu'un seul. L'étendue n'invalide rien&nbsp;: elle vous dit si votre critère «&nbsp;où s'arrête la brûlure&nbsp;» a tenu d'un bout à l'autre, ce qu'une valeur seule ne dit jamais. Re-cliquer la case repart de zéro.</p>
@@ -1074,7 +1075,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.33.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.33.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

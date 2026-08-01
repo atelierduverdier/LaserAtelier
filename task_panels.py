@@ -1251,6 +1251,8 @@ class _MesuresPlanchesControleur:
         # y déplace le focus), et seulement ensuite on mesure.
         self._derniere_case = None
         self._serie = []
+        # Planche retenue pour la séance : on n'en change pas à chaque case.
+        self._image_mesure = None
         self.grille_focus = _GrilleResultats(
             "Traits au FOYER : largeur (mm)",
             rows=self.POWERS, cols=self.FEEDS_FOCUS)
@@ -1450,6 +1452,36 @@ class _MesuresPlanchesControleur:
         for b in self._blocs_vivants():
             b.btn.setText("Mesurer A → B dans la vue 3D")
 
+    def _image_de_mesure(self, forcer_choix=False):
+        """La planche redressée à mesurer, sans rien demander si possible.
+
+        Ordre : celle déjà utilisée dans cette séance, sinon la PLUS
+        RÉCENTE du dossier des planches. On mesure des dizaines de cases
+        sur une même planche : redemander le fichier à chaque case est un
+        clic de trop, répété quarante fois."""
+        if not forcer_choix and self._image_mesure \
+                and os.path.isfile(self._image_mesure):
+            return self._image_mesure
+        if not forcer_choix:
+            for p in core.planches_redressees():
+                for f in p["fichiers"]:
+                    racine, ext = os.path.splitext(f)
+                    if racine == p["base"] and ext.lower() in (".png", ".jpg",
+                                                               ".jpeg"):
+                        self._image_mesure = f
+                        return f
+        chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
+            self._parent.form if getattr(self._parent, "form", None) else None,
+            "Planche redressée", core.dossier_planches(),
+            "Images redressées (*.png *.jpg);;Tous (*)")
+        if chemin:
+            self._image_mesure = chemin
+        return chemin
+
+    def _changer_image(self):
+        """L'utilisateur veut une AUTRE planche : on oublie la retenue."""
+        self._image_mesure = None
+
     def _on_mesure_image(self, bloc=None):
         """Mesurer une largeur sur la planche redressée, à la ligne."""
         self._bloc_courant = bloc or self._blocs[0]
@@ -1462,10 +1494,13 @@ class _MesuresPlanchesControleur:
             self._dire("Grille <b>verrouillée</b> : décoche « 🔒 Verrouiller "
                        "les résultats » avant de mesurer.")
             return
-        chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
-            self._parent.form if getattr(self._parent, "form", None) else None,
-            "Planche redressée", core.dossier_planches(),
-            "Images redressées (*.png *.jpg);;Tous (*)")
+        # LA CASE VISÉE, POSÉE. Elle ne l'était pas : `_encaisser_mesure`
+        # écrit dans `self._mesure_cible`, resté à None (ou pire, à la case
+        # d'une mesure précédente). Le bouton disait « Retenir cette
+        # largeur » et n'écrivait nulle part -- ou ailleurs. Vu au premier
+        # usage réel, le 01/08/2026.
+        self._mesure_cible = cible
+        chemin = self._image_de_mesure()
         if not chemin:
             return
         # L'échelle vient de la FICHE écrite à côté de l'image, jamais d'une
@@ -1488,7 +1523,10 @@ class _MesuresPlanchesControleur:
             if not ok:
                 return
         dlg = _DialogueMesureTrait(chemin, pxmm)
+        dlg.changer_image.connect(self._changer_image)
         if not dlg.exec():
+            if getattr(dlg, "veut_changer", False):
+                return self._on_mesure_image(bloc)
             return
         self._dire(self._encaisser_mesure(dlg.valeur_mm(), 0.0,
                                           dlg.valeur_mm()))
@@ -2786,9 +2824,14 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
     Deux temps : on encadre un trait, puis on place les deux lignes sur le
     profil moyenné. `valeur_mm` renvoie la distance retenue."""
 
+    changer_image = QtCore.Signal()
+
     def __init__(self, chemin, pxmm, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Mesurer une largeur sur l'image redressée")
+        self.veut_changer = False
+        # Le NOM de la planche dans le titre : elle s'ouvre toute seule, il
+        # faut donc pouvoir vérifier d'un coup d'oeil que c'est la bonne.
+        self.setWindowTitle("Mesurer sur {}".format(os.path.basename(chemin)))
         self.resize(980, 620)
         self._pxmm = float(pxmm)
         # PLEINE résolution : c'est une image de MESURE. La borner à
@@ -2828,6 +2871,11 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         self.btn_ok.clicked.connect(self.accept)
         b_non = QtWidgets.QPushButton("Annuler")
         b_non.clicked.connect(self.reject)
+        b_img = QtWidgets.QPushButton("Changer de planche…")
+        b_img.setToolTip("Ouvrir une autre planche redressée. Sans ça,\n"
+                         "l'atelier garde celle-ci pour toute la séance.")
+        b_img.clicked.connect(self._on_changer)
+        ligne.addWidget(b_img)
         ligne.addWidget(self.btn_retour)
         ligne.addStretch(1)
         ligne.addWidget(self.btn_ok)
@@ -2863,6 +2911,11 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
             "<span style='color:#777'>Repères automatiques, à titre "
             "indicatif — {} mm. C'est toi qui décides où s'arrête la "
             "brûlure.</span>".format(self.valeur_mm(), rep))
+
+    def _on_changer(self):
+        self.veut_changer = True
+        self.changer_image.emit()
+        self.reject()
 
     def valeur_mm(self):
         return self._vue.distance_mm() if self._vue is not None else 0.0
