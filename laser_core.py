@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.15.1"
+VERSION = "2.15.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -804,7 +804,8 @@ LABEL_FEED = 800.0                    # ... et vitesse d'avance (mm/min) -- par 
 # rapides, donc autant d'accélérations -- à F1200 le support caméra en PLA de
 # l'atelier vibrait et les repères sortaient ONDULÉS, ce qui ruine justement
 # ce qu'on leur demande (un centre net). Réglable par laser.
-MIRE_POWER = 100.0                    # puissance (S) de la mire
+MIRE_POWER = 150.0                    # puissance (S) de la mire -- 100 sortait
+                                      # un poil trop clair sur hetre (31/07/2026)
 MIRE_FEED = 300.0                     # vitesse (mm/min) -- lente, contre la vibration
 
 # (clé JSON, nom de la globale à surcharger, conversion, validation)
