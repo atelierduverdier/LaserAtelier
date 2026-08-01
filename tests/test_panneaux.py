@@ -524,6 +524,9 @@ print("mesure A->B : la case visee survit au focus du bouton OK")
 # La moyenne : trois mesures sur la meme case -> moyenne ecrite dans la
 # case, etendue annoncee. Le controle se demontre : la valeur ecrite n'est
 # aucune des trois mesures prises isolement.
+# Deverrouiller d'abord : depuis la v2.31.1 l'outil respecte le cadenas,
+# et une grille est verrouillee par defaut.
+_ctrl.grille_focus._chk.setChecked(False)
 _ctrl._mesure_cible = _case
 _ctrl._serie = []
 for _d in (0.300, 0.340, 0.320):
@@ -846,3 +849,40 @@ open(_ko, "wb").write(b"ceci n'est pas une image")
 _img2, _souci2 = tp._image_bornee(_ko, 640, 360)
 assert _img2 is None and _souci2, (_img2, _souci2)
 print("vignette : lue bornée là où QPixmap échoue (limite abaissée) OK")
+
+
+# --- Le verrou vaut AUSSI pour l'outil de mesure (v2.31.1) -----------
+# `setValue` ignore `setReadOnly` : le clavier etait bloque et l'outil
+# A -> B ecrivait quand meme. « Coche ou pas, je peux inserer la mesure »
+# -- 01/08/2026. Pire, il ecrasait SANS UN MOT une valeur deja mesuree
+# (3,35 mm remplaces par 0,42 pendant la reproduction), c'est-a-dire
+# exactement ce contre quoi le verrou existe. Un verrou qui ne retient
+# qu'une main sur deux ne protege rien : il rassure a tort.
+_hote6 = _Qt.QWidget()
+_form6 = _Qt.QFormLayout(_hote6)
+_c6 = tp._MesuresPlanchesControleur(_form6, _FauxParent(), lambda: u"Hêtre")
+_c6.reload()
+_gr6 = _c6.grille_focus
+_sp6 = _gr6.cells()[(1000.0, 800.0)]
+assert _gr6._chk.isChecked(), "le verrou doit etre coche par defaut"
+assert _sp6.isReadOnly()
+
+_avant = _sp6.value()
+_c6._mesure_cible = _sp6
+_c6._serie = []
+_msg6 = _c6._encaisser_mesure(0.42, 0.01, 0.42)
+assert _sp6.value() == _avant, (
+    "l'outil de mesure a ecrit dans une case VERROUILLEE", _avant, _sp6.value())
+assert "verrouill" in _msg6.lower(), _msg6
+assert _c6._serie == [], "une mesure refusee ne doit pas entrer dans la moyenne"
+
+# Le controle se demontre : deverrouille, la meme mesure passe.
+_gr6._chk.setChecked(False)
+assert not _sp6.isReadOnly()
+_msg6b = _c6._encaisser_mesure(0.42, 0.01, 0.42)
+assert abs(_sp6.value() - 0.42) < 1e-9, (
+    "deverrouille, la mesure doit s'ecrire -- sinon ce test ne prouve rien",
+    _sp6.value())
+assert "verrouill" not in _msg6b.lower(), _msg6b
+_gr6._chk.setChecked(True)
+print("verrou : l'outil de mesure respecte le cadenas, et le dit OK")

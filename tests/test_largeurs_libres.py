@@ -17,7 +17,11 @@ from harness import preparer
 
 h = preparer()
 core, tp = h.core, h.tp
-MAT = u"Hêtre"
+# Matériau FABRIQUÉ ICI : ce test écrit, efface et recompte des points.
+# Sur les mesures de l'atelier il tombait dès que le niveau 60 en gagnait
+# d'autres -- ce qui est exactement arrivé le 01/08/2026 avec la Planche 2b
+# (1 point -> 3). Un test qui compte doit posséder ce qu'il compte.
+MAT = u"TestLargeursLibres"
 
 # Les cinq vrais points relevés sur la rampe du 30/07/2026, avec la puissance
 # RÉELLEMENT gravée à cet endroit (la rampe monte S et Z ensemble).
@@ -42,6 +46,18 @@ print("1. les {} relevés sont TOUS hors de la grille figée (S {}, F {}, "
 
 # --- 2. La fusion n'efface RIEN ----------------------------------------
 avant = core.load_config().get("burn_widths", {}).get(MAT, {})
+# On SÈME le matériau : le test doit posséder ce qu'il compte, et une
+# table préexistante lui donne de quoi vérifier qu'il ne l'écrase pas.
+core.save_burn_widths(MAT, {
+    "focus": [{"power": s_, "feed": f_, "width": round(0.10 + s_ / 5000.0, 3)}
+              for s_ in (200.0, 600.0, 1000.0) for f_ in (200.0, 800.0)],
+    # HORS grille, sinon la table libre -- qui n'affiche QUE le hors-grille,
+    # c'est sa raison d'être -- resterait vide et le test croirait à une
+    # table en écriture seule.
+    "defocus": [{"power": 845.0, "feed": 500.0, "z_offset": 22.0, "width": 1.30},
+                {"power": 455.0, "feed": 900.0, "z_offset": 48.0, "width": 2.60}],
+})
+avant = core.load_burn_widths(MAT)
 n_focus_avant = len(avant.get("focus", []) or [])
 n_defoc_avant = len(avant.get("defocus", []) or [])
 assert n_focus_avant and n_defoc_avant, "la copie de config n'a pas de mesures"

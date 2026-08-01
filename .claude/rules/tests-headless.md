@@ -133,6 +133,18 @@ worse than no suite: it teaches you to ignore red.
 table and the nuancier intact. Call it in any test whose property assumes a table *shape*. Tests
 that check the workshop's data hangs together must deliberately NOT call it.
 
+`figer_largeurs` also installs a canonical **defocus** table (`defocus=True`, the default): width
+growing with height AND with power, always **below the optical spot**. Those are the properties
+tests assume and the real measurements no longer guarantee — on 2026-08-01 the workshop's beech came
+back at 3.35 mm at 55 mm of defocus and **3.27 at 60**, i.e. a *decrease* (2.4 %, inside the
+measuring noise). `test_fuseau` fell on it. A test that assumes monotonicity must give itself
+monotonic data.
+
+A test that **counts** rows must own what it counts: `test_largeurs_libres` deletes a row and checks
+the level is gone, which held only while defocus 60 had exactly one point — Planche 2b took it to
+three. It now seeds its own material (and seeds it **off-grid**, since the free-width table displays
+only what the fixed grid cannot).
+
 Same idea for a property that needs a **complete** grid: build one in the test
 (`test_interpolation_mesures` §5 now does) and, on the real grids, **count and print** rather than
 assert — a divergence there is information about the measurements, not a defect in the code.

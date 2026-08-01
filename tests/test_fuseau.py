@@ -17,7 +17,7 @@ Deux décisions de Christophe que ces tests figent (31/07/2026) :
 """
 import re
 
-from harness import preparer
+from harness import preparer, figer_largeurs
 
 # `preparer()` D'ABORD, et SEULEMENT ENSUITE Part/FreeCAD : c'est lui qui
 # initialise l'interpréteur FreeCAD. Importer `Part` avant fait un
@@ -26,11 +26,16 @@ from harness import preparer
 # Aucun autre test du dépôt n'importe Part au niveau module ; celui-ci est
 # le premier, d'où ce commentaire.
 h = preparer()
+# Tables FIGÉES : cet essai suppose que le trait s'élargit avec le défocus,
+# ce que les mesures de l'atelier ne garantissent plus (55 -> 60 mm a donné
+# une décroissance de 2,4 %, dans le bruit). Un test qui suppose la
+# monotonie doit se la donner, pas l'emprunter aux données du jour.
 
 import Part            # noqa: E402  (cf. ci-dessus)
 import FreeCAD         # noqa: E402
 
 core, tp = h.core, h.tp
+figer_largeurs(core, u"Hêtre")
 V = FreeCAD.Vector
 
 

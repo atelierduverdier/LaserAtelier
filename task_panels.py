@@ -1332,9 +1332,18 @@ class _MesuresPlanchesControleur:
         self._serie = []
         nom = self._nom_case(sp)
         if nom:
-            self._dire("Case visée : <b>{}</b>. Clique « Mesurer A → B », "
-                       "puis les deux bords du trait.".format(nom),
-                       self._bloc_de(sp))
+            if sp.isReadOnly():
+                # Dit MAINTENANT, pas après avoir pointé deux fois dans la
+                # vue 3D : le refus arriverait alors trop tard pour être
+                # autre chose qu'une perte de temps.
+                self._dire("Case visée : <b>{}</b> — mais la grille est "
+                           "<b>verrouillée</b>. Décoche « 🔒 Verrouiller les "
+                           "résultats » pour pouvoir y écrire.".format(nom),
+                           self._bloc_de(sp))
+            else:
+                self._dire("Case visée : <b>{}</b>. Clique « Mesurer A → B », "
+                           "puis les deux bords du trait.".format(nom),
+                           self._bloc_de(sp))
 
     def _distance(self, a, b):
         """(valeur retenue, dx, dy) selon le mode de mesure.
@@ -1364,6 +1373,13 @@ class _MesuresPlanchesControleur:
         Hors du rappel de la vue 3D pour être testable : sans vue 3D en
         headless, laissée dans la fermeture, cette arithmétique-là ne serait
         vérifiée par rien."""
+        # Le refus est ICI, là où l'écriture se produit -- pas seulement au
+        # clic sur le bouton. `setValue` ignore `setReadOnly` : sans ce
+        # garde, une mesure écrase une valeur protégée sans un mot.
+        if self._mesure_cible is not None and self._mesure_cible.isReadOnly():
+            return ("Grille <b>verrouillée</b> : rien n'a été écrit. Décoche "
+                    "« 🔒 Verrouiller les résultats » sous {}, puis remesure."
+                    .format(self._nom_case(self._mesure_cible) or "cette grille"))
         self._serie.append(float(d))
         m = sum(self._serie) / len(self._serie)
         if self._mesure_cible is not None:
@@ -1439,6 +1455,22 @@ class _MesuresPlanchesControleur:
                 "grisées), puis reviens sur ce bouton.")
             return
         self._bloc_courant = self._bloc_de(self._mesure_cible)
+        # LE VERROU VAUT POUR TOUT LE MONDE.
+        #
+        # `setValue` ignore `setReadOnly` : le clavier était bloqué et
+        # l'outil de mesure écrivait quand même. « Coche ou pas, je peux
+        # insérer la mesure » -- 01/08/2026. Pire, il écrasait sans un mot
+        # une valeur déjà mesurée (3,35 mm remplacés par 0,42 pendant la
+        # reproduction du défaut), c'est-à-dire exactement ce contre quoi
+        # le verrou existe. Un verrou qui ne retient qu'une main sur deux
+        # ne protège rien, il rassure à tort.
+        if self._mesure_cible.isReadOnly():
+            self._dire(
+                "Grille VERROUILLÉE : décoche « 🔒 Verrouiller les résultats » "
+                "sous <b>{}</b> avant de mesurer. Sans ça l'outil écrirait "
+                "par-dessus une mesure protégée.".format(
+                    self._nom_case(self._mesure_cible) or "cette grille"))
+            return
 
         def _clic(info):
             try:

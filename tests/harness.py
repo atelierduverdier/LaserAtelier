@@ -243,7 +243,15 @@ FEEDS_ENFLE = (200.0, 400.0, 800.0)      # le trait enfle : 0,10 -> 0,30
 FEEDS_PLATS = (1500.0, 3000.0)           # plat a 0,10 : plus rien a moduler
 
 
-def figer_largeurs(core, materiau=u"Hêtre"):
+# Niveau de défocus -> diamètre du point OPTIQUE, tel que la calibration de
+# l'atelier le donne. La brûlure reste TOUJOURS en dessous : au défocus les
+# bords du faisceau n'atteignent plus le seuil de combustion. Les tests
+# vérifient cette inégalité, donc la table de référence doit la respecter.
+POINT_OPTIQUE_REF = {15.0: 1.16, 36.0: 2.36}
+FEEDS_DEFOCUS_REF = (200.0, 400.0, 600.0, 800.0)
+
+
+def figer_largeurs(core, materiau=u"Hêtre", defocus=True):
     """Remplace la table AU FOYER de ce matériau par LARGEURS_REFERENCE.
 
     Le défocus est conservé tel quel, ainsi que le nuancier : seule la
@@ -256,5 +264,21 @@ def figer_largeurs(core, materiau=u"Hêtre"):
          for f in FEEDS_ENFLE for s, w in LARGEURS_REFERENCE.items()]
         + [{"power": s, "feed": f, "width": 0.10}
            for f in FEEDS_PLATS for s in LARGEURS_REFERENCE])
+    if defocus:
+        # Table de DÉFOCUS de référence : croissante avec la hauteur, et
+        # croissante avec la puissance. Ce sont les deux propriétés que les
+        # tests supposent, et que les vraies mesures ne garantissent pas --
+        # le 01/08/2026, le hêtre est ressorti à 3,35 mm à 55 mm de défocus
+        # et 3,27 à 60, soit une DÉCROISSANCE (2,4 %, dans le bruit de
+        # mesure). Un test qui suppose la monotonie doit se la donner.
+        data["defocus"] = [
+            {"power": s_, "feed": f_, "z_offset": z_,
+             # 0,61 à 0,90 fois le point optique selon la puissance, moins
+             # un peu quand ça va vite : croissant en z, croissant en S,
+             # décroissant en F, et toujours SOUS le point optique.
+             "width": round(pt * (0.54 + 0.00036 * s_) * (1.0 - f_ / 8000.0), 3)}
+            for z_, pt in sorted(POINT_OPTIQUE_REF.items())
+            for f_ in FEEDS_DEFOCUS_REF
+            for s_ in LARGEURS_REFERENCE]
     core.save_burn_widths(materiau, data)
     return materiau
