@@ -1070,7 +1070,9 @@ while _cur is not None and _n < 7:
     _c8._mesure_cible = _cur
     _c8._serie = []
     _suiv, _ = _c8._retenir_depuis_image(1.0 + _n * 0.1)
-    _cur = _c8._mesure_cible if _suiv else None
+    # `_retenir_depuis_image` renvoie desormais un INDEX (la fenetre porte
+    # une liste deroulante de cases), pas un nom.
+    _cur = _c8._mesure_cible if _suiv is not None else None
     _n += 1
 assert _vus[:5] == ["S{} / F200 (foyer)".format(s) for s in (1000, 800, 600, 400, 200)], _vus
 assert _vus[5].startswith("S1000 / F400"), (
@@ -1086,13 +1088,14 @@ assert _ecrits == [1.0, 1.1, 1.2, 1.3, 1.4], _ecrits
 # la mauvaise case ne se voit pas, elle ressemble a une mesure.
 import inspect as _insp2
 _sig8 = _insp2.signature(tp._DialogueMesureTrait.__init__)
-assert "nom_cible" in _sig8.parameters and "on_retenir" in _sig8.parameters, _sig8
+assert "noms_cases" in _sig8.parameters and "on_retenir" in _sig8.parameters, _sig8
 _src8 = open(_os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
                            "task_panels.py")).read()
 _i8 = _src8.index("class _DialogueMesureTrait")
 _fin8 = _src8.find("\nclass ", _i8 + 10)
 _corps8 = _src8[_i8:_fin8 if _fin8 > 0 else len(_src8)]
 assert "La mesure ira dans" in _corps8, "la case visée doit être écrite dans la fenêtre"
+assert "combo_cible" in _corps8, "et choisissable DANS la fenêtre"
 assert "_retenir_et_suivant" in _corps8 and "Retenir → case suivante" in _corps8
 print("enchaînement : {} cases dans l'ordre du bois, chacune sa valeur OK".format(
     len(_vus)))
@@ -1148,6 +1151,53 @@ else:
     assert _cb9.itemData(0) is None
     print("choix de planche : liste vide annoncée proprement OK")
 
+
+
+
+# --- « Rien ne se passe » : deux refus muets (v2.35.1) ---------------
+# « J'ai choisi ma planche 1, puis mesurer l'image redressee et rien ne se
+# passe » -- 01/08/2026. Deux refus se cumulaient, tous deux annonces dans
+# un LIBELLE discret : aucune case visee (il fallait avoir clique une case
+# dans le panneau) et grille verrouillee. Un refus qu'on ne voit pas est un
+# logiciel qui ne repond pas.
+_hoteA = _Qt.QWidget()
+_formA = _Qt.QFormLayout(_hoteA)
+_cA = tp._MesuresPlanchesControleur(_formA, _FauxParent(), lambda: u"Hêtre")
+_cA.reload()
+
+# La fenetre choisit la case ELLE-MEME : plus de dependance a un clic
+# prealable ailleurs dans le panneau.
+assert hasattr(_cA, "_cases_ordonnees") and hasattr(_cA, "_viser_index")
+_casesA = _cA._cases_ordonnees(_cA.grille_focus)
+assert len(_casesA) == len(_cA.POWERS) * len(_cA.FEEDS_FOCUS), len(_casesA)
+# ... dans l'ordre du bois : une colonne de vitesse a la fois.
+_nomsA = [_cA._nom_case(w) for w in _casesA[:6]]
+assert _nomsA[:5] == ["S{} / F200 (foyer)".format(s)
+                      for s in (1000, 800, 600, 400, 200)], _nomsA
+assert _nomsA[5].startswith("S1000 / F400"), _nomsA
+
+# Le verrou n'est plus un refus muet : le code DOIT poser la question.
+_srcA = open(_os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
+                           "task_panels.py")).read()
+_iA = _srcA.index("def _on_mesure_image")
+_finA = _srcA.index("\n    def ", _iA + 10)
+_corpsA = _srcA[_iA:_finA]
+assert "QMessageBox.question" in _corpsA, (
+    "la grille verrouillée doit être ANNONCÉE et proposer l'ouverture, "
+    "pas refuser dans un libellé")
+assert "Clique d'abord la <b>case à remplir</b>" not in _corpsA, (
+    "il ne doit plus être nécessaire d'avoir cliqué une case avant")
+
+# Et la fenetre porte une LISTE de cases, pas un libelle fige.
+import inspect as _insp3
+_sigA = _insp3.signature(tp._DialogueMesureTrait.__init__)
+assert "noms_cases" in _sigA.parameters and "on_cible" in _sigA.parameters, _sigA
+_iD = _srcA.index("class _DialogueMesureTrait")
+_finD = _srcA.find("\nclass ", _iD + 10)
+_corpsD = _srcA[_iD:_finD if _finD > 0 else len(_srcA)]
+assert "combo_cible" in _corpsD and "La mesure ira dans" in _corpsD
+print("mesure sur image : la fenêtre choisit sa case ({} en liste), verrou "
+      "annoncé OK".format(len(_casesA)))
 
 # --- Sortie PROPRE ------------------------------------------------------
 # Tout ce qui devait etre verifie l'a ete : les assertions sont au-dessus,

@@ -1526,6 +1526,23 @@ class _MesuresPlanchesControleur:
                 return ordre[i + 1] if i + 1 < len(ordre) else None
         return None
 
+    def _cases_courantes(self):
+        """Les cases de la grille de la case visée, dans l'ordre du bois.
+
+        DÉDUITE, jamais mémorisée : un état partagé entre deux méthodes se
+        perd dès qu'on appelle l'une sans l'autre -- ce qui est arrivé, la
+        progression s'arrêtant après une seule case."""
+        gr = self._grille_de(self._mesure_cible or self._derniere_case)
+        return self._cases_ordonnees(gr) if gr is not None else []
+
+    def _viser_index(self, i):
+        """La fenêtre a changé de case : on suit."""
+        cases = self._cases_courantes()
+        if 0 <= i < len(cases):
+            self._derniere_case = cases[i]
+            self._mesure_cible = cases[i]
+            self._serie = []
+
     def _retenir_depuis_image(self, valeur):
         """Range la largeur, passe à la case suivante, renvoie son nom.
 
@@ -1534,13 +1551,16 @@ class _MesuresPlanchesControleur:
         case dans le panneau, la rouvrir -- quarante fois."""
         txt = self._encaisser_mesure(valeur, 0.0, valeur)
         self._dire(txt)
-        suiv = self._case_suivante(self._mesure_cible)
-        if suiv is None or suiv.isReadOnly():
+        cases = self._cases_courantes()
+        try:
+            i = cases.index(self._mesure_cible) + 1
+        except ValueError:
             return None, txt
-        self._derniere_case = suiv
-        self._mesure_cible = suiv
+        if i >= len(cases):
+            return None, txt
+        self._derniere_case = self._mesure_cible = cases[i]
         self._serie = []
-        return self._nom_case(suiv), txt
+        return i, txt
 
     @staticmethod
     def _libelle_planche(p):
@@ -1591,18 +1611,47 @@ class _MesuresPlanchesControleur:
         """L'utilisateur veut une AUTRE planche : on oublie la retenue."""
         self._image_mesure = None
 
+    def _cases_ordonnees(self, gr):
+        """Les cases de cette grille, DANS L'ORDRE DU BOIS."""
+        feeds = self.FEEDS_FOCUS if gr is self.grille_focus else self.FEEDS_DEFOCUS
+        return [gr.cells()[(float(p_), float(f_))]
+                for f_ in feeds for p_ in self.POWERS
+                if (float(p_), float(f_)) in gr.cells()]
+
     def _on_mesure_image(self, bloc=None):
-        """Mesurer une largeur sur la planche redressée, à la ligne."""
+        """Mesurer une largeur sur la planche redressée, à la ligne.
+
+        La fenêtre CHOISIT la case elle-même : elle ne dépend plus d'un
+        clic préalable dans le panneau. « J'ai choisi ma planche 1, puis
+        mesurer l'image redressée et rien ne se passe » (01/08/2026) --
+        deux refus muets se cumulaient, aucune case visée et grille
+        verrouillée, tous deux annoncés dans un libellé discret. Un refus
+        qu'on ne voit pas est un logiciel qui ne répond pas."""
         self._bloc_courant = bloc or self._blocs[0]
-        cible = self._derniere_case
-        if cible is None:
-            self._dire("Clique d'abord la <b>case à remplir</b> dans une "
-                       "grille, puis reviens sur ce bouton.")
+        gr = getattr(self._bloc_courant, "grille", None) or self.grille_focus
+        cases = self._cases_ordonnees(gr)
+        if not cases:
             return
-        if cible.isReadOnly():
-            self._dire("Grille <b>verrouillée</b> : décoche « 🔒 Verrouiller "
-                       "les résultats » avant de mesurer.")
-            return
+        parent = self._parent.form if getattr(self._parent, "form", None) else None
+        # Le verrou : on le DIT et on propose de l'ouvrir, au lieu de
+        # refuser en silence.
+        if gr.cells() and next(iter(gr.cells().values())).isReadOnly():
+            if QtWidgets.QMessageBox.question(
+                    parent, "Grille verrouillée",
+                    "Cette grille est verrouillée : rien ne pourrait y être "
+                    "écrit.\n\nLa déverrouiller pour saisir les mesures ?",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.Yes) != QtWidgets.QMessageBox.Yes:
+                return
+            gr._chk.setChecked(False)
+        # La case de départ : celle déjà visée si elle est de CETTE grille,
+        # sinon la première encore vide -- on reprend là où ça s'est arrêté.
+        if self._derniere_case in cases:
+            cible = self._derniere_case
+        else:
+            vides = [w for w in cases if w.value() <= 0]
+            cible = vides[0] if vides else cases[0]
+        self._derniere_case = cible
         # LA CASE VISÉE, POSÉE. Elle ne l'était pas : `_encaisser_mesure`
         # écrit dans `self._mesure_cible`, resté à None (ou pire, à la case
         # d'une mesure précédente). Le bouton disait « Retenir cette
@@ -1631,8 +1680,9 @@ class _MesuresPlanchesControleur:
                 50.0, 1.0, 1000.0, 1)
             if not ok:
                 return
-        dlg = _DialogueMesureTrait(chemin, pxmm, self._nom_case(cible),
-                                   self._retenir_depuis_image)
+        dlg = _DialogueMesureTrait(
+            chemin, pxmm, [self._nom_case(w) or "?" for w in cases],
+            cases.index(cible), self._retenir_depuis_image, self._viser_index)
         dlg.changer_image.connect(self._changer_image)
         dlg.exec()
         if getattr(dlg, "veut_changer", False):
@@ -2933,12 +2983,13 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
 
     changer_image = QtCore.Signal()
 
-    def __init__(self, chemin, pxmm, nom_cible=None, on_retenir=None,
-                 parent=None):
+    def __init__(self, chemin, pxmm, noms_cases=None, index=0,
+                 on_retenir=None, on_cible=None, parent=None):
         super().__init__(parent)
         self.veut_changer = False
-        self._nom_cible = nom_cible or "case visée"
+        self._noms = list(noms_cases or ["case visée"])
         self._on_retenir = on_retenir
+        self._on_cible = on_cible
         # Le NOM de la planche dans le titre : elle s'ouvre toute seule, il
         # faut donc pouvoir vérifier d'un coup d'oeil que c'est la bonne.
         self.setWindowTitle("Mesurer sur {}".format(os.path.basename(chemin)))
@@ -2970,13 +3021,22 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         # c'est de savoir dans quelle case va la mesure que je viens de
         # faire » -- 01/08/2026. Une valeur qui atterrit dans la mauvaise
         # case ne se voit pas : elle ressemble à une mesure.
-        self.lbl_cible = QtWidgets.QLabel()
-        self.lbl_cible.setStyleSheet(
-            "font-weight:bold; font-size:15px; color:#ff8a00;"
-            "background-color: rgba(255,138,0,0.14);"
-            "border:1px solid #ff8a00; border-radius:4px; padding:6px 10px;")
-        v.addWidget(self.lbl_cible)
-        self._maj_cible()
+        rang_c = QtWidgets.QWidget()
+        hb_c = QtWidgets.QHBoxLayout(rang_c)
+        hb_c.setContentsMargins(0, 0, 0, 0)
+        et = QtWidgets.QLabel("La mesure ira dans :")
+        et.setStyleSheet("font-weight:bold; color:#ff8a00;")
+        hb_c.addWidget(et)
+        # Une LISTE, pas un libellé : la case se choisit ICI, dans la
+        # fenêtre où l'on travaille. La faire dépendre d'un clic préalable
+        # dans le panneau produisait un bouton qui ne répondait pas.
+        self.combo_cible = QtWidgets.QComboBox()
+        self.combo_cible.addItems(self._noms)
+        self.combo_cible.setCurrentIndex(max(0, min(index, len(self._noms) - 1)))
+        self.combo_cible.setStyleSheet("font-weight:bold; font-size:14px;")
+        self.combo_cible.activated.connect(self._on_cible_change)
+        hb_c.addWidget(self.combo_cible, 1)
+        v.addWidget(rang_c)
         v.addWidget(_WrapLabel(
             "<b>1.</b> Encadre UN trait à la souris — englobe toute sa "
             "longueur et un peu de bois de chaque côté."))
@@ -3046,8 +3106,9 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
             "indicatif — {} mm. C'est toi qui décides où s'arrête la "
             "brûlure.</span>".format(self.valeur_mm(), rep))
 
-    def _maj_cible(self):
-        self.lbl_cible.setText("La mesure ira dans :  {}".format(self._nom_cible))
+    def _on_cible_change(self, i):
+        if self._on_cible is not None:
+            self._on_cible(i)
 
     def _retenir_et_fermer(self):
         if self._on_retenir is not None:
@@ -3062,11 +3123,12 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         if suivant is None:
             QtWidgets.QMessageBox.information(
                 self, "Mesure",
-                "Largeur rangée. Dernière case de cette grille — ou grille "
-                "verrouillée : la fenêtre se ferme.")
+                "Largeur rangée. C'était la dernière case de cette grille : "
+                "la fenêtre se ferme.")
             return self.accept()
-        self._nom_cible = suivant
-        self._maj_cible()
+        self.combo_cible.blockSignals(True)
+        self.combo_cible.setCurrentIndex(suivant)
+        self.combo_cible.blockSignals(False)
         # Retour au choix du trait : la case a changé, le recadrage aussi.
         if self._vue is not None:
             self._pile.removeWidget(self._vue)
