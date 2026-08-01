@@ -321,6 +321,62 @@ _ctrl._fin_mesure()          # doit etre sur meme si rien n'est branche
 assert _ctrl._mesure_cb is None
 print("mesure A->B : refus propre sans vue 3D, aucun rappel laisse OK")
 
+# --- La case visee doit SURVIVRE au clic sur le bouton (v2.17.1) -----
+# Defaut du 01/08/2026, au premier usage reel : la cible etait lue par
+# QApplication.focusWidget() DANS le rappel de clic, donc APRES que le
+# bouton ait pris le focus -- toujours None. Le panneau repondait « aucune
+# case n'avait le focus : clique une case AVANT » a quelqu'un qui venait
+# exactement de le faire.
+from PySide6 import QtCore as _QtC, QtGui as _QtG
+
+assert _ctrl.btn_mesurer.focusPolicy() == _QtC.Qt.NoFocus, (
+    "le bouton doit etre NoFocus, sinon il vole le cadre de focus a la case")
+
+_case = _ctrl.grille_focus.cells()[(1000.0, 800.0)]
+_QtC.QCoreApplication.sendEvent(_case, _QtG.QFocusEvent(_QtC.QEvent.FocusIn))
+assert _ctrl._derniere_case is _case, "le focus d'une case doit la memoriser"
+assert _ctrl._serie == [], "une nouvelle case repart d'une serie vide"
+assert "S1000 / F800" in _ctrl.lbl_mesure.text(), _ctrl.lbl_mesure.text()
+
+# Le bouton peut bien prendre le focus a son tour : la cible tient.
+_QtC.QCoreApplication.sendEvent(_ctrl.btn_mesurer,
+                                _QtG.QFocusEvent(_QtC.QEvent.FocusIn))
+assert _ctrl._derniere_case is _case, (
+    "la case visee ne doit pas etre perdue quand le bouton prend le focus -- "
+    "c'est EXACTEMENT le defaut que ce test gele")
+print("mesure A->B : la case visee survit au focus du bouton OK")
+
+# La moyenne : trois mesures sur la meme case -> moyenne ecrite dans la
+# case, etendue annoncee. Le controle se demontre : la valeur ecrite n'est
+# aucune des trois mesures prises isolement.
+_ctrl._mesure_cible = _case
+_ctrl._serie = []
+for _d in (0.300, 0.340, 0.320):
+    _txt = _ctrl._encaisser_mesure(_d, _d, 0.0)
+assert abs(_case.value() - 0.32) < 1e-6, _case.value()
+assert "moyenne de 3" in _txt, _txt
+assert "0.040" in _txt or "0,040" in _txt, "l'etendue doit etre annoncee : " + _txt
+assert _case.value() not in (0.300, 0.340), (
+    "la case doit contenir la MOYENNE, pas la derniere mesure")
+# Re-cliquer la case repart de zero : c'est le geste qui annule une serie.
+_QtC.QCoreApplication.sendEvent(_case, _QtG.QFocusEvent(_QtC.QEvent.FocusIn))
+assert _ctrl._serie == [], "re-cliquer la case doit vider la serie"
+print("mesure A->B : moyenne de 3 = 0,320 mm, etendue 0,040, remise a zero OK")
+
+# Les grilles de defocus sont DETRUITES a chaque reconstruction : garder un
+# pointeur dessus ferait planter le prochain setValue sur un objet C++ mort.
+_ctrl._reconstruire_niveaux([15.0, 36.0])
+_defoc = _ctrl.grilles_defocus[36.0].cells()[(1000.0, 200.0)]
+_QtC.QCoreApplication.sendEvent(_defoc, _QtG.QFocusEvent(_QtC.QEvent.FocusIn))
+assert _ctrl._derniere_case is _defoc
+assert "defocus 36 mm" in _ctrl._nom_case(_defoc).replace("é", "e"), \
+    _ctrl._nom_case(_defoc)
+_ctrl._reconstruire_niveaux([15.0])
+assert _ctrl._derniere_case is None, (
+    "une reconstruction des grilles doit oublier la case visee : elle vient "
+    "d'etre detruite cote C++")
+print("mesure A->B : cible oubliee a la reconstruction des grilles OK")
+
 
 # --- L'AppImage empoisonne tout sous-processus (v2.16.1) -------------
 # Premier clic sur « Redresser une photo » le 01/08/2026 : « Fatal Python

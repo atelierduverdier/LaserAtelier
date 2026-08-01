@@ -432,11 +432,20 @@ class _GrilleResultats(QtWidgets.QGroupBox):
     verrou « 🔒 Verrouiller les résultats » COCHÉ PAR DÉFAUT intégrés (les valeurs
     mesurées sont protégées en lecture seule tant qu'il est coché). « — » = non
     mesuré. values() renvoie {(ligne, colonne): valeur} des cellules saisies ;
-    set_values() recharge depuis un tel dict (setValue reste possible verrouillé)."""
+    set_values() recharge depuis un tel dict (setValue reste possible verrouillé).
+
+    `caseFocus` est émis quand une cellule prend le focus. La grille sert donc
+    aussi de FILTRE D'ÉVÉNEMENTS sur ses propres cases : c'est ce qui permet à
+    « Mesurer A → B » de savoir quelle case remplir, sans brancher de filtre
+    global sur l'application -- dont la durée de vie déborderait celle du
+    panneau."""
+
+    caseFocus = QtCore.Signal(object)
 
     def __init__(self, titre, rows, cols, row_fmt="S{:.0f}", col_fmt="F{:.0f}",
                  decimals=2, maxi=10.0, pas=0.01, parent=None):
         super().__init__("", parent)
+        self._row_fmt, self._col_fmt = row_fmt, col_fmt
         # Cadre neutre : la mise en évidence vient de la barre de titre
         # ci-dessous, pas du QGroupBox natif (son ::title ne peut pas
         # s'étirer sur toute la largeur -- il restait collé au coin,
@@ -469,6 +478,7 @@ class _GrilleResultats(QtWidgets.QGroupBox):
                 sp.setDecimals(decimals)
                 sp.setSingleStep(pas)
                 sp.setSpecialValueText("—")
+                sp.installEventFilter(self)
                 g.addWidget(sp, i + 2, j + 1)
                 self._cells[(r, c)] = sp
         self._chk = QtWidgets.QCheckBox("🔒 Verrouiller les résultats")
@@ -484,6 +494,22 @@ class _GrilleResultats(QtWidgets.QGroupBox):
     def _appliquer_verrou(self, verrouille):
         for sp in self._cells.values():
             sp.setReadOnly(verrouille)
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QtCore.QEvent.FocusIn and obj in self._cells.values():
+            self.caseFocus.emit(obj)
+        return False
+
+    def nom_case(self, sp):
+        """« S1000 / F800 » pour cette cellule, ou None si elle n'est pas
+        d'ici. Sert à NOMMER la case visée par une mesure : voir la cible
+        écrite noir sur blanc vaut mieux que de la déduire d'un cadre de
+        focus qu'on ne regarde pas."""
+        for (r, c), w in self._cells.items():
+            if w is sp:
+                return "{} / {}".format(self._row_fmt.format(r),
+                                        self._col_fmt.format(c))
+        return None
 
     def cells(self):
         """Dict {(ligne, colonne): QDoubleSpinBox}."""
@@ -807,6 +833,7 @@ class _MesuresPlanchesControleur:
         self.grille_focus = _GrilleResultats(
             "Traits au FOYER : largeur (mm)",
             rows=self.POWERS, cols=self.FEEDS_FOCUS)
+        self.grille_focus.caseFocus.connect(self._on_case_focus)
         form.addRow(self.grille_focus)
         # Les grilles de défocus sont RECONSTRUITES à chaque reload() : leurs
         # niveaux suivent les mesures du matériau courant, qui change quand
@@ -826,11 +853,34 @@ class _MesuresPlanchesControleur:
         self._mesure_cb = None
         self._mesure_pts = []
         self._mesure_cible = None
+        # Case visée, MÉMORISÉE au moment où elle prend le focus.
+        #
+        # La lire au clic sur le bouton ne pouvait pas marcher : à cet
+        # instant le focus est DÉJÀ sur le bouton. Le commentaire d'origine
+        # décrivait pourtant l'intention correcte -- le code faisait le
+        # contraire, et le message d'erreur (« clique une case AVANT »)
+        # accusait l'utilisateur d'un geste qu'il venait de faire.
+        # Constaté au premier usage réel, le 01/08/2026.
+        #
+        # Mémoriser plutôt que lire au dernier moment couvre en plus le cas
+        # normal : on désigne la case, PUIS on zoome dans la vue 3D (ce qui
+        # y déplace le focus), et seulement ensuite on mesure.
+        self._derniere_case = None
+        self._serie = []
         self.btn_mesurer = QtWidgets.QPushButton("Mesurer A → B dans la vue 3D")
+        # NoFocus : le bouton ne vole pas le cadre de focus à la case, qui
+        # reste ainsi visiblement désignée pendant toute la mesure.
+        self.btn_mesurer.setFocusPolicy(QtCore.Qt.NoFocus)
         self.btn_mesurer.setToolTip(
             "Clique d'abord la CASE à remplir, puis ce bouton, puis les deux\n"
             "extrémités à mesurer dans la vue 3D. La distance est écrite dans\n"
             "la case.\n"
+            "\n"
+            "MOYENNE : mesures successives sur la MÊME case = moyenne\n"
+            "courante, avec l'écart entre elles. Un trait gravé n'a pas des\n"
+            "bords parfaitement droits (le grain décide), donc trois mesures\n"
+            "à des endroits différents valent mieux qu'une. Re-cliquer la\n"
+            "case repart de zéro.\n"
             "\n"
             "Pensé pour mesurer sur une photo redressée posée à l'échelle :\n"
             "ZOOME avant de pointer -- à l'écran un clic vaut ~1 pixel, soit\n"
@@ -862,6 +912,56 @@ class _MesuresPlanchesControleur:
     # laisser un callback branché sur la vue est le moyen le plus sûr de
     # rendre FreeCAD inutilisable jusqu'au redémarrage.
     # ------------------------------------------------------------------
+    def _on_case_focus(self, sp):
+        """Une case vient de prendre le focus : elle devient la cible, et la
+        série de moyennage repart de zéro. Re-cliquer une case est donc le
+        geste qui annule une série ratée -- pas besoin d'un bouton pour ça."""
+        self._derniere_case = sp
+        self._serie = []
+        nom = self._nom_case(sp)
+        if nom:
+            self.lbl_mesure.setText(
+                "Case visée : <b>{}</b>. Clique « Mesurer A → B », puis les "
+                "deux bords du trait.".format(nom))
+
+    def _encaisser_mesure(self, d, dx, dy):
+        """Range une mesure dans la case visée et renvoie le texte à afficher.
+
+        Les bords d'un trait gravé ne sont pas droits -- c'est le grain qui
+        décide. Des mesures successives sur la MÊME case sont donc cumulées
+        en moyenne, et leur ÉTENDUE est affichée : c'est elle qui dit si le
+        critère « où s'arrête la brûlure » a tenu d'un bout à l'autre, ce
+        qu'une valeur seule ne dit jamais. Une étendue large n'invalide pas
+        la moyenne, elle avertit que le trait lui-même varie.
+
+        Hors du rappel de la vue 3D pour être testable : sans vue 3D en
+        headless, laissée dans la fermeture, cette arithmétique-là ne serait
+        vérifiée par rien."""
+        self._serie.append(float(d))
+        m = sum(self._serie) / len(self._serie)
+        if self._mesure_cible is not None:
+            self._mesure_cible.setValue(m)
+        txt = "Mesure <b>{:.3f} mm</b>  (dx {:.3f}, dy {:.3f}) → {}".format(
+            d, dx, dy, self._nom_case(self._mesure_cible) or "la case visée")
+        if len(self._serie) > 1:
+            txt += " — <b>moyenne de {} : {:.3f} mm</b> (étendue {:.3f})".format(
+                len(self._serie), m, max(self._serie) - min(self._serie))
+        else:
+            txt += " — remesure pour moyenner, ou clique la case pour repartir."
+        return txt
+
+    def _nom_case(self, sp):
+        """« S1000 / F800 (foyer) » — la grille est nommée elle aussi : les
+        mêmes S et F existent au foyer ET à chaque niveau de défocus."""
+        nom = self.grille_focus.nom_case(sp)
+        if nom:
+            return nom + " (foyer)"
+        for dz, gr in self.grilles_defocus.items():
+            nom = gr.nom_case(sp)
+            if nom:
+                return "{} (défocus {:g} mm)".format(nom, dz)
+        return None
+
     def _vue3d(self):
         try:
             return Gui.ActiveDocument.ActiveView
@@ -891,11 +991,17 @@ class _MesuresPlanchesControleur:
                 "Aucune vue 3D active : ouvre le document contenant la photo "
                 "redressée.")
             return
-        # La case à remplir est celle qui avait le FOCUS avant le clic sur le
-        # bouton -- après, le focus est sur le bouton puis sur la vue.
-        w = QtWidgets.QApplication.focusWidget()
-        self._mesure_cible = w if isinstance(w, QtWidgets.QDoubleSpinBox) else None
+        # La case visée est celle MÉMORISÉE à son dernier focus, pas celle
+        # que `focusWidget()` renvoie maintenant : à cet instant le focus
+        # est sur le bouton (ou sur la vue 3D si on vient d'y zoomer).
+        self._mesure_cible = self._derniere_case
         self._mesure_pts = []
+        if self._mesure_cible is None:
+            self.lbl_mesure.setText(
+                "Clique d'abord la <b>case à remplir</b> dans une grille "
+                "ci-dessus (décoche « Verrouiller les résultats » si elles "
+                "sont grisées), puis reviens sur ce bouton.")
+            return
 
         def _clic(info):
             try:
@@ -914,14 +1020,8 @@ class _MesuresPlanchesControleur:
                 a, b = self._mesure_pts[0], self._mesure_pts[1]
                 d = math.hypot(b.x - a.x, b.y - a.y)
                 self._fin_mesure()
-                txt = "Distance <b>{:.3f} mm</b>  (dx {:.3f}, dy {:.3f})".format(
-                    d, abs(b.x - a.x), abs(b.y - a.y))
-                if self._mesure_cible is not None:
-                    self._mesure_cible.setValue(d)
-                    txt += " — écrite dans la case sélectionnée."
-                else:
-                    txt += " — aucune case n'avait le focus : clique une case AVANT."
-                self.lbl_mesure.setText(txt)
+                self.lbl_mesure.setText(
+                    self._encaisser_mesure(d, abs(b.x - a.x), abs(b.y - a.y)))
             except Exception as e:                # jamais laisser le rappel branché
                 self._fin_mesure()
                 self.lbl_mesure.setText("Mesure interrompue : {}".format(e))
@@ -933,8 +1033,15 @@ class _MesuresPlanchesControleur:
             self.lbl_mesure.setText("Mesure indisponible sur cette vue : {}".format(e))
             return
         self.btn_mesurer.setText("Clique le point A (ou annule)")
+        # La cible est RAPPELÉE ici : c'est le dernier moment où la corriger
+        # coûte un clic, et une valeur tombée dans la mauvaise case ne se
+        # voit pas -- elle ressemble à une mesure.
         self.lbl_mesure.setText(
-            "Pointe A puis B dans la vue 3D. <b>Zoome</b> avant de pointer.")
+            "Cible : <b>{}</b>{}. Pointe A puis B dans la vue 3D. "
+            "<b>Zoome</b> avant de pointer.".format(
+                self._nom_case(self._mesure_cible) or "case sélectionnée",
+                " — mesure n° {}".format(len(self._serie) + 1)
+                if self._serie else ""))
 
     def _boite(self):
         return getattr(self._parent, "form", None)
@@ -976,9 +1083,14 @@ class _MesuresPlanchesControleur:
             gr = _GrilleResultats(
                 "Défocus {:g} mm : largeur (mm)".format(dz),
                 rows=self.POWERS, cols=self.FEEDS_DEFOCUS)
+            gr.caseFocus.connect(self._on_case_focus)
             self.grilles_defocus[dz] = gr
             self._pile_niveaux.addWidget(gr)
         self._levels = list(niveaux)
+        # Les cases visées viennent d'être détruites : garder un pointeur
+        # dessus ferait planter le prochain setValue sur un objet C++ mort.
+        self._derniere_case = None
+        self._serie = []
 
     def reload(self):
         """Pré-remplit les grilles depuis les mesures déjà enregistrées pour
