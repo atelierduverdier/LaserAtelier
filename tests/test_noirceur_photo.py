@@ -582,4 +582,203 @@ assert '"--nom"' in _src17 and '"nom": a.nom' in _src17
 print("17. le nom saisi entre dans le fichier et la fiche, sans casser "
       "le decoupage OK")
 
+
+# --- 18. Homographie pure Python (clic sur la photo du nuancier) --------
+# Elle tourne DANS FreeCAD, ou OpenCV n'existe pas. Verifiee contre des
+# transformations connues -- pas contre elle-meme.
+_id = core.homographie_4_points([(0,0),(1,0),(1,1),(0,1)],
+                                [(0,0),(1,0),(1,1),(0,1)])
+_p = core.homographie_appliquer(_id, 0.3, 0.7)
+assert abs(_p[0]-0.3) < 1e-9 and abs(_p[1]-0.7) < 1e-9, _p
+# Translation + echelle : coins photo (px) -> planche (mm).
+_H = core.homographie_4_points([(100,50),(300,50),(300,450),(100,450)],
+                               [(0,0),(120,0),(120,240),(0,240)])
+_p = core.homographie_appliquer(_H, 200, 250)     # centre photo
+assert abs(_p[0]-60) < 1e-6 and abs(_p[1]-120) < 1e-6, _p
+# Une VRAIE perspective : le centre projectif n'est PAS le centre affin.
+_H2 = core.homographie_4_points([(0,0),(400,20),(380,300),(10,280)],
+                                [(0,0),(120,0),(120,240),(0,240)])
+for (px,py),(mx,my) in zip([(0,0),(400,20),(380,300),(10,280)],
+                           [(0,0),(120,0),(120,240),(0,240)]):
+    q = core.homographie_appliquer(_H2, px, py)
+    assert abs(q[0]-mx) < 1e-6 and abs(q[1]-my) < 1e-6, (q, mx, my)
+# Points degeneres : None, pas une matrice fantaisiste.
+assert core.homographie_4_points([(0,0),(1,0),(2,0),(3,0)],
+                                 [(0,0),(1,0),(1,1),(0,1)]) is None
+print("18. homographie pure Python juste sur les 4 coins et refusant le "
+      "degenere OK")
+
+# --- 19. Le garde-fou fiche <-> nuancier --------------------------------
+# La planche a ete gravee un jour J ; le nuancier a change depuis (31 tons
+# supprimes le 02/08). On apparie par REGLAGES, jamais par rang.
+_mat19 = u"TestFiche19"
+core.save_shades(_mat19, [
+    {"darkness": 40.0, "power": 500.0, "feed": 800.0, "z_offset": 0.0,
+     "width": 0.15, "label": "present"},
+])
+_t, _exact = core.resoudre_ton_fiche(_mat19, {"power": 500.0, "feed": 800.0,
+                                              "z_offset": 0.0})
+assert _exact and _t["label"] == "present"
+# Ton disparu : les reglages de la FICHE reviennent, marques non exacts --
+# ils decrivent ce qui est reellement grave sur le bois qu'on regarde.
+_t2, _exact2 = core.resoudre_ton_fiche(_mat19, {"darkness": 77.0,
+                                                "power": 900.0, "feed": 400.0,
+                                                "z_offset": 0.0, "width": 0.2,
+                                                "label": "disparu"})
+assert not _exact2 and _t2["power"] == 900.0 and _t2["darkness"] == 77.0
+core.save_shades(_mat19, [])
+# Et la fiche fait l'aller-retour par la config (copie jetable du harness).
+core.save_fiche_nuancier_planche(_mat19, {"board_w": 100.0, "cases": [1]})
+assert core.load_fiche_nuancier_planche(_mat19)["board_w"] == 100.0
+assert core.load_fiche_nuancier_planche(u"Inconnu") is None
+print("19. le garde-fou apparie par reglages et rend la fiche pour un ton "
+      "disparu OK")
+
+
+# --- 20. La fenetre « cliquer un ton », de bout en bout ------------------
+# Le piege qu'elle vise est le meme retournement que la fiche : Y machine
+# vers le HAUT, Y image vers le BAS. Deux rangees a des puissances
+# differentes -- si le calage oublie ce croisement, cliquer la rangee du
+# BAS applique le ton du HAUT, sans exception ni valeur aberrante.
+import tempfile as _tf20, os as _os20
+from PySide6 import QtGui as _G20, QtWidgets as _QW20
+from harness import sans_dialogues as _sd20
+
+_mat20 = u"FauxClic"
+core.save_shades(_mat20, [
+    {"darkness": 20.0, "power": 300.0, "feed": 1000.0, "z_offset": 0.0,
+     "width": 0.0, "label": "clair"},
+    {"darkness": 80.0, "power": 900.0, "feed": 1000.0, "z_offset": 0.0,
+     "width": 0.0, "label": "fonce"},
+])
+_R20, _Wmm20, _Hmm20 = 7.0, 120.0, 90.0
+_cases20 = [
+    # Rangee du HAUT de la planche (cy grand) : le ton CLAIR.
+    {"cx": 30.0, "cy": 70.0, "r": _R20, "darkness": 20.0, "power": 300.0,
+     "feed": 1000.0, "z_offset": 0.0, "width": 0.0, "label": "clair"},
+    # Rangee du BAS (cy petit) : le ton FONCE.
+    {"cx": 30.0, "cy": 20.0, "r": _R20, "darkness": 80.0, "power": 900.0,
+     "feed": 1000.0, "z_offset": 0.0, "width": 0.0, "label": "fonce"},
+    # Un ton retire du nuancier depuis la gravure : le garde-fou.
+    {"cx": 90.0, "cy": 20.0, "r": _R20, "darkness": 55.0, "power": 555.0,
+     "feed": 2000.0, "z_offset": 0.0, "width": 0.0, "label": "disparu"},
+]
+_fiche20 = {"date": "2026-08-02", "bande": None, "board_w": _Wmm20,
+            "board_h": _Hmm20, "cases": _cases20}
+core.save_fiche_nuancier_planche(_mat20, _fiche20)
+
+# La photo : la planche a 5 px/mm, DECALEE de 40 px dans une image plus
+# grande -- le calage doit retrouver l'echelle ET le decalage.
+_ech20, _pad20 = 5.0, 40
+_iw20 = int(_Wmm20 * _ech20) + 2 * _pad20
+_ih20 = int(_Hmm20 * _ech20) + 2 * _pad20
+_im20 = _G20.QImage(_iw20, _ih20, _G20.QImage.Format_RGB32)
+_im20.fill(_G20.QColor(200, 190, 170))
+_dir20 = _tf20.mkdtemp()
+_photo20 = _os20.path.join(_dir20, "planche_nuancier.png")
+assert _im20.save(_photo20)
+
+
+def _norm20(x_mm, y_mm):
+    # Position photo NORMALISEE d'un point (x, y) de la planche (Y inverse).
+    return ((_pad20 + x_mm * _ech20) / _iw20,
+            (_pad20 + (_Hmm20 - y_mm) * _ech20) / _ih20)
+
+
+_appliques20 = []
+_d20 = tp._DialogueClicNuancier(None, _mat20, _photo20, _fiche20,
+                                lambda t, e: _appliques20.append((t, e)))
+assert _d20.ok
+assert _d20._H is None, "aucun calage memorise : il doit etre demande"
+# Les 4 coins du cadre : haut gauche -> haut droit -> bas droit -> bas gauche.
+for _c20 in ((0, _Hmm20), (_Wmm20, _Hmm20), (_Wmm20, 0), (0, 0)):
+    _d20._sur_clic(*_norm20(*_c20))
+assert _d20._H is not None, "4 coins cliques, pas d'homographie"
+# ... et il est memorise dans la fiche, par photo.
+_f20b = core.load_fiche_nuancier_planche(_mat20)
+assert "planche_nuancier.png" in (_f20b.get("photo_coins") or {})
+
+# Clic sur la case du BAS : le ton FONCE, pas le clair -- le sens du Y.
+_d20._sur_clic(*_norm20(30.0, 20.0))
+assert _appliques20 and _appliques20[-1][0]["label"] == "fonce", _appliques20
+assert _appliques20[-1][1] is True
+# Clic sur la case du HAUT : le clair.
+_d20._sur_clic(*_norm20(30.0, 70.0))
+assert _appliques20[-1][0]["label"] == "clair", _appliques20[-1]
+# Clic dans un ECART (aucun rond a moins de 1,6 rayon) : rien d'applique.
+_n20 = len(_appliques20)
+_d20._sur_clic(*_norm20(60.0, 70.0))
+assert len(_appliques20) == _n20, "un clic dans le vide a applique un ton"
+assert "Aucun rond" in _d20.lbl_statut.text()
+# Le ton retire du nuancier : QUESTION posee (Yes stubbe), reglages de la
+# fiche appliques, marques non exacts.
+_boites20 = _sd20()
+_d20._sur_clic(*_norm20(90.0, 20.0))
+assert any(g == "question" for g, _t, _x in _boites20), _boites20
+assert _appliques20[-1][0]["power"] == 555.0 and _appliques20[-1][1] is False
+
+# Rouverte sur la meme photo, la fenetre ne redemande PAS le calage...
+_d20b = tp._DialogueClicNuancier(None, _mat20, _photo20,
+                                 core.load_fiche_nuancier_planche(_mat20),
+                                 lambda t, e: None)
+assert _d20b.ok and _d20b._H is not None, "le calage memorise n'est pas relu"
+# ... et « Reprendre les 4 coins » l'efface, fiche comprise.
+_d20b._reprendre_coins()
+assert _d20b._H is None
+assert "planche_nuancier.png" not in (
+    core.load_fiche_nuancier_planche(_mat20).get("photo_coins") or {})
+
+# SABOTAGE de la fixture : les coins cliques dans l'ordre geometrique NAIF
+# (sans l'inversion du Y) doivent rendre le ton du HAUT sur un clic du BAS.
+# Si ce bloc ne distingue pas les deux ordres, le test ne prouve rien.
+_fiche20c = dict(_fiche20)
+_fiche20c.pop("photo_coins", None)
+_sab20 = []
+_d20c = tp._DialogueClicNuancier(None, _mat20, _photo20, _fiche20c,
+                                 lambda t, e: _sab20.append(t))
+for _c20 in ((0, 0), (_Wmm20, 0), (_Wmm20, _Hmm20), (0, _Hmm20)):
+    _d20c._sur_clic(*_norm20(*_c20))
+_d20c._sur_clic(*_norm20(30.0, 20.0))
+assert _sab20 and _sab20[-1]["label"] == "clair", (
+    "le sabotage ne change rien : la fixture ne peut pas echouer", _sab20)
+
+# Le BOUTON du selecteur : actif quand photo ET fiche existent, et le ton
+# retrouve se selectionne dans le combo par REGLAGES (jamais par rang).
+core.add_result_photo("nuancier:" + _mat20, _photo20)
+_recus20 = []
+_hote20 = _QW20.QWidget()
+_form20 = _QW20.QFormLayout(_hote20)
+_pick20 = tp._make_shade_picker(_form20, lambda s: _recus20.append(s))
+_pick20["reload"]()
+_i20 = _pick20["mat"].findData(_mat20)
+assert _i20 >= 0, "le materiau seme n'est pas liste"
+_pick20["mat"].setCurrentIndex(_i20)
+assert _pick20["clic"].isEnabled(), "photo + fiche presentes, bouton inactif"
+
+_vraie20 = tp._DialogueClicNuancier
+
+
+class _FauxDlg20:
+    def __init__(self, parent, m, chemin, fiche, on_ton):
+        self.ok = True
+        on_ton({"power": 900.0, "feed": 1000.0, "z_offset": 0.0,
+                "darkness": 80.0, "label": "fonce"}, True)
+
+    def exec(self):
+        pass
+
+
+tp._DialogueClicNuancier = _FauxDlg20
+try:
+    _pick20["clic"].click()
+finally:
+    tp._DialogueClicNuancier = _vraie20
+assert _recus20 and abs(float(_recus20[-1].get("power")) - 900.0) < 0.5, _recus20
+_sel20 = _pick20["shade"].currentData()
+assert _sel20 and abs(float(_sel20.get("power")) - 900.0) < 0.5, (
+    "le combo n'affiche pas le ton applique")
+core.save_shades(_mat20, [])
+print("20. la fenetre cale la photo, respecte le sens du Y, previent pour "
+      "un ton disparu et selectionne dans le combo OK")
+
 print("\nTOUS LES TESTS noirceur_photo PASSENT")

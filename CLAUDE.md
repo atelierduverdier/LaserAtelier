@@ -56,9 +56,9 @@ unchanged by a full run.
 
 The user's HAL scales laser power by real/requested velocity → **at standstill power is forced to
 0**, so a G4-pulse dot engraves NOTHING and the job comes out silently blank. Every dot-like mark
-is a **micro-stroke**: a short `G1` whose feed reproduces the exposure time. (Known remaining gap:
-the Marquage "pointillé" style still uses G4 dwells — convert it the same way if the user needs
-it.)
+is a **micro-stroke**: a short `G1` whose feed reproduces the exposure time. (The Marquage
+"pointillé" style was once listed here as a remaining gap — verified CLOSED on 2026-08-02: all
+three call sites go through `dot_micro_stroke`, and a generated file shows zero beam-on `G4`.)
 
 ### 5. Never test novel OCC/Qt call patterns in the user's live FreeCAD session
 

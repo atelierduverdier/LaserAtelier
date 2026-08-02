@@ -108,3 +108,39 @@ print("4. trajet à vide {:.1f} mm, contre {:.1f} mm minimum en gravant "
       "toujours vers la droite OK".format(a_vide, naif))
 
 print("\nTOUS LES TESTS micro_traits PASSENT")
+
+# --- Le BLANC se traverse en transit, pas a l'avance de gravure ---------
+# Le portrait du 02/08/2026 passait 55 % de son temps -- une heure -- a
+# traverser le fond blanc a F1000 faisceau eteint. Le blanc est ENTRE les
+# traits, aucun recadrage ne le recupere.
+import re as _re
+_g5 = [[0]*40 for _ in range(3)]
+for _r in range(3):
+    _g5[_r][0] = 500; _g5[_r][1] = 500          # 2 cellules marquees
+    _g5[_r][30] = 700                            # ... 28 cellules blanches ...
+    _g5[_r][32] = 700                            # et un blanc COURT (1 cellule)
+_li5 = []
+core._emit_raster_rows(_li5, _g5, 0.5, 8.0, 18.0, 1000.0)
+_fs = []
+_s5 = 0.0
+for _l in _li5:
+    _m = _re.search(r"\b[SQ]([\d.]+)", _l)
+    if _m: _s5 = float(_m.group(1))
+    _m = _re.match(r"G1 .*F(\d+)", _l)
+    if _m:
+        _fs.append((int(_m.group(1)), _s5))
+_rapides = [(f, s) for f, s in _fs if f > 1000]
+_lents = [(f, s) for f, s in _fs if f == 1000]
+assert _rapides, "aucun transit rapide sur 14 mm de blanc"
+# JAMAIS de faisceau allume a la vitesse de transit : c'est la condition
+# qui rend l'optimisation sure.
+assert all(s == 0 for _f, s in _rapides), (
+    "faisceau ALLUME pendant un transit rapide", _rapides)
+assert all(f == 1000 for f, _s in _fs if _s > 0), (
+    "un segment grave ne doit jamais heriter de l'avance de transit", _fs)
+# Le blanc COURT (0,5 mm entre les cellules 30 et 32) reste a l'avance de
+# gravure : accelerer pour un demi-millimetre hacherait le mouvement.
+_courts = [f for f, s in _fs if s == 0 and f == 1000]
+assert _courts, "le blanc court aurait du rester a l'avance de gravure"
+print("   transit blanc : %d plage(s) rapide(s), faisceau eteint, blancs "
+      "courts inchanges OK" % len(_rapides))

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.44.0"
+VERSION = "2.45.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -8110,15 +8110,39 @@ def generate_gcode_halftone(darkness_rows, pitch, z_work, power,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
+# Longueur de blanc, en mm, à partir de laquelle la traversée passe en
+# vitesse de transit au lieu de l'avance de gravure.
+#
+# Le portrait réel du 02/08/2026 passait 55 % de son temps -- une heure sur
+# 1 h 57 -- à traverser le fond blanc à F1000, faisceau éteint. Le blanc est
+# ENTRE les traits du visage, pas en marge : aucun recadrage ne le récupère,
+# seule la vitesse de traversée compte.
+#
+# 5 mm et pas moins : à 600 mm/s² (ACCEL_MM_S2), accélérer de F1000 vers
+# F8000 puis redescendre consomme de l'ordre de la dizaine de millimètres --
+# sous quelques millimètres le profil reste triangulaire et le gain fond,
+# tandis que le va-et-vient d'avance hacherait le mouvement pour rien.
+TRANSIT_BLANC_MINI_MM = 5.0
+
+
 def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed, y0=0.0):
-    """Émission SERPENTIN partagée des trames en lignes (photo calibrée et
-    diffusion en lignes) : grid[row][col] = S par cellule (0 = blanc). Une
-    ligne = plages de S constant fusionnées en un G1 chacune (S0 inclus
-    entre deux plages marquées : trajet fluide, faisceau coupé). Lignes
-    toutes blanches sautées, G0 direct entre lignes."""
+    """Émission SERPENTIN partagée des trames en lignes (lignes gravées,
+    similigravure, diffusion en lignes, photo calibrée, mire des tramages) :
+    grid[row][col] = S par cellule (0 = blanc). Une ligne = plages de S
+    constant fusionnées en un G1 chacune (S0 inclus entre deux plages
+    marquées : trajet fluide, faisceau coupé). Lignes toutes blanches
+    sautées, G0 direct entre lignes.
+
+    Les plages BLANCHES d'au moins TRANSIT_BLANC_MINI_MM sont traversées à
+    la vitesse de transit (RAPID_FEED_MM_MIN) plutôt qu'à l'avance de
+    gravure : le faisceau y est éteint, aucune raison d'y aller lentement.
+    Un G1 à avance haute et non un G0 : le mouvement reste une avance
+    planifiée, fondue par G64 avec les segments voisins -- et le prochain
+    segment marqué ré-affirme son F, chaque G1 portant le sien."""
     sel = SPINDLE_SELECT
     h = len(grid)
     started = False
+    transit = max(float(RAPID_FEED_MM_MIN), float(feed))
     for row in range(h):
         y = y0 + (h - 1 - row) * pitch
         cells = grid[row]
@@ -8139,20 +8163,27 @@ def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed, y0=0.0):
             started = True
         else:
             lines.append("G0 X{:.4f} Y{:.4f}".format(x_entry, y))
-        cur_s = None
+        # DEUX PASSES : les plages d'abord, l'émission ensuite. La longueur
+        # d'une plage blanche ne se connaît qu'à sa fin, or c'est elle qui
+        # décide de l'avance -- l'ancienne émission cellule par cellule ne
+        # pouvait pas le savoir au moment d'écrire le G1.
+        plages = []                     # [S, x_fin]
         for c in rng:
             s = cells[c]
             edge = (c + 1) * pitch if not reverse else c * pitch
-            if s != cur_s:
-                lines.extend(cmd_power_prefix(s))
-                lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
-                    edge, y, feed, cmd_power_suffix(s)))
-                cur_s = s
+            if plages and plages[-1][0] == s:
+                plages[-1][1] = edge
             else:
-                # Prolonge le G1 courant : c'est TOUJOURS lines[-1], le M67
-                # eventuel etant pose AVANT lui.
-                lines[-1] = "G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
-                    edge, y, feed, cmd_power_suffix(cur_s))
+                plages.append([s, edge])
+        x_prev = x_entry
+        for s, x_fin in plages:
+            f_run = feed
+            if s == 0 and abs(x_fin - x_prev) >= TRANSIT_BLANC_MINI_MM                     and transit > feed:
+                f_run = transit
+            lines.extend(cmd_power_prefix(s))
+            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
+                x_fin, y, f_run, cmd_power_suffix(s)))
+            x_prev = x_fin
         lines.append(CMD_BEAM_OFF.format(sel=sel))
     lines.append("G0 Z{:.4f}".format(z_safe))
 
@@ -9988,6 +10019,87 @@ def reperes_candidats(fiche, cote_mm=None):
             if x1 - x0 > 0.3 and y1 - y0 > 0.3:
                 out.append((x0, y0, x1, y1))
     return out
+
+
+def homographie_4_points(src, dst):
+    """Matrice 3x3 envoyant les 4 points `src` sur les 4 points `dst`.
+
+    En PUR Python : ce calcul tourne DANS FreeCAD (clic sur la photo du
+    nuancier), où OpenCV n'existe pas -- le redressement des planches, lui,
+    sous-traite au python système. Quatre correspondances = système 8x8,
+    résolu par élimination de Gauss avec pivot partiel.
+
+    Renvoie la matrice en liste de listes, ou None si les points sont
+    dégénérés (trois alignés, deux confondus...)."""
+    if len(src) != 4 or len(dst) != 4:
+        return None
+    A, B = [], []
+    for (x, y), (u, v) in zip(src, dst):
+        A.append([x, y, 1, 0, 0, 0, -u * x, -u * y]); B.append(u)
+        A.append([0, 0, 0, x, y, 1, -v * x, -v * y]); B.append(v)
+    n = 8
+    M = [ligne[:] + [b] for ligne, b in zip(A, B)]
+    for col in range(n):
+        piv = max(range(col, n), key=lambda r: abs(M[r][col]))
+        if abs(M[piv][col]) < 1e-12:
+            return None
+        M[col], M[piv] = M[piv], M[col]
+        for r in range(n):
+            if r != col:
+                k = M[r][col] / M[col][col]
+                for c in range(col, n + 1):
+                    M[r][c] -= k * M[col][c]
+    h = [M[r][n] / M[r][r] for r in range(n)]
+    return [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1.0]]
+
+
+def homographie_appliquer(H, x, y):
+    """(x, y) -> point transformé par H, ou None si le point part à
+    l'infini (dénominateur nul)."""
+    d = H[2][0] * x + H[2][1] * y + H[2][2]
+    if abs(d) < 1e-12:
+        return None
+    return ((H[0][0] * x + H[0][1] * y + H[0][2]) / d,
+            (H[1][0] * x + H[1][1] * y + H[1][2]) / d)
+
+
+def save_fiche_nuancier_planche(material, fiche):
+    """Range la fiche de disposition de la DERNIÈRE planche nuancier gravée
+    pour ce matériau : liste ordonnée des tons AVEC leurs réglages (jamais
+    des indices -- un indice se périme au premier ton ajouté) et position de
+    chaque cercle dans le repère de la planche. C'est elle qui permet de
+    cliquer un ton sur la photo réelle."""
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    d = cfg.setdefault("nuancier_planche", {})
+    d[material] = fiche
+    save_config(cfg)
+
+
+def load_fiche_nuancier_planche(material):
+    """La fiche de la dernière planche nuancier gravée, ou None."""
+    return (load_config().get("nuancier_planche") or {}).get(material)
+
+
+def resoudre_ton_fiche(material, case):
+    """Retrouve dans le nuancier ACTUEL le ton correspondant à une case de
+    la fiche. Renvoie (ton, exact) : `exact` dit si le ton existe encore
+    tel quel.
+
+    LE GARDE-FOU contre la désynchronisation liste/photo : la planche a été
+    gravée un jour J, le nuancier a pu changer depuis (tons supprimés le
+    02/08/2026, par exemple). On apparie par RÉGLAGES (S, F, défocus), pas
+    par rang -- et si le ton a disparu, on rend quand même les réglages de
+    la fiche, marqués non-exacts : ils décrivent ce qui est réellement
+    gravé sur le bois qu'on regarde."""
+    for t in load_shades(material):
+        if (abs(float(t.get("power", 0)) - float(case.get("power", 0))) < 0.5
+                and abs(float(t.get("feed", 0)) - float(case.get("feed", 0))) < 0.5
+                and abs(float(t.get("z_offset", 0) or 0)
+                        - float(case.get("z_offset", 0) or 0)) < 0.05):
+            return t, True
+    return {k: case.get(k) for k in ("darkness", "power", "feed",
+                                     "z_offset", "width", "label")}, False
 
 
 def plancher_bruit_bois(noirceurs_bois):

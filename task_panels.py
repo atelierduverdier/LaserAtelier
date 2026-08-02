@@ -4688,7 +4688,7 @@ def _combined_add_button(form, handler):
     return btn
 
 
-def _nuancier_items(source, material):
+def _nuancier_items(source, material, bande=None):
     """Liste (label_objet UNIQUE, texte gravé, recette 'filled') des cercles
     à graver, selon la source :
 
@@ -4709,6 +4709,21 @@ def _nuancier_items(source, material):
             return None, ("aucun ton mesuré pour « {} » -- saisis d'abord des "
                           "tons dans le mode « Nuancier » (ou choisis un autre "
                           "matériau).".format(material or "?"))
+        # UNE BANDE de noirceur seulement (tâche du 02/08/2026) : graver
+        # « les clairs » sur une petite chute plutôt que toute la palette.
+        # Les bornes sont celles du classement (_BANDES_NOIRCEUR de
+        # laser_core) -- même découpage à l'écran et sur le bois.
+        if bande is not None:
+            bornes = [b for b, _t in core._BANDES_NOIRCEUR]
+            lo = bornes[bande - 1] if bande > 0 else -1.0
+            hi = bornes[bande]
+            shades = [x for x in shades
+                      if lo < float(x.get("darkness", 0) or 0) <= hi
+                      or (bande == 0 and float(x.get("darkness", 0) or 0) == 0)]
+            if not shades:
+                _titres = [t for _b, t in core._BANDES_NOIRCEUR]
+                return None, ("aucun ton dans la bande « {} » pour « {} »."
+                              .format(_titres[bande], material or "?"))
         half = core.calibrated_half_angle()
         items = []
         for i, s in enumerate(shades):     # load_shades trie déjà par noirceur
@@ -4730,7 +4745,10 @@ def _nuancier_items(source, material):
             lignes = ["{:g}%".format(s.get("darkness", 0)),
                       "S{:g}".format(s.get("power", 0)),
                       "F{:g}".format(s.get("feed", 0))]
-            items.append(("{:02d} {}".format(i + 1, resume), lignes, recette))
+            # Le TON lui-même accompagne l'item : la fiche de disposition
+            # (clic sur la photo réelle) enregistre ses RÉGLAGES, jamais
+            # un rang -- un rang se périme au premier ton ajouté ou retiré.
+            items.append(("{:02d} {}".format(i + 1, resume), lignes, recette, s))
         return items, None
     presets = core.load_presets("filled")
     if not presets:
@@ -4739,12 +4757,13 @@ def _nuancier_items(source, material):
 
     def _pn(v):
         return v.get("fill_power", 0.0) / max(v.get("fill_feed", 1.0), 1e-6)
-    return [(nom, [nom], presets[nom])
+    return [(nom, [nom], presets[nom], None)
             for nom in sorted(presets, key=lambda n: (_pn(presets[n]), n))], None
 
 
 def _construire_nuancier_preregles(label_power=None, label_feed=None,
-                                   source="tons", material="", colonnes=None):
+                                   source="tons", material="", colonnes=None,
+                                   bande=None):
     """Construit un document « nuancier physique » : un cercle Ø14 (face) par
     entrée (ton mesuré ou préréglage, cf. _nuancier_items), portant SA recette
     (LaserAtelierReglages) + un Job « filled » ; une étiquette gravée sous
@@ -4766,12 +4785,12 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
     if label_feed is None:
         label_feed = core.LABEL_FEED
 
-    items, err = _nuancier_items(source, material)
+    items, err = _nuancier_items(source, material, bande=bande)
     if not items:
         return None, None, err
 
     g = _nuancier_geometrie(len(items), colonnes,
-                            max(len(l) for _lo, l, _r in items))
+                            max(len(l) for _lo, l, _r, _t in items))
     DIAM, R = g["DIAM"], g["DIAM"] / 2.0
     GAP_X, LABEL_GAP, LABEL_H = g["GAP_X"], g["LABEL_GAP"], g["LABEL_H"]
     LABEL_INTERLIGNE = g["LABEL_INTERLIGNE"]
@@ -4808,7 +4827,7 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
         return (MARGIN + col * cell_w + R, y_sommet - row * cell_h - R)
 
     # 1) Un cercle-face par entrée, avec sa recette + un Job « filled ».
-    for i, (label_obj, _grave, recette) in enumerate(items):
+    for i, (label_obj, _grave, recette, _ton) in enumerate(items):
         cx, cy = _centre(i)
         try:
             face = Part.Face(Part.Wire(Part.makeCircle(R, FreeCAD.Vector(cx, cy, 0))))
@@ -4841,7 +4860,7 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
     deco += core.single_line_text_to_edges(
         titre, title_h, x0=MARGIN, y0=board_h - MARGIN - title_h)
     maxw = cell_w - 1.0
-    for i, (_label_obj, lignes, _recette) in enumerate(items):
+    for i, (_label_obj, lignes, _recette, _ton) in enumerate(items):
         cx, cy = _centre(i)
         y = cy - R - LABEL_GAP
         for txt in lignes:
@@ -4886,6 +4905,35 @@ def _construire_nuancier_preregles(label_power=None, label_feed=None,
             Gui.SendMsgToActiveView("ViewFit")
         except Exception:
             pass
+    # FICHE DE DISPOSITION : la liste ordonnée des tons AVEC leurs réglages
+    # et la position de chaque cercle dans le repère de la planche. C'est
+    # elle qui permettra de cliquer un ton sur la PHOTO de la planche
+    # gravée -- l'appariement se fait par réglages, jamais par rang, un
+    # rang se périmant au premier ton ajouté ou supprimé (garde-fou :
+    # core.resoudre_ton_fiche).
+    if source == "tons":
+        import datetime as _dt
+        cases_fiche = []
+        for i, (_lo, _l, _r2, ton) in enumerate(items):
+            if not ton:
+                continue
+            cx, cy = _centre(i)
+            cases_fiche.append({
+                "cx": cx, "cy": cy, "r": R,
+                "darkness": float(ton.get("darkness", 0) or 0),
+                "power": float(ton.get("power", 0) or 0),
+                "feed": float(ton.get("feed", 0) or 0),
+                "z_offset": float(ton.get("z_offset", 0) or 0),
+                "width": float(ton.get("width", 0) or 0),
+                "label": ton.get("label") or "",
+            })
+        if cases_fiche:
+            core.save_fiche_nuancier_planche(material, {
+                "date": _dt.date.today().isoformat(),
+                "bande": bande,
+                "board_w": float(board_w), "board_h": float(board_h),
+                "cases": cases_fiche,
+            })
     warn = ("entrées ignorées :\n- " + "\n- ".join(ignores)) if ignores else None
     return doc, jobs, warn
 
@@ -5274,13 +5322,14 @@ class TaskPanelGuide:
         return True
 
 
-def _lancer_nuancier_physique(parent_form, source, material, colonnes=None):
+def _lancer_nuancier_physique(parent_form, source, material, colonnes=None,
+                              bande=None):
     """Construit le nuancier physique (un cercle par ton mesuré ou par
     préréglage, recette + Job chacun + étiquettes), l'empile dans le job
     combiné et ouvre le panneau Job combiné, prêt à générer. Partagé entre
     le mode Nuancier et l'Assistant matériau. Confirme si le job combiné
     n'est pas vide. `colonnes` : cf. _construire_nuancier_preregles."""
-    items, err = _nuancier_items(source, material)
+    items, err = _nuancier_items(source, material, bande=bande)
     if not items:
         QtWidgets.QMessageBox.information(parent_form, "Nuancier", err)
         return
@@ -5297,7 +5346,7 @@ def _lancer_nuancier_physique(parent_form, source, material, colonnes=None):
         if rep == QtWidgets.QMessageBox.Yes:
             _COMBINED_OPS[:] = []
     doc, jobs, warn = _construire_nuancier_preregles(
-        source=source, material=material, colonnes=colonnes)
+        source=source, material=material, colonnes=colonnes, bande=bande)
     if not jobs:
         QtWidgets.QMessageBox.critical(
             parent_form, "Nuancier",
@@ -5432,6 +5481,25 @@ class TaskPanelNuancier:
             "ne change pas, seule la forme de la planche.")
         form.addRow("Colonnes :", self.spn_nuancier_cols)
 
+        # UNE BANDE ou toute la palette. Graver 47 tons pour n'en juger que
+        # les clairs gaspille la chute et l'heure : la bande seule tient
+        # sur un petit morceau. Un fichier par bande = relancer avec la
+        # bande suivante -- chaque planche reste un fichier autonome.
+        self.combo_nuancier_bande = QtWidgets.QComboBox()
+        self.combo_nuancier_bande.setToolTip(
+            "Toute la palette : un seul fichier avec tous les tons.\n"
+            "Une bande : seulement les tons de cette plage de noirceur --\n"
+            "planche plus petite, à graver sur une chute. Pour toutes les\n"
+            "bandes en fichiers séparés, relance une fois par bande.")
+        form.addRow("Tons à graver :", self.combo_nuancier_bande)
+        self.combo_nuancier_bande.currentIndexChanged.connect(
+            lambda _i: self._maj_taille_nuancier())
+        self.combo_nuancier_source.currentIndexChanged.connect(
+            lambda _i: self._maj_bandes_nuancier())
+        self.combo_mat.currentTextChanged.connect(
+            lambda _t: self._maj_bandes_nuancier())
+        self._maj_bandes_nuancier()
+
         self.lbl_nuancier_taille = _WrapLabel("")
         form.addRow(self.lbl_nuancier_taille)
         self.spn_nuancier_cols.valueChanged.connect(
@@ -5523,6 +5591,29 @@ class TaskPanelNuancier:
                     "Nuancier : ligne {} illisible, ignorée.\n".format(r + 1))
         return shades
 
+    def _maj_bandes_nuancier(self):
+        """Alimente le choix de bande avec les COMPTES réels du matériau :
+        une bande vide se voit avant de cliquer, pas dans un refus après."""
+        combo = self.combo_nuancier_bande
+        courant = combo.currentData()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("Toute la palette (un seul fichier)", None)
+        if (self.combo_nuancier_source.currentData() or "tons") == "tons":
+            tons = core.load_shades(self.combo_mat.currentText().strip())
+            bornes = [b for b, _t in core._BANDES_NOIRCEUR]
+            for i, (_b, titre) in enumerate(core._BANDES_NOIRCEUR):
+                lo = bornes[i - 1] if i > 0 else -1.0
+                n = sum(1 for x in tons
+                        if lo < float(x.get("darkness", 0) or 0) <= bornes[i]
+                        or (i == 0 and float(x.get("darkness", 0) or 0) == 0))
+                combo.addItem("{} — {} ton(s)".format(titre, n), i)
+        if courant is not None:
+            k = combo.findData(courant)
+            if k >= 0:
+                combo.setCurrentIndex(k)
+        combo.blockSignals(False)
+
     def _on_graver_preregles(self):
         """Grave ce nuancier en planche physique : un cercle par ton mesuré
         (ou par préréglage, selon la source), recette + Job chacun +
@@ -5531,7 +5622,8 @@ class TaskPanelNuancier:
             self.form,
             self.combo_nuancier_source.currentData() or "tons",
             self.combo_mat.currentText().strip(),
-            colonnes=self.spn_nuancier_cols.value())
+            colonnes=self.spn_nuancier_cols.value(),
+            bande=self.combo_nuancier_bande.currentData())
 
     def _maj_taille_nuancier(self):
         """Encombrement de la planche AVANT de la construire : passé quelques
@@ -5540,12 +5632,13 @@ class TaskPanelNuancier:
         généré le job."""
         items, _err = _nuancier_items(
             self.combo_nuancier_source.currentData() or "tons",
-            self.combo_mat.currentText().strip())
+            self.combo_mat.currentText().strip(),
+            bande=self.combo_nuancier_bande.currentData())
         if not items:
             self.lbl_nuancier_taille.setText("")
             return
         g = _nuancier_geometrie(len(items), self.spn_nuancier_cols.value(),
-                                max(len(l) for _lo, l, _r in items))
+                                max(len(l) for _lo, l, _r, _t in items))
         self.lbl_nuancier_taille.setText(
             "Planche : <b>{:.0f} × {:.0f} mm</b> — {} cercles sur {} colonne(s), "
             "{} ligne(s).".format(g["board_w"], g["board_h"], len(items),
@@ -5744,6 +5837,230 @@ def _choisir_reglage_visuel(parent, combo_shade, material, critere):
     return choisi["index"]
 
 
+class _ImageCliquable(QtWidgets.QLabel):
+    """Étiquette-image dont les clics remontent en coordonnées NORMALISÉES
+    (0..1 de la largeur/hauteur de l'image) : indépendantes de l'échelle
+    d'affichage, donc stockables dans la fiche sans se périmer si la
+    taille de rendu change un jour."""
+
+    clic = QtCore.Signal(float, float)
+
+    def __init__(self, pixmap):
+        super().__init__()
+        self.setPixmap(pixmap)
+        self.setFixedSize(pixmap.size())
+        self.setCursor(QtCore.Qt.CrossCursor)
+
+    def mousePressEvent(self, ev):
+        pm = self.pixmap()
+        if pm is not None and pm.width() > 0 and pm.height() > 0:
+            pos = ev.position() if hasattr(ev, "position") else ev.pos()
+            self.clic.emit(pos.x() / pm.width(), pos.y() / pm.height())
+        super().mousePressEvent(ev)
+
+
+class _DialogueClicNuancier(QtWidgets.QDialog):
+    """La planche nuancier PHOTOGRAPHIÉE, cliquable : cliquer un rond
+    retrouve son ton et l'applique au panneau.
+
+    Le calage se fait UNE fois par photo : les 4 coins du cadre gravé,
+    cliqués haut gauche -> haut droit -> bas droit -> bas gauche, donnent
+    l'homographie photo -> planche (core.homographie_4_points), mémorisée
+    dans la fiche de disposition -- les photos suivantes de la même
+    planche redemanderont leur calage, pas celle-ci. Une fois calé,
+    chaque rond de la fiche est surligné d'un anneau : un calage faux se
+    voit immédiatement, AVANT d'appliquer un mauvais ton.
+
+    L'appariement clic -> ton passe par core.resoudre_ton_fiche (par
+    RÉGLAGES, jamais par rang) : si le ton a été supprimé du nuancier
+    depuis la gravure, on prévient et on propose les réglages réellement
+    gravés au lieu d'appliquer silencieusement un autre ton."""
+
+    def __init__(self, parent, material, photo_path, fiche, on_ton):
+        super().__init__(parent)
+        self.ok = False
+        img, raison = _image_bornee(photo_path, 1100, 760)
+        if img is None:
+            QtWidgets.QMessageBox.warning(
+                parent, "Photo illisible",
+                "Impossible d'afficher {} : {}".format(
+                    os.path.basename(photo_path), raison))
+            return
+        self.ok = True
+        self._material = material
+        self._fiche = fiche
+        self._cle_photo = os.path.basename(photo_path)
+        self._on_ton = on_ton
+        self._fond = QtGui.QPixmap.fromImage(img)
+        coins = (fiche.get("photo_coins") or {}).get(self._cle_photo)
+        self._coins = ([tuple(c) for c in coins]
+                       if coins and len(coins) == 4 else [])
+        self._H = None        # photo normalisée -> planche (mm)
+        self._H_inv = None    # planche (mm) -> photo normalisée (surlignage)
+
+        self.setWindowTitle("Cliquer un ton -- {}".format(material))
+        lay = QtWidgets.QVBoxLayout(self)
+        self.lbl_consigne = QtWidgets.QLabel()
+        self.lbl_consigne.setWordWrap(True)
+        lay.addWidget(self.lbl_consigne)
+        self._vue = _ImageCliquable(self._fond)
+        self._vue.clic.connect(self._sur_clic)
+        zone = QtWidgets.QScrollArea()
+        zone.setWidget(self._vue)
+        lay.addWidget(zone, 1)
+        self.lbl_statut = QtWidgets.QLabel(" ")
+        self.lbl_statut.setWordWrap(True)
+        lay.addWidget(self.lbl_statut)
+        ligne = QtWidgets.QHBoxLayout()
+        self.btn_coins = QtWidgets.QPushButton("Reprendre les 4 coins")
+        self.btn_coins.setToolTip(
+            "Efface le calage mémorisé de CETTE photo et redemande les\n"
+            "4 coins du cadre -- si les anneaux ne tombent pas sur les\n"
+            "ronds, c'est par ici.")
+        self.btn_coins.clicked.connect(self._reprendre_coins)
+        btn_fermer = QtWidgets.QPushButton("Fermer")
+        btn_fermer.clicked.connect(self.accept)
+        ligne.addWidget(self.btn_coins)
+        ligne.addStretch(1)
+        ligne.addWidget(btn_fermer)
+        lay.addLayout(ligne)
+        self.resize(min(self._fond.width() + 60, 1180),
+                    min(self._fond.height() + 170, 940))
+
+        self._maj_homographie()
+        self._maj_consigne()
+        self._peindre()
+
+    # ---- calage ----------------------------------------------------------
+    def _maj_homographie(self):
+        self._H = self._H_inv = None
+        if len(self._coins) != 4:
+            return
+        w = float(self._fiche.get("board_w") or 0)
+        h = float(self._fiche.get("board_h") or 0)
+        # Coins du cadre dans le repère PLANCHE : Y machine vers le HAUT,
+        # Y image vers le BAS -- le croisement qui a déjà valu une classe
+        # entière de bugs (cf. fiche_grille_noirceur). Le haut gauche de la
+        # photo est donc (0, h), puis (w, h), (w, 0), (0, 0).
+        dst = [(0.0, h), (w, h), (w, 0.0), (0.0, 0.0)]
+        self._H = core.homographie_4_points(self._coins, dst)
+        if self._H is None:
+            self._coins = []
+            self.lbl_statut.setText(
+                "Coins dégénérés (alignés ou confondus) : recommencez le calage.")
+            return
+        self._H_inv = core.homographie_4_points(dst, self._coins)
+
+    def _reprendre_coins(self):
+        self._coins = []
+        self._H = self._H_inv = None
+        d = self._fiche.get("photo_coins") or {}
+        if self._cle_photo in d:
+            del d[self._cle_photo]
+            core.save_fiche_nuancier_planche(self._material, self._fiche)
+        self.lbl_statut.setText(" ")
+        self._maj_consigne()
+        self._peindre()
+
+    def _maj_consigne(self):
+        if self._H is None:
+            self.lbl_consigne.setText(
+                "<b>Calage ({}/4)</b> : cliquez les 4 coins du CADRE gravé, "
+                "dans l'ordre -- haut gauche, haut droit, bas droit, bas "
+                "gauche. À faire une seule fois par photo.".format(
+                    len(self._coins)))
+        else:
+            self.lbl_consigne.setText(
+                "<b>Cliquez un rond</b> (surlignés en orange) : son ton est "
+                "retrouvé et appliqué au panneau. Planche gravée le {}.".format(
+                    self._fiche.get("date") or "?"))
+
+    # ---- clics -----------------------------------------------------------
+    def _sur_clic(self, u, v):
+        if self._H is None:
+            self._coins.append((u, v))
+            if len(self._coins) == 4:
+                self._maj_homographie()
+                if self._H is not None:
+                    self._fiche.setdefault("photo_coins", {})[self._cle_photo] = [
+                        [round(a, 5), round(b, 5)] for a, b in self._coins]
+                    core.save_fiche_nuancier_planche(self._material, self._fiche)
+                    self.lbl_statut.setText(
+                        "Calage enregistré : il ne sera plus demandé pour "
+                        "cette photo. Vérifiez que les anneaux tombent sur "
+                        "les ronds.")
+            self._maj_consigne()
+            self._peindre()
+            return
+        pt = core.homographie_appliquer(self._H, u, v)
+        if pt is None:
+            return
+        x, y = pt
+        case, dist = None, None
+        for c in self._fiche.get("cases") or []:
+            d = math.hypot(x - float(c.get("cx", 0)), y - float(c.get("cy", 0)))
+            if dist is None or d < dist:
+                case, dist = c, d
+        if case is None or dist > float(case.get("r", 7.0)) * 1.6:
+            self.lbl_statut.setText(
+                "Aucun rond à cet endroit ({:.0f}, {:.0f} mm sur la "
+                "planche) : cliquez au centre d'un anneau.".format(x, y))
+            return
+        ton, exact = core.resoudre_ton_fiche(self._material, case)
+        desc = ton.get("label") or case.get("label") or ""
+        regl = "S{:g} F{:g}".format(float(ton.get("power", 0) or 0),
+                                    float(ton.get("feed", 0) or 0))
+        dz = float(ton.get("z_offset", 0) or 0)
+        if dz:
+            regl += " défocus {:g} mm".format(dz)
+        libelle = "{} -- {}".format(desc, regl) if desc else regl
+        if exact:
+            self._on_ton(ton, True)
+            self.lbl_statut.setText("Ton appliqué : {}.".format(libelle))
+            return
+        rep = QtWidgets.QMessageBox.question(
+            self, "Ton disparu du nuancier",
+            "Ce rond a été gravé le {}, mais son ton n'est plus dans le "
+            "nuancier (supprimé ou modifié depuis).\n\nAppliquer quand même "
+            "les réglages réellement gravés ({}) ?".format(
+                self._fiche.get("date") or "?", libelle),
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if rep == QtWidgets.QMessageBox.Yes:
+            self._on_ton(ton, False)
+            self.lbl_statut.setText(
+                "Réglages de la fiche appliqués : {}.".format(libelle))
+        else:
+            self.lbl_statut.setText("Rien d'appliqué.")
+
+    # ---- rendu -----------------------------------------------------------
+    def _peindre(self):
+        pix = QtGui.QPixmap(self._fond)
+        W, Hpx = pix.width(), pix.height()
+        p = QtGui.QPainter(pix)
+        p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        p.setPen(QtGui.QPen(QtGui.QColor("#ff8a00"), 2))
+        for k, (u, v) in enumerate(self._coins):
+            cx, cy = u * W, v * Hpx
+            p.setBrush(QtGui.QColor("#ff8a00"))
+            p.drawEllipse(QtCore.QPointF(cx, cy), 5, 5)
+            p.setBrush(QtCore.Qt.NoBrush)
+            p.drawText(QtCore.QPointF(cx + 8, cy - 8), str(k + 1))
+        # Anneau sur chaque rond de la fiche : le contrôle visuel du calage.
+        if self._H_inv is not None:
+            for c in self._fiche.get("cases") or []:
+                cx, cy = float(c.get("cx", 0)), float(c.get("cy", 0))
+                r = float(c.get("r", 7.0))
+                ctr = core.homographie_appliquer(self._H_inv, cx, cy)
+                bord = core.homographie_appliquer(self._H_inv, cx + r, cy)
+                if ctr is None or bord is None:
+                    continue
+                rx = math.hypot((bord[0] - ctr[0]) * W,
+                                (bord[1] - ctr[1]) * Hpx)
+                p.drawEllipse(QtCore.QPointF(ctr[0] * W, ctr[1] * Hpx), rx, rx)
+        p.end()
+        self._vue.setPixmap(pix)
+
+
 def _make_shade_picker(form, on_apply):
     """Bloc « Nuancier matériau » réutilisable dans un panneau de mode :
     sélecteur matériau + ton mesuré + un lien « Voir la photo du
@@ -5805,6 +6122,10 @@ def _make_shade_picker(form, on_apply):
     ligne_btn.addWidget(btn_photo)
     form.addRow(ligne_btn)
 
+    btn_clic = QtWidgets.QPushButton("Cliquer un ton sur la photo…")
+    _btn_icon(btn_clic, "nuancier.svg")
+    form.addRow(btn_clic)
+
     def _reload_shades():
         combo_shade.blockSignals(True)
         combo_shade.clear()
@@ -5840,6 +6161,24 @@ def _make_shade_picker(form, on_apply):
             tip = ("Aucune photo enregistrée pour ce matériau (mode "
                    "Nuancier, section Photo du résultat).")
         btn_photo.setToolTip(tip)
+        # Le clic sur photo exige la photo ET la fiche de disposition de
+        # la planche (écrite à sa création depuis la v2.45) : sans fiche,
+        # aucun moyen de savoir quel rond porte quel ton.
+        fiche = core.load_fiche_nuancier_planche(m) if m else None
+        btn_clic.setEnabled(n > 0 and bool(fiche and fiche.get("cases")))
+        if btn_clic.isEnabled():
+            btn_clic.setToolTip(
+                "La planche photographiée, cliquable : cliquez un rond, son\n"
+                "ton s'applique au panneau. Au premier usage, cliquez d'abord\n"
+                "les 4 coins du cadre pour caler la photo (mémorisé ensuite).")
+        elif n > 0:
+            btn_clic.setToolTip(
+                "Photo présente, mais pas de fiche de disposition : elle\n"
+                "s'écrit à la CRÉATION de la planche nuancier (v2.45+).\n"
+                "Recréez la planche depuis « Graver ce nuancier » pour\n"
+                "activer ce bouton sur sa prochaine photo.")
+        else:
+            btn_clic.setToolTip(tip)
 
     def _reload():
         combo_mat.blockSignals(True)
@@ -5901,7 +6240,60 @@ def _make_shade_picker(form, on_apply):
         menu.exec(btn_photo.mapToGlobal(QtCore.QPoint(0, btn_photo.height())))
     btn_photo.clicked.connect(_on_photo)
 
-    return {"mat": combo_mat, "shade": combo_shade, "reload": _reload}
+    def _appliquer_ton(ton, exact):
+        # Un ton encore présent se sélectionne DANS le combo (retour visuel
+        # + un seul chemin d'application) ; l'appariement se fait par
+        # réglages, jamais par rang -- même garde-fou que
+        # core.resoudre_ton_fiche. Un ton disparu (exact=False, déjà
+        # confirmé par l'utilisateur dans la fenêtre) s'applique en direct,
+        # combo remis sur l'entrée neutre pour ne pas afficher un autre ton
+        # que celui réellement appliqué.
+        if exact:
+            for i in range(combo_shade.count()):
+                r = combo_shade.itemData(i)
+                if (r and abs(float(r.get("power", 0) or 0)
+                              - float(ton.get("power", 0) or 0)) < 0.5
+                        and abs(float(r.get("feed", 0) or 0)
+                                - float(ton.get("feed", 0) or 0)) < 0.5
+                        and abs(float(r.get("z_offset", 0) or 0)
+                                - float(ton.get("z_offset", 0) or 0)) < 0.05):
+                    if i == combo_shade.currentIndex():
+                        _apply()
+                    else:
+                        combo_shade.setCurrentIndex(i)
+                    return
+        combo_shade.blockSignals(True)
+        combo_shade.setCurrentIndex(0)
+        combo_shade.blockSignals(False)
+        on_apply(ton)
+
+    def _on_clic():
+        m = combo_mat.currentData()
+        if not m:
+            return
+        fiche = core.load_fiche_nuancier_planche(m)
+        photos = core.result_photos("nuancier:" + m)
+        if not fiche or not fiche.get("cases") or not photos:
+            return
+
+        def _ouvrir(p):
+            dlg = _DialogueClicNuancier(btn_clic, m, p["path"], fiche,
+                                        _appliquer_ton)
+            if dlg.ok:
+                dlg.exec()
+
+        if len(photos) == 1:
+            _ouvrir(photos[0])
+            return
+        menu = QtWidgets.QMenu(btn_clic)
+        for i, p in enumerate(photos):
+            menu.addAction(p["description"] or "Photo {}".format(i + 1),
+                           lambda _checked=False, p=p: _ouvrir(p))
+        menu.exec(btn_clic.mapToGlobal(QtCore.QPoint(0, btn_clic.height())))
+    btn_clic.clicked.connect(_on_clic)
+
+    return {"mat": combo_mat, "shade": combo_shade, "reload": _reload,
+            "clic": btn_clic}
 
 
 def _make_shade_quick_add(form, get_material, titre=None, on_added=None):

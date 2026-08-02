@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.44.0</span><br>
+      <span class="ver">Version 2.45.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.44.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.45.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -724,6 +724,7 @@
     <h4>Gravure photo (trame de points)</h4>
     <p class="quoi">Reproduire une image en niveaux de gris.</p>
     <p>Sept tramages, nommés ici <em>exactement</em> comme dans le menu déroulant du panneau&nbsp;: <b>Diffusion (Floyd-Steinberg)</b> — densité de points identiques&nbsp;; <b>Durée variable</b> — un point par case, la durée du pulse fait le gris&nbsp;; <strong>Lignes calibrées (nuancier)</strong> — puissance par pixel via la courbe du nuancier&nbsp;; <b>Diffusion en lignes (points fins, rapide)</b> — même diffusion, mais en balayage continu&nbsp;; <b>Gros points Z (taille variable, artistique)</b> — c'est le <em>diamètre</em> du point qui rend le gris, par un Z propre à chacun&nbsp;; <strong>Similigravure (trame 45°, sans calibration)</strong> — la trame des journaux, le gris est une <em>surface</em>&nbsp;; <strong>Lignes gravées (trait qui enfle)</strong> — un trait continu dont l'<em>épaisseur</em> rend le gris. Une <strong>mire</strong> grave le même dégradé par les <b>sept</b> tramages, en bandes numérotées, pour les comparer d'un coup sur une chute — chaque bande dans <em>son</em> régime, faute de quoi la comparaison mentirait&nbsp;: les deux tramages à grain au foyer, et les lignes gravées à la vitesse où leur trait enfle encore.</p>
+    <p><b>Le fond blanc se traverse en vitesse rapide (v2.45.0).</b> Sur un portrait détouré, plus de la moitié du temps de balayage passait à parcourir le fond, faisceau éteint, à la vitesse de gravure — 52&nbsp;% du trajet à F800 pour ne rien graver. Les balayages repèrent désormais les segments blancs de plus de 5&nbsp;mm et les franchissent à la vitesse de transit, sans couper le mouvement ni changer la géométrie gravée. Mesuré sur le portrait réel&nbsp;: <b>1&nbsp;h&nbsp;57 → 1&nbsp;h&nbsp;15</b>. Les cinq tramages en balayage en profitent ensemble.</p>
     <p class="meta"><b>Réglages clés :</b> image · pas de trame · tramage · gamma. <b>Fichier :</b> <code>gravure_photo.ngc</code></p>
   </div></div>
 
@@ -955,6 +956,8 @@
     <p>Un menu « <b>Classer par</b> » (noirceur, largeur de trait, défocus) regroupe et trie la liste selon ce qu'on cherche, avec la valeur du critère en tête de chaque ligne : on ne parcourt plus une longue liste plate. Une valeur non mesurée s'affiche «&nbsp;--&nbsp;» plutôt qu'un zéro trompeur : un point de grille n'a pas de noirceur, et beaucoup de tons n'ont pas de largeur.</p>
     <p>Le bouton « <b>Choisir dans le nuancier…</b> » montre cette même liste en <strong>pastilles cliquables</strong> plutôt qu'en lignes de texte : chaque disque est teinté par la noirceur mesurée du réglage, sous les mêmes titres de groupe. On compare des nuances à l'œil, comme sur la planche gravée, au lieu de lire des nombres. Cliquer une pastille applique son réglage, exactement comme la liste — c'est la même liste montrée autrement, pas une seconde source qui pourrait diverger.</p>
     <p>Une pastille <strong>hachurée</strong> vient de la grille de largeurs brûlées : sa largeur est mesurée mais sa noirceur n'a jamais été jugée, et lui inventer un gris la ferait passer pour une mesure. Sa légende affiche alors la largeur qu'on connaît, plutôt qu'un «&nbsp;--&nbsp;%&nbsp;» inutile.</p>
+    <p><b>Une planche par bande de noirceur (v2.45.0).</b> Un nuancier fourni fait une planche encombrante où les tons utiles se noient. Le menu «&nbsp;<b>Tons à graver</b>&nbsp;» de la section ② grave <em>une bande</em> — très clairs, clairs, moyens, foncés — avec le compte de tons affiché pour chacune, et l'encombrement recalculé en direct&nbsp;: on grave la tranche qu'on cherche sur une petite chute, pas les 47&nbsp;tons.</p>
+    <p><b>Cliquer un ton sur la photo réelle (v2.45.0).</b> Depuis la v2.45, graver la planche dépose une <b>fiche de disposition</b>&nbsp;: quel ton occupe quel cercle, avec ses réglages. Le bouton «&nbsp;<b>Cliquer un ton sur la photo…</b>&nbsp;» (bloc «&nbsp;Nuancier matériau&nbsp;» des modes qui gravent) ouvre alors la photo de la planche&nbsp;: au premier usage on clique les <b>4 coins du cadre</b> — le calage est mémorisé pour cette photo — puis chaque cercle porte un anneau, et cliquer dedans retrouve son ton et l'applique. On choisit un gris <em>sur le bois</em>, plus sur un numéro. L'appariement se fait par <b>réglages</b>, jamais par rang&nbsp;: si le ton a été supprimé du nuancier depuis la gravure, la fenêtre prévient et propose les réglages réellement gravés au lieu d'appliquer en silence un autre ton. Les planches gravées <em>avant</em> la v2.45 n'ont pas de fiche&nbsp;: le bouton reste gris et le dit.</p>
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/kerf.svg" alt=""><div class="body">
@@ -1130,7 +1133,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.44.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.45.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
