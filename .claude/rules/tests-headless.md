@@ -218,3 +218,28 @@ Two things that surfaced on the way, both worth keeping:
   a section are whatever Christophe last left them; asserting on either goes red because he used
   the software. Assert that the widget *exists* and is in `_last_fields`; for fold state, clear the
   key first and set up the case the test actually means.
+
+## `test_reglette.py` runs its checks in a **string**, not in the file
+
+The file builds `SOUS_PROGRAMME = r'''…'''` and hands it to the *system* python (OpenCV is absent
+from FreeCAD's). The driver below the string ends in `sys.exit`. Appending a new check to the end
+of the file therefore puts it **after that exit**, in the wrong interpreter, where neither `np`
+nor the module exist — and it never runs. On 2026-08-02 a check added that way passed without
+executing a line.
+
+That is the same shape as the `os._exit(0)` trap in `test_panneaux.py`: **a check that cannot run
+proves nothing.** New checks go *inside* the string, before its closing quotes, and call the module
+through `mod.` — the sub-program imports it as `mod`, not into its namespace.
+
+## A synthetic fixture must be able to fail
+
+The first version of §6 painted a hatched grid with a *perfect* 30 px pitch. Its regularity came
+out at 1.00 — exactly the ruler's — so the fixture could not tell the two apart, and the check
+passed under the broken code as happily as under the fixed one.
+
+Real hatching bleeds and overlaps: on Christophe's board the cell rows scored **0.6–0.8** against
+the ruler's **0.99–1.00**. The fixture now jitters the hatch spacing to reproduce that, and the
+sabotage run yields **29.54 px/mm** — within half a pixel of the 29.01 the real board produced.
+
+Always sabotage a new fixture before keeping it. If the deliberate break does not turn it red, the
+fixture is decoration.

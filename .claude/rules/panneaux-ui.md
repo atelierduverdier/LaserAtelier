@@ -329,3 +329,22 @@ including that a second run does not re-open a deliberate fold.
 
 Rule of thumb for this panel family: **the button that produces the deliverable never lives behind
 a fold that something else can close.**
+
+## Ranking a detection by *quantity* breaks as soon as the board gains content
+
+`mesurer_reglette` picked, among the periodic rows, the one with the **most transitions** — on the
+grounds that the millimetre ticks are crossed more often than the 5 mm or 10 mm ones. True on a
+plain calibration plank; false the moment the board carries a hatched grid.
+
+On the tone board of 2026-08-02: cell rows gave **111** transitions at 30 px, the ruler **112** at
+50 px. One vote. Which one won depended on where the four crosses were clicked — so the same board,
+photographed once, was refused with *"29.01 px/mm au lieu de 50, largeur probable 190 mm"* while
+the crosses were right and the cotes were right. Christophe reasonably suspected his crop.
+
+The clean separator was already in the data and unused: **regularity**. The engraved ruler scores
+0.99–1.00 (identical ticks a millimetre apart); hatching scores 0.6–0.8 (the fill bleeds and
+overlaps). Ranking is now `(regularity, count)` — quantity only breaks ties between equally regular
+rows, which is where the original argument actually holds.
+
+Verified on the real photo: 50.06 px/mm, and 12 runs with the crosses jittered by ±12 px all land
+within ±0.4 %.

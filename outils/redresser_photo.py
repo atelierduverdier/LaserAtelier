@@ -226,15 +226,30 @@ def mesurer_reglette(redressee, pxmm, L, marge):
         regulier = float(np.mean(np.abs(e - med) < 0.2 * med))
         if regulier < 0.6:
             continue
-        # Parmi les lignes périodiques, la plus fournie est celle qui
-        # croise les traits du MILLIMÈTRE : au-dessus de 1 mm de hauteur
-        # on ne croise plus qu'un trait sur 5, puis sur 10.
-        if meilleur is None or len(d) > len(meilleur[1]):
-            meilleur = (y, d, med)
+        # RÉGULARITÉ D'ABORD, quantité ensuite. Le départage se faisait au
+        # seul NOMBRE de traits, et ça ne tient pas dès que la planche
+        # porte une grille hachurée : sur la planche de tons du 02/08/2026,
+        # les rangées de cases donnaient 111 transitions à 30 px contre 112
+        # à 50 px pour la réglette. UNE VOIX d'écart -- et selon le clic
+        # des croix, c'est tantôt l'une tantôt l'autre qui gagne. La
+        # planche est sortie refusée avec « 29,01 px/mm au lieu de 50 » et
+        # « largeur probable 190 mm », alors que les croix étaient bonnes
+        # et les cotes justes.
+        #
+        # Or la séparation est franche sur la RÉGULARITÉ : la réglette est
+        # à 0,99-1,00 (des traits gravés au millimètre, tous identiques),
+        # les hachures des cases à 0,6-0,8 (leur remplissage bave et se
+        # recouvre). On classe donc par régularité, et on ne départage par
+        # la quantité qu'entre lignes également régulières -- c'est là que
+        # « la plus fournie croise les millimètres et non un trait sur
+        # cinq » redevient vrai.
+        note = (round(regulier, 2), len(d))
+        if meilleur is None or note > meilleur[3]:
+            meilleur = (y, d, med, note)
 
     if meilleur is None:
         return None
-    y, d, med = meilleur
+    y, d, med, _note = meilleur
 
     # Pas sous-pixel : régression des positions sur leur rang. L'écart
     # médian est quantifié au pixel entier -- 2,5 % à 40 px/mm --, bien

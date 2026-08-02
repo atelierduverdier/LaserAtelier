@@ -108,7 +108,46 @@ assert abs(pas - PXMM) < 2.0, (
     "traits de 5 ou 10 mm, pas ceux du millimetre".format(pas, PXMM))
 print("5. bande du millimetre bien retenue (pas x5 ni x10) OK")
 
-print("\nreglette : 5 verifications OK")
+# --- 6. Une GRILLE hachuree ne doit pas voler la reglette --------------
+# Le 02/08/2026, la planche de tons est sortie REFUSEE : « 29,01 px/mm au
+# lieu de 50 », « largeur probable 190 mm » -- croix bien placees, cotes
+# justes. Les rangees de cases donnaient 111 transitions a 30 px, la
+# reglette 112 a 50 px : UNE VOIX d'ecart, et le depart se faisait au seul
+# NOMBRE de traits. Selon le clic des croix, c'etait tantot l'une tantot
+# l'autre qui gagnait.
+#
+# Les hachures sont FOURNIES (elles gagneraient au nombre) mais IRREGULIERES
+# (leur remplissage bave et se recouvre : 0,6-0,8 sur le bois reel), la
+# reglette est moins fournie mais parfaite (0,99-1,00). C'est ce contraste
+# que le test reproduit -- sans le jitter il ne discriminerait rien, les
+# deux etant a 1,00, et il passerait pour une mauvaise raison.
+rng6 = np.random.default_rng(3)
+PXMM6, L6, M6 = 50.0, 110.0, 5.0
+W6 = H6 = int((L6 + 2 * M6) * PXMM6)
+img6 = np.full((H6, W6, 3), 200, dtype=np.uint8)
+for by in range(int(20 * PXMM6), int(85 * PXMM6), int(13 * PXMM6)):
+    x = int(M6 * PXMM6)
+    while x < int((M6 + L6) * PXMM6) - 20:
+        img6[by:by + int(10 * PXMM6), x:x + 14] = 70
+        x += 30 + int(rng6.integers(-9, 10))      # la bavure du remplissage
+yr6 = int((M6 + 101.5) * PXMM6)
+for k in range(int(L6) + 1):
+    x = int((M6 + k) * PXMM6)
+    img6[yr6:yr6 + int(1.0 * PXMM6), x:x + 4] = 30
+
+res6 = mod.mesurer_reglette(img6, PXMM6, L6, M6)
+assert res6 is not None, "reglette non detectee alors qu'elle est la"
+pas6, n6, disp6, y6 = res6
+assert abs(pas6 - PXMM6) < 0.5, (
+    "une rangee de cases a vole la reglette : pas {:.2f} au lieu de {:.2f} "
+    "-- la planche serait refusee avec des croix pourtant bonnes"
+    .format(pas6, PXMM6))
+assert abs(y6 - yr6) < 2 * PXMM6, (
+    "detectee ailleurs que sur la reglette", y6, yr6)
+print("6. une grille hachuree ne vole plus la reglette ({:.2f} px/mm) OK"
+      .format(pas6))
+
+print("\nreglette : 6 verifications OK")
 '''
 
 
@@ -144,3 +183,4 @@ print(r.stdout.strip())
 if r.returncode != 0:
     print(r.stderr.strip()[-2000:])
 sys.exit(r.returncode)
+
