@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.45.1"
+VERSION = "2.46.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -8355,23 +8355,33 @@ def swell_plafond_suffisant(material, feed):
     return None
 
 
-# Au-dessus de ce rapport, « Lignes gravées » alerte sur l'énergie.
+# Au-dessus de cet INDICE, « Lignes gravées » alerte sur l'énergie.
 #
-# NE PAS reprendre SEUIL_ENERGIE_REMPLISSAGE (2,0) : il ferait crier le
-# panneau sur un régime MESURÉ BON. Les deux seuls points que le bois a
-# donnés, planche témoin du 01/08/2026 sur hêtre :
-#   F200 pas 0,34 -> 5,7x -> CARBONISÉ
-#   F1000 pas 0,14 -> 2,8x -> NOIR franc
-# 4,0 est posé ENTRE les deux. C'est un seuil à deux points, pas une
-# courbe : le resserrer quand une troisième planche donnera un point de
-# plus. Un seuil qui alerte sur ce qui marche s'apprend à s'ignorer, et
-# c'est pire que pas de seuil.
-SEUIL_ENERGIE_LIGNES_GRAVEES = 4.0
+# ABSOLU, PAS UN RAPPORT -- et c'est la correction du 02/08/2026. Le seuil
+# valait 4,0 « fois le noir mesuré le plus économe », or cette référence
+# est le meilleur ton du nuancier : elle BOUGE dès qu'on en mesure un
+# meilleur. Elle a bougé deux fois sans que rien ne le dise --
+# 2,31 -> 2,08 (tri des tons) -> 1,30 (versement de 26 tons en défocus le
+# 02/08) -- si bien que les mêmes gravures valaient 5,7x le premier jour et
+# 9,1x le second. Un seuil dont l'unité se déplace sous les pieds finit par
+# alerter sur un régime que le bois a certifié bon : c'est exactement ce
+# qui est arrivé.
+#
+# L'indice S/(pas x F) est, lui, une propriété du job : rien ne le déplace.
+# Les deux seuls points que le bois a donnés, planche témoin du 01/08/2026
+# sur hêtre (plafond S900) :
+#   F200  pas 0,34 -> 900/(0,34x200)  = 13,2 -> CARBONISÉ
+#   F1000 pas 0,14 -> 900/(0,14x1000) =  6,4 -> NOIR franc
+# 9,0 est posé ENTRE les deux, à la même position relative que l'ancien
+# 4,0. C'est un seuil à deux points, pas une courbe : le resserrer quand
+# une troisième planche donnera un point de plus. Un seuil qui alerte sur
+# ce qui marche s'apprend à s'ignorer, et c'est pire que pas de seuil.
+SEUIL_ENERGIE_LIGNES_GRAVEES = 9.0
 
 # Les deux ancres mesurées, citées dans le message : un seuil qu'on ne peut
-# pas rattacher à du bois se lit comme un caprice.
-ENERGIE_LG_ANCRE_NOIR = 2.8
-ENERGIE_LG_ANCRE_CARBONISE = 5.7
+# pas rattacher à du bois se lit comme un caprice. Même unité que le seuil.
+ENERGIE_LG_ANCRE_NOIR = 6.4
+ENERGIE_LG_ANCRE_CARBONISE = 13.2
 
 
 def energie_lignes_gravees(material, feed, pitch, power_max=None):
@@ -8388,7 +8398,14 @@ def energie_lignes_gravees(material, feed, pitch, power_max=None):
 
     Une marge de largeur au-dessus du plancher de MESURE n'est pas une
     marge de GRAVURE : à basse vitesse le trait est large parce que le
-    temps de pose est long, et c'est ce temps qui brûle."""
+    temps de pose est long, et c'est ce temps qui brûle.
+
+    **C'est `e` qui décide**, pas le rapport : voir
+    SEUIL_ENERGIE_LIGNES_GRAVEES. La référence et le rapport restent
+    rendus parce qu'ils informent (« tu pourrais obtenir ce noir pour
+    moins cher »), mais ils ne servent plus de verdict -- la référence
+    étant le meilleur ton du nuancier, elle se déplace à chaque mesure.
+    `ref` peut donc valoir None sans empêcher le verdict."""
     if not material or feed <= 0 or pitch <= 0:
         return None
     plage = swell_plage(material, feed, power_max)
@@ -8396,10 +8413,11 @@ def energie_lignes_gravees(material, feed, pitch, power_max=None):
         return None
     s_noir = float(power_max) if power_max is not None else S_MAX
     e = energie_surfacique(s_noir, feed, pitch)
-    ref = remplissage_noir_le_plus_econome(material)
-    if e is None or not ref or not ref.get("energie"):
+    if e is None:
         return None
-    return e, ref, e / ref["energie"]
+    ref = remplissage_noir_le_plus_econome(material)
+    rapport = (e / ref["energie"]) if (ref and ref.get("energie")) else None
+    return e, ref, rapport
 
 
 def swell_refus_message(material, feed, power_max=None):
@@ -10063,22 +10081,78 @@ def homographie_appliquer(H, x, y):
             (H[1][0] * x + H[1][1] * y + H[1][2]) / d)
 
 
+FICHES_NUANCIER_MAX = 12
+
+
+def _fiches_nuancier(cfg, material):
+    """La LISTE des fiches d'un matériau, en migrant l'ancien format.
+
+    La v2.45.0 n'en gardait qu'UNE par matériau : construire une planche
+    par bande effaçait la fiche de la grande planche déjà gravée, qui
+    redevenait non cliquable sans que rien ne le dise. Une fiche décrit
+    une PLANCHE, et l'atelier en a plusieurs -- d'où une liste."""
+    d = (cfg.get("nuancier_planche") or {}).get(material)
+    if d is None:
+        return []
+    return list(d) if isinstance(d, list) else [d]
+
+
 def save_fiche_nuancier_planche(material, fiche):
-    """Range la fiche de disposition de la DERNIÈRE planche nuancier gravée
-    pour ce matériau : liste ordonnée des tons AVEC leurs réglages (jamais
-    des indices -- un indice se périme au premier ton ajouté) et position de
+    """Ajoute la fiche de disposition d'une planche nuancier fraîchement
+    construite : liste ordonnée des tons AVEC leurs réglages (jamais des
+    indices -- un indice se périme au premier ton ajouté) et position de
     chaque cercle dans le repère de la planche. C'est elle qui permet de
-    cliquer un ton sur la photo réelle."""
+    cliquer un ton sur la photo réelle.
+
+    Les fiches s'EMPILENT, la plus récente en tête, plafonnées à
+    `FICHES_NUANCIER_MAX` : plusieurs planches d'un même matériau
+    coexistent (la palette entière, puis une bande claire sur une chute),
+    et chacune garde ses cercles. Une planche gravée reste sur l'établi
+    bien après que la suivante a été construite."""
     cfg = load_config()
     _ensure_lasers(cfg)
-    d = cfg.setdefault("nuancier_planche", {})
-    d[material] = fiche
+    fiches = [fiche] + _fiches_nuancier(cfg, material)
+    cfg.setdefault("nuancier_planche", {})[material] = fiches[:FICHES_NUANCIER_MAX]
     save_config(cfg)
 
 
+def load_fiches_nuancier_planche(material):
+    """Toutes les fiches de ce matériau, la plus récente en tête."""
+    return _fiches_nuancier(load_config(), material)
+
+
 def load_fiche_nuancier_planche(material):
-    """La fiche de la dernière planche nuancier gravée, ou None."""
-    return (load_config().get("nuancier_planche") or {}).get(material)
+    """La fiche de la dernière planche nuancier construite, ou None."""
+    fiches = load_fiches_nuancier_planche(material)
+    return fiches[0] if fiches else None
+
+
+def fiche_nuancier_pour_photo(material, cle_photo):
+    """(fiche, index) de la planche que MONTRE cette photo, ou (None, -1).
+
+    L'appariement passe par les 4 coins déjà cliqués : caler une photo,
+    c'est déclarer quelle planche elle montre. Rien d'autre ne peut le
+    savoir -- deux planches du même matériau se ressemblent, et un nom de
+    fichier ne dit rien du bois qu'il représente."""
+    for i, f in enumerate(load_fiches_nuancier_planche(material)):
+        if cle_photo in ((f or {}).get("photo_coins") or {}):
+            return f, i
+    return None, -1
+
+
+def maj_fiche_nuancier_planche(material, index, fiche):
+    """Réécrit UNE fiche en place (calage d'une photo), sans toucher aux
+    autres ni changer l'ordre -- l'index d'une fiche est un handle que
+    l'appelant garde ouvert le temps d'un dialogue."""
+    cfg = load_config()
+    _ensure_lasers(cfg)
+    fiches = _fiches_nuancier(cfg, material)
+    if not (0 <= index < len(fiches)):
+        return False
+    fiches[index] = fiche
+    cfg.setdefault("nuancier_planche", {})[material] = fiches
+    save_config(cfg)
+    return True
 
 
 def resoudre_ton_fiche(material, case):

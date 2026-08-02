@@ -5876,9 +5876,10 @@ class _DialogueClicNuancier(QtWidgets.QDialog):
     depuis la gravure, on prévient et on propose les réglages réellement
     gravés au lieu d'appliquer silencieusement un autre ton."""
 
-    def __init__(self, parent, material, photo_path, fiche, on_ton):
+    def __init__(self, parent, material, photo_path, fiche, on_ton, index=0):
         super().__init__(parent)
         self.ok = False
+        self._index = index
         img, raison = _image_bornee(photo_path, 1100, 760)
         if img is None:
             QtWidgets.QMessageBox.warning(
@@ -5957,7 +5958,7 @@ class _DialogueClicNuancier(QtWidgets.QDialog):
         d = self._fiche.get("photo_coins") or {}
         if self._cle_photo in d:
             del d[self._cle_photo]
-            core.save_fiche_nuancier_planche(self._material, self._fiche)
+            core.maj_fiche_nuancier_planche(self._material, self._index, self._fiche)
         self.lbl_statut.setText(" ")
         self._maj_consigne()
         self._peindre()
@@ -5984,7 +5985,7 @@ class _DialogueClicNuancier(QtWidgets.QDialog):
                 if self._H is not None:
                     self._fiche.setdefault("photo_coins", {})[self._cle_photo] = [
                         [round(a, 5), round(b, 5)] for a, b in self._coins]
-                    core.save_fiche_nuancier_planche(self._material, self._fiche)
+                    core.maj_fiche_nuancier_planche(self._material, self._index, self._fiche)
                     self.lbl_statut.setText(
                         "Calage enregistré : il ne sera plus demandé pour "
                         "cette photo. Vérifiez que les anneaux tombent sur "
@@ -6164,13 +6165,18 @@ def _make_shade_picker(form, on_apply):
         # Le clic sur photo exige la photo ET la fiche de disposition de
         # la planche (écrite à sa création depuis la v2.45) : sans fiche,
         # aucun moyen de savoir quel rond porte quel ton.
-        fiche = core.load_fiche_nuancier_planche(m) if m else None
-        btn_clic.setEnabled(n > 0 and bool(fiche and fiche.get("cases")))
+        fiches = [f for f in (core.load_fiches_nuancier_planche(m) if m else [])
+                  if f and f.get("cases")]
+        btn_clic.setEnabled(n > 0 and bool(fiches))
         if btn_clic.isEnabled():
             btn_clic.setToolTip(
                 "La planche photographiée, cliquable : cliquez un rond, son\n"
                 "ton s'applique au panneau. Au premier usage, cliquez d'abord\n"
-                "les 4 coins du cadre pour caler la photo (mémorisé ensuite).")
+                "les 4 coins du cadre pour caler la photo (mémorisé ensuite).\n"
+                "\n"
+                "{} planche(s) enregistrée(s) pour ce matériau ; une photo\n"
+                "sans cadre gravé (donc sans coins à cliquer) n'est tout\n"
+                "simplement pas exploitable ici.".format(len(fiches)))
         elif n > 0:
             btn_clic.setToolTip(
                 "Photo présente, mais pas de fiche de disposition : elle\n"
@@ -6267,18 +6273,51 @@ def _make_shade_picker(form, on_apply):
         combo_shade.blockSignals(False)
         on_apply(ton)
 
+    def _resume_fiche(f):
+        bande = (f.get("bande") or "").strip()
+        return "{} — {} tons{} — {:.0f} × {:.0f} mm".format(
+            f.get("date") or "sans date", len(f.get("cases") or []),
+            " (" + bande + ")" if bande else "",
+            float(f.get("board_w") or 0), float(f.get("board_h") or 0))
+
     def _on_clic():
         m = combo_mat.currentData()
         if not m:
             return
-        fiche = core.load_fiche_nuancier_planche(m)
+        # On garde l'index D'ORIGINE : `maj_fiche_nuancier_planche` écrit
+        # dans la liste complète, et une fiche vide filtrée en silence
+        # décalerait tout -- le calage d'une photo atterrirait sur une
+        # autre planche.
+        fiches = [(i, f) for i, f in
+                  enumerate(core.load_fiches_nuancier_planche(m))
+                  if f and f.get("cases")]
         photos = core.result_photos("nuancier:" + m)
-        if not fiche or not fiche.get("cases") or not photos:
+        if not fiches or not photos:
             return
 
         def _ouvrir(p):
+            # QUELLE PLANCHE cette photo montre-t-elle ? Les coins déjà
+            # cliqués le disent -- caler une photo, c'est justement le
+            # déclarer. Sinon on demande, une fois : deux planches d'un
+            # même matériau se ressemblent, et rien dans l'image ne
+            # permet de les distinguer à coup sûr.
+            cle = os.path.basename(p["path"])
+            fiche, idx = core.fiche_nuancier_pour_photo(m, cle)
+            if fiche is None:
+                if len(fiches) == 1:
+                    idx, fiche = fiches[0]
+                else:
+                    libelles = [_resume_fiche(f) for _i, f in fiches]
+                    choix, ok = QtWidgets.QInputDialog.getItem(
+                        btn_clic, "Quelle planche ?",
+                        "Cette photo montre quelle planche gravée ?\n"
+                        "(mémorisé dès que les 4 coins sont cliqués)",
+                        libelles, 0, False)
+                    if not ok:
+                        return
+                    idx, fiche = fiches[libelles.index(choix)]
             dlg = _DialogueClicNuancier(btn_clic, m, p["path"], fiche,
-                                        _appliquer_ton)
+                                        _appliquer_ton, index=idx)
             if dlg.ok:
                 dlg.exec()
 
@@ -11370,22 +11409,33 @@ class TaskPanelHalftone:
                 # Les deux ancres MESURÉES sont citées à chaque fois : un
                 # seuil qu'on ne peut pas rattacher à du bois se lit comme un
                 # caprice, et un chiffre seul ne dit pas de quel côté on est.
-                ancres = ("Repères gravés sur hêtre : <b>{:.1f}x → noir "
-                          "franc</b>, <b>{:.1f}x → carbonisé</b>.".format(
+                # Elles sont dans la MÊME unité que l'indice affiché -- un
+                # absolu, plus un rapport à une référence qui se déplace.
+                ancres = ("Repères gravés sur hêtre : <b>{:.1f} → noir "
+                          "franc</b>, <b>{:.1f} → carbonisé</b>.".format(
                               core.ENERGIE_LG_ANCRE_NOIR,
                               core.ENERGIE_LG_ANCRE_CARBONISE))
-                if rapport > core.SEUIL_ENERGIE_LIGNES_GRAVEES:
+                # Le rapport au noir le plus économe reste dit, mais comme
+                # une INFORMATION (« ce noir existe pour moins cher »),
+                # jamais comme le verdict.
+                eco = ""
+                if rapport is not None and ref:
+                    eco = (" Soit {:.1f}x le noir le plus économe mesuré "
+                           "(S{:.0f}/F{:.0f}/pas {:.2f}).".format(
+                               rapport, ref["power"], ref["feed"],
+                               ref["spacing"]))
+                if e > core.SEUIL_ENERGIE_LIGNES_GRAVEES:
                     msgs.append(
-                        "<b>Énergie {:.1f}x le noir le plus économe mesuré</b> "
-                        "(S{:.0f}/F{:.0f}/pas {:.2f}). Au-delà du noir, "
-                        "l'énergie en trop ne noircit plus : elle CREUSE, puis "
-                        "carbonise. Une vitesse plus haute, au pas qui lui "
-                        "correspond, brûle moins pour un noir égal. {}".format(
-                            rapport, ref["power"], ref["feed"], ref["spacing"],
-                            ancres))
+                        "<b>Énergie surfacique {:.1f}</b> (S{:.0f} au pas "
+                        "{:.2f} à F{:.0f}). Au-delà du noir, l'énergie en trop "
+                        "ne noircit plus : elle CREUSE, puis carbonise. Une "
+                        "vitesse plus haute, au pas qui lui correspond, brûle "
+                        "moins pour un noir égal. {}{}".format(
+                            e, self.spn_power_max.value(), pas, feed,
+                            ancres, eco))
                     return False, False
-                msgs.append("Énergie {:.1f}x le noir le plus économe mesuré. "
-                            "{}".format(rapport, ancres))
+                msgs.append("Énergie surfacique {:.1f}. {}{}".format(
+                    e, ancres, eco))
             return True, False
         # À partir d'ici : similigravure seule (les lignes gravées ont rendu
         # leur verdict au-dessus). Un point brûlé à fond, donc la largeur du

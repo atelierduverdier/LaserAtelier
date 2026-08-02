@@ -122,7 +122,14 @@ def sans_dialogues():
 
     La liste est renvoyée plutôt que les dialogues purement supprimés : ce
     qu'un panneau annonce à l'utilisateur fait partie de son comportement, et
-    un test a le droit de le vérifier."""
+    un test a le droit de le vérifier.
+
+    **`QInputDialog` compte AUSSI**, et l'oubli a coûté un blocage de 316 s le
+    02/08/2026 : seul `QMessageBox` était neutralisé, si bien qu'un
+    `QInputDialog.getItem` (« quelle planche cette photo montre-t-elle ? »)
+    figeait le test exactement de la même façon. Toute classe qui ouvre une
+    modale doit passer par ici -- la règle n'est pas « QMessageBox », c'est
+    « rien qui attende un humain »."""
     from PySide6 import QtWidgets
     appels = []
 
@@ -136,6 +143,27 @@ def sans_dialogues():
     QtWidgets.QMessageBox.warning = _faux("avertissement", QtWidgets.QMessageBox.Ok)
     QtWidgets.QMessageBox.critical = _faux("erreur", QtWidgets.QMessageBox.Ok)
     QtWidgets.QMessageBox.question = _faux("question", QtWidgets.QMessageBox.Yes)
+
+    def _saisie(genre, defaut):
+        """Répond la valeur PROPOSÉE par le panneau (1re entrée d'une liste,
+        texte/nombre par défaut) plutôt qu'une valeur inventée : un test qui
+        n'a rien à dire sur la saisie doit se comporter comme un utilisateur
+        qui valide sans rien changer."""
+        def _f(_parent, titre="", texte_="", *a, **k):
+            appels.append((genre, titre, texte_))
+            if a:
+                if genre == "liste":
+                    items = a[0] or [""]
+                    i = a[1] if len(a) > 1 and isinstance(a[1], int) else 0
+                    return (items[i] if 0 <= i < len(items) else items[0]), True
+                return a[0], True
+            return defaut, True
+        return staticmethod(_f)
+
+    QtWidgets.QInputDialog.getItem = _saisie("liste", "")
+    QtWidgets.QInputDialog.getText = _saisie("texte", "")
+    QtWidgets.QInputDialog.getDouble = _saisie("nombre", 0.0)
+    QtWidgets.QInputDialog.getInt = _saisie("entier", 0)
     return appels
 
 

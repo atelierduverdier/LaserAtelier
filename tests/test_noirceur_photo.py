@@ -648,8 +648,28 @@ core.save_shades(_mat19, [])
 core.save_fiche_nuancier_planche(_mat19, {"board_w": 100.0, "cases": [1]})
 assert core.load_fiche_nuancier_planche(_mat19)["board_w"] == 100.0
 assert core.load_fiche_nuancier_planche(u"Inconnu") is None
-print("19. le garde-fou apparie par reglages et rend la fiche pour un ton "
-      "disparu OK")
+
+# LES FICHES S'EMPILENT. La v2.45.0 n'en gardait qu'UNE par materiau :
+# construire une planche par bande effacait celle de la grande planche
+# deja gravee, qui redevenait non cliquable en silence.
+core.save_fiche_nuancier_planche(_mat19, {"board_w": 200.0, "cases": [1, 2]})
+_l19 = core.load_fiches_nuancier_planche(_mat19)
+assert len(_l19) == 2 and _l19[0]["board_w"] == 200.0, _l19
+assert _l19[1]["board_w"] == 100.0, "l'ancienne planche a ete effacee"
+assert core.load_fiche_nuancier_planche(_mat19)["board_w"] == 200.0
+# ... plafonnees, sinon la config enfle sans fin.
+for _k in range(core.FICHES_NUANCIER_MAX + 5):
+    core.save_fiche_nuancier_planche(_mat19, {"board_w": float(_k), "cases": [1]})
+assert len(core.load_fiches_nuancier_planche(_mat19)) == core.FICHES_NUANCIER_MAX
+
+# MIGRATION : une config d'avant (UNE fiche, pas une liste) se relit.
+_cfg19 = core.load_config()
+_cfg19.setdefault("nuancier_planche", {})[_mat19] = {"board_w": 55.0, "cases": [1]}
+core.save_config(_cfg19)
+assert len(core.load_fiches_nuancier_planche(_mat19)) == 1
+assert core.load_fiche_nuancier_planche(_mat19)["board_w"] == 55.0
+print("19. le garde-fou apparie par reglages ; les fiches s'empilent, "
+      "plafonnent, et l'ancien format se relit OK")
 
 
 # --- 20. La fenetre « cliquer un ton », de bout en bout ------------------
@@ -745,6 +765,28 @@ assert _d20b._H is None
 assert "planche_nuancier.png" not in (
     core.load_fiche_nuancier_planche(_mat20).get("photo_coins") or {})
 
+# UNE PHOTO -> SA PLANCHE. Deux planches du meme materiau se ressemblent ;
+# ce sont les 4 coins deja cliques qui declarent laquelle une photo montre.
+# Sans cet appariement, caler une 2e photo ecraserait le calage de la 1re.
+core.save_fiche_nuancier_planche(_mat20, {
+    "date": "2026-08-03", "bande": "clairs", "board_w": 60.0, "board_h": 60.0,
+    "cases": [dict(_cases20[0])]})
+_toutes20 = core.load_fiches_nuancier_planche(_mat20)
+assert len(_toutes20) == 2 and _toutes20[0]["bande"] == "clairs", _toutes20
+# La photo n'est calee sur AUCUNE des deux : il faut demander.
+assert core.fiche_nuancier_pour_photo(_mat20, "planche_nuancier.png") == (None, -1)
+# On la cale sur la SECONDE (index 1, la grande planche), pas la premiere.
+_d20d = tp._DialogueClicNuancier(None, _mat20, _photo20, _toutes20[1],
+                                 lambda t, e: None, index=1)
+for _c20 in ((0, _Hmm20), (_Wmm20, _Hmm20), (_Wmm20, 0), (0, 0)):
+    _d20d._sur_clic(*_norm20(*_c20))
+_f20d, _i20d = core.fiche_nuancier_pour_photo(_mat20, "planche_nuancier.png")
+assert _i20d == 1, ("le calage a atterri sur la mauvaise planche", _i20d)
+assert abs(_f20d["board_w"] - _Wmm20) < 1e-9, _f20d["board_w"]
+# ... et la planche de tete n'a PAS ete touchee.
+assert not (core.load_fiches_nuancier_planche(_mat20)[0].get("photo_coins") or {}), (
+    "le calage a debordé sur une autre planche")
+
 # SABOTAGE de la fixture : les coins cliques dans l'ordre geometrique NAIF
 # (sans l'inversion du Y) doivent rendre le ton du HAUT sur un clic du BAS.
 # Si ce bloc ne distingue pas les deux ordres, le test ne prouve rien.
@@ -773,11 +815,13 @@ _pick20["mat"].setCurrentIndex(_i20)
 assert _pick20["clic"].isEnabled(), "photo + fiche presentes, bouton inactif"
 
 _vraie20 = tp._DialogueClicNuancier
+_recu_index20 = []
 
 
 class _FauxDlg20:
-    def __init__(self, parent, m, chemin, fiche, on_ton):
+    def __init__(self, parent, m, chemin, fiche, on_ton, index=0):
         self.ok = True
+        _recu_index20.append((index, fiche))
         on_ton({"power": 900.0, "feed": 1000.0, "z_offset": 0.0,
                 "darkness": 80.0, "label": "fonce"}, True)
 
@@ -791,6 +835,12 @@ try:
 finally:
     tp._DialogueClicNuancier = _vraie20
 assert _recus20 and abs(float(_recus20[-1].get("power")) - 900.0) < 0.5, _recus20
+# La fenetre recoit l'INDEX de la planche, pas seulement la fiche : sans
+# lui, caler une photo ecrirait dans la mauvaise planche.
+assert _recu_index20 and isinstance(_recu_index20[-1][0], int), _recu_index20
+_idx20, _fic20 = _recu_index20[-1]
+assert core.load_fiches_nuancier_planche(_mat20)[_idx20] == _fic20, (
+    "l'index ne designe pas la fiche transmise", _idx20)
 _sel20 = _pick20["shade"].currentData()
 assert _sel20 and abs(float(_sel20.get("power")) - 900.0) < 0.5, (
     "le combo n'affiche pas le ton applique")

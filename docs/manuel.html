@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.45.1</span><br>
+      <span class="ver">Version 2.46.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.45.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.46.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -957,6 +957,8 @@
     <p>Le bouton « <b>Choisir dans le nuancier…</b> » montre cette même liste en <strong>pastilles cliquables</strong> plutôt qu'en lignes de texte : chaque disque est teinté par la noirceur mesurée du réglage, sous les mêmes titres de groupe. On compare des nuances à l'œil, comme sur la planche gravée, au lieu de lire des nombres. Cliquer une pastille applique son réglage, exactement comme la liste — c'est la même liste montrée autrement, pas une seconde source qui pourrait diverger.</p>
     <p>Une pastille <strong>hachurée</strong> vient de la grille de largeurs brûlées : sa largeur est mesurée mais sa noirceur n'a jamais été jugée, et lui inventer un gris la ferait passer pour une mesure. Sa légende affiche alors la largeur qu'on connaît, plutôt qu'un «&nbsp;--&nbsp;%&nbsp;» inutile.</p>
     <p><b>Une planche par bande de noirceur (v2.45.0).</b> Un nuancier fourni fait une planche encombrante où les tons utiles se noient. Le menu «&nbsp;<b>Tons à graver</b>&nbsp;» de la section ② grave <em>une bande</em> — très clairs, clairs, moyens, foncés — avec le compte de tons affiché pour chacune, et l'encombrement recalculé en direct&nbsp;: on grave la tranche qu'on cherche sur une petite chute, pas les 47&nbsp;tons.</p>
+    <p><b>Une fiche par planche, et non par matériau (v2.46.0).</b> Les fiches de disposition s'<b>empilent</b> désormais (douze au plus) au lieu de s'écraser&nbsp;: graver la palette entière puis une bande claire sur une chute laisse les <em>deux</em> planches cliquables. Une photo est rattachée à sa planche par les <b>4 coins</b> qu'on y clique — caler une photo, c'est déclarer quelle planche elle montre&nbsp;; s'il y a plusieurs planches et que la photo n'est pas encore calée, l'atelier demande une fois laquelle, puis s'en souvient. Une vieille photo <em>sans cadre gravé</em> reste inexploitable ici, et l'infobulle le dit&nbsp;: il n'y a pas de coins à cliquer.</p>
+    <p><b>L'indice d'énergie devient ABSOLU (v2.46.0)</b> — correction d'un défaut de conception, pas d'un calcul. Le seuil d'alerte des «&nbsp;Lignes gravées&nbsp;» s'exprimait en «&nbsp;fois le noir mesuré le plus économe&nbsp;». Or cette référence est le meilleur ton du nuancier&nbsp;: elle <b>bouge dès qu'on en mesure un meilleur</b>. Elle a bougé deux fois sans que rien ne le signale (2,31 → 2,08 → 1,30 le 2 août, en versant 26 tons en défocus), si bien que les <em>mêmes</em> gravures valaient 5,7× le premier jour et 9,1× le second — et le seuil finissait par accuser un régime que le bois avait certifié bon. Le verdict lit maintenant l'indice <code>S/(pas × F)</code> lui-même, qui est une propriété du travail et que rien ne déplace&nbsp;: les deux repères de la planche témoin valent <b>6,4 → noir franc</b> et <b>13,2 → carbonisé</b>, le seuil est posé à <b>9,0</b> entre les deux. Le rapport au ton le plus économe reste affiché, mais comme information («&nbsp;ce noir existe pour moins cher&nbsp;»), jamais comme verdict.</p>
     <p><b>Le Job combiné perdait la mire et la fiche (v2.45.1).</b> Une grille de test ajoutée à un <b>Job combiné</b> arrivait sur le bois <em>sans</em> repères ni réglette, même quand «&nbsp;Graver la mire&nbsp;» était coché — la case ne suivait pas dans l'opération —, et aucune fiche de disposition n'était déposée. La planche était donc ni redressable ni mesurable, et rien ne le disait. Constaté le 02/08/2026 sur une planche déjà gravée, dont la fiche a dû être reconstruite depuis son G-code. Les deux chemins (bouton «&nbsp;Générer&nbsp;» et Job combiné) passent désormais par la même fonction de dépôt&nbsp;; une planche sans mire ne reçoit toujours pas de fiche, puisqu'elle mentirait.</p>
     <p><b>Cliquer un ton sur la photo réelle (v2.45.0).</b> Depuis la v2.45, graver la planche dépose une <b>fiche de disposition</b>&nbsp;: quel ton occupe quel cercle, avec ses réglages. Le bouton «&nbsp;<b>Cliquer un ton sur la photo…</b>&nbsp;» (bloc «&nbsp;Nuancier matériau&nbsp;» des modes qui gravent) ouvre alors la photo de la planche&nbsp;: au premier usage on clique les <b>4 coins du cadre</b> — le calage est mémorisé pour cette photo — puis chaque cercle porte un anneau, et cliquer dedans retrouve son ton et l'applique. On choisit un gris <em>sur le bois</em>, plus sur un numéro. L'appariement se fait par <b>réglages</b>, jamais par rang&nbsp;: si le ton a été supprimé du nuancier depuis la gravure, la fenêtre prévient et propose les réglages réellement gravés au lieu d'appliquer en silence un autre ton. Les planches gravées <em>avant</em> la v2.45 n'ont pas de fiche&nbsp;: le bouton reste gris et le dit.</p>
   </div></div>
@@ -1134,7 +1136,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.45.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.46.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

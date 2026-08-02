@@ -527,30 +527,54 @@ print("21. le verbe du conseil suit le sens de la vitesse OK")
 _e200 = core.energie_lignes_gravees(MAT, 200.0, 0.34, 900.0)
 _e1000 = core.energie_lignes_gravees(MAT, 1000.0, 0.14, 900.0)
 assert _e200 and _e1000, (_e200, _e1000)
-# Le regime qui a brule doit couter PLUS que celui qui a reussi.
-assert _e200[2] > _e1000[2], (_e200[2], _e1000[2])
+# C'est l'INDICE ABSOLU qui decide, pas le rapport a un ton du nuancier :
+# cette reference est le meilleur noir mesure, donc elle se deplace des
+# qu'on en mesure un meilleur. Elle a bougé deux fois (2,31 -> 2,08 -> 1,30
+# le 02/08/2026), si bien que les MEMES gravures valaient 5,7x puis 9,1x --
+# et le seuil, exprime en rapport, finissait par accuser un regime que le
+# bois avait certifie bon. L'indice S/(pas x F) ne bouge pas.
+assert _e200[0] > _e1000[0], (_e200[0], _e1000[0])
 # Et le seuil doit tomber ENTRE les deux : au-dessus du regime mesure BON,
 # en dessous du regime mesure CARBONISE. Un seuil qui alerte sur ce qui
 # marche s'apprend a s'ignorer, et c'est pire que pas de seuil.
-assert _e1000[2] <= core.SEUIL_ENERGIE_LIGNES_GRAVEES < _e200[2], (
+assert _e1000[0] <= core.SEUIL_ENERGIE_LIGNES_GRAVEES < _e200[0], (
     "le seuil doit separer le noir franc du carbonise",
-    _e1000[2], core.SEUIL_ENERGIE_LIGNES_GRAVEES, _e200[2])
-# Surtout PAS celui du remplissage : il ferait crier sur F1000.
-assert core.SEUIL_ENERGIE_LIGNES_GRAVEES > core.SEUIL_ENERGIE_REMPLISSAGE
-# Sans nuancier noir, pas de reference : se taire plutot que chiffrer.
+    _e1000[0], core.SEUIL_ENERGIE_LIGNES_GRAVEES, _e200[0])
+# Les ancres CITEES dans le message doivent etre celles des deux planches,
+# dans la MEME unite que le seuil : une ancre en rapport sous un seuil en
+# absolu, c'est le defaut d'origine.
+assert abs(core.ENERGIE_LG_ANCRE_NOIR - _e1000[0]) < 0.15, (
+    "l'ancre « noir franc » ne decrit plus la planche temoin",
+    core.ENERGIE_LG_ANCRE_NOIR, _e1000[0])
+assert abs(core.ENERGIE_LG_ANCRE_CARBONISE - _e200[0]) < 0.15, (
+    "l'ancre « carbonise » ne decrit plus la planche temoin",
+    core.ENERGIE_LG_ANCRE_CARBONISE, _e200[0])
+# INDEPENDANT DU NUANCIER, c'est tout l'objet du correctif : mesurer un
+# nouveau ton ne doit pas deplacer le verdict d'un iota.
+_avant = core.load_shades(MAT)
+core.save_shades(MAT, _avant + [{"darkness": 99.0, "power": 200.0,
+                                 "feed": 6000.0, "z_offset": 15.0,
+                                 "width": 2.0, "label": "noir tres econome"}])
+_e1000b = core.energie_lignes_gravees(MAT, 1000.0, 0.14, 900.0)
+core.save_shades(MAT, _avant)
+assert abs(_e1000b[0] - _e1000[0]) < 1e-9, (
+    "l'indice a bouge parce qu'on a ajoute un ton : le seuil derive encore",
+    _e1000[0], _e1000b[0])
+# Sans nuancier du tout, le verdict tient quand meme (il ne depend plus
+# d'une reference) -- mais sans largeurs mesurees, il n'y a pas de plage.
 assert core.energie_lignes_gravees(u"MateriauSansTons", 1000.0, 0.14) is None
-print("22. l'energie separe le noir franc du carbonise OK")
+print("22. l'energie separe le noir franc du carbonise, en ABSOLU OK")
 
 # --- 23. La recette livree est du bon cote du seuil ---------------------
 # Elle etait a F200 -- exactement le regime qui a carbonise.
 _r = core.factory_presets("photo")["Portrait Hêtre -- lignes gravées (le plus sûr)"]
 _er = core.energie_lignes_gravees(_r["material"], _r["line_feed"], _r["pitch"],
                                   _r.get("power_max"))
-assert _er and _er[2] <= core.SEUIL_ENERGIE_LIGNES_GRAVEES, (
+assert _er and _er[0] <= core.SEUIL_ENERGIE_LIGNES_GRAVEES, (
     "une recette livree ne doit pas partir au-dessus du seuil d'energie",
-    _r["line_feed"], _r["pitch"], _er[2] if _er else None)
-print("23. la recette livree reste sous le seuil d'energie ({:.1f}x) OK"
-      .format(_er[2]))
+    _r["line_feed"], _r["pitch"], _er[0] if _er else None)
+print("23. la recette livree reste sous le seuil d'energie ({:.1f}) OK"
+      .format(_er[0]))
 
 # --- 24. Une table de largeurs = UNE lecture de la config ----------------
 # Le 01/08/2026 le panneau Gravure photo mettait 14 s a s'ouvrir, le PC

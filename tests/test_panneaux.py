@@ -1128,13 +1128,19 @@ if _planches9:
     # -- l'apercu et le controle des reperes ne sont pas des planches.
     assert _cb9.count() == len(_planches9), (_cb9.count(), len(_planches9))
     _libelles = [_cb9.itemText(i) for i in range(_cb9.count())]
-    # PAS « commence par Planche » : Christophe redresse aussi des « Autre
-    # planche » (une grille de tons, le 02/08/2026), et le test rougissait
-    # parce qu'il s'etait servi du logiciel. Ce qui compte est que le
-    # libelle soit NOMME et lisible, pas qu'il porte un prefixe.
-    assert all(l and not l[0].islower() for l in _libelles), (
-        "un libelle de planche commence en minuscule : il sort brut du nom "
-        "de fichier au lieu d'etre nomme", _libelles)
+    # PAS « commence par Planche », et PAS NON PLUS « commence par une
+    # majuscule » : Christophe redresse aussi des « Autre planche », et il
+    # NOMME ses planches lui-meme depuis la v2.44 -- « tons défocus 15,34
+    # pas 1,0 » commence en minuscule et c'est parfaitement legitime. Ce
+    # test a rougi DEUX fois pour la meme raison de fond : il verifiait un
+    # indice de la propriete (la casse) au lieu de la propriete. Ce qui
+    # compte est que le libelle ne soit pas le nom de FICHIER brut.
+    _bases9 = {_os.path.basename(p.get("base") or "") for p in _planches9}
+    for _l9 in _libelles:
+        assert _l9, "libelle vide"
+        assert _l9 not in _bases9, (
+            "le libelle est le nom de fichier brut, pas un nom", _l9)
+        assert len(_l9) <= 60, ("libelle illisible tant il est long", _l9)
     # Le libelle doit etre LISIBLE : la planche, l'heure, les cotes -- pas
     # un nom de fichier de 60 caracteres.
     assert any("h" in l and "(" in l for l in _libelles), _libelles
