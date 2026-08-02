@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.39.4"
+VERSION = "2.40.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3052,7 +3052,8 @@ def create_test_grid_object(mode, cells):
     return objs, None
 
 
-def create_mire_object(cells, cell_size, label_edges=None, nom="Test_Grille_Mire"):
+def create_mire_object(cells, cell_size, label_edges=None,
+                       nom="Test_Grille_Mire", cell_z_offset=0.0):
     """Crée dans le document l'objet de la MIRE d'une grille de test.
 
     La mire n'existait que dans le G-code : la vue 3D montrait la grille
@@ -3068,7 +3069,8 @@ def create_mire_object(cells, cell_size, label_edges=None, nom="Test_Grille_Mire
     bb = bbox_grille_test(cells, cell_size, label_edges)
     if bb is None:
         return None, None
-    bande, labels, infos = mire_de_mesure(*bb)
+    bande, labels, infos = mire_de_mesure(
+        *bb, regime=regime_grille(cell_z_offset))
     if bande is None:
         return None, None
     aretes = list(labels or [])
@@ -3309,7 +3311,8 @@ def generate_gcode_test_grid(cells, z_work, label_edges=None, label_power=None, 
         label_edges = list(label_edges or [])
         bb = bbox_grille_test(cells, cell_size, label_edges)
         if bb is not None:
-            mb, ml, infos_mire = mire_de_mesure(*bb)
+            mb, ml, infos_mire = mire_de_mesure(
+                *bb, regime=regime_grille(cell_z_offset))
             if mb is not None:
                 label_edges.extend(ml)
                 # La mire arrive en chaînes de (x, y) ; cette grille
@@ -9670,8 +9673,53 @@ def etiquette_laser(x, y, hauteur=2.5, laser=None):
     return single_line_text_to_edges(nom, height=hauteur, x0=x, y0=y)
 
 
+def libelle_regime(dz, spot=None):
+    """« FOYER » ou « DEFOCUS 15.34 PT1.18 » -- ce qu'on grave sur le bois.
+
+    Sans accent et en capitales : une étiquette gravée se lit de loin et
+    de biais. Le diamètre du point est ajouté quand on le connaît : c'est
+    LUI qui décide du régime, la hauteur n'en est que le moyen.
+
+    Une planche qui ne dit pas son régime se mesure mal trois jours plus
+    tard -- même leçon que le « 2b » gravé « 2 » le 01/08/2026. Le nom du
+    fichier ne suffit pas : il ne suit pas le bois, et c'est le bois qui
+    survit."""
+    try:
+        dz = float(dz or 0.0)
+    except (TypeError, ValueError):
+        return ""
+    if dz <= 0.05:
+        return "FOYER"
+    txt = "DEFOCUS {:.2f}".format(dz)
+    if spot:
+        txt += " PT{:.2f}".format(float(spot))
+    return txt
+
+
+def regime_grille(cell_z_offset):
+    """Le régime d'une grille de test : un seul défocus pour tout le bois."""
+    dz = float(cell_z_offset or 0.0)
+    if dz <= 0.05:
+        return libelle_regime(0.0)
+    return libelle_regime(dz, spot_diameter_at_defocus(
+        dz, SPOT_FOCUS_MM, calibrated_half_angle()))
+
+
+def regime_niveaux(niveaux):
+    """Le régime d'une planche à PLUSIEURS défocus : « DEFOCUS 15/36/40 ».
+
+    Un seul chiffre mentirait -- la planche 2 en porte trois ou quatre,
+    étiquetés bloc par bloc. Ce qu'on grave sous la réglette est la LISTE,
+    pour qu'une planche retrouvée dise d'un coup d'oeil ce qu'elle
+    couvre."""
+    vals = sorted({float(v) for v in (niveaux or []) if v})
+    if not vals:
+        return libelle_regime(0.0)
+    return "DEFOCUS " + "/".join("{:.0f}".format(v) for v in vals)
+
+
 def mire_de_mesure(x_min, y_min, x_max, y_max, power=None, feed=None,
-                   marge=6.0, bras=2.0, garde=3.0, laser=None):
+                   marge=6.0, bras=2.0, garde=3.0, laser=None, regime=None):
     """Mire de mesure à graver AUTOUR d'une planche : une réglette graduée
     au millimètre sous le contenu, et QUATRE repères en croix aux coins
     d'un rectangle de dimensions RONDES.
@@ -9767,6 +9815,12 @@ def mire_de_mesure(x_min, y_min, x_max, y_max, power=None, feed=None,
     # connaît que les chiffres, S, F, '.' et '-' -- donc pas une référence
     # comme « LT-80W-AA-PRO ».
     nom_laser = (active_laser_name() if laser is None else str(laser)).strip()
+    # Le RÉGIME rejoint le nom du laser sur la même ligne : les deux disent
+    # « dans quelles conditions ce bois a été brûlé », et les deux doivent
+    # survivre au bois. Ils rétrécissent ensemble pour tenir jusqu'au
+    # repère bas-droite.
+    if regime:
+        nom_laser = (nom_laser + "  " + str(regime).strip()).strip()
     if nom_laser:
         x_laser = x0 + bras + 2.0 + text_width(cotes, num_h) + 3.0
         # Jusqu'au repère bas-droite, jamais au-delà : un nom trop long
@@ -9784,6 +9838,7 @@ def mire_de_mesure(x_min, y_min, x_max, y_max, power=None, feed=None,
 
     infos = {"x0": x0, "y0": y0, "largeur": largeur, "hauteur": hauteur,
              "power": s, "feed": f, "laser": nom_laser,
+             "regime": (regime or ""),
              "garde": y_min - (y_reg + tick_max + num_dy + num_h)}
     # Le contenu ne doit jamais retomber sur la mire : c'est arrivé au
     # premier essai (le trait le plus large gravé en travers des chiffres,
@@ -9810,7 +9865,7 @@ def _bbox_planche(bande, label_edges=None):
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _ajouter_mire(bande, label_edges, power=None, feed=None):
+def _ajouter_mire(bande, label_edges, power=None, feed=None, regime=None):
     """Ajoute la mire de mesure à une planche à plat. Modifie `bande` et
     `label_edges` EN PLACE et renvoie les cotes, ou None si la planche est
     vide ou si la mire ne tient pas. Point d'entrée unique : les planches
@@ -9818,7 +9873,8 @@ def _ajouter_mire(bande, label_edges, power=None, feed=None):
     bb = _bbox_planche(bande, label_edges)
     if bb is None:
         return None
-    mb, ml, infos = mire_de_mesure(*bb, power=power, feed=feed)
+    mb, ml, infos = mire_de_mesure(*bb, power=power, feed=feed,
+                                   regime=regime)
     if mb is None:
         return None
     bande.extend(mb)
@@ -9832,7 +9888,10 @@ def _entete_mire(infos):
     refuser le chargement du fichier par LinuxCNC le 31/07/2026."""
     if not infos:
         return []
-    return [
+    return ([
+        "(Mire : regime grave sur la planche -- {})".format(
+            sanitize_gcode_for_linuxcnc("(" + infos["regime"] + ")")[1:-1]),
+    ] if infos.get("regime") else []) + [
         "(Mire de mesure : 4 reperes en croix, rectangle de {:.2f} x {:.2f} mm"
         " ENTRE CENTRES)".format(infos["largeur"], infos["hauteur"]),
         "(Mire : reglette au mm sous la planche, gravee a S{:.0f} F{:.0f})".format(
@@ -10276,7 +10335,8 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
         toutes = [t for _z, bd in bands for t in bd]
         bb = _bbox_planche(toutes, label_edges)
         if bb is not None:
-            mb, ml, infos_mire = mire_de_mesure(*bb)
+            mb, ml, infos_mire = mire_de_mesure(
+                *bb, regime=regime_niveaux(defocus_levels_mm))
             if mb is not None:
                 bands.append((z_focus, mb))
                 label_edges.extend(ml)

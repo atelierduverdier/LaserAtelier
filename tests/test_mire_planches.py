@@ -498,3 +498,44 @@ assert any(c.strip() == "(deja parenthese)" for c in _com), _com
 _d = [c for c in _com if "parentheses" in c][0]
 assert _d.count("(") == 1 and _d.count(")") == 1, _d
 print("15. un libelle d'etiquette reste un commentaire OK")
+
+# --- 16. Le REGIME est grave sur le bois --------------------------------
+# Une planche qui ne dit pas son regime se mesure mal trois jours plus
+# tard : le nom du fichier ne suit pas le bois, et c'est le bois qui
+# survit. Meme lecon que le « 2b » grave « 2 » le 01/08/2026.
+assert core.libelle_regime(0.0) == "FOYER"
+assert core.libelle_regime(0.03) == "FOYER", "un residu de Z n'est pas un defocus"
+assert core.libelle_regime(None) == "FOYER"
+assert core.libelle_regime("n'importe quoi") == ""
+_r16 = core.libelle_regime(15.34, 1.18)
+assert _r16.startswith("DEFOCUS 15.34") and "PT1.18" in _r16, _r16
+# SANS ACCENT ni minuscule : une etiquette gravee se lit de loin et de
+# biais, et la police mono-trait n'a pas a se battre avec des accents.
+for _t in (core.libelle_regime(0.0), core.libelle_regime(15.0, 1.16),
+           core.regime_niveaux((15.0, 36.0))):
+    assert _t == _t.upper(), ("le libelle doit etre en capitales", _t)
+    assert all(ord(c) < 128 for c in _t), ("pas d'accent grave", _t)
+# Plusieurs niveaux : la LISTE, pas un chiffre qui mentirait.
+assert core.regime_niveaux((36.0, 15.0, 40.0)) == "DEFOCUS 15/36/40"
+assert core.regime_niveaux(()) == "FOYER"
+
+# Et il arrive VRAIMENT sur la planche : dans l'en-tete ET sous la reglette.
+_COTE16 = 10.0
+_cells16 = core.build_test_grid_cells("gravure", 200.0, 1000.0, 3, 400.0, 2000.0, 2,
+                                      _COTE16, 3.0, fill_type="defocus",
+                                      hatch_spacing=1.0)
+_lab16 = core.single_line_text_to_edges("S200", height=3.0, x0=0.0, y0=-6.0)
+for _dz16, _attendu in ((0.0, "FOYER"), (15.34, "DEFOCUS 15.34")):
+    _g16 = core.generate_gcode_test_grid(
+        _cells16, core.Z_WORK_MM, label_edges=_lab16, mire=True,
+        cell_size=_COTE16, cell_z_offset=_dz16, quiet=True)
+    assert _attendu in _g16, ("regime absent de l'en-tete", _dz16, _g16[:400])
+    _bb16 = core.bbox_grille_test(_cells16, _COTE16, _lab16)
+    _mb16, _ml16, _i16 = core.mire_de_mesure(
+        *_bb16, regime=core.regime_grille(_dz16))
+    assert _attendu in _i16["laser"], (
+        "le regime doit etre GRAVE sous la reglette, pas seulement en "
+        "commentaire du fichier", _i16["laser"])
+    # Le nom du laser ne doit pas avoir ete chasse par le regime.
+    assert core.active_laser_name() in _i16["laser"], _i16["laser"]
+print("16. le regime (foyer / defocus) est grave sur le bois OK")

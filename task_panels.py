@@ -12014,7 +12014,8 @@ class TaskPanelTestGrid:
         if avec_mire:
             obj_mire, _im = core.create_mire_object(
                 cells, cote,
-                label_edges if self.chk_labels.isChecked() else None)
+                label_edges if self.chk_labels.isChecked() else None,
+                cell_z_offset=cell_z_offset)
         gcode = core.generate_gcode_test_grid(
             cells, self.spn_zwork.value(),
             label_edges=label_edges if self.chk_labels.isChecked() else None,
