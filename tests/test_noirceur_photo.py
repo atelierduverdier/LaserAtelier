@@ -529,4 +529,57 @@ finally:
     core.PLANCHES_DIR = _vrai_dir
 print("15. le regime suit les tons, et une fiche muette previent OK")
 
+
+# --- 16. « Pas de valeur » : rien, ou pas exploitable -------------------
+# « Peut-etre un bouton pour dire pas de valeur (--), car soit il y a
+# rien, soit ce n'est pas exploitable » -- Christophe, 02/08/2026.
+#
+# Les deux cas n'ont PAS la meme valeur : un trait vierge est une DONNEE
+# (le seuil du materiau, dont le modele se sert), une case illisible est
+# une ABSENCE de mesure. Le bouton dit la seconde ; pour la premiere on
+# saisit 0.
+_sig16 = _i12.signature(tp._DialogueMesureTrait.__init__)
+assert "on_vider" in _sig16.parameters, _sig16
+_src16 = _i12.getsource(tp._DialogueMesureTrait)
+assert "btn_rien" in _src16, "le bouton « pas de valeur » manque"
+assert "saisis 0" in _src16, (
+    "l'infobulle doit distinguer le trait VIERGE (une mesure) de la case "
+    "illisible (une absence)")
+
+# La fenetre des tons : un clic ecarte une case, un second la reprend.
+_src16b = _i12.getsource(tp._VueNoirceur)
+assert "case_cliquee" in _src16b, "la vue ne signale pas les clics sur case"
+_src16c = _i12.getsource(tp._DialogueNoirceur)
+assert "_basculer_case" in _src16c and "_ecartees" in _src16c
+# RÉVERSIBLE : c'est ce qui distingue un ecart d'une suppression.
+assert "discard" in _src16c, (
+    "ecarter une case doit se defaire d'un second clic -- sinon c'est une "
+    "suppression deguisee")
+print("16. « pas de valeur » : bouton pour les traits, clic pour les tons, "
+      "et le trait vierge reste distinct de la case illisible OK")
+
+
+# --- 17. Le nom saisi identifie la planche sans ouvrir la photo ---------
+# « Je dois ouvrir la photo avant afin de voir ce que c'est » (02/08/2026).
+_n17 = core.nom_planche_redressee("planche_autre", "20260802-1200",
+                                  nom="Grille tons foyer 0,15")
+assert "Grille-tons-foyer" in _n17, _n17
+# Le nom ne casse PAS le decoupage par la fin (date = avant-dernier champ) :
+# un souligne dans le nom le casserait, il est donc remplace.
+_n17b = core.nom_planche_redressee("planche1", "20260802-1200",
+                                   nom="avec_des_soulignes")
+assert "_des_" not in _n17b.replace("planche1", ""), _n17b
+_ch17 = _n17[:-len("_redresse")].split("_")
+assert _ch17[-1] == "20260802-1200", _ch17
+# Sans nom : strictement identique a avant (les vieilles planches gardent
+# leur nom, rien ne bouge sur le disque).
+assert core.nom_planche_redressee("planche1", "X") == \
+    core.nom_planche_redressee("planche1", "X", nom="")
+# Et l'outil de redressement accepte --nom (il le range dans la fiche).
+_src17 = open(_os.path.join(_os.path.dirname(_os.path.dirname(
+    _os.path.abspath(__file__))), "outils", "redresser_photo.py")).read()
+assert '"--nom"' in _src17 and '"nom": a.nom' in _src17
+print("17. le nom saisi entre dans le fichier et la fiche, sans casser "
+      "le decoupage OK")
+
 print("\nTOUS LES TESTS noirceur_photo PASSENT")

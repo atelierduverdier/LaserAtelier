@@ -720,6 +720,15 @@ def _importer_image_a_l_echelle(chemin, largeur_mm, hauteur_mm):
 # n'existait pas du tout : les photos étaient rangées quelque part que
 # rien n'affichait, et le message promettait pourtant « rangée dans les
 # photos du résultat » (constaté le 01/08/2026).
+# TOUTES les planches qui portent une mire, sans exception -- la 2b avait
+# manqué à l'appel (signalé le 01/08/2026).
+#
+# La PLANCHE 3 est ABSENTE et c'est voulu, vérifié à l'audit du 02/08 :
+# c'est la bande verticale de calibration du point, SANS mire (ni croix ni
+# réglette -- son générateur n'en émet pas). Elle ne se redresse donc pas ;
+# son diamètre de point se mesure à part et se saisit en Préférences. La
+# proposer ici offrirait des cotes bidon sur une planche sans croix à
+# cliquer.
 _PLANCHES = (("Planche 1 — foyer", "planche1"),
              ("Planche 2 — défocus", "planche2"),
              ("Planche 2b — défocus profond", "planche2b"),
@@ -928,6 +937,21 @@ def _redresser_photo_planche(parent, on_range=None):
         return
     base = base.strip().replace("-", "x").replace(",", ".")
 
+    # LE NOM, pour ne plus avoir à ouvrir la photo. « Pour le nommage des
+    # planches, c'est pas optimum, car je dois ouvrir la photo avant afin
+    # de voir ce que c'est » (02/08/2026). Optionnel : vide, tout continue
+    # comme avant. Il part dans le NOM DE FICHIER (en slug) et dans la
+    # fiche .json (tel quel) -- les libellés de l'atelier le préfèrent.
+    nom_planche, ok = QtWidgets.QInputDialog.getText(
+        parent, "Nom de la planche (optionnel)",
+        "Un nom court et parlant, ex. \u00ab grille tons foyer 0,15 \u00bb ou\n"
+        "\u00ab h\u00eatre chute \u00e9tag\u00e8re \u00bb. Il appara\u00eetra dans les listes et dans le\n"
+        "nom du fichier, pour identifier la planche sans ouvrir la photo.",
+        text="")
+    if not ok:
+        return
+    nom_planche = nom_planche.strip()
+
     # LES COTES SAISIES DÉSIGNENT-ELLES UNE AUTRE PLANCHE ?
     #
     # La planche est choisie AVANT de voir la photo, donc on peut très bien
@@ -981,12 +1005,14 @@ def _redresser_photo_planche(parent, on_range=None):
         # réutilisables telles quelles par quelqu'un d'autre.
         sortie = os.path.join(
             core.dossier_planches(),
-            core.nom_planche_redressee(planche, horo, suffixe) + ".png")
+            core.nom_planche_redressee(planche, horo, suffixe,
+                                        nom=nom_planche) + ".png")
         infos = os.path.join(tempfile.gettempdir(), "redresse_{}.json".format(i))
         try:
             r = subprocess.run([py, script, photo, "--base", base,
                                 "--pxmm", "50", "--sortie", sortie,
                                 "--laser", core.active_laser_name(),
+                                "--nom", nom_planche,
                                 "--json", infos],
                                capture_output=True, text=True, timeout=900,
                                env=_env_systeme_propre())
@@ -1543,6 +1569,38 @@ class _MesuresPlanchesControleur:
             self._mesure_cible = cases[i]
             self._serie = []
 
+    def _vider_case(self):
+        """Efface la case visée et passe à la suivante. Renvoie (index, texte).
+
+        « Soit il n'y a rien, soit ce n'est pas exploitable » -- deux cas
+        qui n'ont pas la même valeur : un trait VIERGE est une donnée (le
+        seuil du matériau), une case ILLISIBLE est une absence de mesure.
+        Ce bouton dit la seconde. Pour la première, on saisit 0 : c'est un
+        chiffre mesuré, il doit se lire comme tel.
+
+        Vider plutôt que laisser en place : une valeur héritée d'une
+        mesure précédente, sur une case qu'on vient de juger inexploitable,
+        est le pire des deux mondes -- elle a l'air d'une mesure."""
+        if self._mesure_cible is not None and self._mesure_cible.isReadOnly():
+            return None, ("Grille <b>verrouillée</b> : rien n'a été effacé.")
+        nom = self._nom_case(self._mesure_cible) or "cette case"
+        if self._mesure_cible is not None:
+            self._mesure_cible.setValue(0.0)
+            self._mesure_cible.clear()
+        self._serie = []
+        txt = ("<b>{}</b> laissée SANS VALEUR. Si le trait est vierge et que "
+               "c'est ça qu'on veut noter, saisis <b>0</b> à la place : un "
+               "trait qui ne marque pas est une mesure.".format(nom))
+        cases = self._cases_courantes()
+        try:
+            i = cases.index(self._mesure_cible) + 1
+        except ValueError:
+            return None, txt
+        if i >= len(cases):
+            return None, txt
+        self._derniere_case = self._mesure_cible = cases[i]
+        return i, txt
+
     def _retenir_depuis_image(self, valeur):
         """Range la largeur, passe à la case suivante, renvoie son nom.
 
@@ -1568,6 +1626,10 @@ class _MesuresPlanchesControleur:
 
         On découpe par la FIN : `<laser>_<planche>_<date>_redresse`. Le nom
         du laser peut contenir des soulignés, pas la date ni la planche."""
+        # Le nom SAISI au redressement prime : c'est lui qui identifie
+        # la planche sans ouvrir la photo. Le découpage du nom de
+        # fichier ne sert que de repli pour les planches d'avant.
+        titre = ((p.get("infos") or {}).get("nom") or "").strip()
         champs = p["nom"][:-len("_redresse")].split("_")
         date = champs[-1] if len(champs) >= 2 else ""
         planche = champs[-2] if len(champs) >= 2 else p["nom"]
@@ -1577,7 +1639,7 @@ class _MesuresPlanchesControleur:
         # puisque le remplacement naïf ne laissait que le suffixe. Une
         # planche qu'on ne sait pas nommer garde sa clé, mais capitalisée.
         connus = {cle: nom.split(" — ")[0] for nom, cle in _PLANCHES}
-        lib = connus.get(planche) or planche.replace(
+        lib = titre or connus.get(planche) or planche.replace(
             "planche", "Planche ").strip().capitalize()
         if heure:
             lib += " — {}h{}".format(heure[:2], heure[2:])
@@ -1764,7 +1826,8 @@ class _MesuresPlanchesControleur:
         dlg = _DialogueMesureTrait(
             chemin, pxmm, [self._nom_case(w) or "?" for w in cases],
             cases.index(cible), self._retenir_depuis_image, self._viser_index,
-            cadre_auto=self._cadreur_auto(chemin, pxmm, gr, cases))
+            cadre_auto=self._cadreur_auto(chemin, pxmm, gr, cases),
+            on_vider=self._vider_case)
         dlg.changer_image.connect(self._changer_image)
         dlg.exec()
         if getattr(dlg, "veut_changer", False):
@@ -3118,9 +3181,22 @@ class _VueNoirceur(QtWidgets.QLabel):
                 return nom
         return None
 
+    case_cliquee = QtCore.Signal(int)
+
     def mousePressEvent(self, ev):
-        self._prise = self._sur(ev.position() if hasattr(ev, "position")
-                                else ev.pos())
+        p = ev.position() if hasattr(ev, "position") else ev.pos()
+        self._prise = self._sur(p)
+        if self._prise is not None:
+            return
+        # Pas sur un repère : peut-être sur une case. « Soit il n'y a rien,
+        # soit ce n'est pas exploitable » -- le plancher de bruit attrape
+        # le premier cas, pas le second (un reflet, une gravure ancienne
+        # en travers). Le clic écarte la case, et la reprend au clic
+        # suivant : rien n'est perdu, tout est réversible.
+        for k, (r, _lib, _val) in enumerate(self._cases):
+            if self._mm_vers_ecran(r).contains(p):
+                self.case_cliquee.emit(k)
+                return
 
     def mouseMoveEvent(self, ev):
         p = ev.position() if hasattr(ev, "position") else ev.pos()
@@ -3257,6 +3333,8 @@ class _DialogueNoirceur(QtWidgets.QDialog):
         # --- ② la vue ---------------------------------------------------
         self.vue = _VueNoirceur(self)
         self.vue.bouge.connect(self._relire)
+        self.vue.case_cliquee.connect(self._basculer_case)
+        self._ecartees = set()      # (row, col) jugées inexploitables
         lay.addWidget(self.vue, 1)
 
         self.lbl = _WrapLabel("")
@@ -3321,8 +3399,11 @@ class _DialogueNoirceur(QtWidgets.QDialog):
             chemin = infos.get("apercu") or infos.get("fichier")
             if not chemin:
                 continue
-            self.combo_planche.addItem(p.get("nom") or p["base"],
-                                       {"chemin": chemin, "infos": infos})
+            titre = (infos.get("nom") or "").strip()
+            self.combo_planche.addItem(
+                "{} \u2014 {}".format(titre, p.get("nom") or p["base"])
+                if titre else (p.get("nom") or p["base"]),
+                {"chemin": chemin, "infos": infos})
         self.combo_planche.blockSignals(False)
 
     def _remplir_materiaux(self):
@@ -3486,6 +3567,8 @@ class _DialogueNoirceur(QtWidgets.QDialog):
             v = core.noirceur_normalisee(g, gb, gn) if g is not None else None
             nue = (v is not None and self._plancher is not None
                    and v < self._plancher)
+            if (c["row"], c["col"]) in self._ecartees:
+                nue = True
             self._valeurs[(c["row"], c["col"])] = (None if nue else v, c)
             dessin.append((r, "", None if nue else v))
         self.vue.poser(self.vue._img, self._pxmm_vue, self._marge, dessin,
@@ -3508,8 +3591,28 @@ class _DialogueNoirceur(QtWidgets.QDialog):
                     .format(nues, "s" if nues > 1 else "", self._plancher or 0,
                             len(bois_lus), "s" if nues > 1 else "",
                             "s" if nues > 1 else ""))
-        msg += " Les deux repères se déplacent à la souris."
+        if self._ecartees:
+            msg += (" <b>{} case{} écartée{} d'un clic</b> (illisible : reflet, "
+                    "gravure ancienne en travers…) — reclique pour la"
+                    "{} reprendre.".format(
+                        len(self._ecartees), "s" if len(self._ecartees) > 1 else "",
+                        "s" if len(self._ecartees) > 1 else "",
+                        "s" if len(self._ecartees) > 1 else ""))
+        msg += (" Les deux repères se déplacent à la souris ; un clic sur une "
+                "case l'écarte.")
         self._dire(msg)
+
+    def _basculer_case(self, k):
+        """Écarte la case cliquée, ou la reprend. Toujours réversible."""
+        cases = (self._fiche or {}).get("cases") or []
+        if not (0 <= k < len(cases)):
+            return
+        cle = (cases[k]["row"], cases[k]["col"])
+        if cle in self._ecartees:
+            self._ecartees.discard(cle)
+        else:
+            self._ecartees.add(cle)
+        self._relire()
 
     def _dire(self, texte, rouge=False):
         self.lbl.setText(texte)
@@ -3657,13 +3760,14 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
 
     def __init__(self, chemin, pxmm, noms_cases=None, index=0,
                  on_retenir=None, on_cible=None, parent=None,
-                 cadre_auto=None):
+                 cadre_auto=None, on_vider=None):
         super().__init__(parent)
         self.veut_changer = False
         self._noms = list(noms_cases or ["case visée"])
         self._on_retenir = on_retenir
         self._on_cible = on_cible
         self._cadre_auto = cadre_auto
+        self._on_vider = on_vider
         # Le NOM de la planche dans le titre : elle s'ouvre toute seule, il
         # faut donc pouvoir vérifier d'un coup d'oeil que c'est la bonne.
         self.setWindowTitle("Mesurer sur {}".format(os.path.basename(chemin)))
@@ -3732,9 +3836,23 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
             "du haut vers le bas. L'oeil parcourt donc la planche et l'écran\n"
             "de la même façon.")
         self.btn_suiv.clicked.connect(self._retenir_et_suivant)
+        # « Soit il n'y a rien, soit ce n'est pas exploitable » (02/08/2026).
+        # Toujours actif, LUI : on juge une case illisible sans avoir eu à
+        # l'encadrer, et c'est justement le cas où encadrer ne sert à rien.
+        self.btn_rien = QtWidgets.QPushButton("— Pas de valeur → suivante")
+        self.btn_rien.setToolTip(
+            "Laisse la case VIDE et passe a la suivante : le trait est\n"
+            "illisible -- brouille par une gravure ancienne, un reflet ou\n"
+            "un noeud du bois.\n"
+            "\n"
+            "A ne pas confondre avec un trait VIERGE, qui est une mesure :\n"
+            "si le laser n'a rien marque, saisis 0 -- c'est le seuil du\n"
+            "materiau, et le modele s'en sert.")
+        self.btn_rien.clicked.connect(self._pas_de_valeur)
         self.btn_ok = QtWidgets.QPushButton("Retenir et fermer")
         self.btn_ok.setEnabled(False)
         self.btn_ok.clicked.connect(self._retenir_et_fermer)
+        ligne.addWidget(self.btn_rien)
         b_non = QtWidgets.QPushButton("Annuler")
         b_non.clicked.connect(self.reject)
         b_img = QtWidgets.QPushButton("Changer de planche…")
@@ -3822,6 +3940,22 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         # bandeau annonce la nouvelle -- et la mesure partirait dans la
         # bonne case avec la largeur de la mauvaise.
         self._cadrer_auto()
+
+    def _pas_de_valeur(self):
+        """Case laissée vide, puis on avance. Ne ferme pas la fenêtre."""
+        if self._on_vider is None:
+            return
+        i, txt = self._on_vider()
+        self._dire(txt)
+        if i is None:
+            self.btn_suiv.setEnabled(False)
+            self.btn_ok.setEnabled(False)
+            self.btn_rien.setEnabled(False)
+            return
+        self.combo_cible.blockSignals(True)
+        self.combo_cible.setCurrentIndex(i)
+        self.combo_cible.blockSignals(False)
+        self._retour()
 
     def _retenir_et_fermer(self):
         if self._on_retenir is not None:

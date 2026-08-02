@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>2.43.0</b></span>
+        <span class="badge">Version <b>2.44.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -655,7 +655,7 @@
       <div class="shot"><img src="screenshots/panneaux/10_grille_test.png" alt="Panneau Grille de test"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/testgrid.svg" alt=""></span><h4>Grille de test puissance/vitesse</h4></div>
-        <p><b>Nouveau matériau à calibrer de façon standard&nbsp;?</b> Préfère l'Assistant matériau (planches, mesures et déductions regroupées) ; cette grille sert aux plages personnalisées ou à la découpe. Matrice de cellules à puissance/vitesse variables, étiquetées, avec cadre net autour de chaque cellule. Un <b>préréglage recommandé</b> (« objectif ») remplit la grille prête à graver ; les <b>largeurs brûlées</b> se saisissent <b>inline</b> (section ②). Champ <b>Hauteur (Z) de test</b> pour rejouer la matrice à une autre hauteur, et <b>style de trait</b> du remplissage (plein / tirets / pointillé).</p>
+        <p><b>Nouveau matériau à calibrer de façon standard&nbsp;?</b> Préfère l'Assistant matériau (planches, mesures et déductions regroupées) ; cette grille sert aux plages personnalisées ou à la découpe. Matrice de cellules à puissance/vitesse variables, étiquetées, avec cadre net autour de chaque cellule. Un <b>préréglage recommandé</b> (« objectif ») remplit la grille prête à graver ; les <b>largeurs brûlées</b> se saisissent <b>inline</b> (section ②). Champ <b>Hauteur (Z) de test</b> pour rejouer la matrice à une autre hauteur, et <b>style de trait</b> du remplissage (plein / tirets / pointillé). Section <b>«&nbsp;Mesure sur photo&nbsp;»</b>&nbsp;: la grille peut graver une <b>mire</b> (4 croix + réglette + régime <code>FOYER</code>/<code>DEFOCUS</code>), et une <b>fiche de grille</b> est déposée à côté du G-code — la photo redressée se lit alors d'un coup&nbsp;: noirceur de <b>toutes les cases</b>, repères bois nu / noir max déplaçables, plancher de bruit mesuré sur le grain, versement au nuancier avec le régime.</p>
         <div class="when"><b>Quand&nbsp;?</b> Trouver le couple puissance/vitesse d'un nouveau matériau, par paliers discrets.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>
@@ -712,7 +712,7 @@
       <div class="shot"><img src="screenshots/panneaux/14_nuancier.png" alt="Panneau Nuancier matériau"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/nuancier.svg" alt=""></span><h4>Nuancier matériau</h4></div>
-        <p>La palette de gris <b>mesurée</b> d'un matériau : chaque ton = un réglage (puissance, vitesse, défocus) + son résultat constaté (noirceur 0-100&nbsp;%, largeur). Dans les modes Marquage et Gravure remplie, choisir un ton l'applique aussitôt.</p>
+        <p>La palette de gris <b>mesurée</b> d'un matériau : chaque ton = un réglage (puissance, vitesse, défocus) + son résultat constaté (noirceur 0-100&nbsp;%, largeur). Dans les modes Marquage et Gravure remplie, choisir un ton l'applique aussitôt. Depuis la v2.39, les tons peuvent venir d'une <b>lecture sur photo</b> (grille + mire + fiche) au lieu du seul jugement à l'œil — chaque ton versé porte alors son <b>régime</b> (défocus et pas), sans quoi deux familles se mélangeraient dans une même courbe.</p>
         <div class="when"><b>Quand&nbsp;?</b> Après les grilles/rampes, pour capitaliser les réglages qui marchent.</div>
         <details class="howto">
           <summary>Mode d'emploi</summary>

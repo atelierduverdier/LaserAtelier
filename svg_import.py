@@ -122,11 +122,6 @@ def _iter_path_tokens(d):
                 break
 
 
-def tokenize_path(d):
-    """Découpe un attribut `d` complet en liste de tokens (lève si malformé)."""
-    return list(_iter_path_tokens(d))
-
-
 def path_d_to_subpaths(d, tol=FLATTEN_TOL_MM):
     """Interprète un attribut `d` en sous-tracés aplatis.
 
@@ -661,11 +656,6 @@ def parse_svg_root(root):
             warnings.append("{} élément(s) <{}> ignoré(s) : {}".format(
                 count, tag, _UNSUPPORTED_LABELS.get(tag, "non pris en charge")))
     return records, warnings
-
-
-def parse_svg_string(text):
-    """Variante depuis une chaîne (tests sans fichier temporaire)."""
-    return parse_svg_root(ET.fromstring(text))
 
 
 def parse_svg_file(filepath):

@@ -432,9 +432,14 @@ core.PLANCHES_DIR = _ancien
 _tp_src = open(_os.path.join(_os.path.dirname(_os.path.abspath(tp.__file__)),
                              "task_panels.py")).read()
 _i = _tp_src.index("def _redresser_photo_planche")
-_corps = _tp_src[_i:_i + 6000]
+# Jusqu'a la fin de la fonction, pas une fenetre de N caracteres : la
+# question du NOM (v2.44.0) a allonge le corps et sorti "--laser" d'une
+# fenetre de 6000, faisant tomber le test sur du code pourtant correct.
+_j = _tp_src.index("\ndef ", _i + 10)
+_corps = _tp_src[_i:_j]
 assert "core.dossier_planches()" in _corps and "core.nom_planche_redressee" in _corps
 assert '"--laser"' in _corps, "le laser doit partir dans la fiche du redressement"
+assert '"--nom"' in _corps, "le nom saisi doit partir dans la fiche aussi"
 print("redressement : dossier a part + laser dans le nom du fichier OK")
 
 # --- Supprimer une planche, fichiers compris (v2.23.0) ---------------

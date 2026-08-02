@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.43.0"
+VERSION = "2.44.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1094,7 +1094,8 @@ def dossier_planches(creer=True):
     return d
 
 
-def nom_planche_redressee(planche, horodatage, suffixe="", laser=None):
+def nom_planche_redressee(planche, horodatage, suffixe="", laser=None,
+                          nom=""):
     """« LT-80W-AA-PRO_planche1_20260801-0745_redresse » (sans extension).
 
     LE LASER EST DANS LE NOM, et ce n'est pas cosmétique : une largeur
@@ -1104,9 +1105,16 @@ def nom_planche_redressee(planche, horodatage, suffixe="", laser=None):
     module peut reprendre ces mesures sans refaire une heure d'établi.
     Sans le nom du laser sur le fichier, cette réutilisation demande de se
     souvenir, ce qui revient à dire qu'elle n'aura pas lieu."""
+    seg = slug_fichier(planche, "planche")
+    if nom:
+        # Le nom SAISI entre dans le fichier : « il faut ouvrir la photo
+        # pour voir ce que c'est » (02/08/2026). Sans souligné -- le
+        # libellé se reconstruit en découpant le nom par la FIN sur les
+        # soulignés, et un nom qui en contiendrait casserait ce découpage.
+        seg += "-" + slug_fichier(nom, "").replace("_", "-").strip("-")
     return "{}_{}_{}{}_redresse".format(
         slug_fichier(active_laser_name() if laser is None else laser, "laser"),
-        slug_fichier(planche, "planche"), horodatage, suffixe)
+        seg, horodatage, suffixe)
 
 
 def _fichiers_planche(base):
@@ -4757,11 +4765,13 @@ _FACTORY_PRESETS = {
             # 0,18 mm -- la recette laissait 0,12 mm de bois nu entre chaque
             # ligne, 40 % de la surface. Elle gravait des rayures.
             #
-            # Pas 0,14 = le trait le plus épais à F1000 sans plafond, pour que
-            # les lignes se touchent même à pleine puissance.
+            # Pas 0,16 = le trait le plus épais à F1000 sans plafond, pour que
+            # les lignes se touchent même à pleine puissance. (0,14 jusqu'au
+            # 02/08/2026 : la planche remesurée à l'outil de cadrage
+            # automatique donne 0,10 -> 0,16 sur cette colonne.)
             # 120 mm de large : sous 100 mm le grain se voit plus que le sujet.
             "mode": "enfle", "material": u"Hêtre", "width": 120.0,
-            "pitch": 0.14, "line_feed": 1000.0, "line_min": 0.10,
+            "pitch": 0.16, "line_feed": 1000.0, "line_min": 0.10,
             "spot_width": 0.0, "gamma": 1.0, "white": 5.0, "invert": False,
             "power": 1000.0, "power_max": 900.0,
             "dwell_min": 10.0, "dwell_max": 60.0,
@@ -4777,13 +4787,13 @@ _FACTORY_PRESETS = {
         "Similigravure Hêtre -- trame 45° (sans calibration)": {
             # Aucune calibration : le gris est une SURFACE. Mais la promesse
             # « couverture = noirceur » suppose que les lignes se TOUCHENT :
-            # à S1000/F800 le trait brûlé mesure 0,18 mm (relevé du 01/08/2026
-            # à l'outil de profil), d'où le pas 0,18. Le 0,30 d'avant venait de
+            # à S1000/F800 le trait brûlé mesure 0,20 mm (remesuré le 02/08/2026
+            # à l'outil de profil), d'où le pas 0,20. Le 0,30 d'avant venait de
             # la même colonne fabriquée que la recette « lignes gravées » : les
             # lignes ne se touchaient pas, et la promesse tombait.
             # Espacement 1,27 mm -> maille k=3, soit 18 niveaux de gris.
             "mode": "simili", "material": u"Hêtre", "width": 120.0,
-            "pitch": 0.18, "line_feed": 800.0, "power": 1000.0,
+            "pitch": 0.20, "line_feed": 800.0, "power": 1000.0,
             "dot_spacing": 1.27, "spot_width": 0.0, "gamma": 1.0,
             "white": 5.0, "invert": False, "dwell_min": 10.0,
             "dwell_max": 60.0, "line_min": 0.10},
@@ -5211,26 +5221,6 @@ def burn_width_at(power, feed, material=None):
     return _bilinear_burn(load_burn_widths(mat).get("focus") or [], power, feed)
 
 
-def burn_width_defocus_at(power, material=None):
-    """Largeur brûlée (mm) au DÉFOCUS standard du remplissage, interpolée
-    LINÉAIREMENT en S sur les mesures (bornée). None si aucune table."""
-    mat = _burn_width_material(material)
-    if not mat:
-        return None
-    pts = sorted((load_burn_widths(mat).get("defocus") or []),
-                 key=lambda p: float(p["power"]))
-    if not pts:
-        return None
-    p = min(max(float(power), float(pts[0]["power"])),
-            float(pts[-1]["power"]))
-    for a, b in zip(pts, pts[1:]):
-        pa, pb = float(a["power"]), float(b["power"])
-        if pa <= p <= pb:
-            t = 0.0 if pb == pa else (p - pa) / (pb - pa)
-            return float(a["width"]) * (1 - t) + float(b["width"]) * t
-    return float(pts[-1]["width"])
-
-
 def burn_width_defocus_scaled(power, feed, defocus, material=None):
     """Largeur brûlée (mm) attendue au défocus `defocus` pour (S, F), INTERPOLÉE
     entre les niveaux de défocus mesurés (section 2 de la planche, cf.
@@ -5501,18 +5491,6 @@ def remplissage_noir_le_plus_econome(material, noirceur_min=95.0):
     return meilleur
 
 
-def shade_for_darkness(material, target_pct):
-    """Le ton mesuré dont la noirceur est LA PLUS PROCHE de target_pct
-    (0-100), ou None si le matériau n'a aucun ton. Choix du plus proche
-    plutôt qu'une interpolation : interpoler la puissance entre deux tons
-    de vitesses différentes n'aurait pas de sens physique -- on reste sur
-    des réglages réellement testés."""
-    shades = load_shades(material)
-    if not shades:
-        return None
-    return min(shades, key=lambda s: abs(s.get("darkness", 0) - target_pct))
-
-
 def darkness_at(material, power, feed, z_offset=0.0):
     """Noirceur MESURÉE (0..100) attendue pour (S, F) au défocus `z_offset`,
     d'après le nuancier du matériau : les tons sont regroupés par niveau de
@@ -5562,20 +5540,6 @@ def shade_feed_range(material, z_offset=0.0):
     z_proche = min(niveaux, key=lambda z: abs(z - float(z_offset or 0.0)))
     feeds = [float(s["feed"]) for s in niveaux[z_proche]]
     return min(feeds), max(feeds)
-
-
-def shade_summary(shade):
-    """Résumé court d'un ton pour un sélecteur : « 45% -- S600 F800
-    déf 2.0 (0.80mm) »."""
-    parts = "{:.0f}% -- S{:.0f} F{:.0f}".format(
-        shade.get("darkness", 0), shade.get("power", 0), shade.get("feed", 0))
-    if shade.get("z_offset", 0):
-        parts += " déf {:.1f}".format(shade["z_offset"])
-    if shade.get("width", 0):
-        parts += " ({:.2f}mm)".format(shade["width"])
-    if shade.get("label"):
-        parts += " " + shade["label"]
-    return parts
 
 
 # --------------------------------------------------------------------------

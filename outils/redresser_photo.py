@@ -293,6 +293,9 @@ def main():
                          "dans la fiche .json : une largeur brulee n'a de sens "
                          "que pour le laser qui l'a produite, et quelqu'un qui "
                          "a le MEME module peut reprendre ces mesures")
+    ap.add_argument("--nom", default="",
+                    help="nom lisible de la planche, repris dans la fiche -- "
+                         "pour identifier une planche sans ouvrir la photo")
     ap.add_argument("--reperes", default=None,
                     help="4 points x,y separes par des espaces, au lieu des clics "
                          "(pour rejouer sans interface)")
@@ -427,6 +430,7 @@ def main():
     import json
     infos = {"fichier": os.path.abspath(sortie),
              "laser": a.laser,
+             "nom": a.nom,
              "apercu": os.path.abspath(apercu),
              "largeur_mm": W / a.pxmm, "hauteur_mm": Ht / a.pxmm,
              "pxmm": a.pxmm, "base_mm": [L, H],
