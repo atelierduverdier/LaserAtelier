@@ -500,3 +500,23 @@ threshold is noise on a shared machine, a counter is not. One table, one read.
 
 Anything that samples a width curve must load the measurements **once** and work on the list. If
 you find yourself calling `burn_width_at` in a loop, that loop is a file-parsing loop.
+
+## A cell below the wood's own grain noise is not a pale tone (2026-08-02)
+
+The first real tone board read two cells at **1 %** and **3 %**. Christophe looked at the wood:
+both were **blank**. The reading was not wrong — it was grain.
+
+The floor is measured, never chosen. `reperes_candidats` already yields the gaps between cells,
+which are untouched wood all over the board; reading them gives the grain's own spread. On that
+board, 25 such zones read **0.0 → 9.8 %** (mean 3.6, σ 2.2) while the eight palest cells read
+**1.1 → 5.1 %** — entirely inside it.
+
+`plancher_bruit_bois` returns **mean + 2σ** (8.1 % there), not the maximum: one reflection or one
+knot would carry the maximum, and the floor with it. Cells below are shown as **"—"**, not "0", and
+are **excluded from the versement** — a cell the laser did not mark is not a tone of zero, and the
+two read differently at the bench.
+
+Verified against his eye: the ten cells the floor rejected are the ten he calls blank. The two
+borderline ones (S520 at F3280 and F4000) sit just under it, and he judged them *"quasi zéro,
+pas utile"* — so the floor is where it should be. **Don't tune it finer than the wood can
+distinguish.**

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.39.3"
+VERSION = "2.39.4"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9957,6 +9957,29 @@ def reperes_candidats(fiche, cote_mm=None):
             if x1 - x0 > 0.3 and y1 - y0 > 0.3:
                 out.append((x0, y0, x1, y1))
     return out
+
+
+def plancher_bruit_bois(noirceurs_bois):
+    """Sous quelle noirceur une case ne se distingue plus du BOIS NU.
+
+    Mesuré sur la planche elle-même, jamais choisi : on lit la noirceur de
+    tous les écarts entre cases -- du bois intact, partout -- et le bruit
+    de grain donne leur dispersion. Sur la planche de tons du 02/08/2026,
+    25 zones de bois nu se lisaient de 0,0 à 9,8 % (moyenne 3,6,
+    écart-type 2,2), quand les huit cases les plus claires se lisaient de
+    1,1 à 5,1 %. Christophe a confirmé au bois : elles ne sont pas
+    gravées. Les verser au nuancier, ce serait enregistrer du grain.
+
+    `moyenne + 2 écarts-types` plutôt que le maximum : un seul reflet ou
+    un noeud du bois ferait sauter le maximum, et le plancher avec.
+
+    Renvoie None si l'on n'a pas de quoi estimer (moins de 4 zones)."""
+    vals = [float(v) for v in (noirceurs_bois or []) if v is not None]
+    if len(vals) < 4:
+        return None
+    moy = sum(vals) / len(vals)
+    var = sum((v - moy) ** 2 for v in vals) / len(vals)
+    return moy + 2.0 * math.sqrt(var)
 
 
 def case_en_pixels(case, pxmm, marge_mm):

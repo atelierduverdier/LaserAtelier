@@ -3087,9 +3087,14 @@ class _VueNoirceur(QtWidgets.QLabel):
             rect = self._mm_vers_ecran(r)
             p.setPen(QtGui.QPen(QtGui.QColor(255, 138, 0, 200), 1.0))
             p.drawRect(rect)
-            if val is not None and rect.height() > 12:
-                p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255)))
-                p.drawText(rect, QtCore.Qt.AlignCenter, "{:.0f}".format(val))
+            if rect.height() > 12:
+                # « — » et non « 0 » : une case sous le bruit du bois n'est
+                # pas un ton de 0 %, c'est une case que le laser n'a pas
+                # marquée. Les deux se lisent autrement à l'établi.
+                p.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255) if val is not None
+                                    else QtGui.QColor(160, 160, 160)))
+                p.drawText(rect, QtCore.Qt.AlignCenter,
+                           "{:.0f}".format(val) if val is not None else "—")
         # Les deux repères, bien visibles et nommés.
         for nom, r, coul in (("bois nu", self._bois, QtGui.QColor(60, 200, 90)),
                              ("noir max", self._noir, QtGui.QColor(70, 150, 255))):
@@ -3340,22 +3345,49 @@ class _DialogueNoirceur(QtWidgets.QDialog):
             self.vue.poser(self.vue._img, self._pxmm_vue, self._marge, [],
                            bois, noir)
             return
+        # LE PLANCHER DE BRUIT, mesuré sur les écarts entre cases : du bois
+        # intact, partout sur la planche. Une case qui se lit en dessous
+        # n'est pas un ton clair, c'est du bois que le laser n'a pas
+        # marqué -- et Christophe l'a confirmé au bois le 02/08/2026 sur
+        # les deux cases que l'atelier annonçait à 1 et 3 %.
+        bois_lus = []
+        for cand in core.reperes_candidats(self._fiche):
+            g = _gris_moyen(self._img_mesure, self._px(cand))
+            if g is not None:
+                bois_lus.append(core.noirceur_normalisee(g, gb, gn))
+        self._plancher = core.plancher_bruit_bois(bois_lus)
+
         dessin, self._valeurs = [], {}
         for c in (self._fiche.get("cases") or []):
             r = (c["x0"], c["y0"], c["x1"], c["y1"])
             g = _gris_moyen(self._img_mesure, self._px(r))
             v = core.noirceur_normalisee(g, gb, gn) if g is not None else None
-            self._valeurs[(c["row"], c["col"])] = (v, c)
-            dessin.append((r, "", v))
+            nue = (v is not None and self._plancher is not None
+                   and v < self._plancher)
+            self._valeurs[(c["row"], c["col"])] = (None if nue else v, c)
+            dessin.append((r, "", None if nue else v))
         self.vue.poser(self.vue._img, self._pxmm_vue, self._marge, dessin,
                        bois, noir)
         lus = [v for v, _c in self._valeurs.values() if v is not None]
-        self._dire(
-            "<b>{} cases lues</b> — bois nu {:.0f}, noir max {:.0f} "
-            "({:.0f} niveaux d'écart). Noirceurs de <b>{:.0f} %</b> à "
-            "<b>{:.0f} %</b>. Les deux repères se déplacent à la souris."
-            .format(len(lus), gb, gn, gb - gn, min(lus), max(lus))
-            if lus else "Aucune case lisible.")
+        nues = len(self._valeurs) - len(lus)
+        if not lus:
+            self._dire("Aucune case au-dessus du bruit du bois : la planche "
+                       "n'a rien gravé, ou les repères sont mal posés.",
+                       rouge=True)
+            return
+        msg = ("<b>{} cases lues</b> — bois nu {:.0f}, noir max {:.0f} "
+               "({:.0f} niveaux d'écart). Noirceurs de <b>{:.0f} %</b> à "
+               "<b>{:.0f} %</b>.".format(len(lus), gb, gn, gb - gn,
+                                         min(lus), max(lus)))
+        if nues:
+            msg += (" <b>{} case{} sous le bruit du bois</b> ({:.0f} %, mesuré "
+                    "sur {} écarts entre cases) : marquée{} «&nbsp;—&nbsp;», "
+                    "non versée{} — le laser n'y a rien laissé."
+                    .format(nues, "s" if nues > 1 else "", self._plancher or 0,
+                            len(bois_lus), "s" if nues > 1 else "",
+                            "s" if nues > 1 else ""))
+        msg += " Les deux repères se déplacent à la souris."
+        self._dire(msg)
 
     def _dire(self, texte, rouge=False):
         self.lbl.setText(texte)

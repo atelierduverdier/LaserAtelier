@@ -456,4 +456,32 @@ finally:
 print("13. la fenetre lit 20 cases de bout en bout, dans le bon sens, "
       "et parle quand ca casse OK")
 
+
+# --- 14. Le plancher de bruit du bois -----------------------------------
+# Une case sous le bruit du grain n'est pas un ton clair : c'est du bois
+# que le laser n'a pas marque. Sur la planche du 02/08/2026, 25 zones de
+# bois nu se lisaient de 0,0 a 9,8 % (moyenne 3,6, ecart-type 2,2) et les
+# huit cases les plus claires de 1,1 a 5,1 %. Christophe a confirme au
+# bois : elles ne sont pas gravees. Les verser, ce serait enregistrer du
+# grain comme une mesure.
+assert core.plancher_bruit_bois([]) is None
+assert core.plancher_bruit_bois([1.0, 2.0, 3.0]) is None, "3 zones ne suffisent pas"
+_p14 = core.plancher_bruit_bois([0.0, 2.0, 4.0, 6.0, 8.0])
+_moy14 = 4.0
+_sig14 = (sum((v - _moy14) ** 2 for v in (0.0, 2.0, 4.0, 6.0, 8.0)) / 5.0) ** 0.5
+assert abs(_p14 - (_moy14 + 2 * _sig14)) < 1e-9, (_p14, _moy14, _sig14)
+# MOYENNE + 2 ECARTS-TYPES et non le MAXIMUM : un seul reflet ou un noeud
+# ferait sauter le maximum, et le plancher avec.
+_avec_reflet = [0.0, 2.0, 4.0, 6.0, 8.0, 60.0]
+assert core.plancher_bruit_bois(_avec_reflet) < 60.0, (
+    "un seul reflet ne doit pas emporter le plancher")
+# Reproduit les chiffres de SA planche : 25 zones, moyenne 3,6, sigma 2,2.
+_bois14 = [3.6 + 2.2 * ((i % 5) - 2) / 1.414 for i in range(25)]
+_pl14 = core.plancher_bruit_bois(_bois14)
+assert 6.0 < _pl14 < 10.0, ("le plancher doit tomber vers 8 %", _pl14)
+# Et les cases sous le plancher sortent a None, donc hors du versement.
+assert core.noirceur_normalisee(150.0, 155.0, 23.0) < _pl14
+print("14. le plancher de bruit vient du bois lui-meme (%.1f %%), "
+      "pas d'un seuil choisi OK" % _pl14)
+
 print("\nTOUS LES TESTS noirceur_photo PASSENT")
