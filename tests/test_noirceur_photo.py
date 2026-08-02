@@ -484,4 +484,49 @@ assert core.noirceur_normalisee(150.0, 155.0, 23.0) < _pl14
 print("14. le plancher de bruit vient du bois lui-meme (%.1f %%), "
       "pas d'un seuil choisi OK" % _pl14)
 
+
+# --- 15. Le REGIME suit les tons verses ---------------------------------
+# Sans lui, 26 tons graves a defocus 15,34 se rangeaient au FOYER : le
+# nuancier melangeait deux familles, et une courbe noirceur -> energie ne
+# vaut que pour UN regime. Rien ne l'aurait signale.
+_f15 = core.fiche_grille_noirceur(_cells13, _COTE13, _INF13,
+                                  z_offset=15.34, pas_mm=1.0)
+assert _f15["version"] >= 2, _f15["version"]
+assert abs(_f15["z_offset"] - 15.34) < 1e-9
+assert abs(_f15["pas_mm"] - 1.0) < 1e-9
+# Par defaut : foyer, et le dire explicitement plutot qu'omettre la cle.
+_f15b = core.fiche_grille_noirceur(_cells13, _COTE13, _INF13)
+assert _f15b["z_offset"] == 0.0 and "z_offset" in _f15b
+
+# La fenetre pre-remplit depuis la fiche, et PREVIENT quand la fiche est
+# muette -- c'est le cas de la planche gravee avant la v2.41.
+_dir15 = _tf13.mkdtemp()
+_ch15 = _os13.path.join(_dir15, "avec_grille.json")
+with open(_ch15, "w") as _fh:
+    _js13.dump(_f15, _fh)
+_muette = dict(_f15); _muette.pop("z_offset"); _muette.pop("pas_mm")
+_ch15b = _os13.path.join(_dir15, "sans_grille.json")
+with open(_ch15b, "w") as _fh:
+    _js13.dump(_muette, _fh)
+
+core.PLANCHES_DIR = _dir13
+try:
+    _d15 = tp._DialogueNoirceur()
+    _d15.edt_fiche.setText(_ch15)
+    _d15._charger()
+    assert abs(_d15.spn_defocus.value() - 15.34) < 1e-6, _d15.spn_defocus.value()
+    assert abs(_d15.spn_pas.value() - 1.0) < 1e-6
+    assert "DEFOCUS 15.34" in texte(_d15.lbl_regime.text()), texte(_d15.lbl_regime.text())
+
+    _d15.edt_fiche.setText(_ch15b)
+    _d15._charger()
+    assert _d15.spn_defocus.value() == 0.0
+    _t15 = texte(_d15.lbl_regime.text())
+    assert "sans régime" in _t15.lower(), (
+        "une fiche muette doit PREVENIR : un zero silencieux passerait pour "
+        "une mesure au foyer", _t15)
+finally:
+    core.PLANCHES_DIR = _vrai_dir
+print("15. le regime suit les tons, et une fiche muette previent OK")
+
 print("\nTOUS LES TESTS noirceur_photo PASSENT")

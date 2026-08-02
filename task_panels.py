@@ -3187,6 +3187,36 @@ class _DialogueNoirceur(QtWidgets.QDialog):
         lay.addWidget(self.lbl)
 
         # --- ③ le versement --------------------------------------------
+        # LE RÉGIME, corrigeable. Une fiche d'avant la v2.41 ne le porte
+        # pas, et une planche déjà gravée ne peut pas la regénérer : sans
+        # ces deux champs, ses tons se rangeraient au foyer quel que soit
+        # le défocus réel, et la courbe du nuancier mélangerait deux
+        # familles sans que rien ne le signale.
+        reg = QtWidgets.QHBoxLayout()
+        reg.addWidget(QtWidgets.QLabel("Défocus :"))
+        self.spn_defocus = QtWidgets.QDoubleSpinBox()
+        self.spn_defocus.setRange(0.0, 200.0)
+        self.spn_defocus.setDecimals(2)
+        self.spn_defocus.setSuffix(" mm")
+        self.spn_defocus.setToolTip(
+            "Hauteur de défocalisation des cases. 0 = au foyer.\n"
+            "Lu dans la fiche de grille quand elle le porte ; à saisir à la\n"
+            "main pour une planche gravée avant que la fiche l'enregistre.")
+        reg.addWidget(self.spn_defocus)
+        reg.addWidget(QtWidgets.QLabel("Pas :"))
+        self.spn_pas = QtWidgets.QDoubleSpinBox()
+        self.spn_pas.setRange(0.0, 10.0)
+        self.spn_pas.setDecimals(2)
+        self.spn_pas.setSuffix(" mm")
+        self.spn_pas.setToolTip(
+            "Espacement des hachures de remplissage. C'est ce que le\n"
+            "nuancier appelle « largeur » — le PAS de balayage, et non le\n"
+            "diamètre du point.")
+        reg.addWidget(self.spn_pas)
+        self.lbl_regime = _WrapLabel("")
+        reg.addWidget(self.lbl_regime, 1)
+        lay.addLayout(reg)
+
         bas = QtWidgets.QHBoxLayout()
         self.combo_mat = QtWidgets.QComboBox()
         self.combo_mat.setEditable(True)
@@ -3264,6 +3294,22 @@ class _DialogueNoirceur(QtWidgets.QDialog):
         if not cases:
             self._dire("Cette fiche ne décrit aucune case.")
             return
+        # Le régime vient de la fiche quand elle le porte. Sinon on le dit
+        # au lieu de laisser un zéro silencieux passer pour une mesure.
+        porte = "z_offset" in self._fiche
+        self.spn_defocus.setValue(float(self._fiche.get("z_offset") or 0.0))
+        self.spn_pas.setValue(float(self._fiche.get("pas_mm") or 0.0))
+        if porte:
+            self.lbl_regime.setText(
+                "Régime lu dans la fiche : <b>{}</b>.".format(
+                    core.libelle_regime(self.spn_defocus.value())))
+            self.lbl_regime.setStyleSheet("")
+        else:
+            self.lbl_regime.setText(
+                "<b>Fiche sans régime</b> (planche gravée avant que l'atelier "
+                "l'enregistre) : saisis le défocus et le pas, sinon ces tons "
+                "iront se ranger au foyer.")
+            self.lbl_regime.setStyleSheet("color:#b0740a;")
 
         infos = d["infos"]
         self._marge = core.marge_photo(infos)
@@ -3408,11 +3454,13 @@ class _DialogueNoirceur(QtWidgets.QDialog):
         rep = QtWidgets.QMessageBox.question(
             self, "Verser dans le nuancier",
             "Ajouter {} tons mesurés à « {} » ?\n\n"
-            "Ils s'ajoutent aux tons existants — rien n'est remplacé.\n"
-            "Le défocus et le pas de la grille ne sont PAS dans la fiche :\n"
-            "ces tons porteront le régime de la planche tel qu'il a été\n"
-            "gravé, à compléter à la main si besoin."
-            .format(len(lus), mat),
+            "Ils s'ajoutent aux tons existants — rien n'est remplacé.\n\n"
+            "Régime enregistré avec eux : {} , pas {:.2f} mm.\n"
+            "Une courbe noirceur → énergie ne vaut que pour UN régime ;\n"
+            "vérifie ces deux valeurs avant de verser."
+            .format(len(lus), mat,
+                    core.libelle_regime(self.spn_defocus.value()),
+                    self.spn_pas.value()),
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.Yes)
         if rep != QtWidgets.QMessageBox.Yes:
@@ -3422,9 +3470,12 @@ class _DialogueNoirceur(QtWidgets.QDialog):
             tons.append({
                 "darkness": round(float(v), 1),
                 "power": float(c["power"]), "feed": float(c["feed"]),
-                "z_offset": 0.0, "width": 0.0,
-                "label": "grille (photo mesurée) S{:.0f} F{:.0f}".format(
-                    c["power"], c["feed"]),
+                "z_offset": float(self.spn_defocus.value()),
+                "width": float(self.spn_pas.value()),
+                "label": "grille (photo mesurée) S{:.0f} F{:.0f} {} pas{:.2f}"
+                         .format(c["power"], c["feed"],
+                                 core.libelle_regime(self.spn_defocus.value()),
+                                 self.spn_pas.value()),
             })
         core.save_shades(mat, tons)
         QtWidgets.QMessageBox.information(
@@ -12030,6 +12081,7 @@ class TaskPanelTestGrid:
             return
 
         FreeCAD.Console.PrintMessage("Succès : {} cellules créées.\n".format(len(objs)))
+        self._dernier_defocus = cell_z_offset
         chemin = _write_gcode_with_dialog(self.form, gcode, "/tmp/grille_test.ngc")
         if chemin and avec_mire:
             self._deposer_fiche_grille(chemin, cells, cote,
@@ -12062,7 +12114,10 @@ class TaskPanelTestGrid:
             if bb is None:
                 return
             _mb, _ml, infos = core.mire_de_mesure(*bb)
-            fiche = core.fiche_grille_noirceur(cells, cote, infos)
+            fiche = core.fiche_grille_noirceur(
+                cells, cote, infos,
+                z_offset=self._dernier_defocus,
+                pas_mm=self.spn_hatch_spacing.value())
             if not fiche:
                 return
             fiche["gcode"] = os.path.abspath(chemin_gcode)

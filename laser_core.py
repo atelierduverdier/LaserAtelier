@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.40.0"
+VERSION = "2.41.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9923,7 +9923,8 @@ def bbox_grille_test(cells, cell_size, label_edges=None):
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def fiche_grille_noirceur(cells, cell_size, infos_mire, marge_lecture=0.15):
+def fiche_grille_noirceur(cells, cell_size, infos_mire, marge_lecture=0.15,
+                          z_offset=0.0, pas_mm=0.0):
     """Chaque case de la grille dans le REPÈRE DE LA MIRE, pour la lecture
     de noirceur sur une photo redressée.
 
@@ -9956,7 +9957,14 @@ def fiche_grille_noirceur(cells, cell_size, infos_mire, marge_lecture=0.15):
             "y1": y_haut - c["y0"] - r,
         })
     return {
-        "version": 1,
+        "version": 2,
+        # LE RÉGIME, sans quoi les tons versés se rangent au foyer quelle
+        # que soit la planche. Le nuancier note `z_offset` (le défocus) et
+        # `width` (le PAS de balayage, pas le diamètre du point) : une
+        # courbe noirceur -> énergie ne vaut que pour un régime, et quatre
+        # régimes mélangés dans une liste ne font pas une courbe.
+        "z_offset": float(z_offset or 0.0),
+        "pas_mm": float(pas_mm or 0.0),
         "cote_case_mm": float(cell_size),
         "marge_lecture": float(marge_lecture),
         "mire_mm": [float(infos_mire["largeur"]), float(infos_mire["hauteur"])],
