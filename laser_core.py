@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.42.0"
+VERSION = "2.43.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -10365,31 +10365,22 @@ def ecart_rangees_defocus(dz, plancher=4.0, marge=1.6):
     return max(float(plancher), point * 1.2 * float(marge))
 
 
-def generate_gcode_planche_defocus(mire=True, z_focus=None,
-                                   powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
-                                   feeds=(200.0, 400.0, 600.0, 800.0),
-                                   defocus_levels_mm=DEFOCUS_LEVELS_MM,
-                                   trait_len=12.0, row_gap=4.0, block_gap=7.0,
-                                   label_height=2.5, nom_planche="2",
-                                   pre_gcode="", post_gcode="", quiet=False, body_only=False):
-    """PLANCHE 2 -- DÉFOCUS (balayage du feed). Pour CHAQUE niveau de défocus
-    (defocus_levels_mm, ~15 et 36 mm), une grille de traits S x F gravés à
-    z_focus + dz. À mesurer : la largeur brûlée de chaque trait -> alimente le
-    modèle feed-aware burn_width_defocus_scaled(S, F, défocus). Un bloc étiqueté
-    « d<mm> » par niveau, empilés. Un seul armement.
+def disposition_planche_defocus(powers, feeds, defocus_levels_mm,
+                                z_focus=None, trait_len=12.0, row_gap=4.0,
+                                block_gap=7.0, label_height=2.5,
+                                nom_planche="2"):
+    """Mise en page des PLANCHES 2 / 2b / 3 : un bloc de traits par niveau
+    de défocus, empilés.
 
-    feeds par défaut resserré à 200-800 (27 juil. 2026) : au DÉFOCUS
-    (contrairement au foyer), F1500/F2000 ne marquent quasiment jamais --
-    sur MDF, aucune mesure n'a jamais été enregistrée à ces vitesses
-    malgré plusieurs planches, alors que F800 a des largeurs mesurables
-    aux 5 puissances. L'ancienne plage (400-2000) gaspillait donc la
-    moitié de la grille en cases blanches ; la nouvelle reste dans la
-    zone qui marque, avec plus de résolution (200/600 en plus).
+    SOURCE UNIQUE de cette géométrie, comme `disposition_planche_focus`
+    l'est pour la planche 1. Le générateur la grave, et le cadrage
+    automatique de la mesure s'en sert pour poser le rectangle de lecture
+    sur le bon trait. Deux calculs séparés divergeraient au premier
+    changement de mise en page, et un cadre décalé d'une rangée ne se voit
+    pas : il ressemble à une mesure.
 
-    Surface TOUJOURS PLATE (calibration) : un seul plongeon/une seule
-    remontée PAR NIVEAU de défocus (cf. _emit_flat_marks), jamais de
-    retrait entre deux traits au même niveau -- même principe que la
-    Planche 1."""
+    Renvoie (bands, label_edges) au format attendu par `_emit_flat_marks` :
+    bands = [(z absolu, band), ...], un par niveau de défocus."""
     if z_focus is None:
         z_focus = Z_WORK_MM
     powers = _powers_capped(powers)
@@ -10438,8 +10429,87 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
     # elle est vaut la planche 2, et on mesure la mauvaise grille.
     label_edges.extend(single_line_text_to_edges(
         str(nom_planche), height=5.0, x0=0.0, y0=y_head + 6.0))
-    # La mire est gravée AU FOYER, comme les étiquettes : les cellules
-    # peuvent être défocalisées, la référence de mesure doit rester nette.
+    return bands, label_edges
+
+
+def cadres_planche_defocus(powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
+                           feeds=(200.0, 400.0, 600.0, 800.0),
+                           defocus_levels_mm=DEFOCUS_LEVELS_MM, **kw):
+    """Cadres de lecture des planches 2 / 2b / 3, par niveau de défocus.
+
+    Même principe que `cadres_planche_focus` : on REJOUE la mise en page
+    et la pose de la mire au lieu de relire un fichier écrit à la gravure.
+    Ces planches n'ont pas de réglage utilisateur non plus, donc leur
+    géométrie est entièrement déterminée par le code -- et les planches
+    DÉJÀ gravées deviennent cadrables sans les regraver.
+
+    Le revers, le même : une planche gravée avant une évolution de la mise
+    en page ne correspondrait plus. Le cadre reste donc une PROPOSITION,
+    refaisable à la souris.
+
+    Le défocus entre dans la clé : le même couple (S, F) est gravé à
+    chaque niveau. Sans lui on cadrerait le bon trait du mauvais bloc --
+    une largeur parfaitement plausible, à un défocus qui n'est pas celui
+    qu'on croit.
+
+    Renvoie (cadres, infos_mire) ; chaque cadre porte `dz` en plus de
+    `power` et `feed`."""
+    powers = _powers_capped(powers)
+    bands, label_edges = disposition_planche_defocus(
+        powers, feeds, defocus_levels_mm, **kw)
+    z_focus = kw.get("z_focus") or Z_WORK_MM
+    # Les traits de la PLANCHE, figés AVANT que la mire n'ajoute les siens
+    # (croix et graduations sont aussi des segments : cadrés comme des
+    # traits de mesure, ils proposeraient de mesurer la mire).
+    par_bloc = [(z, list(bd)) for z, bd in bands]
+    toutes = [t for _z, bd in bands for t in bd]
+    infos = _ajouter_mire(toutes, label_edges,
+                          regime=regime_niveaux(defocus_levels_mm))
+    if infos is None:
+        return [], None
+    cadres = []
+    for z, bd in par_bloc:
+        dz = round(float(z) - float(z_focus), 3)
+        for c in cadres_traits_planche(bd, infos):
+            c["dz"] = dz
+            cadres.append(c)
+    return cadres, infos
+
+
+def generate_gcode_planche_defocus(mire=True, z_focus=None,
+                                   powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
+                                   feeds=(200.0, 400.0, 600.0, 800.0),
+                                   defocus_levels_mm=DEFOCUS_LEVELS_MM,
+                                   trait_len=12.0, row_gap=4.0, block_gap=7.0,
+                                   label_height=2.5, nom_planche="2",
+                                   pre_gcode="", post_gcode="", quiet=False, body_only=False):
+    """PLANCHE 2 -- DÉFOCUS (balayage du feed). Pour CHAQUE niveau de défocus
+    (defocus_levels_mm, ~15 et 36 mm), une grille de traits S x F gravés à
+    z_focus + dz. À mesurer : la largeur brûlée de chaque trait -> alimente le
+    modèle feed-aware burn_width_defocus_scaled(S, F, défocus). Un bloc étiqueté
+    « d<mm> » par niveau, empilés. Un seul armement.
+
+    feeds par défaut resserré à 200-800 (27 juil. 2026) : au DÉFOCUS
+    (contrairement au foyer), F1500/F2000 ne marquent quasiment jamais --
+    sur MDF, aucune mesure n'a jamais été enregistrée à ces vitesses
+    malgré plusieurs planches, alors que F800 a des largeurs mesurables
+    aux 5 puissances. L'ancienne plage (400-2000) gaspillait donc la
+    moitié de la grille en cases blanches ; la nouvelle reste dans la
+    zone qui marque, avec plus de résolution (200/600 en plus).
+
+    Surface TOUJOURS PLATE (calibration) : un seul plongeon/une seule
+    remontée PAR NIVEAU de défocus (cf. _emit_flat_marks), jamais de
+    retrait entre deux traits au même niveau -- même principe que la
+    Planche 1."""
+    if z_focus is None:
+        z_focus = Z_WORK_MM
+    powers = _powers_capped(powers)
+    bands, label_edges = disposition_planche_defocus(
+        powers, feeds, defocus_levels_mm, z_focus=z_focus,
+        trait_len=trait_len, row_gap=row_gap, block_gap=block_gap,
+        label_height=label_height, nom_planche=nom_planche)
+    # La mire est gravée AU FOYER, comme les étiquettes : les traits
+    # peuvent être défocalisés, la référence de mesure doit rester nette.
     infos_mire = None
     if mire:
         toutes = [t for _z, bd in bands for t in bd]

@@ -539,3 +539,67 @@ for _dz16, _attendu in ((0.0, "FOYER"), (15.34, "DEFOCUS 15.34")):
     # Le nom du laser ne doit pas avoir ete chasse par le regime.
     assert core.active_laser_name() in _i16["laser"], _i16["laser"]
 print("16. le regime (foyer / defocus) est grave sur le bois OK")
+
+# --- 17. Cadrage automatique des planches DEFOCUS -----------------------
+# « Ce que je fais en ce moment c'est encadrer un trait et valider,
+# encadrer et valider... je voudrais eviter l'etape d'encadrer » --
+# Christophe, 02/08/2026. La planche 1 se cadrait deja toute seule ; les
+# planches 2 et 2b non, leur mise en page etant ecrite en ligne dans le
+# generateur au lieu d'etre exposee.
+_cad17, _inf17 = core.cadres_planche_defocus()
+assert _cad17 and _inf17, "aucun cadre pour la planche 2"
+from collections import Counter as _C17
+_par_dz = _C17(c["dz"] for c in _cad17)
+assert set(_par_dz) == set(core.DEFOCUS_LEVELS_MM), (sorted(_par_dz), core.DEFOCUS_LEVELS_MM)
+assert len(set(_par_dz.values())) == 1, ("chaque niveau porte la meme grille",
+                                         dict(_par_dz))
+# LE DEFOCUS EST DANS LA CLE. Sans lui, le meme couple (S, F) existant a
+# chaque niveau, on cadrerait le bon trait du MAUVAIS bloc : une largeur
+# parfaitement plausible, a un defocus qui n'est pas celui qu'on croit.
+_cles = [(c["dz"], c["power"], c["feed"]) for c in _cad17]
+assert len(_cles) == len(set(_cles)), "des cadres se recouvrent en cle"
+_sans_dz = [(c["power"], c["feed"]) for c in _cad17]
+assert len(set(_sans_dz)) < len(_sans_dz), (
+    "sans le defocus la cle serait ambigue -- c'est bien pour ca qu'il y est")
+
+# Tout cadre tient dans la mire, et le Y est RETOURNE (le premier bloc
+# grave est le plus bas sur la machine, donc le plus BAS dans l'image).
+for c in _cad17:
+    assert 0 <= c["x0"] < c["x1"] <= _inf17["largeur"], c
+    assert 0 <= c["y0"] < c["y1"] <= _inf17["hauteur"], c
+_bas = min(core.DEFOCUS_LEVELS_MM); _haut = max(core.DEFOCUS_LEVELS_MM)
+_y_bas = min(c["y0"] for c in _cad17 if c["dz"] == _bas)
+_y_haut = min(c["y0"] for c in _cad17 if c["dz"] == _haut)
+assert _y_bas > _y_haut, ("le Y n'est pas retourne : le bloc grave en "
+                          "premier doit etre EN BAS de l'image", _y_bas, _y_haut)
+
+# Un cadre ne doit jamais mordre la rangee voisine : sinon on mesurerait
+# deux traits pour un.
+for dz in sorted(_par_dz):
+    ys = sorted((c["y0"], c["y1"]) for c in _cad17 if c["dz"] == dz
+                and abs(c["feed"] - min(x["feed"] for x in _cad17)) < 1e-6)
+    for (a0, a1), (b0, b1) in zip(ys, ys[1:]):
+        assert a1 <= b0 + 1e-9, ("cadres qui se chevauchent a d%g" % dz, a1, b0)
+
+# La 2b grave MOINS de couples : on ne propose que ce qui existe.
+_cad2b, _ = core.cadres_planche_defocus(
+    powers=(600.0, 800.0, 1000.0), feeds=(200.0, 400.0),
+    defocus_levels_mm=core.DEFOCUS_LEVELS_PROFONDS_MM)
+assert len(_cad2b) == 3 * 2 * len(core.DEFOCUS_LEVELS_PROFONDS_MM), len(_cad2b)
+assert {c["power"] for c in _cad2b} == {600.0, 800.0, 1000.0}
+print("17. planches 2/2b cadrees d'office : %d + %d cadres, defocus dans la "
+      "cle OK" % (len(_cad17), len(_cad2b)))
+
+# --- 18. L'extraction n'a rien change au G-code -------------------------
+# `disposition_planche_defocus` a ete SORTIE du generateur : il doit
+# produire exactement le meme bois qu'avant.
+_g18 = core.generate_gcode_planche_defocus(quiet=True)
+_b18, _l18 = core.disposition_planche_defocus(
+    core._powers_capped((200.0, 400.0, 600.0, 800.0, 1000.0)),
+    (200.0, 400.0, 600.0, 800.0), core.DEFOCUS_LEVELS_MM)
+assert len(_b18) == len(core.DEFOCUS_LEVELS_MM), len(_b18)
+assert sum(len(bd) for _z, bd in _b18) == 5 * 4 * len(core.DEFOCUS_LEVELS_MM)
+for dz, (z, _bd) in zip(core.DEFOCUS_LEVELS_MM, _b18):
+    assert abs(z - (core.Z_WORK_MM + dz)) < 1e-9, (z, dz)
+assert "Planche 2" in _g18 and "d15" in _g18.replace("d15.", "d15")
+print("18. la mise en page extraite grave le meme bois OK")

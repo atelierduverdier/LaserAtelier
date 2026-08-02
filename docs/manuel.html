@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.42.0</span><br>
+      <span class="ver">Version 2.43.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.42.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.43.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -581,6 +581,9 @@
     <p><b>Mesurer à la LIGNE, sur le profil moyenné (v2.33.0).</b> Le bouton «&nbsp;Mesurer sur l'image redressée…&nbsp;» ouvre la planche, on encadre <em>un</em> trait à la souris, et l'atelier affiche à côté de lui son <b>profil de noirceur moyenné sur toute sa longueur</b>. Deux lignes horizontales, qu'on fait glisser (flèches ↑↓ pour affiner au pixel), traversent l'image <em>et</em> la courbe&nbsp;; la largeur s'affiche en direct.</p>
     <p><b>Le cadre se pose tout seul (v2.42.0).</b> Sur la <b>planche&nbsp;1</b>, encadrer un trait à la souris n'apprenait rien à personne&nbsp;: cette planche n'a aucun réglage, donc la position de chaque trait est entièrement déterminée par le code qui l'a gravée. Le cadre tombe désormais sur le trait de la case visée, et sur le suivant dès qu'on valide — la boucle passe de «&nbsp;encadrer, ajuster, valider&nbsp;» à «&nbsp;<b>ajuster, valider</b>&nbsp;», trente-cinq fois de suite.</p>
     <p>Ce qui n'a <em>pas</em> été automatisé, et c'est délibéré&nbsp;: <b>où s'arrête la brûlure</b>. Les bords d'un trait gravé ne sont pas droits — c'est le grain qui décide — et le jugement reste à l'œil, sur le profil moyenné. Seul le placement, qui est du calcul exact, passe à la machine. La détection automatique des traits est d'ailleurs ce qui a échoué le plus souvent sur ce projet (étiquettes prises pour des traits, roussi compté comme brûlure)&nbsp;; ici rien n'est <em>cherché</em> dans l'image, la mise en page est simplement rejouée. Conséquence utile&nbsp;: les planches <b>déjà gravées</b> en profitent sans être regravées. Sur une planche 2, une grille de défocus ou une photo sans fiche, le cadrage à la souris revient tel quel.</p>
+    <p><b>Les planches défocus se cadrent toutes seules (v2.43.0).</b> «&nbsp;Ce que je fais en ce moment c'est encadrer un trait et valider, encadrer et valider… je voudrais éviter l'étape d'encadrer.&nbsp;» La planche 1 se cadrait déjà seule&nbsp;; les planches 2 et 2b non, leur mise en page étant écrite <em>en ligne</em> dans le générateur au lieu d'être exposée.</p>
+    <p>Elle est désormais une fonction à part, source unique comme pour la planche 1&nbsp;: le générateur la grave, le cadrage la rejoue. <b>Le défocus entre dans la clé</b> — le même couple (S, F) existe à chaque niveau, et sans lui on cadrerait le bon trait du <em>mauvais bloc</em>&nbsp;: une largeur parfaitement plausible, à une hauteur qui n'est pas celle qu'on croit.</p>
+    <p>Vérifié sur les planches réelles&nbsp;: <b>20 cases sur 20</b> cadrées à chaque niveau de la planche 2, et <b>6 sur 20</b> sur la 2b — ce qui est juste, elle ne grave que trois puissances et deux vitesses. Là où la planche ne porte aucun trait, rien n'est proposé&nbsp;: un cadre faux ressemblerait à une mesure, ne rien proposer se voit. Le seuil, lui, reste à l'œil.</p>
     <p><b>L'atelier ouvre un document tout seul (v2.42.0).</b> En lançant FreeCAD puis l'atelier sans rien créer, quinze des vingt et un boutons étaient <b>grisés</b> — ils exigent un document — et les six autres ouvraient une fenêtre de tâches là où FreeCAD n'a aucune vue pour l'accueillir&nbsp;: elle partait derrière la fenêtre principale, hors d'atteinte.</p>
     <p>Un document nommé «&nbsp;Atelier&nbsp;» est désormais créé quand il n'y en a aucun — à l'activation de l'atelier, et de nouveau à l'ouverture d'un panneau pour le cas du document fermé en cours de séance. <b>Jamais</b> quand un document est déjà ouvert&nbsp;: on n'ajoute pas un onglet vide à côté du travail en cours.</p>
     <p><b>Le contrôle de décroissance tolère le grain (v2.42.0).</b> Il exigeait une décroissance <em>parfaite</em> de la noirceur avec la vitesse. Sur la première planche réelle il échouait sur 8,8 → 9,3 — un demi-point, sur la seule case qu'une vieille gravure traversait. Or le grain du bois étale les lectures sur 6,4 points. La tolérance vaut donc <b>2 points</b>, tirés de cette mesure&nbsp;; et le contrôle prouve qu'il attrape toujours une vraie contradiction de 22 points.</p>
@@ -1126,7 +1129,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.42.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.43.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

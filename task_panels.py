@@ -1638,9 +1638,24 @@ class _MesuresPlanchesControleur:
         maillon manque : autre planche que la 1, grille de défocus, fiche
         photo absente, ou couple (S, F) que la planche ne grave pas. Un
         cadre faux ressemblerait à une mesure ; ne rien proposer se voit."""
-        if "_planche1_" not in os.path.basename(chemin):
-            return None
-        if gr is not self.grille_focus:
+        # QUELLE planche, et QUELLE grille : les deux doivent concorder.
+        # Cadrer la planche 2 avec la grille du foyer donnerait un cadre
+        # plausible sur le mauvais bloc -- une largeur crédible, à un
+        # défocus qui n'est pas celui qu'on croit.
+        base = os.path.basename(chemin)
+        dz_cible = None
+        if "_planche1_" in base:
+            if gr is not self.grille_focus:
+                return None
+        elif "_planche2b_" in base or "_planche2_" in base:
+            dz_cible = next((d for d, g in self.grilles_defocus.items()
+                             if g is gr), None)
+            if dz_cible is None:
+                return None
+        else:
+            # Planche 3 (largeur du point) : sa mise en page n'est pas
+            # celle d'une grille S x F, on ne propose rien plutôt qu'un
+            # cadre faux.
             return None
         try:
             with open(os.path.splitext(chemin)[0] + ".json") as fh:
@@ -1651,12 +1666,24 @@ class _MesuresPlanchesControleur:
         if not marge:
             return None
         try:
-            cadres, _infos = core.cadres_planche_focus()
+            if dz_cible is None:
+                cadres, _infos = core.cadres_planche_focus()
+            elif "_planche2b_" in base:
+                cadres, _infos = core.cadres_planche_defocus(
+                    powers=(600.0, 800.0, 1000.0), feeds=(200.0, 400.0),
+                    defocus_levels_mm=core.DEFOCUS_LEVELS_PROFONDS_MM)
+            else:
+                cadres, _infos = core.cadres_planche_defocus()
         except Exception as exc:
             FreeCAD.Console.PrintWarning(
                 "Cadrage automatique indisponible ({}) : encadre à la "
                 "souris comme avant.\n".format(exc))
             return None
+        if dz_cible is not None:
+            cadres = [c for c in cadres
+                      if abs(float(c.get("dz", -1)) - float(dz_cible)) < 1e-6]
+            if not cadres:
+                return None      # ce niveau n'est pas sur cette planche
         par_cle = {(c["power"], c["feed"]): c for c in cadres}
         # (puissance, vitesse) de chaque case, lu dans la grille elle-même.
         cle_de = {w: cle for cle, w in gr.cells().items()}
