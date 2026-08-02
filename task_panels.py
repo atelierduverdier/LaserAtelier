@@ -1624,6 +1624,54 @@ class _MesuresPlanchesControleur:
                 for f_ in feeds for p_ in self.POWERS
                 if (float(p_), float(f_)) in gr.cells()]
 
+    def _cadreur_auto(self, chemin, pxmm, gr, cases):
+        """(index de case) -> QRect en pixels, ou None si on ne sait pas.
+
+        Ce que ça remplace : encadrer un trait à la souris, quarante fois
+        de suite, alors que la planche 1 n'a AUCUN réglage utilisateur --
+        la position de chaque trait est donc entièrement déterminée par le
+        code qui l'a gravée. Le pas fragile (où s'arrête la brûlure) reste
+        à l'oeil ; seul le placement, qui est du calcul exact, passe à la
+        machine.
+
+        Renvoie None -- donc cadrage à la souris comme avant -- dès qu'un
+        maillon manque : autre planche que la 1, grille de défocus, fiche
+        photo absente, ou couple (S, F) que la planche ne grave pas. Un
+        cadre faux ressemblerait à une mesure ; ne rien proposer se voit."""
+        if "_planche1_" not in os.path.basename(chemin):
+            return None
+        if gr is not self.grille_focus:
+            return None
+        try:
+            with open(os.path.splitext(chemin)[0] + ".json") as fh:
+                infos_photo = json.load(fh)
+        except Exception:
+            return None
+        marge = core.marge_photo(infos_photo)
+        if not marge:
+            return None
+        try:
+            cadres, _infos = core.cadres_planche_focus()
+        except Exception as exc:
+            FreeCAD.Console.PrintWarning(
+                "Cadrage automatique indisponible ({}) : encadre à la "
+                "souris comme avant.\n".format(exc))
+            return None
+        par_cle = {(c["power"], c["feed"]): c for c in cadres}
+        # (puissance, vitesse) de chaque case, lu dans la grille elle-même.
+        cle_de = {w: cle for cle, w in gr.cells().items()}
+
+        def cadre(i):
+            if not (0 <= i < len(cases)):
+                return None
+            c = par_cle.get(cle_de.get(cases[i]))
+            if c is None:
+                return None
+            x0, y0, x1, y1 = core.case_en_pixels(c, pxmm, marge)
+            return QtCore.QRect(x0, y0, max(1, x1 - x0), max(1, y1 - y0))
+
+        return cadre
+
     def _on_mesure_image(self, bloc=None):
         """Mesurer une largeur sur la planche redressée, à la ligne.
 
@@ -1688,7 +1736,8 @@ class _MesuresPlanchesControleur:
                 return
         dlg = _DialogueMesureTrait(
             chemin, pxmm, [self._nom_case(w) or "?" for w in cases],
-            cases.index(cible), self._retenir_depuis_image, self._viser_index)
+            cases.index(cible), self._retenir_depuis_image, self._viser_index,
+            cadre_auto=self._cadreur_auto(chemin, pxmm, gr, cases))
         dlg.changer_image.connect(self._changer_image)
         dlg.exec()
         if getattr(dlg, "veut_changer", False):
@@ -3580,12 +3629,14 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
     changer_image = QtCore.Signal()
 
     def __init__(self, chemin, pxmm, noms_cases=None, index=0,
-                 on_retenir=None, on_cible=None, parent=None):
+                 on_retenir=None, on_cible=None, parent=None,
+                 cadre_auto=None):
         super().__init__(parent)
         self.veut_changer = False
         self._noms = list(noms_cases or ["case visée"])
         self._on_retenir = on_retenir
         self._on_cible = on_cible
+        self._cadre_auto = cadre_auto
         # Le NOM de la planche dans le titre : elle s'ouvre toute seule, il
         # faut donc pouvoir vérifier d'un coup d'oeil que c'est la bonne.
         self.setWindowTitle("Mesurer sur {}".format(os.path.basename(chemin)))
@@ -3633,9 +3684,10 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         self.combo_cible.activated.connect(self._on_cible_change)
         hb_c.addWidget(self.combo_cible, 1)
         v.addWidget(rang_c)
-        v.addWidget(_WrapLabel(
+        self.lbl_etape1 = _WrapLabel(
             "<b>1.</b> Encadre UN trait à la souris — englobe toute sa "
-            "longueur et un peu de bois de chaque côté."))
+            "longueur et un peu de bois de chaque côté.")
+        v.addWidget(self.lbl_etape1)
         v.addWidget(self._pile, 1)
         self.lbl = _WrapLabel("")
         v.addWidget(self.lbl)
@@ -3669,6 +3721,39 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         ligne.addWidget(self.btn_ok)
         ligne.addWidget(b_non)
         v.addLayout(ligne)
+        # Le cadre se pose tout seul quand la planche dit où est le trait.
+        # Le dire, sinon le premier réflexe est de croire que la fenêtre a
+        # sauté une étape -- et de recadrer à la main par-dessus.
+        if self._cadrer_auto():
+            self.lbl_etape1.setText(
+                "<b>1.</b> Cadre posé <b>automatiquement</b> sur le trait de "
+                "la case visée, d'après la mise en page de la planche. "
+                "« ◀ Choisir un autre trait » revient au cadrage à la souris.")
+
+    def _vider_vue(self):
+        """Retire la vue de profil courante, s'il y en a une."""
+        if self._vue is not None:
+            self._pile.removeWidget(self._vue)
+            self._vue.deleteLater()
+            self._vue = None
+
+    def _cadrer_auto(self):
+        """Pose le cadre tout seul sur le trait de la case visée.
+
+        Sans effet si l'appelant n'a pas fourni de cadreur, ou s'il ne sait
+        pas répondre pour cette case : on reste alors sur le choix à la
+        souris, qui n'a rien perdu."""
+        if self._cadre_auto is None:
+            return False
+        try:
+            r = self._cadre_auto(self.combo_cible.currentIndex())
+        except Exception:
+            r = None
+        if r is None or r.width() < 8 or r.height() < 8:
+            return False
+        self._vider_vue()
+        self._on_choisi(r)
+        return True
 
     def _on_choisi(self, rect):
         self._vue = _VueProfilTrait(self._plein.copy(rect), self._pxmm)
@@ -3705,6 +3790,11 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
     def _on_cible_change(self, i):
         if self._on_cible is not None:
             self._on_cible(i)
+        # Changer de case visée à la main doit recadrer aussi : sans ça, la
+        # vue montrerait le trait de la case PRÉCÉDENTE pendant que le
+        # bandeau annonce la nouvelle -- et la mesure partirait dans la
+        # bonne case avec la largeur de la mauvaise.
+        self._cadrer_auto()
 
     def _retenir_et_fermer(self):
         if self._on_retenir is not None:
@@ -3726,11 +3816,11 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         self.combo_cible.setCurrentIndex(suivant)
         self.combo_cible.blockSignals(False)
         # Retour au choix du trait : la case a changé, le recadrage aussi.
-        if self._vue is not None:
-            self._pile.removeWidget(self._vue)
-            self._vue.deleteLater()
-            self._vue = None
+        self._vider_vue()
         self._retour()
+        # ... sauf si l'atelier sait où est le trait suivant : la boucle
+        # devient alors « ajuster, valider », sans repasser par la souris.
+        self._cadrer_auto()
 
     def _on_changer(self):
         self.veut_changer = True

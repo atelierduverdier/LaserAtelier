@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.41.0</span><br>
+      <span class="ver">Version 2.42.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.41.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.42.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -579,6 +579,8 @@
     <p><b>Les cotes sont proposées, jamais imposées.</b> Le dialogue pré-remplit ce que la mise en page <em>actuelle</em> produirait, mais la planche qu'on tient peut être plus ancienne — ses vraies cotes sont gravées dessus, sous la réglette. On lit sur le bois, on corrige si besoin.</p>
     <p><b>Et pour mesurer sans changer de panneau&nbsp;:</b> l'outil Ligne du Draft affiche bien la distance, mais il occupe le panneau des tâches — qui est <em>exclusif</em> dans FreeCAD, donc impossible de garder la grille de saisie ouverte à côté. D'où le bouton <b>«&nbsp;Mesurer A&nbsp;→&nbsp;B dans la vue 3D&nbsp;»</b> placé <i>dans</i> la saisie des mesures&nbsp;: on clique la case à remplir, puis le bouton, puis les deux extrémités dans la vue — et la distance atterrit dans la case. Aucun aller-retour. La case visée est <b>nommée à l'écran</b> («&nbsp;<i>Cible&nbsp;: S1000 / F800 (foyer)</i>&nbsp;») avant que vous pointiez&nbsp;: une valeur tombée dans la mauvaise case ne se voit pas, elle ressemble à une mesure.</p>
     <p><b>Mesurer à la LIGNE, sur le profil moyenné (v2.33.0).</b> Le bouton «&nbsp;Mesurer sur l'image redressée…&nbsp;» ouvre la planche, on encadre <em>un</em> trait à la souris, et l'atelier affiche à côté de lui son <b>profil de noirceur moyenné sur toute sa longueur</b>. Deux lignes horizontales, qu'on fait glisser (flèches ↑↓ pour affiner au pixel), traversent l'image <em>et</em> la courbe&nbsp;; la largeur s'affiche en direct.</p>
+    <p><b>Le cadre se pose tout seul (v2.42.0).</b> Sur la <b>planche&nbsp;1</b>, encadrer un trait à la souris n'apprenait rien à personne&nbsp;: cette planche n'a aucun réglage, donc la position de chaque trait est entièrement déterminée par le code qui l'a gravée. Le cadre tombe désormais sur le trait de la case visée, et sur le suivant dès qu'on valide — la boucle passe de «&nbsp;encadrer, ajuster, valider&nbsp;» à «&nbsp;<b>ajuster, valider</b>&nbsp;», trente-cinq fois de suite.</p>
+    <p>Ce qui n'a <em>pas</em> été automatisé, et c'est délibéré&nbsp;: <b>où s'arrête la brûlure</b>. Les bords d'un trait gravé ne sont pas droits — c'est le grain qui décide — et le jugement reste à l'œil, sur le profil moyenné. Seul le placement, qui est du calcul exact, passe à la machine. La détection automatique des traits est d'ailleurs ce qui a échoué le plus souvent sur ce projet (étiquettes prises pour des traits, roussi compté comme brûlure)&nbsp;; ici rien n'est <em>cherché</em> dans l'image, la mise en page est simplement rejouée. Conséquence utile&nbsp;: les planches <b>déjà gravées</b> en profitent sans être regravées. Sur une planche 2, une grille de défocus ou une photo sans fiche, le cadrage à la souris revient tel quel.</p>
     <p><b>Le régime suit les tons versés au nuancier (v2.41.0).</b> Les tons lus sur photo partaient avec un défocus de <b>zéro</b>, quelle que soit la planche&nbsp;: 26 tons gravés à 15,34 mm seraient allés se ranger avec ceux du foyer. Une courbe noirceur → énergie ne vaut que pour <em>un</em> régime, et quatre régimes mélangés dans une liste ne font pas une courbe — rien ne l'aurait signalé.</p>
     <p>La fiche de grille porte désormais le <b>défocus</b> et le <b>pas</b> de balayage, et la fenêtre de lecture les affiche dans deux champs <b>corrigeables</b>. Une planche gravée avant cette version ne peut pas regénérer sa fiche&nbsp;: la fenêtre le dit alors en clair — «&nbsp;fiche sans régime, saisis le défocus et le pas, sinon ces tons iront se ranger au foyer&nbsp;» — au lieu de laisser passer un zéro silencieux pour une mesure.</p>
     <p><b>La planche dit maintenant son régime (v2.40.0).</b> Sous la réglette, à côté des cotes et du nom du laser, la mire grave désormais <b>FOYER</b> ou <b>DEFOCUS 15.34 PT1.18</b> — la hauteur de défocalisation et le diamètre du point qui en résulte. Une planche à plusieurs niveaux porte la liste&nbsp;: <b>DEFOCUS 15/36/40</b>, parce qu'un seul chiffre mentirait.</p>
@@ -1121,7 +1123,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.41.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.42.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

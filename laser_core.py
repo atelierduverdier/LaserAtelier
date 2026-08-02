@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.41.0"
+VERSION = "2.42.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -10150,35 +10150,34 @@ def _label_band(label_edges, comment):
             for chain in chain_edges(label_edges)]
 
 
-def generate_gcode_planche_focus(z_focus=None, mire=True,
-                                 powers=(200.0, 400.0, 600.0, 800.0, 1000.0),
-                                 feeds=(200.0, 400.0, 800.0, 1000.0,
-                                        1200.0, 1500.0, 3000.0),
-                                 trait_len=12.0, row_gap=4.0, label_height=2.5,
-                                 pre_gcode="", post_gcode="", quiet=False, body_only=False):
-    """PLANCHE 1 -- FOYER (Vitesse x Puissance). Grille de traits gravés AU
-    FOYER : une ligne par puissance S (bornée à S_MAX), une colonne par vitesse
-    F. À mesurer : la LARGEUR brûlée de chaque trait (un trait vierge est une
-    donnée : seuil du matériau) -> alimente burn_width_at (foyer, feed-aware).
-    Un seul armement.
+# Paliers de la PLANCHE 1. Constantes plutôt que valeurs par défaut d'un
+# générateur : le cadrage automatique doit rejouer EXACTEMENT la planche
+# gravée, et lire les défauts d'une signature de fonction est un lien qui
+# se casse en silence dès qu'un paramètre change de place.
+#
+# Feed max ramené à 3000 (27 juil. 2026, était 6000 avant un changement de
+# lentille) : F6000 ne marque plus du tout depuis.
+PLANCHE_FOCUS_POWERS = (200.0, 400.0, 600.0, 800.0, 1000.0)
+PLANCHE_FOCUS_FEEDS = (200.0, 400.0, 800.0, 1000.0, 1200.0, 1500.0, 3000.0)
 
-    Feed max ramené à 3000 (27 juil. 2026, était 6000 avant un changement de
-    lentille) : F6000 ne marque plus du tout depuis -- si un futur
-    changement de lentille/tête fait remarquer au-delà, remonter la plage.
 
-    Surface TOUJOURS PLATE (calibration) : un seul plongeon/une seule
-    remontée pour tout le job (cf. _emit_flat_marks) -- jamais de retrait de
-    sécurité entre deux traits (tous au même Z ici), qui ferait perdre du
-    temps sans réduire aucun risque (le bec ne suit aucun relief sur une
-    chute plate). Même principe que generate_gcode_test_grid."""
-    if z_focus is None:
-        z_focus = Z_WORK_MM
-    powers = _powers_capped(powers)
-    # Encombrement CALCULE des etiquettes plutot que 12 mm reserves au
-    # juge : a 2,5 mm de haut « F3000 » ne fait que 8,25 mm, et la marge
-    # forfaitaire coutait 14 mm par colonne. Demande de Christophe le
-    # 31/07/2026 : « je n'ai pas besoin de 3 cm de traits pour avoir la
-    # largeur », et une planche plus petite se photographie mieux.
+def disposition_planche_focus(powers, feeds, trait_len=12.0, row_gap=4.0,
+                              label_height=2.5):
+    """Mise en page de la PLANCHE 1 : UN trait horizontal par couple (S, F).
+
+    SOURCE UNIQUE de cette géométrie. Le générateur la grave, et le cadrage
+    automatique de la mesure s'en sert pour poser le rectangle de lecture
+    sur le bon trait. Deux calculs séparés se mettraient à diverger au
+    premier changement de mise en page, et un cadre décalé d'une rangée ne
+    se voit pas : il ressemble à une mesure.
+
+    Encombrement CALCULE des etiquettes plutot que 12 mm reserves au juge :
+    a 2,5 mm de haut « F3000 » ne fait que 8,25 mm, et la marge forfaitaire
+    coutait 14 mm par colonne. Demande de Christophe le 31/07/2026 : « je
+    n'ai pas besoin de 3 cm de traits pour avoir la largeur », et une
+    planche plus petite se photographie mieux.
+
+    Renvoie (band, label_edges), au format attendu par _emit_flat_marks."""
     l_f = max(text_width("F{:.0f}".format(f), label_height) for f in feeds)
     l_s = max(text_width("S{:.0f}".format(p_), label_height) for p_ in powers)
     col_pitch = max(trait_len + 4.0, l_f + 2.0)
@@ -10200,6 +10199,109 @@ def generate_gcode_planche_focus(z_focus=None, mire=True,
     for j, f in enumerate(feeds):
         _lab("F{:.0f}".format(f), x0 + j * col_pitch, y_head)
     _lab("1", 0.0, y_head + 6.0, 5.0)
+    return band, label_edges
+
+
+def cadres_traits_planche(band, infos_mire, demi_hauteur_mm=1.4,
+                          marge_x_mm=0.5):
+    """Rectangle de lecture de chaque trait, DANS LE REPÈRE DE LA MIRE.
+
+    Même repère et même retournement que `fiche_grille_noirceur` : la photo
+    redressée a Y VERS LE BAS quand le G-code l'a VERS LE HAUT, donc la
+    croix haut-gauche de l'image est le coin (x0, y0 + hauteur) de la mire.
+    Se tromper là-dessus retourne la planche de haut en bas sans rien
+    casser : on cadrerait la rangée symétrique, à une puissance voisine,
+    avec une largeur parfaitement plausible. Aucune exception ne le dirait.
+
+    `demi_hauteur_mm` : le cadre doit contenir UN trait et un peu de bois de
+    part et d'autre -- c'est ce bois qui donne le niveau de référence du
+    profil. 1,4 mm par défaut, soit un peu moins que la demi-distance entre
+    deux rangées de la planche 1 (row_gap 4,0), pour ne jamais mordre sur la
+    rangée voisine même si la planche a bougé d'un cheveu au redressement.
+
+    Ne renvoie QUE les traits horizontaux : le profil est moyenné colonne
+    par colonne et les deux lignes de mesure sont horizontales, donc un
+    trait oblique n'y serait pas mesurable -- mieux vaut ne rien proposer
+    que proposer un cadre où la mesure serait fausse.
+
+    Renvoie une liste de dicts {power, feed, x0, y0, x1, y1} en mm image."""
+    if not band or not infos_mire:
+        return []
+    y_haut = infos_mire["y0"] + infos_mire["hauteur"]
+    demi = max(0.1, float(demi_hauteur_mm))
+    mx = max(0.0, float(marge_x_mm))
+    cadres = []
+    for chaine, s, f, _c in band:
+        if not chaine or len(chaine) < 2:
+            continue
+        xs = [p[0] for p in chaine]
+        ys = [p[1] for p in chaine]
+        if max(ys) - min(ys) > 1e-6:      # trait non horizontal : on passe
+            continue
+        yc = y_haut - ys[0]
+        cadres.append({
+            "power": float(s), "feed": float(f),
+            "x0": min(xs) - infos_mire["x0"] - mx,
+            "y0": yc - demi,
+            "x1": max(xs) - infos_mire["x0"] + mx,
+            "y1": yc + demi,
+        })
+    return cadres
+
+
+def cadres_planche_focus(powers=None, feeds=None, **kw):
+    """Cadres de lecture de la planche 1 telle que le générateur la produit.
+
+    Rejoue la mise en page ET la pose de la mire, plutôt que de relire un
+    fichier écrit au moment de la gravure : la planche 1 n'a aucun réglage
+    utilisateur, donc sa géométrie est entièrement déterminée par le code.
+    Conséquence utile : les planches DÉJÀ gravées deviennent cadrables sans
+    avoir à les regraver.
+
+    Le revers, à assumer : une planche gravée avant une évolution de la
+    mise en page ne correspondrait plus. C'est pourquoi le cadre reste une
+    PROPOSITION que l'utilisateur peut refaire à la souris -- comme les
+    cotes de mire proposées par `_cotes_mire_defaut`, jamais imposées."""
+    band, label_edges = disposition_planche_focus(
+        _powers_capped(PLANCHE_FOCUS_POWERS if powers is None else powers),
+        PLANCHE_FOCUS_FEEDS if feeds is None else feeds, **kw)
+    # Les traits de la PLANCHE, avant que la mire n'ajoute les siens :
+    # `_ajouter_mire` allonge `band` en place, et les bras horizontaux des
+    # croix comme les graduations de la réglette sont, eux aussi, des
+    # segments. Cadrés comme des traits de mesure, ils proposeraient de
+    # mesurer la mire -- à la puissance de la mire, dans une case de la
+    # grille. On fige donc la liste ici.
+    traits = list(band)
+    infos = _ajouter_mire(band, label_edges)
+    return cadres_traits_planche(traits, infos), infos
+
+
+def generate_gcode_planche_focus(z_focus=None, mire=True,
+                                 powers=PLANCHE_FOCUS_POWERS,
+                                 feeds=PLANCHE_FOCUS_FEEDS,
+                                 trait_len=12.0, row_gap=4.0, label_height=2.5,
+                                 pre_gcode="", post_gcode="", quiet=False, body_only=False):
+    """PLANCHE 1 -- FOYER (Vitesse x Puissance). Grille de traits gravés AU
+    FOYER : une ligne par puissance S (bornée à S_MAX), une colonne par vitesse
+    F. À mesurer : la LARGEUR brûlée de chaque trait (un trait vierge est une
+    donnée : seuil du matériau) -> alimente burn_width_at (foyer, feed-aware).
+    Un seul armement.
+
+    Feed max ramené à 3000 (27 juil. 2026, était 6000 avant un changement de
+    lentille) : F6000 ne marque plus du tout depuis -- si un futur
+    changement de lentille/tête fait remarquer au-delà, remonter la plage.
+
+    Surface TOUJOURS PLATE (calibration) : un seul plongeon/une seule
+    remontée pour tout le job (cf. _emit_flat_marks) -- jamais de retrait de
+    sécurité entre deux traits (tous au même Z ici), qui ferait perdre du
+    temps sans réduire aucun risque (le bec ne suit aucun relief sur une
+    chute plate). Même principe que generate_gcode_test_grid."""
+    if z_focus is None:
+        z_focus = Z_WORK_MM
+    powers = _powers_capped(powers)
+    band, label_edges = disposition_planche_focus(
+        powers, feeds, trait_len=trait_len, row_gap=row_gap,
+        label_height=label_height)
     infos_mire = _ajouter_mire(band, label_edges) if mire else None
     labels = _label_band(label_edges, "(-- Planche 1 : etiquettes --)")
 
