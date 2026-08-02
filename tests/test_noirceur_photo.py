@@ -6,7 +6,7 @@ Y vers le BAS. Une erreur de sens ne casse rien -- elle lit des cases
 voisines, avec des valeurs parfaitement plausibles, et le nuancier entier
 part a l'envers sans qu'aucune exception ne se leve.
 """
-from harness import preparer
+from harness import preparer, texte
 h = preparer()
 core = h.core
 
@@ -383,5 +383,77 @@ assert _etats.get("① Repliee a la main") is False, (
     "a chaque ouverture de panneau")
 print("12. les etapes ①②③ echappent a l'accordeon, et la remise a zero "
       "ne joue qu'une fois OK")
+
+
+# --- 13. La FENETRE, de bout en bout, sur une planche fabriquee ---------
+# La faute que ce bloc aurait attrapee tout de suite : `_image_bornee`
+# renvoie (image, souci), et le dialogue prenait le tuple pour une QImage.
+# L'AttributeError partait dans un signal Qt, ou elle s'est PERDUE : la
+# fenetre restait noire avec son message d'accueil. Christophe a vu « rien
+# a l'ecran », ce qui est le pire des diagnostics.
+import tempfile as _tf13, os as _os13, json as _js13
+from PySide6 import QtGui as _G13
+
+_dir13 = _tf13.mkdtemp()
+_PX13, _MG13 = 20.0, 5.0
+_INF13 = {"x0": 0.0, "y0": 0.0, "largeur": 100.0, "hauteur": 80.0}
+_COTE13, _PAS13 = 10.0, 13.0
+_cells13 = [{"row": r, "col": c, "power": 200.0 + 160 * c, "feed": 400.0 + 700 * r,
+             "x0": 2.0 + c * _PAS13, "y0": 2.0 + r * _PAS13}
+            for r in range(4) for c in range(5)]
+_f13 = core.fiche_grille_noirceur(_cells13, _COTE13, _INF13)
+_chemin_grille = _os13.path.join(_dir13, "essai_grille.json")
+with open(_chemin_grille, "w") as _fh:
+    _js13.dump(_f13, _fh)
+
+_W13 = int((_INF13["largeur"] + 2 * _MG13) * _PX13)
+_H13 = int((_INF13["hauteur"] + 2 * _MG13) * _PX13)
+_im13 = _G13.QImage(_W13, _H13, _G13.QImage.Format_RGB32)
+_im13.fill(_G13.QColor(205, 195, 175))
+_pt13 = _G13.QPainter(_im13)
+_faux13 = type("F", (), {"_marge": _MG13, "_pxmm": _PX13})()
+_px13 = tp._DialogueNoirceur._px.__get__(_faux13)
+for c in _f13["cases"]:
+    # Plus noir a DROITE (colonne) et plus clair quand la VITESSE monte.
+    v = (c["col"] / 4.0) * (1.0 - 0.7 * c["row"] / 3.0)
+    g = int(round(205 - 175 * v))
+    x0, y0, x1, y1 = _px13((c["x0"], c["y0"], c["x1"], c["y1"]))
+    _pt13.fillRect(_QtCore.QRect(x0, y0, x1 - x0, y1 - y0), _G13.QColor(g, g, g))
+_pt13.end()
+_base13 = _os13.path.join(_dir13, "FAUX_planche_autre_20260101-0000_redresse")
+_im13.save(_base13 + ".png")
+with open(_base13 + ".json", "w") as _fh:
+    _js13.dump({"fichier": _base13 + ".png", "apercu": _base13 + ".png",
+                "laser": "FAUX", "largeur_mm": _INF13["largeur"] + 2 * _MG13,
+                "hauteur_mm": _INF13["hauteur"] + 2 * _MG13, "pxmm": _PX13,
+                "base_mm": [_INF13["largeur"], _INF13["hauteur"]]}, _fh)
+
+_vrai_dir = core.PLANCHES_DIR
+core.PLANCHES_DIR = _dir13          # JAMAIS le dossier reel de l'atelier
+try:
+    _d13 = tp._DialogueNoirceur()
+    assert _d13.combo_planche.count() >= 1, "la planche fabriquee n'est pas listee"
+    _d13.edt_fiche.setText(_chemin_grille)
+    _d13._charger()
+    _txt13 = texte(_d13.lbl.text())
+    assert "cases lues" in _txt13, ("la fenetre n'a rien lu -- et si elle "
+                                    "echoue, elle doit le DIRE", _txt13)
+    assert len(_d13._valeurs) == 20, len(_d13._valeurs)
+    _v13 = {k: v for k, (v, _c) in _d13._valeurs.items()}
+    # Le SENS, sur une planche dont on connait la reponse.
+    for r in range(4):
+        s = [_v13[(r, c)] for c in range(5)]
+        assert all(b >= a - 2 for a, b in zip(s, s[1:])), ("rangee %d" % r, s)
+    for c in range(5):
+        s = [_v13[(r, c)] for r in range(4)]
+        assert all(b <= a + 2 for a, b in zip(s, s[1:])), ("colonne %d" % c, s)
+    # Et une erreur ne doit PLUS se perdre : on casse la fiche exprès.
+    _d13.edt_fiche.setText(_os13.path.join(_dir13, "inexistante.json"))
+    _d13._charger()
+    assert texte(_d13.lbl.text()).strip(), "la fenetre est restee muette"
+finally:
+    core.PLANCHES_DIR = _vrai_dir
+print("13. la fenetre lit 20 cases de bout en bout, dans le bon sens, "
+      "et parle quand ca casse OK")
 
 print("\nTOUS LES TESTS noirceur_photo PASSENT")

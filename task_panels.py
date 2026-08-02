@@ -1572,7 +1572,13 @@ class _MesuresPlanchesControleur:
         date = champs[-1] if len(champs) >= 2 else ""
         planche = champs[-2] if len(champs) >= 2 else p["nom"]
         heure = date[-4:] if len(date) >= 4 and date[-4:].isdigit() else date
-        lib = planche.replace("planche", "Planche ")
+        # Le libellé vient de _PLANCHES, la même liste que le dialogue de
+        # redressement : « planche_autre » sortait sinon en « autre »,
+        # puisque le remplacement naïf ne laissait que le suffixe. Une
+        # planche qu'on ne sait pas nommer garde sa clé, mais capitalisée.
+        connus = {cle: nom.split(" — ")[0] for nom, cle in _PLANCHES}
+        lib = connus.get(planche) or planche.replace(
+            "planche", "Planche ").strip().capitalize()
         if heure:
             lib += " — {}h{}".format(heure[:2], heure[2:])
         cotes = (p.get("infos") or {}).get("base_mm")
@@ -3223,6 +3229,20 @@ class _DialogueNoirceur(QtWidgets.QDialog):
 
     # -- lecture ---------------------------------------------------------
     def _charger(self):
+        """Recharge tout. Enveloppé : une exception levée ici part dans un
+        signal Qt, où elle se PERD -- la fenêtre reste comme elle était et
+        l'utilisateur voit « rien à l'écran ». Dire ce qui casse vaut
+        mieux que ne rien dire."""
+        try:
+            self._charger_vraiment()
+        except Exception as exc:
+            import traceback
+            FreeCAD.Console.PrintError(traceback.format_exc())
+            self._dire("Lecture impossible : {} — {}. Le détail est dans la "
+                       "vue Rapport.".format(type(exc).__name__, exc),
+                       rouge=True)
+
+    def _charger_vraiment(self):
         d = self.combo_planche.currentData()
         chemin_fiche = self.edt_fiche.text().strip()
         if not d or not chemin_fiche or not os.path.isfile(chemin_fiche):
@@ -3246,12 +3266,23 @@ class _DialogueNoirceur(QtWidgets.QDialog):
         # un JPEG réduit perdrait des pixels par case sans rien gagner à
         # l'écran, et afficher le PNG de 55 Mo figerait la fenêtre.
         plein = infos.get("fichier") or d["chemin"]
-        self._img_mesure = _image_bornee(plein, 100000, 100000)
+        # `_image_bornee` renvoie (image, souci) -- pas une image. Prendre
+        # le tuple pour une QImage levait une AttributeError DANS un signal
+        # Qt, où elle se perdait : la fenêtre restait noire avec son
+        # message d'accueil, sans rien dire. Les six autres appels du
+        # fichier déballaient correctement ; celui-ci non.
+        self._img_mesure, souci = _image_bornee(plein, 100000, 100000)
         if self._img_mesure is None or self._img_mesure.isNull():
-            self._img_mesure = _image_bornee(d["chemin"], 100000, 100000)
-        img_vue = _image_bornee(d["chemin"], 1600, 1600)
+            self._img_mesure, souci = _image_bornee(d["chemin"], 100000, 100000)
+        img_vue, souci_vue = _image_bornee(d["chemin"], 1600, 1600)
         if img_vue is None or img_vue.isNull():
-            self._dire("Photo illisible.")
+            self._dire("Photo illisible{}.".format(
+                " ({})".format(souci_vue) if souci_vue else ""), rouge=True)
+            return
+        if self._img_mesure is None or self._img_mesure.isNull():
+            self._dire("Image de mesure illisible{} : lecture impossible."
+                       .format(" ({})".format(souci) if souci else ""),
+                       rouge=True)
             return
         # L'échelle de l'IMAGE AFFICHÉE, qui n'est pas celle de la mesure.
         base = float((infos.get("base_mm") or [0])[0] or 0.0)

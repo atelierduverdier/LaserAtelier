@@ -1123,7 +1123,13 @@ if _planches9:
     # -- l'apercu et le controle des reperes ne sont pas des planches.
     assert _cb9.count() == len(_planches9), (_cb9.count(), len(_planches9))
     _libelles = [_cb9.itemText(i) for i in range(_cb9.count())]
-    assert all(l.startswith("Planche ") for l in _libelles), _libelles
+    # PAS « commence par Planche » : Christophe redresse aussi des « Autre
+    # planche » (une grille de tons, le 02/08/2026), et le test rougissait
+    # parce qu'il s'etait servi du logiciel. Ce qui compte est que le
+    # libelle soit NOMME et lisible, pas qu'il porte un prefixe.
+    assert all(l and not l[0].islower() for l in _libelles), (
+        "un libelle de planche commence en minuscule : il sort brut du nom "
+        "de fichier au lieu d'etre nomme", _libelles)
     # Le libelle doit etre LISIBLE : la planche, l'heure, les cotes -- pas
     # un nom de fichier de 60 caracteres.
     assert any("h" in l and "(" in l for l in _libelles), _libelles
