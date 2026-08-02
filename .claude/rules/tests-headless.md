@@ -243,3 +243,28 @@ sabotage run yields **29.54 px/mm** — within half a pixel of the 29.01 the rea
 
 Always sabotage a new fixture before keeping it. If the deliberate break does not turn it red, the
 fixture is decoration.
+
+## Never touch the live FreeCAD session to test a behaviour
+
+On 2026-08-02, verifying "create a document when none is open" was done by **closing Christophe's
+documents in his running session**. One of them, `Nuancier_tons`, had never been saved. Its content
+is gone.
+
+The behaviour was verifiable without any of that: read the source, or drive a throwaway document.
+`FreeCAD.closeDocument` in his session is the same class of act as writing to the workshop config —
+it destroys something no computation can rebuild, and there is no undo.
+
+**Rule: in the live session, read. Never close, never delete, never save-over.** Anything
+destructive goes to a fresh document created for the purpose, or to the headless interpreter.
+
+## A monotonicity check on measured data needs the measurement's own noise
+
+`test_interpolation_mesures` §3 demanded a *perfect* decrease of darkness with feed. On the first
+real tone board that turned red on **8.8 → 9.3** — half a point, on the one cell an old stray
+engraving crossed. The wood's own grain spreads bare-wood readings over 6.4 points (σ 1.7), so
+strict monotonicity is a demand the material cannot meet.
+
+`TOLERANCE_GRAIN = 2.0` (one σ, rounded) comes from that measurement, not from taste. And the check
+now proves it still **discriminates**: a synthetic 22-point jump — the real contradiction of that
+morning — must be caught, a 0.5-point one must not, and the threshold must sit between the two.
+Without that, raising the tolerance to 30 would have passed silently on data that has no defect.

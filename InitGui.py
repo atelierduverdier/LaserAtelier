@@ -97,7 +97,37 @@ class LaserAtelierWorkbench(Workbench):
         self.appendMenu("Atelier Laser", self.command_list)
 
     def Activated(self):
-        pass
+        """Un document ouvert, toujours.
+
+        Sans document actif, quinze des vingt et un boutons sont GRISÉS
+        (leur `IsActive` exige un document), et les six autres ouvrent une
+        fenêtre de tâches là où FreeCAD n'a aucune vue pour l'accueillir :
+        elle part derrière la fenêtre principale et devient inatteignable.
+        Christophe l'a rencontré le 02/08/2026 en ouvrant FreeCAD puis
+        l'atelier sans rien créer.
+
+        Tous les modes d'ici créent ou lisent de la géométrie : il n'y a
+        pas d'usage sans document. Plutôt que d'exiger un geste préalable
+        que rien n'annonce, l'atelier ouvre le document lui-même -- et le
+        DIT dans la vue Rapport, pour que personne ne se demande d'où sort
+        cet « Atelier » dans l'arbre.
+
+        Jamais quand un document est déjà ouvert : on n'ajoute pas un
+        onglet vide à côté du travail en cours."""
+        try:
+            import FreeCAD
+            if FreeCAD.ActiveDocument is None:
+                doc = FreeCAD.newDocument("Atelier")
+                FreeCAD.Console.PrintMessage(
+                    "Atelier laser : aucun document ouvert, « {} » créé -- "
+                    "sinon les panneaux s'ouvrent hors de portée.\n"
+                    .format(doc.Name))
+        except Exception as exc:      # jamais empêcher l'atelier de s'ouvrir
+            try:
+                FreeCAD.Console.PrintWarning(
+                    "Atelier laser : document non créé ({}).\n".format(exc))
+            except Exception:
+                pass
 
     def Deactivated(self):
         pass

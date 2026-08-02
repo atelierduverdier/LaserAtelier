@@ -1221,6 +1221,40 @@ print("mesure sur image : la fenêtre choisit sa case ({} en liste), verrou "
 #
 # Une suite qui rougit une fois sur quatre sans raison apprend a ignorer le
 # rouge, ce qui est pire que pas de suite du tout. On lache donc les
+# --- Un document toujours ouvert ---------------------------------------
+# Sans document actif, 15 des 21 boutons sont GRISES (leur IsActive exige
+# un document) et les 6 autres ouvrent une fenetre de taches la ou FreeCAD
+# n'a aucune vue pour l'accueillir : elle part derriere la fenetre
+# principale et devient inatteignable. Christophe l'a rencontre le
+# 02/08/2026 en ouvrant FreeCAD puis l'atelier sans rien creer.
+import re as _redoc
+_src_cmd = open(_os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+    "commands.py")).read()
+assert "def assurer_document" in _src_cmd, "le garde-fou a disparu"
+# Il est appele AVANT l'ouverture de la fenetre, pas apres : une fenetre
+# deja partie derriere ne revient pas.
+assert "    assurer_document()" in _src_cmd, (
+    "_show n'assure plus de document : la fenetre s'ouvrira derriere la "
+    "fenetre principale quand aucun document n'est ouvert")
+assert _src_cmd.index("    assurer_document()") \
+    < _src_cmd.index("Gui.Control.showDialog(panel)"), (
+    "le document doit exister AVANT showDialog -- une fenetre deja partie "
+    "derriere ne revient pas")
+# Et il ne cree RIEN quand un document est deja la : on n'ajoute pas un
+# onglet vide a cote du travail en cours.
+assert "if FreeCAD.ActiveDocument is not None:" in _src_cmd
+
+_src_ini = open(_os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+    "InitGui.py")).read()
+_act = _src_ini[_src_ini.index("def Activated"):]
+_act = _act[:_act.index("def Deactivated")]
+assert "newDocument" in _act, "l'atelier doit ouvrir un document en s'activant"
+assert "ActiveDocument is None" in _act, (
+    "il ne doit creer un document QUE s'il n'y en a aucun")
+print("document : l'atelier en assure un, et n'en cree pas un deuxieme OK")
+
 # references, on laisse Qt digerer, et on sort explicitement.
 for _nom_w, _w in list(globals().items()):
     if _nom_w.startswith("_hote") and isinstance(_w, _Qt.QWidget):
@@ -1233,3 +1267,4 @@ _Qt.QApplication.processEvents()
 sys.stdout.flush()
 sys.stderr.flush()
 _os._exit(0)
+

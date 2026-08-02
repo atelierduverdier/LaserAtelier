@@ -159,18 +159,53 @@ print("   S1000 : {:.0f} % à F800 contre {:.0f} % à F6000 (plus lent = plus "
 # --- 3. Plus lent = plus noir, sur TOUTE la grille -----------------------
 # Établi expérimentalement le 29/07/2026 (quatre bandes à énergie égale).
 # Le repli ne doit jamais produire l'inverse.
+# TOLÉRANCE DU GRAIN. Exiger une décroissance PARFAITE d'une donnée
+# mesurée sur du bois, c'est demander au bois de ne pas avoir de grain :
+# sur la planche du 02/08/2026, 25 zones de bois nu s'étalaient sur 6,4
+# points (écart-type 1,7). Une remontée plus petite que ce bruit n'est pas
+# une inversion, c'est la mesure qui respire -- et un test qui échoue
+# là-dessus échoue dès que Christophe mesure, ce qui apprend à ignorer les
+# échecs.
+#
+# 2 points = un écart-type du grain, arrondi. Ce qui dépasse reste
+# attrapé : les contradictions du 02/08 (40 % à F3200 contre 17,6 à F2880)
+# faisaient 22 points.
+TOLERANCE_GRAIN = 2.0
 inversions = []
 for s in puissances:
     precedent = None
     for f in vitesses:
         d = core.darkness_at(MAT, s, f, 0.0)
-        if precedent is not None and d > precedent + 1e-6:
-            inversions.append((s, f, precedent, d))
+        if precedent is not None and d > precedent + TOLERANCE_GRAIN:
+            inversions.append((s, f, round(precedent, 1), round(d, 1)))
         precedent = d
-assert not inversions, ("noirceur qui REMONTE quand la vitesse augmente",
-                        inversions)
+assert not inversions, (
+    "noirceur qui REMONTE de plus de {:.0f} points quand la vitesse "
+    "augmente".format(TOLERANCE_GRAIN), inversions)
+# Le critère DISCRIMINE-t-il encore ? Sans cette vérification, poser la
+# tolérance à 30 laisserait le test passer sur les données du jour, et
+# personne ne le verrait : un seuil ne se juge pas sur des données qui
+# n'ont pas le défaut.
+def _remontees(serie, tol):
+    out, prec = [], None
+    for d in serie:
+        if prec is not None and d > prec + tol:
+            out.append((prec, d))
+        prec = d
+    return out
+
+# La contradiction réelle du 02/08 : 17,6 puis 40,0 (22 points).
+assert _remontees([78.1, 31.3, 17.6, 40.0, 9.7], TOLERANCE_GRAIN), (
+    "une remontée de 22 points doit être attrapée")
+# Le grain du bois : 8,8 puis 9,3 (0,5 point) -- pas une inversion.
+assert not _remontees([31.3, 17.6, 9.7, 8.8, 9.3], TOLERANCE_GRAIN), (
+    "une remontée de 0,5 point est du grain, pas une contradiction")
+# Et le seuil est bien ENTRE les deux, pas au-delà des deux.
+assert 0.5 < TOLERANCE_GRAIN < 22.0, TOLERANCE_GRAIN
+
 print("3. les {} lignes de puissance décroissent toutes avec la vitesse "
-      "OK".format(len(puissances)))
+      "(tolérance {:.0f} pt, le grain du bois ; 22 pt attrapés, 0,5 pt "
+      "toléré) OK".format(len(puissances), TOLERANCE_GRAIN))
 
 # --- 4. Un point MESURÉ n'est jamais déformé par le repli ----------------
 # L'invariant qui doit tenir quelle que soit la métrique : sur une case

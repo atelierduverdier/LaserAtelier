@@ -27,10 +27,36 @@ def _warn_selection(message):
     QtWidgets.QMessageBox.warning(None, "Sélection", message)
 
 
+def assurer_document():
+    """Garantit un document actif, et le crée sinon. Renvoie son nom ou None.
+
+    L'atelier en ouvre déjà un en s'activant (cf. InitGui). Celui-ci
+    rattrape l'autre cas : le document FERMÉ en cours de séance, sans
+    quitter l'atelier. Sans lui, la fenêtre de tâches part derrière la
+    fenêtre principale -- FreeCAD n'a plus de vue où la loger -- et
+    devient inatteignable."""
+    if FreeCAD.ActiveDocument is not None:
+        return FreeCAD.ActiveDocument.Name
+    try:
+        doc = FreeCAD.newDocument("Atelier")
+        FreeCAD.Console.PrintMessage(
+            "Atelier laser : aucun document ouvert, « {} » créé.\n"
+            .format(doc.Name))
+        return doc.Name
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning(
+            "Atelier laser : document non créé ({}).\n".format(exc))
+        return None
+
+
 def _show(panel):
     """Ouvre un panneau de tâches en fermant d'abord une éventuelle fenêtre
     de tâches DÉJÀ active -- sinon FreeCAD refuse (« Active task dialog
-    found ») quand on lance une commande alors qu'un panneau est ouvert."""
+    found ») quand on lance une commande alors qu'un panneau est ouvert.
+
+    Assure aussi un document : sans lui la fenêtre n'a pas de vue où se
+    loger et s'ouvre hors de portée."""
+    assurer_document()
     if Gui.Control.activeDialog():
         Gui.Control.closeDialog()
     # Icône sur chaque bouton du panneau (cohérence visuelle) -- fait ici,
