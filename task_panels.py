@@ -11467,6 +11467,49 @@ class TaskPanelHalftone:
         return True
 
 
+def _ecrire_fiche_grille(chemin_gcode, cells, cote, label_edges,
+                         z_offset, pas_mm, suffixe=""):
+    """Écrit, à côté du G-code, la fiche géométrique des cases d'une grille.
+
+    SOURCE UNIQUE des deux chemins qui gravent une grille : le bouton
+    « Générer » du panneau ET le Job combiné. Le second ne la déposait
+    pas -- une planche gravée par là était illisible par la lecture de
+    noirceur, sans que rien ne le dise (constaté le 02/08/2026 sur la
+    planche défocus 15,34 de Christophe, qu'il a fallu reconstruire à la
+    main depuis son G-code).
+
+    Elle donne à la lecture de noirceur la position de chaque case DANS
+    LE REPÈRE DE LA MIRE, avec sa puissance et sa vitesse. Le repère de
+    la mire, et non celui de la machine : le G-code est recadré au zéro
+    pièce à l'écriture, donc toute coordonnée machine écrite ici serait
+    fausse d'une translation dès le fichier suivant.
+
+    Un échec d'écriture n'annule pas le G-code : la planche reste
+    gravable, seule la lecture automatique manquera -- et le dire vaut
+    mieux que faire échouer une génération réussie."""
+    try:
+        bb = core.bbox_grille_test(cells, cote, label_edges)
+        if bb is None:
+            return
+        _mb, _ml, infos = core.mire_de_mesure(*bb)
+        fiche = core.fiche_grille_noirceur(cells, cote, infos,
+                                           z_offset=z_offset, pas_mm=pas_mm)
+        if not fiche:
+            return
+        fiche["gcode"] = os.path.abspath(chemin_gcode)
+        dest = os.path.splitext(chemin_gcode)[0] + "_grille" + suffixe + ".json"
+        with open(dest, "w") as fh:
+            json.dump(fiche, fh, indent=2, ensure_ascii=False)
+        FreeCAD.Console.PrintMessage(
+            "Fiche de grille écrite : {} ({} cases)\n".format(
+                dest, len(fiche["cases"])))
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning(
+            "Fiche de grille non écrite ({}) : la planche reste gravable, "
+            "mais la lecture automatique de la noirceur ne pourra pas "
+            "s'en servir.\n".format(exc))
+
+
 # ==========================================================================
 # MODE : GRILLE DE TEST PUISSANCE / VITESSE
 # ==========================================================================
@@ -12457,10 +12500,21 @@ class TaskPanelTestGrid:
             return None
         _pw, _fd, label_edges = self._build_label_edges(cells)
         return {"type": "testgrid", "label": "Grille de test",
+                # LA MIRE SUIT DANS LE JOB COMBINÉ. Elle ne suivait pas :
+                # cocher « Graver la mire » puis « Ajouter au job combiné »
+                # gravait une planche SANS repères ni réglette, donc pas
+                # redressable et pas mesurable sur photo -- en silence.
                 "params": dict(cells=cells, z_work=self.spn_zwork.value(),
                                label_edges=label_edges if self.chk_labels.isChecked() else None,
+                               **self._kw_mire(),
                                cell_z_offset=cell_z_offset, use_proximity=self.chk_proximity.isChecked(),
-                               **self._border_kwargs())}
+                               **self._border_kwargs()),
+                # Le pas de balayage voyage à CÔTÉ de `params` : ceux-ci
+                # sont exactement les kwargs du générateur, y glisser une
+                # clé de plus casserait l'appel `**params` (même raison
+                # que `op["materiau"]` de l'aperçu photo). Il sert au
+                # dépôt de la fiche de grille, pas à la génération.
+                "pas_mm": self.spn_hatch_spacing.value()}
 
     def _on_add_to_combined(self):
         op = self._build_combined_operation()
@@ -12741,40 +12795,14 @@ class TaskPanelTestGrid:
             doc.recompute()
 
     def _deposer_fiche_grille(self, chemin_gcode, cells, cote, label_edges):
-        """Écrit, à côté du G-code, la fiche géométrique des cases.
+        """La fiche des cases pour la planche que ce panneau vient de graver.
 
-        Elle donne à la lecture de noirceur la position de chaque case DANS
-        LE REPÈRE DE LA MIRE, avec sa puissance et sa vitesse. Le repère de
-        la mire, et non celui de la machine : le G-code est recadré au zéro
-        pièce à l'écriture, donc toute coordonnée machine écrite ici serait
-        fausse d'une translation dès le fichier suivant.
-
-        Un échec d'écriture n'annule pas le G-code : la planche reste
-        gravable, seule la lecture automatique manquera -- et le dire vaut
-        mieux que faire échouer une génération réussie."""
-        try:
-            bb = core.bbox_grille_test(cells, cote, label_edges)
-            if bb is None:
-                return
-            _mb, _ml, infos = core.mire_de_mesure(*bb)
-            fiche = core.fiche_grille_noirceur(
-                cells, cote, infos,
-                z_offset=self._dernier_defocus,
-                pas_mm=self.spn_hatch_spacing.value())
-            if not fiche:
-                return
-            fiche["gcode"] = os.path.abspath(chemin_gcode)
-            dest = os.path.splitext(chemin_gcode)[0] + "_grille.json"
-            with open(dest, "w") as fh:
-                json.dump(fiche, fh, indent=2, ensure_ascii=False)
-            FreeCAD.Console.PrintMessage(
-                "Fiche de grille écrite : {} ({} cases)\n".format(
-                    dest, len(fiche["cases"])))
-        except Exception as exc:
-            FreeCAD.Console.PrintWarning(
-                "Fiche de grille non écrite ({}) : la planche reste gravable, "
-                "mais la lecture automatique de la noirceur ne pourra pas "
-                "s'en servir.\n".format(exc))
+        Le travail est dans `_ecrire_fiche_grille`, partagé avec le Job
+        combiné : deux chemins qui gravent la même planche doivent
+        déposer la même fiche."""
+        _ecrire_fiche_grille(chemin_gcode, cells, cote, label_edges,
+                             self._dernier_defocus,
+                             self.spn_hatch_spacing.value())
 
     def accept(self):
         # OK = mémoriser les réglages et fermer (génération : bouton de ①).
@@ -15596,7 +15624,34 @@ class TaskPanelCombined:
             return False
 
         # Bouton : le panneau reste ouvert, re-cliquer regénère.
-        return _write_gcode_with_dialog(self.form, gcode, "/tmp/job_combine.ngc")
+        chemin = _write_gcode_with_dialog(self.form, gcode, "/tmp/job_combine.ngc")
+        if chemin:
+            self._deposer_fiches_grilles(chemin)
+        return chemin
+
+    def _deposer_fiches_grilles(self, chemin_gcode):
+        """Une fiche de grille par opération « Grille de test » MIRÉE du job.
+
+        Sans elle, une planche gravée par le Job combiné ne peut pas être
+        lue automatiquement : la lecture de noirceur a besoin de la
+        position de chaque case dans le repère de la mire. Le chemin
+        direct la déposait, celui-ci non -- la planche de Christophe du
+        01/08/2026 en a fait les frais, et il a fallu reconstruire sa
+        fiche depuis le G-code.
+
+        Numérotées seulement s'il y en a plusieurs : `_grille.json` tout
+        court quand il n'y en a qu'une, comme le chemin direct, pour que
+        les deux produisent le MÊME nom de fichier."""
+        grilles = [op for op in self.operations
+                   if op.get("type") == "testgrid"
+                   and (op.get("params") or {}).get("mire")]
+        for i, op in enumerate(grilles):
+            p = op["params"]
+            _ecrire_fiche_grille(
+                chemin_gcode, p.get("cells"), p.get("cell_size"),
+                p.get("label_edges"), p.get("cell_z_offset") or 0.0,
+                op.get("pas_mm") or 0.0,
+                suffixe="" if len(grilles) == 1 else "_{}".format(i + 1))
 
     def reject(self):
         return True

@@ -244,8 +244,25 @@ try:
     assert _avec_y[0] < _sans_y[0] - 10.0, (
         "le cadrage avec mire doit descendre BIEN plus bas (la reglette)",
         _sans_y, _avec_y)
-    print("9. les 4 appels emportent la mire ; le cadrage descend de "
-          "%.0f mm de plus OK" % (_sans_y[0] - _avec_y[0]))
+
+    # LE CINQUIEME APPELANT : le Job combine. Il ne portait PAS la mire --
+    # cocher « Graver la mire » puis « Ajouter au job combine » gravait
+    # une planche sans reperes ni reglette, donc ni redressable ni
+    # mesurable, en silence. Christophe en a une sur l'etabli (02/08/2026)
+    # dont la fiche a du etre reconstruite depuis le G-code.
+    _pc.chk_mire.setChecked(True)
+    _pc.spn_hatch_spacing.setValue(1.0)
+    _op9 = _pc._build_combined_operation()
+    assert _op9 and _op9["params"].get("mire") is True, (
+        "le job combine perd la mire", _op9 and sorted(_op9["params"]))
+    assert _op9["params"].get("cell_size"), "cote de case absente : mire inerte"
+    # ... et le pas voyage a COTE de params (params = les kwargs exacts du
+    # generateur, une cle de plus casserait l'appel **params).
+    assert abs(_op9.get("pas_mm", 0) - 1.0) < 1e-9, _op9.get("pas_mm")
+    assert "pas_mm" not in _op9["params"], (
+        "pas_mm dans params casserait l'appel **params du generateur")
+    print("9. les 5 appels emportent la mire (job combine compris) ; le "
+          "cadrage descend de %.0f mm de plus OK" % (_sans_y[0] - _avec_y[0]))
 finally:
     h.FreeCAD.closeDocument(_doc2.Name)
 h.FreeCAD.closeDocument(_doc.Name)
