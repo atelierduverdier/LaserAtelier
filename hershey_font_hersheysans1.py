@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Police vectorielle MONO-TRAIT (un seul trait par branche).
 
-Hershey Sans (bâton, défaut)
+Hershey Sans1
 Source : /tmp/claude-1000/-home-christophe/bc5ae0be-f33f-47b1-ae46-754362cefcaa/scratchpad/polices/svg-fonts/fonts/Hershey/HersheySans1.svg
 Licence : Hershey Fonts -- domaine public
 

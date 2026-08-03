@@ -418,22 +418,37 @@ material-dependent; this ratio is not it.**
 the `.` special case) for a new glyph.
 
 **Single-line (monoline) fonts** — genuinely single-stroke vector fonts for engraving text as "stick"
-letters (one stroke per branch, like a pen plotter), the right tool when the medial axis can't help
-(holed letters). Registry `HERSHEY_FONTS` maps a key → display label, each a sibling data module
-`hershey_font[_clé].py` (`GLYPHES[char] = (adv, [strokes])` in font units, baseline y=0,
-`CAP_HEIGHT` ≈ 662), generated from a public-domain **Hershey** SVG font — keep the credit in each
-module's docstring. `hershey_font.py` (no suffix) is the historic default "sans";
-`hershey_font_script.py` adds cursive "script".
+letters (one stroke per branch, like a pen plotter). Registry `HERSHEY_FONTS` maps a key → display
+label, each a sibling data module `hershey_font[_clé].py` (`GLYPHES[char] = (adv, [strokes])` in font
+units, baseline y=0, `CAP_HEIGHT`). **44 fonts since v2.60.0**, from oskay/svg-fonts (EMS in SIL OFL,
+Hershey in the public domain) and Relief SingleLine (SIL OFL, designed for CNC). `_hershey_module`
+imports **lazily**, so 2.6 MB on disk costs nothing until one is picked — don't "preload for speed".
 
-Only genuinely single-stroke Hershey variants belong here — most "Med"/"Bold"/"Serif" variants draw
-each stroke **twice** (duplex/outline) and defeat the point of the mode; check a reference glyph's
-path for a low, non-doubled stroke count before adding one. `_hershey_module(font)` resolves a key
-(silent fallback to "sans"). Core: `single_line_text_to_edges(text, height, char_spacing,
-line_spacing, font="sans")` (height = cap height) and `create_single_line_text_object(...)`; the
-**Texte (trait simple)** mode creates a `Part::Feature` wire to engrave with **Marquage**.
+**`outils/generer_police_monotrait.py` produces them**, and it did not exist before v2.60.0 although
+both shipped modules said "ne pas éditer à la main". A datum you can no longer produce is a datum
+nobody dares correct — which is exactly why the gap below lasted months. It reuses `svg_import`'s
+path tokeniser rather than growing a second one.
 
-To add a font, generate a new sibling module from the source SVG font (same structure — don't
-hand-edit) and register it. To add glyphs, regenerate the module. **Known pre-existing gap** in the
-shipped `hershey_font.py`: a handful of glyphs (ç, Ç, ß, £, ı, İ, æ, Æ…) exist in `GLYPHES` with an
-**empty** stroke list — the original generator dropped curve-only glyphs instead of keeping their
-parseable subpaths — so they render as invisible blanks. Not yet fixed.
+Three traps it now handles, each found by measuring:
+
+- **CAP_HEIGHT is the 'H' EXTENT, measured — never the declared `cap-height`.** oskay's SVGs declare
+  500 while their capitals reach 662 (ratio 1.324), so trusting the file engraved every text **32 %
+  too tall**; caught by `test_mire_planches`, which measures the engraved laser name. And it is the
+  *extent*, not the summit: in the EMS fonts the stroke is the stem's AXIS, so their 'H' runs y=22 to
+  652 — taking the summit was 3.4 % short, and stopped matching what a calliper reads on the wood.
+- **"Fût contourné" is labelled, not silently shipped.** The Med/Bold variants trace the stem's
+  outline, so the machine burns every branch twice — twice the time, a wider trace. Measured: Hershey
+  Sans Med's 'H' has 6 strokes against Sans1's 3, i.e. 4.7 strokes per letter against 2.4. **A
+  proximity detector was tried and thrown away**: hunting points with another stroke within 6 % of the
+  cap gave 27 % for the simplex font against 28 % for the outlined one — it caught junctions, not
+  doubling. A figure that separates nothing is worse than none, because it reassures. Christophe asked
+  for all 42 knowing this; the label says so.
+- **Nothing may vanish silently.** `deplier_texte` + `REPLIS_GLYPHES` substitute the French
+  typographic fallback (œ→oe, æ→ae, ß→ss, curly quotes, non-breaking spaces) and **name** whatever is
+  left. It runs on BOTH the edge builder and `single_line_text_extent`: if only one applied it, the
+  announced bounding box would be narrower than the engraving.
+
+**The gap that motivated all this, now CLOSED**: the shipped `hershey_font.py` had ç, Ç, æ, Æ present
+with an **empty** stroke list — "français" engraved "franais", without a word. Regenerated from
+`HersheySans1.svg`, which has them. `œ`/`Œ` are absent from *every* oskay font (216 glyphs); only
+Relief SingleLine (423) carries them, hence the fallback.

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.59.2"
+VERSION = "2.60.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1617,9 +1617,65 @@ def order_chains_by_proximity(chains):
 # plume) -- la plupart des variantes Hershey "Med"/"Bold"/"Serif" dessinent
 # en fait CHAQUE trait en double (façon contour) et ne conviennent pas à ce
 # mode, qui a précisément pour but de l'éviter.
+# LES POLICES MONO-TRAIT DISPONIBLES : clé -> libellé du menu.
+#
+# Les modules sont produits par outils/generer_police_monotrait.py depuis
+# des polices SVG libres (EMS et Relief SingleLine en SIL OFL, Hershey en
+# domaine public). Chaque module est importé PARESSEUSEMENT par
+# `_hershey_module` : les 42 sur le disque ne coûtent rien tant qu'on n'en
+# choisit pas une.
+#
+# « FÛT CONTOURNÉ » n'est pas une nuance de style : ces variantes dessinent
+# le CONTOUR du fût au lieu de son axe, donc la machine grave chaque
+# branche DEUX FOIS -- deux fois le temps, et un trait plus large que
+# voulu. Mesuré : le 'H' de Hershey Sans Med compte 6 traits contre 3 à
+# Sans1, soit 4,7 traits par lettre contre 2,4. Elles sont proposées parce
+# que Christophe les a demandées, mais le libellé le dit.
 HERSHEY_FONTS = {
     "sans": "Hershey Sans (bâton, défaut)",
     "script": "Hershey Script (cursive)",
+    "emsallure": "EMS Allure",
+    "emsbird": "EMS Bird",
+    "emsbirdswashcaps": "EMS Bird Swash Caps",
+    "emsbrush": "EMS Brush",
+    "emscapitol": "EMS Capitol",
+    "emscasualhand": "EMS Casual Hand",
+    "emsdecorousscript": "EMS Decorous Script",
+    "emsdelight": "EMS Delight",
+    "emsdelightswashcaps": "EMS Delight Swash Caps",
+    "emselfin": "EMS Elfin",
+    "emsfelix": "EMS Felix",
+    "emsherculean": "EMS Herculean",
+    "emsinvite": "EMS Invite",
+    "emsleague": "EMS League",
+    "emslittleprincess": "EMS Little Princess",
+    "emsmistynight": "EMS Misty Night -- fût contourné, grave double",
+    "emsneato": "EMS Neato",
+    "emsnixish": "EMS Nixish",
+    "emsnixishitalic": "EMS Nixish Italic",
+    "emsosmotron": "EMS Osmotron",
+    "emspancakes": "EMS Pancakes",
+    "emspepita": "EMS Pepita",
+    "emsqwandry": "EMS Qwandry",
+    "emsreadability": "EMS Readability",
+    "emsreadabilityitalic": "EMS Readability Italic",
+    "emssociety": "EMS Society",
+    "emsspacerocks": "EMS Space Rocks",
+    "emsswiss": "EMS Swiss",
+    "emstech": "EMS Tech",
+    "hersheygothenglish": "Hershey Goth English -- fût contourné, grave double",
+    "hersheygothgerman": "Hershey Goth German -- fût contourné, grave double",
+    "hersheygothitalian": "Hershey Goth Italian -- fût contourné, grave double",
+    "hersheysansmed": "Hershey Sans Med -- fût contourné, grave double",
+    "hersheysans1": "Hershey Sans1",
+    "hersheyscriptmed": "Hershey Script Med",
+    "hersheyscript1": "Hershey Script1",
+    "hersheyserifbold": "Hershey Serif Bold -- fût contourné, grave double",
+    "hersheyserifbolditalic": "Hershey Serif Bold Italic -- fût contourné, grave double",
+    "hersheyserifmed": "Hershey Serif Med -- fût contourné, grave double",
+    "hersheyserifmeditalic": "Hershey Serif Med Italic -- fût contourné, grave double",
+    "relief": "Relief SingleLine",
+    "twinsans": "Twin Sans",
 }
 
 
@@ -1637,6 +1693,57 @@ def _hershey_module(font):
         if font != "sans":
             return _hershey_module("sans")
         raise
+
+
+# Ce que devient un caractère que la police ne sait pas tracer.
+# `œ`/`Œ` manquent à TOUTES les polices d'oskay (Hershey comprise) : ce sont
+# les seuls accents français absents de leurs 216 glyphes. Seule Relief
+# SingleLine les a. Le repli est le standard typographique français.
+#
+# LE VRAI DÉFAUT N'ÉTAIT PAS LE MANQUE, C'ÉTAIT LE SILENCE : un caractère
+# absent -- ou présent avec une liste de traits VIDE, ce qui était le cas de
+# « ç », « æ », « Ç » et « Æ » dans la police livrée -- disparaissait sans
+# un mot. « français » se gravait « franais ». Un mode qui perd des lettres
+# sans le dire est pire qu'un mode qui refuse.
+REPLIS_GLYPHES = {
+    "\u0153": "oe", "\u0152": "OE",     # œ Œ
+    "\u00e6": "ae", "\u00c6": "AE",     # æ Æ (muets sur certaines polices)
+    "\u00df": "ss",                     # ß
+    "\u2019": "'", "\u2018": "'",       # apostrophes typographiques
+    "\u201c": '"', "\u201d": '"',
+    "\u2013": "-", "\u2014": "-",       # tirets demi/cadratin
+    "\u00a0": " ", "\u202f": " ",       # espaces insécables
+}
+
+
+def _glyphe_gravable(hf, ch):
+    """Le glyphe existe-t-il ET porte-t-il au moins un trait ?"""
+    g = hf.GLYPHES.get(ch)
+    return g is not None and (bool(g[1]) or ch == " ")
+
+
+def deplier_texte(text, hf, quiet=False):
+    """Remplace les caractères que la police ne sait pas tracer par leur
+    repli typographique, et NOMME ceux qui restent introuvables.
+
+    Appelé une fois en tête de chaîne : tout ce qui suit travaille sur du
+    texte dont chaque caractère est gravable, ou signalé."""
+    out, perdus = [], []
+    for ch in text:
+        if _glyphe_gravable(hf, ch) or ch in ("\n", "\r"):
+            out.append(ch)
+            continue
+        repli = REPLIS_GLYPHES.get(ch)
+        if repli and all(_glyphe_gravable(hf, c) for c in repli):
+            out.append(repli)
+            continue
+        perdus.append(ch)
+    if perdus and not quiet:
+        FreeCAD.Console.PrintWarning(
+            "Texte : {} caractère(s) absent(s) de cette police et sans "
+            "repli, ils ne seront PAS gravés : {}\n".format(
+                len(perdus), " ".join(sorted(set(perdus)))))
+    return "".join(out)
 
 
 def _mono_line_width(line, hf, scale, char_spacing):
@@ -1675,6 +1782,7 @@ def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
         return []
     scale = float(height) / float(hf.CAP_HEIGHT)
     line_pitch = line_spacing * height
+    text = deplier_texte(text, hf)
     lines = text.replace("\r", "").split("\n")
     widths = [_mono_line_width(line, hf, scale, char_spacing) for line in lines]
     maxw = max(widths) if widths else 0.0
@@ -1723,6 +1831,11 @@ def single_line_text_extent(text, height=10.0, char_spacing=0.0, line_spacing=1.
     except Exception:
         return 0.0, 0.0
     scale = float(height) / float(hf.CAP_HEIGHT)
+    # MÊME repli que la construction des arêtes, et SILENCIEUX ici : cette
+    # fonction sert l'aperçu d'encombrement, appelé à chaque frappe. Sans le
+    # repli, « cœur » se mesurerait plus étroit qu'il ne se grave (« coeur »
+    # fait une lettre de plus) et le cadre annoncé serait faux.
+    text = deplier_texte(text, hf, quiet=True)
     lines = text.replace("\r", "").split("\n") or [""]
     maxw = max((_mono_line_width(line, hf, scale, char_spacing) for line in lines),
               default=0.0)
