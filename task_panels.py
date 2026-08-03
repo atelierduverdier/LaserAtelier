@@ -2864,9 +2864,25 @@ def _render_engraving_photo(strokes, scale=24.0, margin_mm=3.0,
     for pts, width_mm, tone in strokes:
         if not pts:
             continue
+        # LE PLANCHER D'UN PIXEL DÉFORMAIT LE CONTRASTE. Un trait plus fin
+        # qu'un pixel doit rester visible, d'où le plancher -- mais l'élargir
+        # sans rien compenser sur-encre les clairs. Mesuré sur la vignette
+        # 240 px du panneau photo (Christophe, 03/08/2026, « je ne le trouve
+        # pas fidèle au résultat ») : trait fin 0,154 mm peint à 1 px au lieu
+        # de 0,68, trait épais 0,500 à 2,22 px, soit un contraste de 2,22x
+        # affiché pour 3,25x réels -- un tiers de perdu, et perdu du côté des
+        # clairs, ceux qu'on regarde justement pour juger le fond.
+        #
+        # On garde le trait visible ET la densité : élargi au pixel, mais
+        # ÉCLAIRCI du même rapport. C'est ce que fait n'importe quel moteur
+        # de rendu antialiasé, et la surface d'encre redevient juste.
         v = max(0.0, min(1.0, 1.0 - tone))  # facteur de multiplication du fond
+        _ep = width_mm * sc
+        if 0.0 < _ep < 1.0:
+            v = 1.0 - (1.0 - v) * _ep       # même encre, étalée sur 1 px
+            _ep = 1.0
         pen = QtGui.QPen(QtGui.QColor.fromRgbF(v, v, v))
-        pen.setWidthF(max(1.0, width_mm * sc))
+        pen.setWidthF(max(1.0, _ep))
         pen.setCapStyle(QtCore.Qt.RoundCap)
         pen.setJoinStyle(QtCore.Qt.RoundJoin)
         p.setPen(pen)
