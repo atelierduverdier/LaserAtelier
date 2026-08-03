@@ -20,7 +20,10 @@ h = preparer()
 core, tp = h.core, h.tp
 MAT = u"Hêtre"
 
-# --- 1. Les sept tramages, un par un ------------------------------------
+# --- 1. TOUS les tramages, un par un ------------------------------------
+# Le compte n'est PAS ecrit en dur : il vient de _TRAMAGES. Un tramage
+# ajoute entre dans ce controle tout seul -- c'est ce qui a fait entrer
+# la spirale (8e) le 03/08/2026 sans toucher a ce fichier.
 p = tp.TaskPanelHalftone()
 mats = [p.combo_photo_mat.itemText(i) for i in range(p.combo_photo_mat.count())]
 p.combo_photo_mat.setCurrentIndex(mats.index(MAT))
@@ -48,7 +51,8 @@ for idx in range(p.combo_mode.count()):
     n = demi_tours_x(g)
     assert n == 0, (idx, nom, "{} demi-tours en X".format(n))
     print("   [{}] {:<44} 0 demi-tour OK".format(idx, nom[:44]))
-print("1. les 7 tramages balaient chaque ligne d'un seul tenant OK")
+print("1. les {} tramages balaient chaque ligne d'un seul tenant OK"
+      .format(len(tp._TRAMAGES)))
 
 # --- 2. Gros points Z : le trait suit VRAIMENT le sens de la ligne ------
 # Le compte de demi-tours ne suffit pas : un générateur qui n'émettrait

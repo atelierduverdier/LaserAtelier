@@ -10118,6 +10118,14 @@ _TRAMAGES = (
          balayage=True, duree_variable=False, nuancier=False, au_foyer=True,
          grain=True, seuil_blanc=True, puissance=False,
          reglage="trait_mini"),
+    # LA SPIRALE : « Lignes gravées » enroulé. Mêmes réglages, même calcul
+    # de paliers, même physique -- seul le CHEMIN change. Son intérêt
+    # propre : un trait unique du centre au bord, donc AUCUN demi-tour là
+    # où les rangées en font un par ligne.
+    dict(cle="spirale", nom="Spirale (trait qui enfle, sans demi-tour)",
+         balayage=True, duree_variable=False, nuancier=False, au_foyer=True,
+         grain=True, seuil_blanc=True, puissance=False,
+         reglage="trait_mini"),
 )
 
 # Le MATÉRIAU est demandé dès qu'une donnée mesurée entre en jeu : la courbe
@@ -10877,7 +10885,7 @@ class TaskPanelHalftone:
                 f_dot = max(1.0, seg / max(dw, 1e-3) * 60.0)
                 strokes.append(([(x, y)], dia,
                                 teinte(p_z, f_dot, dia, z_off)))
-        elif t["cle"] == "enfle":
+        elif t["cle"] in ("enfle", "spirale"):
             # Lignes gravées : une case = un segment d'un PAS, dont la
             # LARGEUR porte le gris. On passe par la table du générateur,
             # et on fusionne les cases de même niveau exactement comme
@@ -11182,6 +11190,19 @@ class TaskPanelHalftone:
                 line_min_mm=self.spn_line_min.value(),
                 white_threshold=self.spn_white.value() / 100.0,
                 fond_clair=self.combo_fond.currentData(),
+                power_max=self.spn_power_max.value(), **extra)
+        if cle == "spirale":
+            # Même famille que « enfle » : mêmes réglages, même table de
+            # largeurs mesurées. Le fond pointillé n'existe pas ici (il se
+            # décide sur la POSITION d'une case dans une grille, notion
+            # qu'une spirale n'a pas) -- sous le seuil, c'est du bois nu.
+            k = self._gen_kwargs()
+            return core.generate_gcode_photo_spirale(
+                rows, pitch=k["pitch"], z_work=core.Z_WORK_MM,
+                feed=self.spn_line_feed.value(),
+                material=self.combo_photo_mat.currentData(),
+                line_min_mm=self.spn_line_min.value(),
+                white_threshold=self.spn_white.value() / 100.0,
                 power_max=self.spn_power_max.value(), **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame

@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.51.0</span><br>
+      <span class="ver">Version 2.52.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.51.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.52.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -459,7 +459,7 @@
     <div class="row"><img src="../resources/icons/hatch.svg" alt=""><div><span class="nm">Hachures 2D</span> — <span class="ds">prépare un remplissage par hachures (objet), à graver ensuite. Aucun G-code ici.</span></div></div>
     <div class="row"><img src="../resources/icons/text.svg" alt=""><div><span class="nm">Texte (trait simple)</span> — <span class="ds">écrit un texte « bâton » monotrait, prêt à graver.</span></div></div>
     <div class="row"><img src="../resources/icons/filled.svg" alt=""><div><span class="nm">Gravure remplie</span> — <span class="ds">noircit une surface fermée (défocus calibré + contour repassé).</span></div></div>
-    <div class="row"><img src="../resources/icons/halftone.svg" alt=""><div><span class="nm">Gravure photo</span> — <span class="ds">reproduit une image en niveaux de gris (sept tramages).</span></div></div>
+    <div class="row"><img src="../resources/icons/halftone.svg" alt=""><div><span class="nm">Gravure photo</span> — <span class="ds">reproduit une image en niveaux de gris (huit tramages).</span></div></div>
 
     <div class="fam">Sur surface 3D</div>
     <div class="row"><img src="../resources/icons/project.svg" alt=""><div><span class="nm">Projeter sur surface 3D</span> — <span class="ds">colle un motif 2D sur une surface courbe (préparation).</span></div></div>
@@ -724,6 +724,9 @@
     <h4>Gravure photo (trame de points)</h4>
     <p class="quoi">Reproduire une image en niveaux de gris.</p>
     <p>Sept tramages, nommés ici <em>exactement</em> comme dans le menu déroulant du panneau&nbsp;: <b>Diffusion (Floyd-Steinberg)</b> — densité de points identiques&nbsp;; <b>Durée variable</b> — un point par case, la durée du pulse fait le gris&nbsp;; <strong>Lignes calibrées (nuancier)</strong> — puissance par pixel via la courbe du nuancier&nbsp;; <b>Diffusion en lignes (points fins, rapide)</b> — même diffusion, mais en balayage continu&nbsp;; <b>Gros points Z (taille variable, artistique)</b> — c'est le <em>diamètre</em> du point qui rend le gris, par un Z propre à chacun&nbsp;; <strong>Similigravure (trame 45°, sans calibration)</strong> — la trame des journaux, le gris est une <em>surface</em>&nbsp;; <strong>Lignes gravées (trait qui enfle)</strong> — un trait continu dont l'<em>épaisseur</em> rend le gris. Une <strong>mire</strong> grave le même dégradé par les <b>sept</b> tramages, en bandes numérotées, pour les comparer d'un coup sur une chute — chaque bande dans <em>son</em> régime, faute de quoi la comparaison mentirait&nbsp;: les deux tramages à grain au foyer, et les lignes gravées à la vitesse où leur trait enfle encore.</p>
+    <p><b>Huitième tramage : la SPIRALE (v2.52.0).</b> « Lignes gravées » enroulé&nbsp;: un trait <b>unique</b> du centre au bord, dont l'épaisseur rend le gris. Mêmes réglages, mêmes paliers, même physique que le tramage en rangées — seul le <em>chemin</em> change. Son intérêt propre&nbsp;: <b>aucun demi-tour</b>, là où les rangées en font un par ligne.</p>
+    <p>Né d'un rendu essayé sur <i>muffinman.io/vertigo</i>. Le SVG qui en sort n'est pas gravable tel quel&nbsp;: c'est le <b>contour d'un ruban</b> (donc deux traits par tour une fois importé, qui fondent en aplat), et il module l'épaisseur de <b>0,02 à 0,80&nbsp;mm</b> quand ce laser sait faire <b>0,10 à 0,30</b> au foyer — la moitié basse de sa gamme est sous le plancher de la machine. Ici la modulation sort de la table de largeurs <b>mesurée</b>, comme partout ailleurs dans l'atelier.</p>
+    <p><b>Le format décide.</b> Mesuré sur le portrait réel (120&nbsp;×&nbsp;180&nbsp;mm, pas 0,16, F1000, plafond S900)&nbsp;: la spirale grave la même longueur que les rangées (70,7 contre 72,6&nbsp;m) mais parcourt <b>159&nbsp;m à vide contre 19,9</b>, parce qu'elle couvre le disque circonscrit — sur un format 2:3, les coins sont 70&nbsp;% de surface en plus. 91&nbsp;min et 42&nbsp;Mo, contre 75&nbsp;min et 6&nbsp;Mo en rangées. Sur un <b>carré</b> 120&nbsp;×&nbsp;120, elle retombe à 55&nbsp;min et 25&nbsp;Mo. <b>Ce tramage est fait pour un sujet carré ou rond</b> — ce qui est aussi, précisément, l'esthétique du rendu qui l'a inspiré.</p>
     <p><b>Le fond blanc se traverse en vitesse rapide (v2.45.0).</b> Sur un portrait détouré, plus de la moitié du temps de balayage passait à parcourir le fond, faisceau éteint, à la vitesse de gravure — 52&nbsp;% du trajet à F800 pour ne rien graver. Les balayages repèrent désormais les segments blancs de plus de 5&nbsp;mm et les franchissent à la vitesse de transit, sans couper le mouvement ni changer la géométrie gravée. Mesuré sur le portrait réel&nbsp;: <b>1&nbsp;h&nbsp;57 → 1&nbsp;h&nbsp;15</b>. Les cinq tramages en balayage en profitent ensemble.</p>
     <p class="meta"><b>Réglages clés :</b> image · pas de trame · tramage · gamma. <b>Fichier :</b> <code>gravure_photo.ngc</code></p>
   </div></div>
@@ -1154,7 +1157,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.51.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.52.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

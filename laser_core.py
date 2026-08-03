@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.51.0"
+VERSION = "2.52.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -8668,6 +8668,182 @@ def swell_niveaux_grille(darkness_rows, n, white_threshold=0.0,
                 ligne.append(None)
         grille.append(ligne)
     return grille
+
+
+def points_spirale(largeur_mm, hauteur_mm, pas_mm, pas_arc_mm=None):
+    """Les points d'une spirale d'ARCHIMÈDE couvrant un rectangle, du
+    centre vers l'extérieur.
+
+    `pas_mm` est l'écart RADIAL entre deux tours -- exactement ce que le
+    tramage « Lignes gravées » appelle le pas entre deux rangées : la
+    distance entre deux passages voisins du faisceau. C'est lui qu'il faut
+    comparer à la largeur brûlée, pas un réglage esthétique.
+
+    L'avantage sur des rangées, et c'est le seul qui compte pour cette
+    machine : **aucun demi-tour**. Une rangée s'arrête et repart en sens
+    inverse à chaque bout ; la spirale est un trait unique du centre au
+    bord. Sur le portrait en rangées, les inversions de sens avaient déjà
+    coûté des mètres de trajet inutile (cf. micro_trait_oriente).
+
+    Le pas d'échantillonnage le long de la courbe (`pas_arc_mm`, par
+    défaut le pas radial) fixe la finesse : un point tous les `pas_arc_mm`
+    de longueur d'arc, donc des marques à peu près carrées. Près du centre
+    l'angle par tour devient grand -- on le borne, sinon la spirale y
+    dégénère en polygone à trois côtés."""
+    if largeur_mm <= 0 or hauteur_mm <= 0 or pas_mm <= 0:
+        return []
+    pas_arc = float(pas_arc_mm or pas_mm)
+    if pas_arc <= 0:
+        return []
+    cx, cy = largeur_mm / 2.0, hauteur_mm / 2.0
+    # Rayon = DEMI-DIAGONALE : la spirale doit sortir du rectangle pour en
+    # couvrir les coins. S'arrêter à la demi-largeur découperait l'image en
+    # disque -- joli, mais ce serait rogner le sujet sans le dire.
+    r_max = math.hypot(largeur_mm, hauteur_mm) / 2.0
+    a = pas_mm / (2.0 * math.pi)          # r = a * theta
+    pts, theta = [], 0.0
+    while True:
+        r = a * theta
+        if r > r_max:
+            break
+        pts.append((cx + r * math.cos(theta), cy + r * math.sin(theta)))
+        # d(arc) ~= sqrt(r^2 + a^2) d(theta) -> on avance de pas_arc.
+        dtheta = pas_arc / math.hypot(r, a)
+        theta += min(dtheta, math.pi / 6.0)
+    return pts
+
+
+def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
+                                 material, line_min_mm=0.10,
+                                 pre_gcode="", post_gcode="",
+                                 frame_only=False, quiet=False,
+                                 white_threshold=0.0, power_max=None,
+                                 pas_arc_mm=None):
+    """Photo en SPIRALE : un trait unique du centre au bord, dont
+    l'ÉPAISSEUR rend le gris -- le principe de « Lignes gravées », enroulé.
+
+    Vient d'un rendu que Christophe a essayé sur muffinman.io/vertigo
+    (03/08/2026). Son SVG n'était pas gravable tel quel : c'est le CONTOUR
+    d'un ruban (donc deux traits par tour une fois importé, qui fondent en
+    aplat), et il module l'épaisseur de 0,02 à 0,80 mm quand ce laser sait
+    faire 0,10 à 0,30 au foyer -- la moitié basse de sa gamme est sous le
+    plancher de la machine. Ici la modulation sort de la table de largeurs
+    MESURÉE, comme partout ailleurs dans cet atelier : on ne demande pas au
+    bois ce qu'on ne lui a jamais vu faire.
+
+    Tout le calcul des paliers est celui du tramage en rangées
+    (`swell_power_levels`, `swell_niveau`) : seul le CHEMIN change. Un
+    réglage qui marche sur l'un marche sur l'autre.
+
+    Les points hors de l'image (les coins, que la spirale traverse) sont
+    du bois nu, franchis à l'avance rapide comme les plages blanches des
+    balayages -- même règle, même constante `TRANSIT_BLANC_MINI_MM`."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or pitch <= 0 or feed <= 0:
+        return None
+    niveaux = swell_power_levels(material, feed, line_min_mm,
+                                 power_max=power_max)
+    if niveaux is None:
+        if not quiet:
+            FreeCAD.Console.PrintWarning(
+                "Spirale : {}\n".format(
+                    swell_refus_message(material, feed, power_max)))
+        return None
+    puissances, w_min, w_max = niveaux
+    n = len(puissances)
+
+    largeur, hauteur = w * pitch, h * pitch
+    pts = points_spirale(largeur, hauteur, pitch, pas_arc_mm)
+    if len(pts) < 2:
+        return None
+
+    def _puissance(x, y):
+        """Puissance au point (x, y), 0 = bois nu (hors image ou sous le
+        seuil de blanc)."""
+        col = int(round(x / pitch))
+        rang = h - 1 - int(round(y / pitch))
+        if not (0 <= col < w and 0 <= rang < h):
+            return 0.0
+        k = swell_niveau(darkness_rows[rang][col], n, white_threshold)
+        return 0.0 if k is None else puissances[k]
+
+    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    longueur = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                   for a, b in zip(pts, pts[1:]))
+    lines = []
+    lines.append("(G-Code Laser - Photo : SPIRALE, trait qui enfle)")
+    lines.append("(Image : {} x {} px au pas {:.2f}mm, F{:.0f}, au foyer)".format(
+        w, h, pitch, feed))
+    lines.append("(Spirale : {:.0f} points, {:.0f} mm de trace, un seul trait "
+                 "du centre au bord -- aucun demi-tour)".format(
+                     len(pts), longueur))
+    lines.append("(Trait : {:.2f} a {:.2f} mm -- couverture {:.0f} a {:.0f} %)".format(
+        w_min, w_max, 100.0 * w_min / pitch, 100.0 * min(1.0, w_max / pitch)))
+    if w_max > pitch + 1e-9:
+        lines.append("(ATTENTION : trait maxi {:.2f}mm > pas {:.2f}mm -- les "
+                     "tours se recouvrent dans les fonces)".format(w_max, pitch))
+    if white_threshold > 0.0:
+        lines.append("(Seuil blanc {:.0f} % : sous cette noirceur, bois NU "
+                     "(faisceau coupe, mouvement continu))".format(
+                         100.0 * white_threshold))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(0.0, largeur, 0.0, hauteur, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    lines.append("G0 X{:.4f} Y{:.4f}".format(pts[0][0], pts[0][1]))
+    lines.append("G0 Z{:.4f}".format(z_work))
+
+    # Les puissances d'abord, pour repérer les longues plages de bois nu :
+    # elles se franchissent à l'avance rapide, sans couper le mouvement --
+    # même règle que les fonds blancs des balayages (v2.45.0).
+    puis = [_puissance(x, y) for x, y in pts[1:]]
+    n_pts = len(puis)
+    i = 0
+    while i < n_pts:
+        j = i
+        if puis[i] <= 0.0:
+            while j + 1 < n_pts and puis[j + 1] <= 0.0:
+                j += 1
+            d = sum(math.hypot(pts[k + 1][0] - pts[k][0],
+                               pts[k + 1][1] - pts[k][1])
+                    for k in range(i, j + 1))
+            f_run = max(RAPID_FEED_MM_MIN, feed) if d >= TRANSIT_BLANC_MINI_MM else feed
+        else:
+            while j + 1 < n_pts and puis[j + 1] == puis[i]:
+                j += 1
+            f_run = feed
+        lines.extend(cmd_power_prefix(puis[i]))
+        suf = cmd_power_suffix(puis[i])
+        for k in range(i, j + 1):
+            x, y = pts[k + 1]
+            lines.append("G1 X{:.4f} Y{:.4f} F{:.0f}{}".format(
+                x, y, f_run, (" " + suf) if suf else ""))
+        i = j + 1
+
+    lines.extend(cmd_power_prefix(0.0))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
 def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
