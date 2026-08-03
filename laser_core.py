@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.61.0"
+VERSION = "2.62.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -12231,6 +12231,252 @@ def generate_gcode_offset_test(mill_tool=2, mill_rpm=18000.0, mill_feed=600.0,
         lines.append(post_gcode.strip())
 
     lines.append("(MSG, Test termine - mesurer dX dY entre les 2 croix et corriger tool.tbl T{})".format(int(LASER_TOOL)))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
+# ==========================================================================
+# MODE : CALLIGRAPHIE (PLEINS ET DÉLIÉS PAR LA HAUTEUR Z)
+# ==========================================================================
+class _PointLarge(object):
+    """Point porteur de sa largeur. `.x`/`.y` parce que
+    `order_chains_by_proximity` lit ces attributs -- et parce qu'inverser
+    une chaîne doit inverser SA LARGEUR avec elle : garder la largeur dans
+    une liste parallèle serait la garantie qu'un jour l'une soit retournée
+    sans l'autre, et un plein finirait à la place d'un délié."""
+
+    __slots__ = ("x", "y", "w", "dz", "s")
+
+    def __init__(self, x, y, w, dz=0.0, s=0.0):
+        self.x, self.y, self.w = float(x), float(y), float(w)
+        self.dz, self.s = float(dz), float(s)
+
+
+def preparer_calligraphie(chaines, feed, material, power_max=None,
+                          largeur_max=None):
+    """Des gestes en (x, y, largeur) vers des gestes en (x, y, Z, S).
+
+    Renvoie `(gestes, diag)` ou None si le matériau n'a pas de fuseau. Un
+    geste est une liste de `(x, y, dz, S, largeur_obtenue)`.
+
+    LA LARGEUR VOULUE N'EST PAS TOUJOURS TENABLE, pour deux raisons bien
+    distinctes qu'il faut garder séparées :
+
+      * elle sort de la plage MESURÉE du matériau -- on la borne, et `diag`
+        dit combien de trace est concernée ;
+      * la tête n'a pas le temps de monter -- `limiter_pente_z` rabote, et
+        c'est le geste COURT qui trinque. Un « i » de 3 mm ne peut pas
+        exhiber le fuseau complet d'un « V » de 30 mm, et aucun réglage n'y
+        changera rien : lever le Z demande de la longueur.
+
+    `diag` mesure l'écart entre la largeur VOULUE PAR LA POLICE et celle
+    réellement obtenue -- pas contre une intention déjà rabotée par nos
+    propres bornes, qui se flatterait toute seule (piège tombé le
+    03/08/2026 : l'écart annoncé était de 0,02 mm contre une consigne déjà
+    plafonnée, alors que la police en demandait quatre fois plus)."""
+    ech = echelle_fuseau_z(material, feed, power_max=power_max,
+                           line_min_mm=0.0, largeur_max=largeur_max)
+    if ech is None:
+        return None
+    table, w_min, w_max, avert = ech
+    hauteurs = [t[0] for t in table]
+    larges = [t[2] for t in table]
+    pente = pente_z_max(feed)
+    n = len(table)
+
+    def _palier(z):
+        lo, hi = 0, n - 1
+        while lo < hi:
+            mi = (lo + hi) // 2
+            if hauteurs[mi] < z:
+                lo = mi + 1
+            else:
+                hi = mi
+        return lo
+
+    gestes, voulu, obtenu = [], [], []
+    trop_large = trop_fin = total = 0
+    for ch in chaines:
+        if len(ch) < 2:
+            continue
+        pts = [(float(p[0]), float(p[1])) for p in ch]
+        wp = [float(p[2]) for p in ch]                  # ce que la POLICE veut
+        wb = [min(max(w, w_min), w_max) for w in wp]    # ce que la table sait
+        dz_voulu = [_interp_croissant(larges, hauteurs, w) for w in wb]
+        dists = [math.hypot(b[0] - a[0], b[1] - a[1])
+                 for a, b in zip(pts, pts[1:])]
+        dz = limiter_pente_z(dz_voulu, dists, pente)
+        geste = []
+        for i, (x, y) in enumerate(pts):
+            k = _palier(dz[i])
+            geste.append(_PointLarge(x, y, larges[k], dz[i], table[k][1]))
+            voulu.append(wp[i])
+            obtenu.append(larges[k])
+            total += 1
+            if wp[i] > w_max + 1e-9:
+                trop_large += 1
+            elif wp[i] < w_min - 1e-9:
+                trop_fin += 1
+        gestes.append(geste)
+
+    if not gestes:
+        return None
+    ecarts = sorted(abs(o - v) for o, v in zip(obtenu, voulu))
+    diag = {
+        "w_min": w_min, "w_max": w_max,
+        "z_min": min(p.dz for g in gestes for p in g),
+        "z_max": max(p.dz for g in gestes for p in g),
+        "pente": pente,
+        "avert": list(avert),
+        "ecart_median": ecarts[len(ecarts) // 2] if ecarts else 0.0,
+        "ecart_95": ecarts[int(0.95 * (len(ecarts) - 1))] if ecarts else 0.0,
+        "ecart_max": ecarts[-1] if ecarts else 0.0,
+        "part_trop_large": 100.0 * trop_large / max(total, 1),
+        "part_trop_fin": 100.0 * trop_fin / max(total, 1),
+        "largeur_voulue_max": max(voulu) if voulu else 0.0,
+        "largeur_voulue_min": min(voulu) if voulu else 0.0,
+    }
+    return gestes, diag
+
+
+def _interp_croissant(xs, ys, x):
+    """Interpolation linéaire sur une table croissante en x (dichotomie)."""
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    lo, hi = 0, len(xs) - 1
+    while lo < hi - 1:
+        mi = (lo + hi) // 2
+        if xs[mi] <= x:
+            lo = mi
+        else:
+            hi = mi
+    if xs[hi] - xs[lo] < 1e-12:
+        return ys[lo]
+    t = (x - xs[lo]) / (xs[hi] - xs[lo])
+    return ys[lo] + t * (ys[hi] - ys[lo])
+
+
+def generate_gcode_calligraphie(chaines, z_work, feed, material,
+                                power_max=None, largeur_max=None,
+                                pre_gcode="", post_gcode="",
+                                frame_only=False, quiet=False, police=""):
+    """Calligraphie gravée : le squelette de la lettre parcouru UNE fois,
+    la hauteur Z faisant les pleins et les déliés.
+
+    Le pendant, sur du texte, du fuseau des lignes gravées. Rien n'est
+    rempli, rien n'est repassé : un plein n'est pas une zone hachurée mais
+    un endroit où la tête était HAUTE, donc le point large. C'est ce qui
+    donne le geste continu d'une plume plutôt qu'une lettre coloriée.
+
+    `chaines` vient de `calligraphie.chaines_calligraphie` -- des triplets
+    (x, y, largeur voulue), déjà en millimètres et dans le repère CNC."""
+    prep = preparer_calligraphie(chaines, feed, material,
+                                 power_max=power_max, largeur_max=largeur_max)
+    if prep is None:
+        if not quiet:
+            FreeCAD.Console.PrintWarning(
+                "Calligraphie : aucun niveau de défocus mesuré pour « {} » -- "
+                "grave la Planche 2 (Assistant matériau).\n".format(material))
+        return None
+    gestes, diag = prep
+    gestes = order_chains_by_proximity(gestes)
+
+    z_safe = z_work + diag["z_max"] + TRAVEL_CLEARANCE_MM
+    trace = sum(math.hypot(b.x - a.x, b.y - a.y)
+                for g in gestes for a, b in zip(g, g[1:]))
+    xs = [p.x for g in gestes for p in g]
+    ys = [p.y for g in gestes for p in g]
+
+    lines = []
+    lines.append("(G-Code Laser - Calligraphie : pleins et delies par la "
+                 "hauteur Z)")
+    if police:
+        lines.append("(Police : {})".format(police))
+    lines.append("(Texte : {:.0f} x {:.0f} mm, {} gestes, {:.0f} mm de trace, "
+                 "F{:.0f})".format(max(xs) - min(xs), max(ys) - min(ys),
+                                   len(gestes), trace, feed))
+    lines.append("(Trait {:.2f} a {:.2f} mm par la HAUTEUR : Z {:.2f} a {:.2f} "
+                 "[{:.1f} mm de course])".format(
+                     diag["w_min"], diag["w_max"], z_work + diag["z_min"],
+                     z_work + diag["z_max"], diag["z_max"] - diag["z_min"]))
+    lines.append("(Fidelite au dessin de la police : ecart median {:.2f} mm, "
+                 "95e centile {:.2f}, pire {:.2f})".format(
+                     diag["ecart_median"], diag["ecart_95"], diag["ecart_max"]))
+    if diag["part_trop_large"] > 0.5:
+        lines.append("(NOTE : {:.0f}% du trace demande plus large que les "
+                     "{:.2f} mm mesures -- reduis la taille du texte)".format(
+                         diag["part_trop_large"], diag["w_max"]))
+    if diag["part_trop_fin"] > 0.5:
+        lines.append("(NOTE : {:.0f}% du trace demande plus fin que les "
+                     "{:.2f} mm mesures -- les delies sortiront gras)".format(
+                         diag["part_trop_fin"], diag["w_min"]))
+    lines.append("(Pente Z bornee a {:.2f} mm/mm : un geste plus court que "
+                 "{:.0f} mm ne montre pas le fuseau entier)".format(
+                     diag["pente"],
+                     longueur_mini_fuseau(feed, diag["z_max"] - diag["z_min"])))
+    for a in diag["avert"]:
+        lines.append("(NOTE : {})".format(a))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(min(xs), max(xs), min(ys), max(ys),
+                                       z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    p_prec, z_cur = None, None
+    z_transit_mini = z_work + TRAVEL_CLEARANCE_MM
+    for g in gestes:
+        # Faisceau coupé PENDANT le transit : entre deux gestes il n'y a
+        # pas de trait à faire, et le Z change de niveau -- laisser le
+        # faisceau brûlerait une liaison qui n'existe pas dans la lettre.
+        if p_prec != 0.0:
+            lines.extend(cmd_power_prefix(0.0))
+            p_prec = 0.0
+        # DANS CE MODE, PLUS HAUT VEUT DIRE PLUS LOIN DU BOIS : le dz du
+        # fuseau ÉLOIGNE la tête pour élargir le point. Remonter au Z de
+        # sécurité global depuis un plein, où la tête est déjà à 47 mm du
+        # bois, c'est deux allers-retours de Z pour rien -- et sur soixante
+        # gestes cela s'entend, comme les deux gaspillages de trajet déjà
+        # attrapés à l'oreille dans les tramages. On ne lève que si le
+        # départ ou l'arrivée passe sous la garde.
+        z_dep = z_work + g[0].dz
+        z_haut = max(z_cur if z_cur is not None else z_transit_mini,
+                     z_dep, z_transit_mini)
+        if z_cur is None or z_haut > z_cur + 1e-6:
+            lines.append("G0 Z{:.4f}".format(z_haut))
+        lines.append("G0 X{:.4f} Y{:.4f}".format(g[0].x, g[0].y))
+        if z_dep < z_haut - 1e-6:
+            lines.append("G0 Z{:.4f}".format(z_dep))
+        z_cur = z_dep
+        for p in g[1:]:
+            if p.s != p_prec:
+                lines.extend(cmd_power_prefix(p.s))
+                p_prec = p.s
+            suf = cmd_power_suffix(p.s)
+            lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}{}".format(
+                p.x, p.y, z_work + p.dz, feed, (" " + suf) if suf else ""))
+            z_cur = z_work + p.dz
+    lines.extend(cmd_power_prefix(0.0))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
     lines.append("M2")
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 

@@ -10331,6 +10331,374 @@ def _tramage_veut_materiau(t):
     return bool(t["nuancier"] or t["au_foyer"])
 
 
+class TaskPanelCalligraphie:
+    """Une police d'ordinateur gravée en PLEINS ET DÉLIÉS par la hauteur Z.
+
+    Christophe, 03/08/2026 : « j'aimerais bien des écritures en lié-délié de
+    ce style, avec la fonction qui fait bouger la tête en Z ».
+
+    Ce panneau ne fait AUCUN calcul de géométrie : l'extraction du squelette
+    et des largeurs est dans `calligraphie.py`, la mise en fuseau et le
+    G-code dans `laser_core`. Il assemble, montre, et dit ce qui ne passera
+    pas."""
+
+    def __init__(self):
+        self._cache = (None, None)        # (clé des réglages, (chaînes, infos))
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+
+        _panel_header(form, "calligraphie.svg", "Calligraphie (pleins et déliés)")
+        _bandeau_non_calibre(form)
+        _intro(form,
+               "Grave un texte dans une VRAIE police calligraphique, en un "
+               "seul trait par geste : la tête se lève pour élargir le trait "
+               "dans les pleins et redescend pour les déliés. Aucune "
+               "sélection 3D requise.",
+               "La police est lue sur ton disque, jamais copiée dans "
+               "l'atelier -- les polices calligraphiques du commerce sont "
+               "presque toutes en licence « usage personnel ». On en extrait "
+               "le squelette (la ligne que la plume a parcourue) et la "
+               "largeur locale ; la largeur devient une hauteur Z par la "
+               "table de brûlures MESURÉE du matériau. Rien n'est rempli ni "
+               "repassé : un plein est un endroit où la tête était haute.")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg", ouvert=True)
+        _bullet_list(form, [
+            "<b>1. Police</b>&nbsp;: choisis un fichier <code>.otf</code> ou "
+            "<code>.ttf</code> sur ton disque. Les scripts à fort contraste "
+            "(anglaise, pinceau) donnent le plus bel effet&nbsp;; une police "
+            "bâton n'a pas de pleins à montrer.",
+            "<b>2. Texte et taille</b>&nbsp;: la largeur en mm fixe tout, la "
+            "hauteur suit les proportions de la police.",
+            "<b>3. Matière et vitesse</b>&nbsp;: la plage de largeurs vient "
+            "de la table de brûlures du matériau (Assistant matériau, "
+            "Planche&nbsp;2). Sans elle, ce mode ne peut rien faire.",
+            "<b>4. Lis le verdict</b>&nbsp;: il dit si les pleins demandés "
+            "tiennent dans ce que le bois sait donner, et propose la taille "
+            "qui les ferait tenir.",
+            "<b>5. Aperçu</b>&nbsp;: le rendu simulé montre le trait tel "
+            "qu'il sortira, bornes et pente Z comprises.",
+            "<b>6. Zéro machine</b>&nbsp;: X/Y au coin <b>bas-gauche</b> du "
+            "texte, Z sur la surface.",
+        ])
+
+        _section(form, "① Police et texte", "sect_labels.svg", ouvert=True)
+        self.combo_police = QtWidgets.QComboBox()
+        self.combo_police.setToolTip(
+            "Polices trouvées dans tes dossiers de polices.\n"
+            "« Parcourir… » pour en prendre une ailleurs.")
+        self.combo_police.currentIndexChanged.connect(self._on_police_choisie)
+        self.edt_police = QtWidgets.QLineEdit()
+        self.edt_police.setToolTip("Chemin du fichier .otf / .ttf.")
+        btn_parcourir = QtWidgets.QPushButton("Parcourir…")
+        btn_parcourir.clicked.connect(self._on_parcourir)
+        ligne = QtWidgets.QHBoxLayout()
+        ligne.setContentsMargins(0, 0, 0, 0)
+        ligne.addWidget(self.edt_police, 1)
+        ligne.addWidget(btn_parcourir)
+        form.addRow("Police installée :", self.combo_police)
+        form.addRow("Fichier :", ligne)
+
+        self.edt_texte = QtWidgets.QLineEdit("Atelier du Verdier")
+        self.edt_texte.setToolTip("Le texte à graver (une ligne).")
+        form.addRow("Texte :", self.edt_texte)
+
+        self.spn_largeur = QtWidgets.QDoubleSpinBox()
+        self.spn_largeur.setRange(5.0, 2000.0)
+        self.spn_largeur.setDecimals(1)
+        self.spn_largeur.setSuffix(" mm")
+        self.spn_largeur.setValue(120.0)
+        self.spn_largeur.setToolTip(
+            "Largeur totale du texte. La hauteur suit les proportions.\n"
+            "C'est le réglage qui décide si les pleins sont gravables :\n"
+            "un texte deux fois plus grand demande des pleins deux fois\n"
+            "plus larges.")
+        form.addRow("Largeur du texte :", self.spn_largeur)
+
+        _section(form, "② Matière et gravure", "sect_power.svg", ouvert=True)
+        self.combo_mat = QtWidgets.QComboBox()
+        for m in core.burn_width_materials():
+            self.combo_mat.addItem(m, m)
+        if not self.combo_mat.count():
+            self.combo_mat.addItem("-- aucune largeur mesurée --", None)
+        self.combo_mat.setToolTip(
+            "Matériau dont la table de brûlures pilote le fuseau.\n"
+            "Il faut avoir gravé et mesuré la Planche 2 (Assistant matériau).")
+        form.addRow("Matériau :", self.combo_mat)
+
+        self.spn_feed = QtWidgets.QDoubleSpinBox()
+        self.spn_feed.setRange(20.0, 6000.0)
+        self.spn_feed.setDecimals(0)
+        self.spn_feed.setSuffix(" mm/min")
+        self.spn_feed.setValue(200.0)
+        self.spn_feed.setToolTip(
+            "Avance de gravure. Plus elle est LENTE, plus la tête a le\n"
+            "temps de monter : c'est elle qui décide si un geste court\n"
+            "montre son fuseau ou sort plat.")
+        form.addRow("Avance :", self.spn_feed)
+
+        self.spn_power = QtWidgets.QDoubleSpinBox()
+        self.spn_power.setRange(10.0, 1000.0)
+        self.spn_power.setDecimals(0)
+        self.spn_power.setValue(900.0)
+        self.spn_power.setToolTip(
+            "Puissance maximale (S) au plus large du trait.\n"
+            "La puissance SUIT la largeur pour garder la teinte constante.")
+        form.addRow("Puissance maxi (S) :", self.spn_power)
+
+        self.spn_z = QtWidgets.QDoubleSpinBox()
+        self.spn_z.setRange(-50.0, 200.0)
+        self.spn_z.setDecimals(2)
+        self.spn_z.setSuffix(" mm")
+        self.spn_z.setValue(float(core.Z_WORK_MM))
+        self.spn_z.setToolTip("Z du foyer sur la surface (zéro pièce).")
+        form.addRow("Z de travail :", self.spn_z)
+
+        for w in (self.edt_texte, self.edt_police):
+            w.editingFinished.connect(self._maj_verdict)
+        for w in (self.spn_largeur, self.spn_feed, self.spn_power):
+            w.valueChanged.connect(self._maj_verdict)
+        self.combo_mat.currentIndexChanged.connect(self._maj_verdict)
+
+        _section(form, "③ Verdict et aperçu", "sect_preview.svg", ouvert=True)
+        self.lbl_verdict = _WrapLabel("")
+        form.addRow(self.lbl_verdict)
+        self.btn_apercu = QtWidgets.QPushButton("Aperçu du tracé gravé")
+        self.btn_apercu.setToolTip(
+            "Dessine le trait tel qu'il sortira : largeur bornée par la\n"
+            "table du matériau ET pente Z limitée par la machine.")
+        self.btn_apercu.clicked.connect(self._on_apercu)
+        _preview_row(form, [(self.btn_apercu, "sect_photo.svg")])
+
+        self.btn_cadre = QtWidgets.QPushButton(
+            "Générer l'aperçu cadrage (fichier séparé)")
+        self.btn_cadre.clicked.connect(lambda: self._generer(cadre=True))
+        form.addRow(self.btn_cadre)
+        self.btn_gcode = QtWidgets.QPushButton(
+            "Générer et sauvegarder le G-code…")
+        self.btn_gcode.clicked.connect(lambda: self._generer(cadre=False))
+        form.addRow(self.btn_gcode)
+
+        self._last_fields = {
+            "police": self.edt_police, "texte": self.edt_texte,
+            "largeur": self.spn_largeur, "material": self.combo_mat,
+            "feed": self.spn_feed, "power": self.spn_power,
+            "z_work": self.spn_z,
+        }
+        self._peupler_polices()
+        _restore_last_values("calligraphie", self._last_fields)
+        self._maj_verdict()
+        self.form = _scrollable(inner)
+
+    # -- police ---------------------------------------------------------
+    def _peupler_polices(self):
+        import calligraphie as cal
+        self.combo_police.blockSignals(True)
+        self.combo_police.clear()
+        self.combo_police.addItem("-- Choisir --", None)
+        for nom, chemin in cal.polices_disponibles():
+            self.combo_police.addItem(nom, chemin)
+        self.combo_police.blockSignals(False)
+
+    def _on_police_choisie(self, _i):
+        chemin = self.combo_police.currentData()
+        if chemin:
+            self.edt_police.setText(chemin)
+            self._maj_verdict()
+
+    def _on_parcourir(self):
+        chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
+            self.form, "Choisir une police", os.path.expanduser("~"),
+            "Polices (*.otf *.ttf);;Tous les fichiers (*)")
+        if chemin:
+            self.edt_police.setText(chemin)
+            self._maj_verdict()
+
+    # -- calcul ---------------------------------------------------------
+    def _chaines(self):
+        """Les gestes, mis en cache : l'extraction coûte ~1 s et le verdict
+        se recalcule à chaque frappe."""
+        import calligraphie as cal
+        cle = (self.edt_police.text().strip(), self.edt_texte.text(),
+               round(self.spn_largeur.value(), 3))
+        if self._cache[0] == cle:
+            return self._cache[1]
+        if not cle[0] or not cle[1]:
+            return None
+        res = cal.chaines_calligraphie(cle[0], cle[1], largeur_mm=cle[2])
+        self._cache = (cle, res)
+        return res
+
+    def _maj_verdict(self):
+        msgs = []
+        try:
+            res = self._chaines()
+        except Exception as exc:
+            self.lbl_verdict.setText(
+                "<b style='color:#b00'>{}</b>".format(exc))
+            return
+        if res is None:
+            self.lbl_verdict.setText(
+                "Choisis une police et tape un texte.")
+            return
+        chaines, inf = res
+        mat = self.combo_mat.currentData()
+        feed = self.spn_feed.value()
+        msgs.append("Texte {:.0f} × {:.0f} mm, {} gestes, {:.0f} mm de "
+                    "tracé.".format(inf["largeur_mm"], inf["hauteur_mm"],
+                                    inf["n_chaines"], inf["longueur_mm"]))
+        msgs.append("La police demande un trait de {:.2f} à {:.2f} mm "
+                    "({:.0f}:1 entre délié et plein).".format(
+                        inf["largeur_trait_min"], inf["largeur_trait_max"],
+                        inf["rapport"]))
+        if not mat:
+            msgs.append("<b style='color:#b00'>Aucun matériau mesuré</b> : "
+                        "grave et mesure la Planche 2 (Assistant matériau), "
+                        "sans quoi rien ne peut piloter la hauteur.")
+            self.lbl_verdict.setText(" ".join(msgs))
+            return
+        prep = core.preparer_calligraphie(
+            chaines, feed, mat, power_max=self.spn_power.value())
+        if prep is None:
+            msgs.append("<b style='color:#b00'>Pas de fuseau pour « {} » "
+                        "à F{:.0f}</b>.".format(mat, feed))
+            self.lbl_verdict.setText(" ".join(msgs))
+            return
+        _gestes, d = prep
+        msgs.append("Le fuseau de {} à F{:.0f} va de {:.2f} à {:.2f} mm, "
+                    "course Z {:.1f} mm.".format(
+                        mat, feed, d["w_min"], d["w_max"],
+                        d["z_max"] - d["z_min"]))
+        if d["part_trop_large"] > 0.5:
+            # La taille est le SEUL levier ici : la puissance n'élargit
+            # pas un trait au-delà de ce que le défocus mesuré donne.
+            conseil = (self.spn_largeur.value() * d["w_max"]
+                       / max(inf["largeur_trait_max"], 1e-9))
+            msgs.append("<b style='color:#b00'>{:.0f} % du tracé demande "
+                        "plus large que les {:.2f} mm mesurés</b> : à cette "
+                        "taille les pleins seront tronqués. Descends vers "
+                        "{:.0f} mm de large.".format(
+                            d["part_trop_large"], d["w_max"], conseil))
+        if d["part_trop_fin"] > 0.5:
+            msgs.append("{:.0f} % du tracé demande plus fin que les {:.2f} mm "
+                        "que le laser sait faire : ces déliés sortiront "
+                        "gras.".format(d["part_trop_fin"], d["w_min"]))
+        mini = core.longueur_mini_fuseau(feed, d["z_max"] - d["z_min"])
+        msgs.append("Pente Z bornée à {:.1f} mm/mm : un geste de moins de "
+                    "{:.0f} mm ne montrera pas le fuseau entier (il sortira "
+                    "plus plat).".format(d["pente"], mini))
+        msgs.append("Fidélité au dessin de la police : écart médian {:.2f} mm, "
+                    "95<sup>e</sup> centile {:.2f} mm.".format(
+                        d["ecart_median"], d["ecart_95"]))
+        for a in d["avert"]:
+            msgs.append("<i>{}</i>.".format(a))
+        self.lbl_verdict.setText(" ".join(msgs))
+
+    # -- aperçu ---------------------------------------------------------
+    def _on_apercu(self):
+        try:
+            res = self._chaines()
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self.form, "Calligraphie", str(exc))
+            return
+        if res is None:
+            return
+        chaines, inf = res
+        mat = self.combo_mat.currentData()
+        prep = (core.preparer_calligraphie(
+            chaines, self.spn_feed.value(), mat,
+            power_max=self.spn_power.value()) if mat else None)
+        img = _rendre_calligraphie(chaines, prep, inf)
+        _show_image_dialog(img, "Aperçu de la calligraphie")
+
+    # -- génération -----------------------------------------------------
+    def _generer(self, cadre=False):
+        try:
+            res = self._chaines()
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self.form, "Calligraphie", str(exc))
+            return
+        if res is None:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Calligraphie",
+                "Choisis une police et tape un texte.")
+            return
+        mat = self.combo_mat.currentData()
+        if not mat:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Calligraphie",
+                "Ce mode a besoin d'une table de brûlures : grave et mesure "
+                "la Planche 2 dans l'Assistant matériau.")
+            return
+        chaines, _inf = res
+        g = core.generate_gcode_calligraphie(
+            chaines, self.spn_z.value(), self.spn_feed.value(), mat,
+            power_max=self.spn_power.value(), frame_only=cadre,
+            police=os.path.basename(self.edt_police.text().strip()))
+        if not g:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Calligraphie",
+                "Génération impossible : aucun niveau de défocus mesuré pour "
+                "« {} ».".format(mat))
+            return
+        nom = "calligraphie{}.ngc".format("_cadre" if cadre else "")
+        if _write_gcode_with_dialog(self.form, g,
+                                    os.path.join(core.GCODE_DIR, nom)):
+            _save_last_values("calligraphie", self._last_fields)
+
+    def accept(self):
+        _save_last_values("calligraphie", self._last_fields)
+        return True
+
+    def reject(self):
+        return True
+
+
+def _rendre_calligraphie(chaines, prep, infos, largeur_px=1100):
+    """Le tracé tel qu'il sortira : un ruban de largeur CONTINUE.
+
+    Deux points d'honnêteté, tombés tous les deux le 03/08/2026 :
+
+    * on dessine ce que la machine FERA (largeur bornée + pente Z rabotée),
+      pas ce que la police voulait -- sinon l'aperçu montre une calligraphie
+      que le bois ne rendra pas ;
+    * en ruban et non en perles : dessiner un disque par point échantillonné
+      donne des pointillés là où le trait est fin, et fait croire à un défaut
+      de la machine alors que c'est le dessin qui est faux."""
+    ech = largeur_px / max(infos["largeur_mm"], 1e-9)
+    H = int(infos["hauteur_mm"] * ech) + 2
+    img = QtGui.QImage(int(largeur_px) + 2, H, QtGui.QImage.Format_ARGB32)
+    img.fill(QtGui.QColor(250, 246, 238))
+    p = QtGui.QPainter(img)
+    p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    p.setPen(QtCore.Qt.NoPen)
+    p.setBrush(QtGui.QColor(45, 30, 18))
+    gestes = prep[0] if prep else None
+    if gestes is None:
+        suites = [[(x, y, w) for x, y, w in ch] for ch in chaines]
+    else:
+        suites = [[(pt.x, pt.y, pt.w) for pt in g] for g in gestes]
+    for suite in suites:
+        for (x0, y0, w0), (x1, y1, w1) in zip(suite, suite[1:]):
+            X0, Y0 = x0 * ech, (infos["hauteur_mm"] - y0) * ech
+            X1, Y1 = x1 * ech, (infos["hauteur_mm"] - y1) * ech
+            r0, r1 = 0.5 * w0 * ech, 0.5 * w1 * ech
+            dx, dy = X1 - X0, Y1 - Y0
+            n = math.hypot(dx, dy) or 1.0
+            nx, ny = -dy / n, dx / n
+            poly = QtGui.QPolygonF([
+                QtCore.QPointF(X0 + nx * r0, Y0 + ny * r0),
+                QtCore.QPointF(X1 + nx * r1, Y1 + ny * r1),
+                QtCore.QPointF(X1 - nx * r1, Y1 - ny * r1),
+                QtCore.QPointF(X0 - nx * r0, Y0 - ny * r0)])
+            p.drawPolygon(poly)
+            p.drawEllipse(QtCore.QPointF(X1, Y1), r1, r1)
+    p.end()
+    return img
+
+
 class TaskPanelHalftone:
     """Convertit une image en trame de points laser (cf.
     generate_gcode_halftone). La conversion image -> grille de noirceur se

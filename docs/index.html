@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>2.61.0</b></span>
+        <span class="badge">Version <b>2.62.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -444,6 +444,23 @@
             <li>Enchaîner&nbsp;: <b>Marquage</b> pour graver, ou <b>Projection</b> sur une surface 3D.</li>
           </ol>
         </details>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/calligraphie.svg" alt=""></span><h4>Calligraphie (pleins et déliés)</h4></div>
+        <p>Grave un texte dans une <b>vraie police calligraphique</b> (<code>.otf</code>/<code>.ttf</code> lue sur ton disque) en <b>un seul passage</b>. On extrait le squelette de la lettre et sa largeur locale&nbsp;; la largeur devient une <b>hauteur Z</b> — la tête se lève pour élargir le trait dans les pleins, redescend pour les déliés. Rien n'est rempli ni repassé&nbsp;: un plein est un endroit où la tête était haute.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Une signature, un nom, un titre à l'anglaise — là où le trait unique d'une police mono-trait serait trop sec.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Choisir un fichier de <b>police</b> et taper le <b>texte</b>. Les scripts à fort contraste donnent le plus bel effet&nbsp;; une police bâton n'a pas de pleins à montrer.</li>
+            <li>Régler la <b>largeur du texte</b> en mm — c'est elle qui décide si les pleins sont gravables, puisqu'un texte deux fois plus grand demande des pleins deux fois plus larges.</li>
+            <li>Choisir le <b>matériau</b> (sa table de brûlures pilote la hauteur) et l'<b>avance</b> — plus elle est lente, plus la tête a le temps de monter.</li>
+            <li>Lire le <b>verdict</b>&nbsp;: il dit si les pleins demandés tiennent, et propose la taille qui les ferait tenir. Puis <b>Aperçu du tracé gravé</b>, qui montre le trait bornes et pente&nbsp;Z comprises.</li>
+          </ol>
+        </details>
+        <p class="note"><b>Les polices ne sont pas fournies</b> — celles du commerce sont presque toutes en licence «&nbsp;usage personnel&nbsp;». Le mode lit la tienne sur ton disque, il ne la copie nulle part.</p>
       </div>
     </div>
     <div class="mode">

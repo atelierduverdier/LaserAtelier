@@ -76,6 +76,7 @@ class LaserAtelierWorkbench(Workbench):
             # -- Gravure à plat --
             "LaserAtelier_Hatch",
             "LaserAtelier_Text",
+            "LaserAtelier_Calligraphie",
             "LaserAtelier_FilledEngraving",
             "LaserAtelier_Halftone",
             "Separator",

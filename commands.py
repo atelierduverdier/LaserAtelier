@@ -85,6 +85,24 @@ class GuideCommand:
         _show(task_panels.TaskPanelGuide())
 
 
+class CalligraphieCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("calligraphie.svg"),
+            "MenuText": "Calligraphie (pleins et déliés)",
+            "ToolTip": "Grave un texte dans une VRAIE police calligraphique "
+                       "(.otf/.ttf de ton disque) : la tête se lève pour "
+                       "élargir le trait dans les pleins et redescend pour "
+                       "les déliés -- un seul passage, comme une plume",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        _show(task_panels.TaskPanelCalligraphie())
+
+
 class TextCommand:
     def GetResources(self):
         return {
@@ -469,6 +487,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Settings", SettingsCommand())
     Gui.addCommand("LaserAtelier_Hatch", HatchCommand())
     Gui.addCommand("LaserAtelier_Text", TextCommand())
+    Gui.addCommand("LaserAtelier_Calligraphie", CalligraphieCommand())
     Gui.addCommand("LaserAtelier_FilledEngraving", FilledEngravingCommand())
     Gui.addCommand("LaserAtelier_Halftone", HalftoneCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())

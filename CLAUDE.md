@@ -106,7 +106,7 @@ is always the user restarting FreeCAD.
 
 ## Architecture
 
-Six modules, cleanly layered — keep the layering:
+Seven modules, cleanly layered — keep the layering:
 
 | Module | Lines | Role |
 |---|---|---|
@@ -114,6 +114,7 @@ Six modules, cleanly layered — keep the layering:
 | `task_panels.py` | ~14 200 | One `TaskPanel*` per mode (PySide6). Pure UI: builds the form, reads widgets, calls `core.*`. No geometry math. |
 | `laser_jobs.py` | ~300 | Tree "Job" objects — bookmarks, not a second source of truth. |
 | `svg_import.py` | ~750 | Standalone SVG→geometry parser, no Draft/DXF detour. |
+| `calligraphie.py` | ~400 | Standalone OTF/TTF → skeleton + local stroke width (numpy/scipy/PIL). No FreeCAD, no Qt. Feeds the Z spindle. |
 | `commands.py` | ~460 | One `*Command` per mode + `register_commands()`. |
 | `InitGui.py` | ~110 | The `Workbench` class: toolbar/menu order, lazy imports. |
 
@@ -125,8 +126,8 @@ Touches five places: a generator in `laser_core.py`, a panel in `task_panels.py`
 `commands.py` (+ `register_commands`), an entry in `InitGui.py`'s `command_list` (grouped by theme
 with `"Separator"` tokens), and a 64×64 SVG in `resources/icons/` (orange `#ff8a00` + slate
 `#2f3540` house style). A self-contained subsystem may keep its generator-equivalent logic in its
-own sibling module instead of `laser_core.py` — `laser_jobs.py` and `svg_import.py` are the two
-such exceptions — but it still touches the same panel/command/`InitGui`/icon points.
+own sibling module instead of `laser_core.py` — `laser_jobs.py`, `svg_import.py` and
+`calligraphie.py` are the three such exceptions — but it still touches the same panel/command/`InitGui`/icon points.
 
 Every **mode** icon carries the **chapeau signature** (small bowler hat, bottom-right,
 `class="chapeau-verdier"` group — copy it verbatim from any marked icon or from `chapeau.svg`);
@@ -156,3 +157,4 @@ the measured numbers and the traps, not summaries:
 | `persistance-et-profils.md` | `laser_core.py` | Config JSON schema, `_USER_SETTINGS`, per-laser profiles and per-laser DATA, result photos, export/import |
 | `tests-headless.md` | `tests/**` | Harness, stubs, the throwaway-config rule, what `test_panneaux.py` covers |
 | `svg-import.md` | `svg_import.py` | Parser layering, flattening tolerance, out-of-scope SVG features |
+| `calligraphie.md` | `calligraphie.py` | Skeleton, the chain invariant, which measure judges a stroke, font licences |
