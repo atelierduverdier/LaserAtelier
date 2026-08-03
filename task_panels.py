@@ -4054,16 +4054,41 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         if self._on_vider is None:
             return
         i, txt = self._on_vider()
-        self._dire(txt)
+        # `_dire` est une méthode du CONTRÔLEUR, pas de cette fenêtre : cet
+        # appel levait un AttributeError à chaque clic, juste après avoir
+        # vidé la case et avant de faire avancer quoi que ce soit. FreeCAD
+        # avale l'exception dans la console, donc la case se vidait, la
+        # cible du panneau avançait -- et la fenêtre, elle, restait sur le
+        # trait précédent. Christophe, 03/08/2026 : « l'aperçu du trait
+        # non, il reste bloqué ». La fenêtre a son propre libellé.
+        self.lbl.setText(txt)
         if i is None:
             self.btn_suiv.setEnabled(False)
             self.btn_ok.setEnabled(False)
             self.btn_rien.setEnabled(False)
             return
+        self._avancer_vers(i)
+
+    def _avancer_vers(self, i):
+        """Viser la case i, et refaire le cadrage pour ELLE.
+
+        LES DEUX BOUTONS QUI AVANCENT PASSENT PAR ICI. « Retenir → case
+        suivante » vidait la vue et relançait le cadrage automatique ;
+        « — Pas de valeur → suivante » se contentait de bouger la liste
+        déroulante. La case suivait donc, mais l'aperçu restait celui du
+        trait précédent -- Christophe, 03/08/2026 : « les données passent
+        bien à la cellule suivante, mais l'aperçu du trait non, il reste
+        bloqué ». Un correctif écrit pour un bouton et pas pour son jumeau,
+        encore une fois : d'où la mise en commun plutôt qu'une seconde
+        copie des trois lignes."""
         self.combo_cible.blockSignals(True)
         self.combo_cible.setCurrentIndex(i)
         self.combo_cible.blockSignals(False)
+        self._vider_vue()
         self._retour()
+        # ... sauf si l'atelier sait où est le trait suivant : la boucle
+        # devient alors « ajuster, valider », sans repasser par la souris.
+        self._cadrer_auto()
 
     def _retenir_et_fermer(self):
         if self._on_retenir is not None:
@@ -4081,15 +4106,7 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
                 "Largeur rangée. C'était la dernière case de cette grille : "
                 "la fenêtre se ferme.")
             return self.accept()
-        self.combo_cible.blockSignals(True)
-        self.combo_cible.setCurrentIndex(suivant)
-        self.combo_cible.blockSignals(False)
-        # Retour au choix du trait : la case a changé, le recadrage aussi.
-        self._vider_vue()
-        self._retour()
-        # ... sauf si l'atelier sait où est le trait suivant : la boucle
-        # devient alors « ajuster, valider », sans repasser par la souris.
-        self._cadrer_auto()
+        self._avancer_vers(suivant)
 
     def _on_changer(self):
         self.veut_changer = True

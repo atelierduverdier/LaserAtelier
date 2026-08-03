@@ -8,6 +8,7 @@ liste des planches est bâtie à l'ouverture du panneau et ne bouge plus,
 et la fiche .json était cherchée à côté du fichier DÉSIGNÉ plutôt qu'à
 côté de la planche.
 """
+import glob
 import json
 import os
 import shutil
@@ -183,5 +184,66 @@ assert _n_cadres == len(_cases), (
     "toutes les cases ne sont pas cadrées", _n_cadres, len(_cases))
 print("7. planche 1 nommée : {} cases sur {} cadrées, au pixel près comme "
       "sans nom OK".format(_n_cadres, len(_cases)))
+
+
+# --- 8. LES DEUX boutons qui avancent recadrent l'aperçu ---------------
+# Christophe, 03/08/2026 : « les données passent bien à la cellule suivante,
+# mais l'aperçu du trait non, il reste bloqué ». « Retenir → case suivante »
+# vidait la vue et relançait le cadrage ; « — Pas de valeur → suivante » se
+# contentait de bouger la liste déroulante. Un correctif écrit pour un
+# bouton et pas pour son jumeau.
+#
+# Le contrôle porte donc sur LA FAMILLE : tout bouton qui fait avancer la
+# case doit laisser l'aperçu sur le trait de la NOUVELLE case. Un test
+# écrit pour le seul bouton signalé serait resté vert pendant que l'autre
+# gardait le défaut.
+import hashlib                                       # noqa: E402
+
+
+def _empreinte_vue(dlg):
+    """Ce que l'oeil voit : le contenu de l'image affichée."""
+    if dlg._vue is None:
+        return None
+    bits = dlg._vue._img.constBits()
+    b = bits.tobytes() if hasattr(bits, "tobytes") else bytes(bits)
+    return hashlib.md5(b).hexdigest()
+
+
+def _ouvrir(m, chemin, gr):
+    cases = m._cases_ordonnees(gr)
+    m._derniere_case = m._mesure_cible = cases[0]
+    d = tp._DialogueMesureTrait(
+        chemin, 50.0, [m._nom_case(w) or "?" for w in cases], 0,
+        m._retenir_depuis_image, m._viser_index,
+        cadre_auto=m._cadreur_auto(chemin, 50.0, gr, cases),
+        on_vider=m._vider_case)
+    assert d._cadrer_auto(), "le cadrage automatique refuse dès la 1re case"
+    return d, cases
+
+
+_VRAIES = sorted(glob.glob("/home/christophe/Planches-LaserAtelier/"
+                           "*planche1*_redresse.png"))
+assert _VRAIES, "aucune planche 1 redressée sur ce poste"
+_IMG = _VRAIES[-1]
+_gr = _m.grille_focus
+_gr._chk.setChecked(False)
+
+for _libelle, _avancer in (("Retenir → case suivante",
+                            lambda d: d._retenir_et_suivant()),
+                           ("— Pas de valeur → suivante",
+                            lambda d: d._pas_de_valeur())):
+    _d, _cases = _ouvrir(_m, _IMG, _gr)
+    _vues, _index = [_empreinte_vue(_d)], [_d.combo_cible.currentIndex()]
+    for _ in range(3):
+        _avancer(_d)
+        _vues.append(_empreinte_vue(_d))
+        _index.append(_d.combo_cible.currentIndex())
+    assert _index == [0, 1, 2, 3], (_libelle, "la case n'avance pas", _index)
+    assert None not in _vues, (
+        _libelle, "l'aperçu a disparu au lieu de suivre la case", _vues)
+    assert len(set(_vues)) == len(_vues), (
+        _libelle, "l'aperçu du trait reste bloqué sur la case précédente")
+    _d.close()
+print("8. les 2 boutons qui avancent recadrent l'aperçu sur la nouvelle case OK")
 
 shutil.rmtree(DOSSIER, ignore_errors=True)
