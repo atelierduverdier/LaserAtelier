@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.50.0</span><br>
+      <span class="ver">Version 2.51.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.50.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.51.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -956,6 +956,7 @@
     <p>Le bouton « <b>Choisir dans le nuancier…</b> » montre cette même liste en <strong>pastilles cliquables</strong> plutôt qu'en lignes de texte : chaque disque est teinté par la noirceur mesurée du réglage, sous les mêmes titres de groupe. On compare des nuances à l'œil, comme sur la planche gravée, au lieu de lire des nombres. Cliquer une pastille applique son réglage, exactement comme la liste — c'est la même liste montrée autrement, pas une seconde source qui pourrait diverger.</p>
     <p>Une pastille <strong>hachurée</strong> vient de la grille de largeurs brûlées : sa largeur est mesurée mais sa noirceur n'a jamais été jugée, et lui inventer un gris la ferait passer pour une mesure. Sa légende affiche alors la largeur qu'on connaît, plutôt qu'un «&nbsp;--&nbsp;%&nbsp;» inutile.</p>
     <p><b>Une planche par bande de noirceur (v2.45.0).</b> Un nuancier fourni fait une planche encombrante où les tons utiles se noient. Le menu «&nbsp;<b>Tons à graver</b>&nbsp;» de la section ② grave <em>une bande</em> — très clairs, clairs, moyens, foncés — avec le compte de tons affiché pour chacune, et l'encombrement recalculé en direct&nbsp;: on grave la tranche qu'on cherche sur une petite chute, pas les 47&nbsp;tons.</p>
+    <p><b>… et les quatre planches aussi (v2.51.0).</b> La v2.50 n'avait servi que le fichier <em>combiné</em>, laissant les planches 1, 2, 2b, 3 et la Bande de calibration sans rien. Christophe a demandé si c'était voulu&nbsp;: ça ne l'était pas. Les <b>cinq</b> passent maintenant par la même fonction — taille de chute en tête, cadre au faisceau de visée, <code>M0</code> — et un contrôle porte sur la <em>famille entière</em>, pas sur un membre. Une convention appliquée à un seul endroit est le défaut le plus récurrent de ce projet&nbsp;; celui-là a duré une version.</p>
     <p><b>Le fichier combiné dit sa taille, et se cadre lui-même (v2.50.0).</b> Deux ajouts demandés par Christophe, le fichier sous les yeux&nbsp;:</p>
     <ul>
       <li><b>La chute nécessaire est annoncée en tête</b>&nbsp;: <code>(CHUTE NECESSAIRE : 231 x 173 mm -- origine au coin BAS-GAUCHE)</code>. Chaque planche gravait déjà ses propres cotes sous sa réglette, mais l'encombrement de l'<em>ensemble</em> n'était écrit nulle part — il fallait ouvrir le fichier dans un visualiseur pour savoir sur quoi le poser.</li>
@@ -1153,7 +1154,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.50.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.51.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

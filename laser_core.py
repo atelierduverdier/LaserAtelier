@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.50.0"
+VERSION = "2.51.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -6537,6 +6537,7 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
                                        label_power=None, label_feed=None, label_z=None,
                                        n_bands=1, feed_end=None, band_gap=5.0,
                                        plank_label=None,
+                                       cadre_pause=True,
                                        pre_gcode="", post_gcode="", frame_only=False, quiet=False,
                                        body_only=False):
     """Grave une rangée de courts traits, chacun à une hauteur de bec
@@ -6712,6 +6713,12 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         lines.append("(Traits : {} de Z={:.2f} a Z={:.2f} par pas de {:.2f}, {} -- {})".format(
             n_marks, z_start, z_start + (n_marks - 1) * z_step, z_step, p_desc, f_desc))
         lines.append("(Mesurer l'epaisseur de chaque trait : le plus fin = foyer)")
+        _pts_e = [(pt.x, pt.y) for chain, _z, _fb, _mp in marks for pt in chain]
+        _pts_e += [(pt.x, pt.y) for chain in (label_chains or []) for pt in chain]
+        if _pts_e:
+            lines.extend(_ligne_chute(
+                (min(x for x, _y in _pts_e), min(y for _x, y in _pts_e),
+                 max(x for x, _y in _pts_e), max(y for _x, y in _pts_e))))
         lines.append("G21")
         lines.append("G90")
         lines.append("G94")
@@ -6758,6 +6765,16 @@ def generate_gcode_defocus_calibration(z_start, z_step, n_marks, mark_length, ro
         lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
 
     if not body_only:
+        # Taille de la chute + cadrage/pause, AVANT l'armement. Sert la
+        # Bande de calibration défocus (★1) ET la Planche 3, qui délègue
+        # ici : le même geste d'atelier, donc le même garde-fou.
+        _pts = [(pt.x, pt.y) for chain, _z, _fb, _mp in marks for pt in chain]
+        _pts += [(pt.x, pt.y) for chain in (label_chains or []) for pt in chain]
+        if _pts:
+            _chute_et_cadrage(
+                lines, (min(x for x, _y in _pts), min(y for _x, y in _pts),
+                        max(x for x, _y in _pts), max(y for _x, y in _pts)),
+                z_safe, cadre_pause)
         lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     lines.append("(===== Traits de calibration =====)")
     for chain, z, fb, mp in marks:
@@ -10276,6 +10293,47 @@ def noirceur_normalisee(gris_case, gris_bois, gris_noir):
 
 
 
+def _ligne_chute(bbox):
+    """La taille de chute à préparer, en UNE ligne de commentaire -- à
+    poser dans l'EN-TÊTE, avec les autres commentaires de tête : c'est là
+    qu'on la lit avant de lancer, pas vingt lignes plus bas.
+
+    Renvoie une liste (vide si l'emprise est inconnue), pour s'écrire
+    `lines.extend(_ligne_chute(bb))` sans condition à l'appel."""
+    if not bbox:
+        return []
+    x_min, y_min, x_max, y_max = bbox
+    return ["(CHUTE NECESSAIRE : {:.0f} x {:.0f} mm -- origine au coin "
+            "BAS-GAUCHE)".format(x_max - x_min, y_max - y_min)]
+
+
+def _chute_et_cadrage(lines, bbox, z_cadre, cadre_pause=True):
+    """Le tour du rectangle au faisceau de visée, suivi d'un `M0`.
+
+    SOURCE UNIQUE des cinq planches de calibration (1, 2, 2b, 3 et le
+    fichier combiné). Livré d'abord sur le seul fichier combiné le
+    03/08/2026, ce qui laissait quatre planches sans rien : Christophe a
+    demandé si c'était voulu. Ça ne l'était pas -- une convention à
+    moitié appliquée est exactement ce qui coûte cher sur ce projet.
+
+    À APPELER AVANT L'ARMEMENT. Le cadre est tracé laser non armé (ou au
+    faisceau de visée, que `build_frame_trace` arme et désarme lui-même) :
+    pendant le tour de vérification et pendant toute la pause, la machine
+    n'est pas prête à graver. Le `M0` est la reprise de main qui manquait
+    -- c'est elle qui avait fait refuser le cadrage embarqué à l'époque.
+
+    `bbox` vaut (x_min, y_min, x_max, y_max), la forme que rend
+    `_bbox_planche`. Ne fait rien si elle est absente."""
+    if not bbox or not cadre_pause:
+        return
+    x_min, y_min, x_max, y_max = bbox
+    lines.extend(build_frame_trace(x_min, x_max, y_min, y_max, z_cadre))
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("(-- PAUSE : verifie le cadrage, puis CYCLE START pour "
+                 "graver --)")
+    lines.append("M0")
+
+
 def _emit_flat_marks(lines, bands, z_safe):
     """Émet les lignes G-code pour une série de « bandes » de traits déjà à
     plat -- (chain, power, feed, comment) avec chain = liste de (x, y) --
@@ -10456,7 +10514,8 @@ def generate_gcode_planche_focus(z_focus=None, mire=True,
                                  powers=PLANCHE_FOCUS_POWERS,
                                  feeds=PLANCHE_FOCUS_FEEDS,
                                  trait_len=12.0, row_gap=4.0, label_height=2.5,
-                                 pre_gcode="", post_gcode="", quiet=False, body_only=False):
+                                 pre_gcode="", post_gcode="", quiet=False, body_only=False,
+                                 cadre_pause=True):
     """PLANCHE 1 -- FOYER (Vitesse x Puissance). Grille de traits gravés AU
     FOYER : une ligne par puissance S (bornée à S_MAX), une colonne par vitesse
     F. À mesurer : la LARGEUR brûlée de chaque trait (un trait vierge est une
@@ -10490,6 +10549,7 @@ def generate_gcode_planche_focus(z_focus=None, mire=True,
         lines.append("(G-Code Laser - Planche 1 : foyer (vitesse x puissance))")
         lines.append("(Traits : {} S x {} F, tous au foyer Z={:.4f})".format(
             len(powers), len(feeds), z_focus))
+        lines.extend(_ligne_chute(_bbox_planche(band, label_edges)))
         lines.extend(_entete_mire(infos_mire))
         lines.append("G21")
         lines.append("G90")
@@ -10504,6 +10564,9 @@ def generate_gcode_planche_focus(z_focus=None, mire=True,
         lines.append("(-- G-code personnalisé (avant) --)")
         lines.append(pre_gcode.strip())
     if not body_only:
+        # Taille de la chute + cadrage/pause, AVANT l'armement.
+        _chute_et_cadrage(lines, _bbox_planche(band, label_edges), z_safe,
+                          cadre_pause)
         lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
 
     _emit_flat_marks(lines, [(z_focus, band), (z_focus, labels)], z_safe)
@@ -10658,7 +10721,8 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
                                    defocus_levels_mm=DEFOCUS_LEVELS_MM,
                                    trait_len=12.0, row_gap=4.0, block_gap=7.0,
                                    label_height=2.5, nom_planche="2",
-                                   pre_gcode="", post_gcode="", quiet=False, body_only=False):
+                                   pre_gcode="", post_gcode="", quiet=False, body_only=False,
+                                   cadre_pause=True):
     """PLANCHE 2 -- DÉFOCUS (balayage du feed). Pour CHAQUE niveau de défocus
     (defocus_levels_mm, ~15 et 36 mm), une grille de traits S x F gravés à
     z_focus + dz. À mesurer : la largeur brûlée de chaque trait -> alimente le
@@ -10708,6 +10772,8 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
     if not body_only:
         lines.append("(G-Code Laser - Planche {} : defocus (S x F par niveau))"
                      .format(nom_planche))
+        lines.extend(_ligne_chute(_bbox_planche(
+            [t for _z, bd in bands for t in bd], label_edges)))
         lines.extend(_entete_mire(infos_mire))
         lines.append("G21")
         lines.append("G90")
@@ -10722,6 +10788,9 @@ def generate_gcode_planche_defocus(mire=True, z_focus=None,
         lines.append("(-- G-code personnalisé (avant) --)")
         lines.append(pre_gcode.strip())
     if not body_only:
+        _chute_et_cadrage(
+            lines, _bbox_planche([t for _z, bd in bands for t in bd],
+                                 label_edges), z_safe, cadre_pause)
         lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
 
     _emit_flat_marks(lines, bands, z_safe)
@@ -10753,7 +10822,8 @@ def generate_gcode_planche_defocus_profond(
         z_focus=None, mire=True,
         powers=(600.0, 800.0, 1000.0), feeds=(200.0, 400.0),
         defocus_levels_mm=DEFOCUS_LEVELS_PROFONDS_MM,
-        pre_gcode="", post_gcode="", quiet=False, body_only=False):
+        pre_gcode="", post_gcode="", quiet=False, body_only=False,
+        cadre_pause=True):
     """PLANCHE 2b -- DÉFOCUS PROFOND, pour donner une SECONDE puissance aux
     niveaux 40, 55 et 60 mm et les promouvoir en ancres du modèle.
 
@@ -10778,10 +10848,11 @@ def generate_gcode_planche_defocus_profond(
         mire=mire, z_focus=z_focus, powers=powers, feeds=feeds,
         defocus_levels_mm=defocus_levels_mm, nom_planche="2b",
         pre_gcode=pre_gcode, post_gcode=post_gcode, quiet=quiet,
-        body_only=body_only)
+        body_only=body_only, cadre_pause=cadre_pause)
 
 
-def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet=False,
+def generate_gcode_planche_spot(z_focus=None, cadre_pause=True,
+                                pre_gcode="", post_gcode="", quiet=False,
                                 body_only=False):
     """PLANCHE 3 -- LARGEUR DU POINT. Reprend le noyau « Bande de calibration
     défocus » : une série de traits à hauteurs de bec croissantes (Z, du foyer
@@ -10809,6 +10880,7 @@ def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet
     return generate_gcode_defocus_calibration(
         z_start=z_focus, z_step=3.0, n_marks=13, mark_length=15.0, row_gap=6.0,
         power=600.0, power_end=1000.0, feed=750.0, plank_label="3",
+        cadre_pause=cadre_pause,
         pre_gcode=pre_gcode, post_gcode=post_gcode,
         quiet=quiet, body_only=body_only)
 

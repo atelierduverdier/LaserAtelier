@@ -269,6 +269,12 @@ print("9. laser grave sur la planche (mono-trait), sans deborder, "
 # Regle du depot : brancher un correctif de generateur sur toute la
 # famille. Les trois planches de calibration doivent porter le nom.
 def _bande(**kw):
+    # SANS le cadrage embarque (v2.51.0) : ce bloc compare la GEOMETRIE
+    # GRAVEE de deux variantes, et le tour de cadrage ajoute des points
+    # qui suivent l'emprise -- donc qui DIFFERENT justement entre les
+    # deux variantes qu'on compare. Les compter ferait echouer un
+    # controle qui ne porte pas sur eux.
+    kw.setdefault("cadre_pause", False)
     return core.generate_gcode_defocus_calibration(
         z_start=0.0, z_step=3.0, n_marks=13, mark_length=15.0, row_gap=6.0,
         power=600.0, power_end=1000.0, feed=750.0, plank_label="3",

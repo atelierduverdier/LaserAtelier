@@ -210,4 +210,52 @@ finally:
     tp._write_gcode_with_dialog = _vrai_write
     FreeCAD.closeDocument(_doc.Name)
 
+# --- 5. LA FAMILLE ENTIERE, pas seulement le fichier combine -----------
+# La taille de la chute et le cadrage/pause ont d'abord ete livres sur le
+# SEUL fichier combine (v2.50.0), laissant les quatre planches
+# individuelles sans rien. Christophe a demande si c'etait voulu -- ca ne
+# l'etait pas. Une convention appliquee a un seul membre d'une famille
+# est le defaut le plus recurrent de ce projet ; ce controle porte donc
+# sur les CINQ generateurs a la fois.
+_visee = core.FRAME_POWER
+_famille = [
+    ("Planche 1 (foyer)", core.generate_gcode_planche_focus),
+    ("Planche 2 (defocus)", core.generate_gcode_planche_defocus),
+    ("Planche 2b (profond)", core.generate_gcode_planche_defocus_profond),
+    ("Planche 3 (point)", core.generate_gcode_planche_spot),
+    ("Combine (les 4)", core.generate_gcode_planches_combinees),
+]
+for _nom, _fn in _famille:
+    _l = _fn().split("\n")
+    assert any("CHUTE NECESSAIRE" in x for x in _l[:8]), (
+        _nom, "n'annonce pas la taille de chute a preparer")
+    _m0 = [i for i, x in enumerate(_l) if x.strip() == "M0"]
+    assert len(_m0) == 1, (_nom, "il faut UN seul arret", len(_m0))
+    _s, _etat, _grave = 0, None, False
+    for _x in _l[:_m0[0]]:
+        _mm = _re.search(r"\bQ(\d+)|\bS(\d+)", _x)
+        if _mm:
+            _s = int(_mm.group(1) or _mm.group(2))
+        if _x.startswith("G1 ") and _s > _visee:
+            _grave = True
+        if _x.startswith("M3"):
+            _etat = "arme"
+        elif _x.startswith("M5"):
+            _etat = "desarme"
+    assert not _grave, (_nom, "le laser GRAVE avant la pause de cadrage")
+    assert _etat != "arme", (_nom, "laser ARME pendant la pause")
+    # L'option se coupe, et rend le fichier d'avant.
+    assert "M0" not in _fn(cadre_pause=False).split("\n"), (
+        _nom, "cadre_pause=False laisse quand meme une pause")
+    # Et un CORPS embarque ne pose ni chute ni pause : ce serait un second
+    # cadrage au milieu du job. (Le fichier combine n'a pas de mode
+    # `body_only` -- il EST l'assembleur, il ne s'embarque nulle part.)
+    import inspect as _i2
+    if "body_only" in _i2.signature(_fn).parameters:
+        _b = _fn(body_only=True)
+        assert "CHUTE" not in _b and "M0" not in _b.split("\n"), (
+            _nom, "un corps embarque pose son propre cadrage")
+print("5. les {} planches annoncent leur chute, se cadrent et s'arretent, "
+      "laser desarme -- et se taisent en corps embarque OK".format(len(_famille)))
+
 print("\nTOUS LES TESTS assistant_planches PASSENT")
