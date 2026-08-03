@@ -332,4 +332,34 @@ assert "Annuler" not in _libelles, (
 _d.close()
 print("11. la sortie s'appelle « Fermer », pas « Annuler » OK")
 
+
+# --- 12. La planche 3 ne se redresse pas, et ça se lit -----------------
+# Christophe, 03/08/2026 : « je fais comment pour la planche 3, je n'ai pas
+# de croix ». Il n'en a pas parce qu'elle n'en a pas : la bande de défocus
+# ne porte aucune mire, il n'y a rien à redresser, on la lit au pied à
+# coulisse. Le logiciel le savait -- `_cadreur_auto` la refuse, la liste du
+# redressement ne la propose pas -- mais ne le DISAIT nulle part, et une
+# absence silencieuse ressemble à un oubli.
+_g3 = core.generate_gcode_planche_spot(quiet=True) or ""
+assert _g3, "la planche 3 ne génère rien"
+assert "croix" not in _g3.lower() and "mire" not in _g3.lower(), (
+    "la planche 3 grave une mire : ce contrôle et son explication sont à "
+    "revoir")
+for _gen in (core.generate_gcode_planche_focus,
+             core.generate_gcode_planche_defocus,
+             core.generate_gcode_planche_defocus_profond):
+    _g = _gen(quiet=True) or ""
+    assert "croix" in _g.lower() or "mire" in _g.lower(), (
+        "une planche redressable a perdu sa mire", _gen.__name__)
+
+_dit = " ".join(
+    b.toolTip() for b in _p.form.findChildren(QtWidgets.QPushButton)
+    if "Planche 3" in b.text())
+assert _dit, "bouton « Planche 3 » introuvable"
+assert "REDRESSE PAS" in _dit.upper(), (
+    "le bouton de la planche 3 ne dit pas qu'elle ne se redresse pas", _dit)
+assert "coulisse" in _dit, (
+    "il ne dit pas non plus comment la lire, alors", _dit)
+print("12. planche 3 : sans mire, et le bouton le dit OK")
+
 shutil.rmtree(DOSSIER, ignore_errors=True)

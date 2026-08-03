@@ -130,16 +130,38 @@ def cliquer(img):
         if event == cv2.EVENT_LBUTTONDOWN and len(pts) < 4:
             pts.append((x / k, y / k))
             cv2.circle(vue, (x, y), 8, (0, 0, 255), 2)
-            cv2.imshow("reperes", vue)
             if len(pts) == 4:
                 fini[0] = True
+
+    def bandeau(fond, texte):
+        """La consigne ET la sortie, ÉCRITES SUR L'IMAGE.
+
+        Elles n'existaient que dans la console, que personne ne regarde en
+        cliquant des croix. Et la croix de fermeture d'une fenêtre OpenCV ne
+        ferme rien : la boucle rappelle `imshow` juste après. Quelqu'un qui
+        ouvre cette fenêtre sur une planche SANS croix -- la planche 3 n'en
+        a pas -- se retrouve donc devant une fenêtre qui ne répond ni au
+        clic ni au X, sans rien à l'écran pour lui dire qu'Échap existe.
+        Christophe, 03/08/2026 : « j'ai ouvert la boîte pour redresser mais
+        je ne peux pas fermer ». La touche marchait ; c'est le fait de le
+        SAVOIR qui manquait."""
+        v = fond.copy()
+        h_, w_ = v.shape[:2]
+        cv2.rectangle(v, (0, 0), (w_, 62), (0, 0, 0), -1)
+        cv2.putText(v, texte, (12, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                    (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(v, "ECHAP = annuler et fermer cette fenetre",
+                    (12, 52), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 200, 255), 2, cv2.LINE_AA)
+        return v
 
     cv2.namedWindow("reperes", cv2.WINDOW_NORMAL)
     cv2.setMouseCallback("reperes", au_clic)
     for i, nom in enumerate(COINS):
         print("  clique la croix {} ({}/4)".format(nom, i + 1))
+        consigne = "Clique la croix {} ({}/4)".format(nom, i + 1)
         while len(pts) <= i and not fini[0]:
-            cv2.imshow("reperes", vue)
+            cv2.imshow("reperes", bandeau(vue, consigne))
             if cv2.waitKey(20) == 27:
                 cv2.destroyAllWindows()
                 sys.exit("annulé")

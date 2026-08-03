@@ -975,7 +975,11 @@ def _redresser_photo_planche(parent, on_range=None):
     choix, ok = QtWidgets.QInputDialog.getItem(
         parent, "Quelle planche ?",
         "La planche photographiée détermine les cotes proposées et le\n"
-        "rangement de la photo dans les résultats.",
+        "rangement de la photo dans les résultats.\n"
+        "\n"
+        "La PLANCHE 3 n'est pas dans cette liste et c'est voulu : elle n'a\n"
+        "pas de croix de mire, donc rien à redresser. On lit ses traits au\n"
+        "pied à coulisse, le plus fin donne le foyer.",
         [lib for lib, _c in _PLANCHES], 0, False)
     if not ok:
         return
@@ -1205,7 +1209,12 @@ def _boutons_planches(form, ecrire, apres_redressement=None):
         "Bande de calibration du POINT : Ø net au foyer + Ø à une hauteur\n"
         "connue -> le modèle d'élargissement du point. Réglages fins dans le\n"
         "mode « Bande de calibration défocus » (Préférences > Calibration du\n"
-        "point) ; ce bouton grave la bande par défaut, recadrée au zéro pièce.")
+        "point) ; ce bouton grave la bande par défaut, recadrée au zéro pièce.\n"
+        "\n"
+        "CELLE-CI NE SE REDRESSE PAS : elle n'a pas de croix de mire, et il\n"
+        "n'y a rien à mesurer sur une photo. On lit ses 13 traits au pied à\n"
+        "coulisse -- le plus FIN donne le foyer, et son Z la hauteur de\n"
+        "travail. Rien de tout cela n'entre dans les grilles de largeur.")
     b3.clicked.connect(lambda: ecrire(core.generate_gcode_planche_spot(),
                                       "/tmp/planche3_point.ngc"))
     form.addRow(b3)
