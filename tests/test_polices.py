@@ -21,7 +21,7 @@ import os
 from harness import preparer
 
 h = preparer()
-core = h.core
+core, tp = h.core, h.tp
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # --- 1. Le catalogue, et le chargement PARESSEUX ------------------------
@@ -133,3 +133,96 @@ _sans_n = [len(_sans.GLYPHES[c][1]) for c in "AEHOBMSnmoe"]
 assert sum(_sans_n) / float(len(_sans_n)) < 3.5, "la police par défaut est lourde"
 print("5. {} polices à fût contourné, toutes étiquetées et vérifiées lourdes "
       "OK".format(len(_lourdes)))
+
+
+# --- 6. Le spécimen dessine les VRAIS traits, à la bonne taille ---------
+# Le piège de ce genre d'aperçu est d'afficher une police d'ÉCRAN qui
+# ressemble à la police machine : on choisit alors d'après une image qui
+# n'est pas ce qui sera gravé. La vérification tient en une mesure : la
+# hauteur d'encre d'un « H » doit valoir la hauteur de capitale demandée,
+# ce qui n'est vrai que si le tracé vient bien de GLYPHES, à l'échelle du
+# CAP_HEIGHT de CETTE police-là.
+from PySide6 import QtGui, QtCore
+
+def _boite_encre(img):
+    """Rectangle occupé par les pixels non transparents (l, h, y_haut)."""
+    xs, ys = [], []
+    for y in range(img.height()):
+        for x in range(img.width()):
+            if QtGui.qAlpha(img.pixel(x, y)) > 40:
+                xs.append(x); ys.append(y)
+    if not xs:
+        return (0, 0, 0)
+    return (max(xs) - min(xs) + 1, max(ys) - min(ys) + 1, min(ys))
+
+_CAPS = 40
+_essais = ["sans"] + [c for c in list(core.HERSHEY_FONTS)[1:12]]
+_vus = {}
+for _cle in _essais:
+    _hf = core._hershey_module(_cle)
+    if not _hf.GLYPHES.get("H"):
+        continue
+    _img, _x = tp._dessiner_police(_hf, "H", 400, hauteur_cap_px=_CAPS)
+    _l, _h, _y = _boite_encre(_img)
+    assert _h > 0, (_cle, "le spécimen est vide")
+    # Tolérance : l'épaisseur de plume (1,4 px) déborde d'un demi-trait de
+    # chaque côté, et l'anticrénelage étale un peu. Au-delà de 4 px c'est
+    # que l'échelle vient d'ailleurs que du CAP_HEIGHT de cette police.
+    assert abs(_h - _CAPS) <= 4, (
+        _cle, "hauteur d'encre du H ≠ hauteur de capitale demandée",
+        _h, _CAPS, _hf.CAP_HEIGHT)
+    _vus[_cle] = _img.copy()
+assert len(_vus) >= 8, ("trop peu de polices testées", len(_vus))
+
+# Et deux polices différentes ne donnent pas la même image : sans cela, la
+# mesure ci-dessus passerait aussi avec un seul dessin recopié 44 fois.
+_texte_demo = "Atelier"
+_rendus = {}
+for _cle in _vus:
+    _img, _ = tp._dessiner_police(core._hershey_module(_cle), _texte_demo, 400)
+    _rendus[_cle] = bytes(_img.constBits())
+assert len(set(_rendus.values())) >= len(_rendus) - 1, (
+    "plusieurs polices rendent une image identique",
+    len(set(_rendus.values())), len(_rendus))
+print("6. spécimen : {} polices tracées avec leurs propres traits, "
+      "à leur propre hauteur de capitale OK".format(len(_vus)))
+
+# --- 7. Cliquer une police l'APPLIQUE vraiment --------------------------
+# Le choix visuel des tons a appris la règle à ses dépens : PySide
+# reconstruit les données d'item à chaque lecture, donc seul un INDEX
+# désigne une entrée de façon fiable. Ici on vérifie le bout utile de la
+# chaîne : ce que la boîte renvoie finit dans le combo, donc dans le
+# G-code -- pas seulement dans un aperçu.
+_panneau = tp.TaskPanelText()
+_cible = None
+for _i in range(_panneau.combo_font.count()):
+    if _panneau.combo_font.itemData(_i) != _panneau.combo_font.currentData():
+        _cible = _i
+        break
+assert _cible is not None, "un seul choix de police dans le combo ?"
+_attendu = _panneau.combo_font.itemData(_cible)
+_originel = tp._choisir_police_visuel
+try:
+    tp._choisir_police_visuel = lambda *_a, **_k: _cible
+    _panneau._on_voir_polices()
+finally:
+    tp._choisir_police_visuel = _originel
+assert _panneau.combo_font.currentData() == _attendu, (
+    "la police cliquée n'est pas celle appliquée",
+    _panneau.combo_font.currentData(), _attendu)
+
+# Annuler (None) ne doit RIEN changer -- un aperçu qu'on ferme ne décide pas.
+# On se place volontairement sur un index NON NUL : sur l'index 0, un
+# « annuler » qui retomberait bêtement au début passerait inaperçu (c'est
+# exactement ce qu'un sabotage de ce contrôle a montré).
+_panneau.combo_font.setCurrentIndex(_panneau.combo_font.count() - 1)
+_avant = _panneau.combo_font.currentIndex()
+assert _avant > 0, "index de départ nul : le contrôle ne prouverait rien"
+try:
+    tp._choisir_police_visuel = lambda *_a, **_k: None
+    _panneau._on_voir_polices()
+finally:
+    tp._choisir_police_visuel = _originel
+assert _panneau.combo_font.currentIndex() == _avant, (
+    "annuler le spécimen a quand même changé la police")
+print("7. le clic applique la police, l'annulation ne touche à rien OK")

@@ -5844,6 +5844,148 @@ class _PastilleReglage(QtWidgets.QAbstractButton):
         super().leaveEvent(event)
 
 
+def _dessiner_police(hf, texte, largeur_px, hauteur_cap_px=26):
+    """Échantillon d'une police mono-trait, dessiné AVEC SES PROPRES TRAITS.
+
+    Pas une police d'écran qui lui ressemblerait : ce sont les mêmes
+    `GLYPHES` que `single_line_text_to_edges` enverra à la machine, donc ce
+    qu'on voit est ce qui sera gravé -- y compris les replis (« cœur »
+    devient « coeur » sur les polices sans œ) et le trait doublé des fûts
+    contournés, qui se voit à l'épaisseur."""
+    texte = core.deplier_texte(texte or "", hf, quiet=True).split("\n")[0]
+    ech = float(hauteur_cap_px) / float(hf.CAP_HEIGHT or 1)
+    # Réduire plutôt que couper : un échantillon amputé de sa fin ne montre
+    # pas la police, il montre son début. Les chasses sont déjà connues --
+    # la largeur totale se calcule avant de tracer, sans rien dessiner.
+    chasse = sum((hf.GLYPHES[c][0] if hf.GLYPHES.get(c) else hf.ADV_DEFAULT)
+                 for c in texte) or 1.0
+    ech = min(ech, (float(largeur_px) - 6.0) / chasse)
+    hauteur_cap_px = max(7, int(round(ech * (hf.CAP_HEIGHT or 1))))
+    # Ligne de base : sous les capitales, avec de la place pour les jambages.
+    marge_h = int(hauteur_cap_px * 0.45)
+    img = QtGui.QImage(max(1, int(largeur_px)),
+                       hauteur_cap_px + 2 * marge_h,
+                       QtGui.QImage.Format_ARGB32)
+    img.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(img)
+    p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    p.setPen(QtGui.QPen(QtGui.QColor(30, 30, 30), 1.4))
+    x, y0 = 2.0, float(hauteur_cap_px + marge_h)
+    for ch in texte:
+        g = hf.GLYPHES.get(ch)
+        if g is None:
+            x += hf.ADV_DEFAULT * ech
+            continue
+        adv, traits = g
+        for t in traits:
+            chemin = QtGui.QPainterPath()
+            chemin.moveTo(x + t[0][0] * ech, y0 - t[0][1] * ech)
+            for px, py in t[1:]:
+                chemin.lineTo(x + px * ech, y0 - py * ech)
+            p.drawPath(chemin)
+        x += adv * ech
+    p.end()
+    return img, x
+
+
+def _choisir_police_visuel(parent, combo_font, texte_exemple):
+    """Les 44 polices ÉCRITES, pas listées. Renvoie l'index à sélectionner
+    dans `combo_font`, ou None.
+
+    Christophe, 03/08/2026 : « ce qui serait bien c'est une visualisation de
+    la police, car là je les fais toutes une par une ». Quarante-quatre noms
+    dans un menu déroulant ne se choisissent pas -- « EMS Osmotron » ne dit
+    rien à personne.
+
+    MÊMES DEUX RÈGLES que le choix visuel des tons, et pour les mêmes
+    raisons : la liste est bâtie À PARTIR DU COMBO (jamais d'un second
+    parcours de HERSHEY_FONTS, qui pourrait diverger de ce qui est affiché),
+    et on renvoie un INDEX que le combo rejoue -- PySide reconstruit ses
+    données d'item à chaque lecture, donc rien ne s'identifie autrement.
+
+    L'échantillon est le TEXTE DE L'UTILISATEUR quand il y en a un : voir
+    ses propres mots dans chaque police vaut mieux qu'un pangramme, et
+    montre du même coup les caractères qui manquent à telle ou telle."""
+    exemple = (texte_exemple or "").strip().split("\n")[0]
+    if not exemple:
+        exemple = "Atelier du Verdier — ça, l'œuvre 1234"
+
+    dlg = QtWidgets.QDialog(parent)
+    dlg.setWindowTitle("Choisir une police — {} disponibles".format(
+        combo_font.count()))
+    dlg.resize(900, 640)
+    lay = QtWidgets.QVBoxLayout(dlg)
+    lay.addWidget(_WrapLabel(
+        "Chaque ligne est tracée avec les traits RÉELS de la police : c'est "
+        "ce que la machine gravera. Clique pour choisir."))
+
+    filtre = QtWidgets.QLineEdit()
+    filtre.setPlaceholderText("Filtrer par nom (ems, script, relief…)")
+    lay.addWidget(filtre)
+
+    liste = QtWidgets.QListWidget()
+    liste.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+    lay.addWidget(liste, 1)
+
+    # Le nom AU-DESSUS de l'échantillon, pas à côté : à côté, la colonne de
+    # noms rogne la largeur du tracé -- ou se fait tronquer elle-même, et
+    # « EMS Decorous Sc… » ne se choisit pas mieux qu'un nom absent.
+    courant = combo_font.currentIndex()
+    for i in range(combo_font.count()):
+        libelle = combo_font.itemText(i)
+        cle = combo_font.itemData(i)
+        ligne = QtWidgets.QWidget()
+        vb = QtWidgets.QVBoxLayout(ligne)
+        vb.setContentsMargins(8, 5, 8, 7)
+        vb.setSpacing(1)
+        nom = QtWidgets.QLabel(libelle)
+        f = nom.font()
+        f.setPointSizeF(max(7.0, f.pointSizeF() - 1.0))
+        f.setBold(True)
+        nom.setFont(f)
+        if "contourné" in libelle:
+            # Déjà écrit dans le libellé ; la couleur ne fait que le rendre
+            # repérable au défilement, elle n'ajoute pas d'information.
+            nom.setStyleSheet("color: #96601e;")
+        vb.addWidget(nom)
+        try:
+            hf = core._hershey_module(cle)
+            img, _large = _dessiner_police(hf, exemple, 800)
+            vue = QtWidgets.QLabel()
+            vue.setPixmap(QtGui.QPixmap.fromImage(img))
+        except Exception as exc:
+            vue = QtWidgets.QLabel("(police illisible : {})".format(exc))
+        vb.addWidget(vue)
+        it = QtWidgets.QListWidgetItem()
+        it.setData(QtCore.Qt.UserRole, i)
+        it.setData(QtCore.Qt.UserRole + 1, libelle)     # pour le filtre
+        it.setSizeHint(ligne.sizeHint())
+        liste.addItem(it)
+        liste.setItemWidget(it, ligne)
+        if i == courant:
+            liste.setCurrentItem(it)
+
+    def _filtrer(txt):
+        t = (txt or "").strip().lower()
+        for r in range(liste.count()):
+            it = liste.item(r)
+            lib = (it.data(QtCore.Qt.UserRole + 1) or "").lower()
+            it.setHidden(bool(t) and t not in lib)
+    filtre.textChanged.connect(_filtrer)
+
+    boutons = QtWidgets.QDialogButtonBox(
+        QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+    boutons.accepted.connect(dlg.accept)
+    boutons.rejected.connect(dlg.reject)
+    lay.addWidget(boutons)
+    liste.itemDoubleClicked.connect(lambda _i: dlg.accept())
+
+    if dlg.exec() != QtWidgets.QDialog.Accepted:
+        return None
+    it = liste.currentItem()
+    return None if it is None else it.data(QtCore.Qt.UserRole)
+
+
 def _choisir_reglage_visuel(parent, combo_shade, material, critere):
     """Grille de pastilles cliquables : le nuancier montré, pas décrit.
     Renvoie l'index d'item à sélectionner dans `combo_shade`, ou None.
@@ -6894,7 +7036,19 @@ class TaskPanelText:
             self.combo_font.addItem(libelle, cle)
         self.combo_font.setToolTip(
             "Police mono-trait (un seul passage de plume par branche).")
-        form.addRow("Police :", self.combo_font)
+        # Un nom de police ne se lit pas : « EMS Osmotron » ne dit rien
+        # tant qu'on ne l'a pas vue écrite. Le bouton montre les 44 d'un
+        # coup, avec le texte saisi, plutôt que de les essayer une à une.
+        ligne_police = QtWidgets.QHBoxLayout()
+        ligne_police.setContentsMargins(0, 0, 0, 0)
+        ligne_police.addWidget(self.combo_font, 1)
+        self.btn_voir_polices = QtWidgets.QPushButton("Voir…")
+        self.btn_voir_polices.setToolTip(
+            "Afficher toutes les polices écrites avec votre texte, "
+            "et choisir en cliquant.")
+        self.btn_voir_polices.clicked.connect(self._on_voir_polices)
+        ligne_police.addWidget(self.btn_voir_polices)
+        form.addRow("Police :", ligne_police)
 
         # Réglages de dimension juste à côté des icônes d'alignement --
         # tout ce qui règle l'ASPECT du texte regroupé au même endroit,
@@ -6963,6 +7117,13 @@ class TaskPanelText:
         self.form.setWindowIcon(_icon("text.svg"))
         self._update_info()
         self._maj_apercu()
+
+    def _on_voir_polices(self):
+        """Ouvre le spécimen des polices et rejoue le choix dans le combo."""
+        i = _choisir_police_visuel(
+            self.form, self.combo_font, self.txt.toPlainText())
+        if i is not None and i != self.combo_font.currentIndex():
+            self.combo_font.setCurrentIndex(i)
 
     def _update_info(self):
         w, h = core.single_line_text_extent(
