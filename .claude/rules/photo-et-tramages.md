@@ -50,8 +50,9 @@ inverted against the real energy order). Selecting the objective pre-fills feed/
 Test-grid panel's own "+ Ajouter ce ton" block — pre-filling beats warning.
 
 The Grille de test's `largeurs_defocus` objective (v1.87.0) exists to produce the missing pairing —
-measured width AND judged darkness, at the same defocus. `largeurs_foyer` cannot: a width measured
-at focus is rejected by the `z_offset > 0` filter. **Its feeds must stay SLOW (F200–2000, v1.87.2).**
+measured width AND judged darkness, at the same defocus. A width measured at FOCUS cannot feed this
+curve at all (the `z_offset > 0` filter rejects it), which is why Planche 1 — the focus-widths board
+— is irrelevant here. **Its feeds must stay SLOW (F200–2000, v1.87.2).**
 Defocused, the spot is ~4× wider, power density collapses, and an ISOLATED line stops marking well
 before the feeds where light tones live. Shipped first at F1000–4000 → **18 of 25 cells came out
 blank on beech**. The deeper consequence is physical, not a tooling gap: on this material, "feeds

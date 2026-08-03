@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.46.0"
+VERSION = "2.47.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4905,12 +4905,14 @@ CALIBRATION_JOURNEY = [
         # lettre finissait donc sans un seul ton exploitable par
         # `darkness_fluence_curve`, sans que rien ne le signale.
         "action": [
-            "choisis l'Objectif « Largeurs brûlées — grille au foyer » : ces "
-            "largeurs-là calent le remplissage, le bouton « Auto (½ point) » "
-            "des Hachures et le tramage « Lignes gravées »",
-            "puis l'Objectif « Largeurs brûlées — grille en défocus » : les "
-            "mêmes mesures au pied à coulisse, bec remonté -- c'est ce "
-            "niveau qui cale un remplissage large",
+            "grave la PLANCHE 1 (Assistant matériau) : ce sont ces "
+            "largeurs-là qui calent le remplissage, le bouton « Auto "
+            "(½ point) » des Hachures et le tramage « Lignes gravées ». "
+            "Son cadrage à la mesure est automatique, case après case",
+            "puis la PLANCHE 2, pour les mêmes mesures bec remonté -- c'est "
+            "ce niveau qui cale un remplissage large. Elle est cadrée "
+            "automatiquement elle aussi. L'Objectif « Largeurs brûlées — "
+            "grille en défocus » ne sert qu'à un défocus AUTRE que 15 ou 36",
             "puis l'Objectif « Noirceur — bande en balayage (photo "
             "calibrée) » : là on ne mesure plus, on JUGE la noirceur de "
             "chaque aplat. C'est ce "

@@ -11631,26 +11631,15 @@ class TaskPanelTestGrid:
             # 200/400/800/1500/3000, soit quatre vitesses sur cinq sans
             # aucune case où être saisies -- et F6000 ne marque plus depuis
             # le changement de lentille du 27 juil. 2026.
-            ("largeurs_foyer", {
-                "label": "Largeurs brûlées — grille au foyer",
-                "mode": 0,
-                "powers": sorted(_MesuresPlanchesControleur.POWERS),
-                "feeds": list(_MesuresPlanchesControleur.FEEDS_FOCUS),
-                # 2 mm entre traits, pour des traits ISOLÉS mesurables un
-                # par un. À 0,20 mm -- la valeur d'avant -- les cases lentes
-                # et puissantes sortaient en APLAT, où la largeur d'un trait
-                # ne se mesure pas, alors que c'est précisément ce que la
-                # note demande de faire.
-                # Pourquoi 2 et pas 1 : le hêtre et le MDF plafonnent à
-                # 0,30/0,34 mm au foyer, mais le SAPIN est mesuré à 1,00 mm
-                # (S1000/F400) -- un résineux brûle bien plus large. Un
-                # espacement calé sur les feuillus aurait rendu la planche
-                # illisible sur résineux, en silence.
-                "filltype": 0, "hatch_spacing": 2.0, "cell_size": 16.0,
-                "border": True,
-                "note": "Traits ISOLÉS au foyer, aux puissances et vitesses "
-                        "exactes de la grille de saisie ② : mesure la LARGEUR "
-                        "d'un trait au pied à coulisse, case par case."}),
+            # PAS d'objectif « largeurs au foyer » : la PLANCHE 1 le fait
+            # déjà, mieux. Retiré le 03/08/2026 après vérification chiffrée --
+            # il gravait EXACTEMENT la même grille (mêmes POWERS, mêmes
+            # FEEDS_FOCUS que la saisie ②, et donc que la planche 1), mais en
+            # cellules remplies : ~8 traits par case au lieu d'un, soit
+            # ~4500 mm brûlés contre 420 pour les mêmes 35 nombres. Et la
+            # planche 1 est CADRÉE AUTOMATIQUEMENT à la mesure, lui non.
+            # Deux planches pour une mesure, dont la plus chère était la
+            # moins bien outillée : c'est de l'empilement, pas un choix.
             ("largeurs_defocus", {
                 "label": "Largeurs brûlées — grille en défocus",
                 "powers": sorted(_MesuresPlanchesControleur.POWERS),
@@ -11668,9 +11657,21 @@ class TaskPanelTestGrid:
                 # F200/650/1100/1550/2000, dont trois puissances et quatre
                 # vitesses n'avaient aucune case de saisie.
                 "mode": 0,
-                "filltype": 0, "hatch_spacing": 3.0, "border": True,
+                # ANGLE 0 : les traits doivent être HORIZONTAUX. La mesure
+                # à la ligne moyenne les colonnes de l'image (profil_trait),
+                # donc un trait en diagonale ne se mesure pas -- et le
+                # panneau était à 45° par défaut, qu'aucun objectif ne
+                # pouvait corriger. Une planche gravée pour être mesurée
+                # doit l'être dans le sens où l'outil sait lire.
+                "filltype": 0, "hatch_spacing": 3.0, "hatch_angle": 0.0,
+                "border": True,
                 "cell_defocus": 15.0, "cell_size": 16.0,
-                "note": "Traits ISOLÉS en défocus 15 mm : l'espacement de 3 mm "
+                "note": "À n'utiliser que pour un défocus AUTRE que 15 ou 36 : "
+                        "à ces deux niveaux-là, la Planche 2 grave la même "
+                        "grille en traits simples et son cadrage de mesure est "
+                        "AUTOMATIQUE. Cet objectif existe parce que le défocus "
+                        "y est libre, pas parce qu'il ferait mieux.\n"
+                        "Traits ISOLÉS et HORIZONTAUX : l'espacement de 3 mm "
                         "dépasse largement le point élargi (~1,15 mm), donc "
                         "chaque trait se mesure seul au pied à coulisse.\n"
                         "Grave-la DEUX FOIS, en ne changeant que l'espacement "
@@ -11764,6 +11765,20 @@ class TaskPanelTestGrid:
             "remplissage) avec des réglages prêts à graver selon la donnée "
             "que tu veux obtenir. Tu peux ensuite ajuster à la main.")
         form.addRow("Objectif :", self.combo_recipe)
+
+        # Le renvoi vers les planches de calibration. Sans lui, quelqu'un
+        # qui cherche « les largeurs au foyer » dans cette liste ne trouve
+        # rien et bricole une grille à la main -- alors que la planche 1
+        # grave exactement cette mesure, en dix fois moins de brûlure, et
+        # que son cadrage à la mesure est automatique.
+        form.addRow(_WrapLabel(
+            "<i>Pour les <b>largeurs de trait</b>, préfère les <b>planches de "
+            "calibration</b> (Assistant matériau) : la Planche 1 couvre le "
+            "foyer et la Planche 2 les défocus 15 et 36 mm, avec les mêmes "
+            "puissances et vitesses que la saisie ② — et leur cadrage de "
+            "mesure est <b>automatique</b>. Les objectifs ci-dessus servent "
+            "à ce qu'elles ne savent pas faire : un défocus libre, une "
+            "noirceur en aplat, un essai de découpe.</i>"))
 
         self.lbl_recipe_note = _WrapLabel("")
         self.lbl_recipe_note.setVisible(False)
@@ -12604,6 +12619,14 @@ class TaskPanelTestGrid:
             self.combo_filltype.setCurrentIndex(r["filltype"])
         if "hatch_spacing" in r:
             self.spn_hatch_spacing.setValue(r["hatch_spacing"])
+        # L'ANGLE, que les objectifs de MESURE doivent pouvoir imposer.
+        # Il ne pouvait pas l'être, et le défaut du panneau est 45° : les
+        # traits sortaient en diagonale alors que `profil_trait` moyenne
+        # les COLONNES -- le trait doit être horizontal pour que la mesure
+        # à la ligne ait un sens. Une planche gravée à 45° n'est pas
+        # mesurable, ni à la main ni automatiquement.
+        if "hatch_angle" in r:
+            self.spn_hatch_angle.setValue(r["hatch_angle"])
         if "cell_size" in r:
             self.spn_cell_size.setValue(r["cell_size"])
         # Le défocus s'applique aux CELLULES SEULES, jamais en montant la

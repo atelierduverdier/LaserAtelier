@@ -110,18 +110,33 @@ burned S400/550/700/850/1000 × F200/650/1100/1550/2000 (3 powers and 4 feeds or
 had you burn a board and then refused its results.
 
 A recipe may now carry explicit `"powers"` / `"feeds"` lists (passed through to
-`build_test_grid_cells`, which uses them instead of the triplet), and **both width objectives derive
-theirs from `_MesuresPlanchesControleur.POWERS` / `FEEDS_FOCUS` / `FEEDS_DEFOCUS`** — the alignment
-is structural, not a coincidence to maintain. `_appliquer_paliers` locks the six range fields while
+`build_test_grid_cells`, which uses them instead of the triplet), and the width objective derives
+its own from `_MesuresPlanchesControleur.POWERS` / `FEEDS_DEFOCUS` — the alignment is structural,
+not a coincidence to maintain.
+
+**`largeurs_foyer` was REMOVED on 2026-08-03** — it engraved exactly the grid **Planche 1** already
+engraves (same `POWERS`, same `FEEDS_FOCUS`), but as filled cells: ~8 traces per cell instead of
+one, ~4500 mm burned against 420 for the same 35 numbers — and Planche 1 is the one with automatic
+framing at measuring time. Two boards for one measurement, the more expensive one worse tooled.
+`test_objectifs_grille` §2bis now freezes the Planche 1 ↔ ② alignment that only a comment used to
+guarantee. Don't re-add it: if focus widths need a board, that board is Planche 1.
+
+**A measuring objective must engrave HORIZONTAL traces** (`"hatch_angle": 0.0`, honoured by
+`_on_recipe_selected` since 2026-08-03). `profil_trait` averages the image's **columns**, so a
+diagonal trace is not measurable at all — and the panel's own default is 45°, which no objective
+could override until then. `_appliquer_paliers` locks the six range fields while
 such an objective is active and prints the exact values, because a range the job doesn't use is an
 interface that lies. Objectives judged by eye (`nuancier_clair`, `decoupe`) keep free ranges: nothing
 to align.
 
-Two things the fix's own test caught, both worth keeping in mind: `largeurs_foyer` burned at 0.20 mm
-hatch spacing while telling you to measure a single trace with a calliper (the slow/powerful cells
-came out as a **solid fill**); and the isolated-trace spacing must clear **1.00 mm**, not the 0.30 of
-beech — Sapin is measured at 1.00 mm at focus, softwoods burn far wider, and a spacing tuned on
-hardwoods would silently produce an unreadable board on resinous stock.
+Two things the fix's own test caught, both worth keeping in mind: the (now removed) `largeurs_foyer`
+burned at 0.20 mm hatch spacing while telling you to measure a single trace with a calliper (the
+slow/powerful cells came out as a **solid fill**); and the isolated-trace spacing must clear
+**1.00 mm**, not the 0.30 of beech — Sapin is measured at 1.00 mm at focus, softwoods burn far
+wider, and a spacing tuned on hardwoods would silently produce an unreadable board on resinous
+stock. Planche 1's 4 mm row gap clears it; `test_objectifs_grille` §4 checks each board against the
+widest burn measured **at its own regime**, never across regimes (the widest ever measured is
+3.72 mm, at 55 mm of defocus — comparing Planche 1's focus traces to that proves nothing).
 
 `_make_photo_section(form, cle_getter, titre)` — reusable "Photo du résultat": a dropdown of ALL
 photos for the current `cle_getter()` key (e.g. `"testgrid:MDF"`, `"defocus"`) + a clickable thumbnail

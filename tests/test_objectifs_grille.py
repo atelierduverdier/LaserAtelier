@@ -30,8 +30,12 @@ core, tp = h.core, h.tp
 sans_dialogues()
 G = tp._MesuresPlanchesControleur
 
+# Il n'y a plus d'objectif « largeurs au foyer » : la PLANCHE 1 grave
+# exactement cette grille, en traits simples et avec un cadrage de mesure
+# automatique, la ou l'objectif gravait ~8 traits par case pour les memes
+# 35 nombres. Retire le 03/08/2026. La propriete d'alignement n'est pas
+# perdue pour autant -- elle est verifiee sur la planche 1 en §2bis.
 CIBLES = {
-    "largeurs_foyer": (G.POWERS, G.FEEDS_FOCUS),
     "largeurs_defocus": (G.POWERS, G.FEEDS_DEFOCUS),
 }
 
@@ -83,41 +87,91 @@ for cle, (lignes, colonnes) in CIBLES.items():
     # Ce que l'ANCIENNE version aurait gravé, pour prouver que le contrôle
     # discrimine. Elle est conservée telle quelle dans ce test, puisque le
     # code ne la porte plus.
-    ancien = {"largeurs_foyer": (400.0, 6000.0, 5),
-              "largeurs_defocus": (200.0, 2000.0, 5)}[cle]
+    ancien = {"largeurs_defocus": (200.0, 2000.0, 5)}[cle]
     perdues = [f for f in paliers_lineaires(*ancien)
                if f not in [float(x) for x in colonnes]]
     assert perdues, ("l'ancienne plage n'orphelinait rien : ce contrôle ne "
                      "prouve plus rien", cle)
     print("      (l'ancienne plage gravait {} sans destination)".format(
         [round(f) for f in perdues]))
-print("2. les deux objectifs « largeurs » tombent pile sur la grille ② OK")
+print("2. l'objectif « largeurs en défocus » tombe pile sur la grille ② OK")
+
+# --- 2bis. La PLANCHE 1 porte desormais la mesure au foyer -------------
+# L'alignement etait garanti par un commentaire (« doit rester aligne sur
+# les feeds par defaut de generate_gcode_planche_focus ») et par rien
+# d'autre. Maintenant qu'elle est la SEULE planche des largeurs au foyer,
+# on le verifie.
+assert sorted(float(x) for x in core.PLANCHE_FOCUS_POWERS) == \
+       sorted(float(x) for x in G.POWERS), (
+    "la planche 1 ne grave plus les lignes de la saisie ②",
+    core.PLANCHE_FOCUS_POWERS, G.POWERS)
+assert sorted(float(x) for x in core.PLANCHE_FOCUS_FEEDS) == \
+       sorted(float(x) for x in G.FEEDS_FOCUS), (
+    "la planche 1 ne grave plus les colonnes de la saisie ②",
+    core.PLANCHE_FOCUS_FEEDS, G.FEEDS_FOCUS)
+print("2bis. la Planche 1 grave S{} x F{} = la grille ② au foyer OK".format(
+    sorted(int(x) for x in core.PLANCHE_FOCUS_POWERS),
+    sorted(int(x) for x in core.PLANCHE_FOCUS_FEEDS)))
 
 # --- 3. F6000 ne marque plus : il ne doit plus être gravé --------------
-idx = [i for i in range(p.combo_recipe.count())
-       if p.combo_recipe.itemData(i) == "largeurs_foyer"][0]
-p.combo_recipe.setCurrentIndex(idx)
-_m, _f, cellules, _dz = p._build_cells()
-assert not [c for c in cellules if float(c["feed"]) > 3000.0], (
-    "l'objectif au foyer grave encore au-delà de F3000, qui ne marque plus "
-    "depuis le changement de lentille")
+assert not [f for f in core.PLANCHE_FOCUS_FEEDS if float(f) > 3000.0], (
+    "la planche 1 grave encore au-delà de F3000, qui ne marque plus depuis "
+    "le changement de lentille du 27/07/2026", core.PLANCHE_FOCUS_FEEDS)
 print("3. plus aucune case au-delà de F3000 (lentille changée le 27/07/2026) OK")
 
-# --- 4. Au foyer, les traits doivent rester ISOLÉS ---------------------
+# --- 4. Les traits de MESURE doivent rester ISOLÉS ---------------------
 # Sinon on ne mesure pas la largeur d'un trait mais celle d'un aplat --
-# exactement ce que la note de l'objectif demande de faire.
-pas = recettes["largeurs_foyer"]["hatch_spacing"]
-plus_large = 0.0
-for mat in core.burn_width_materials():
-    for pt in core.load_burn_widths(mat).get("focus") or []:
-        plus_large = max(plus_large, float(pt.get("width", 0) or 0))
-assert plus_large > 0, "aucune largeur au foyer mesurée : contrôle impossible"
-assert pas > plus_large * 1.5, (
-    "l'espacement de l'objectif au foyer ({} mm) n'est pas assez grand "
-    "devant la brûlure la plus large jamais mesurée ({} mm) : les cases "
-    "sortiront en aplat".format(pas, plus_large))
-print("4. espacement au foyer {:.2f} mm contre {:.2f} mm de brûlure la plus "
-      "large mesurée : traits isolés OK".format(pas, plus_large))
+# exactement ce que la note demande de faire. La propriete vaut pour les
+# deux porteurs : l'entre-rangs de la planche 1, et l'espacement de
+# l'objectif en defocus.
+# CHAQUE PLANCHE SE COMPARE A SON PROPRE REGIME. Confondre les deux fait
+# tomber le controle sans rien apprendre : la brulure la plus large jamais
+# mesuree est 3,72 mm, relevee a 55 mm de defocus (planche 2b), alors que
+# la planche 1 grave AU FOYER ou le meme bois fait 0,10 a 1,00 mm.
+def plus_large_a(niveau, tol=core.SNAP_DEFOCUS_TOLERANCE_MM):
+    w = 0.0
+    for mat in core.burn_width_materials():
+        bw = core.load_burn_widths(mat)
+        pts = (bw.get("focus") or []) if niveau <= 0 else (bw.get("defocus") or [])
+        for pt in pts:
+            z = float(pt.get("z_offset", 0) or 0)
+            if niveau <= 0 or abs(z - niveau) <= tol:
+                w = max(w, float(pt.get("width", 0) or 0))
+    return w
+
+import inspect as _insp
+_row_gap = float(_insp.signature(
+    core.disposition_planche_focus).parameters["row_gap"].default)
+_dz_obj = recettes["largeurs_defocus"]["cell_defocus"]
+for nom, ecart, niveau in (
+        ("planche 1 (entre-rangs)", _row_gap, 0.0),
+        ("objectif défocus {:.0f}".format(_dz_obj),
+         recettes["largeurs_defocus"]["hatch_spacing"], _dz_obj)):
+    large = plus_large_a(niveau)
+    assert large > 0, ("aucune largeur mesurée à ce régime", nom)
+    assert ecart > large * 1.5, (
+        "{} : l'écart de {} mm n'est pas assez grand devant la brûlure la "
+        "plus large mesurée À CE RÉGIME ({} mm) -- les traits se toucheront "
+        "et il n'y aura plus de largeur à mesurer".format(nom, ecart, large))
+    print("4. {:<24} écart {:.2f} mm contre {:.2f} mm de brûlure la plus "
+          "large à ce régime : traits isolés OK".format(nom, ecart, large))
+
+# --- 4bis. Un objectif de MESURE grave des traits HORIZONTAUX ----------
+# `profil_trait` moyenne les COLONNES de l'image : le trait doit etre
+# horizontal, sinon la moyenne traverse du bois nu et la largeur lue n'a
+# aucun sens. Le panneau est a 45 deg par defaut, et jusqu'au 03/08/2026
+# aucun objectif ne pouvait imposer l'angle -- la planche sortait en
+# diagonale, ni mesurable a la main ni cadrable automatiquement.
+assert recettes["largeurs_defocus"].get("hatch_angle") == 0.0, (
+    "l'objectif de mesure ne force pas l'angle a 0 : ses traits sortiront "
+    "en diagonale et ne seront pas mesurables",
+    recettes["largeurs_defocus"].get("hatch_angle"))
+_i = [i for i in range(p.combo_recipe.count())
+      if p.combo_recipe.itemData(i) == "largeurs_defocus"][0]
+p.combo_recipe.setCurrentIndex(_i)
+assert abs(p.spn_hatch_angle.value()) < 1e-9, (
+    "l'angle du panneau n'a pas suivi la recette", p.spn_hatch_angle.value())
+print("4bis. l'objectif de mesure impose des traits HORIZONTAUX (0 deg) OK")
 
 # --- 5. Les champs de plage sont verrouillés, et libérés ensuite -------
 # Une plage affichée que le job n'utilise pas serait une interface qui ment.
@@ -126,7 +180,11 @@ assert all(not c.isEnabled() for c in p._champs_plages), (
     "paliers")
 assert not p.lbl_paliers.isHidden(), "les paliers gravés ne sont pas affichés"
 affiche = texte(p.lbl_paliers.text())
-for f in G.FEEDS_FOCUS:
+# Les vitesses de l'objectif SELECTIONNE (defocus depuis le 03/08/2026,
+# l'objectif au foyer ayant ete retire au profit de la planche 1) -- pas
+# une liste ecrite en dur, qui rendrait ce controle faux au premier
+# changement d'objectif.
+for f in G.FEEDS_DEFOCUS:
     assert str(int(f)) in affiche, ("vitesse absente de l'affichage", f, affiche)
 p.combo_recipe.setCurrentIndex(0)          # — (réglages manuels) —
 assert all(c.isEnabled() for c in p._champs_plages), (
@@ -237,17 +295,32 @@ assert cites, "le parcours ne cite plus aucun objectif"
 # Tout objectif cité doit exister : c'est garanti par construction
 # ci-dessus. L'inverse est le vrai contrôle -- les objectifs de MESURE
 # doivent tous être dans le parcours, sinon on grave sans savoir pourquoi.
-mesure = {"largeurs_foyer", "largeurs_defocus", "noirceur_balayage"}
+mesure = {"largeurs_defocus", "noirceur_balayage"}
 manquants = [cle for cle in mesure
              if dict(p._recipes)[cle]["label"] not in cites]
 assert not manquants, (
     "des objectifs de mesure ne sont dans AUCUNE étape du parcours : un "
     "atelier qui suit le guide à la lettre finira sans ces données",
     manquants)
-print("10. le parcours ★ cite les {} objectifs de mesure, tous existants "
-      "OK".format(len(mesure)))
-
-print("\nTOUS LES TESTS objectifs_grille PASSENT")
+# ET L'INVERSE, qui manquait : le parcours ne doit citer AUCUN objectif
+# disparu. Le 03/08/2026 il envoyait encore choisir « Largeurs brûlées —
+# grille au foyer », retire le matin meme -- un atelier qui suit le guide
+# cherchait dans la liste une entree qui n'y est plus. Le controle
+# existant ne pouvait pas le voir : il ne regarde que les objectifs
+# PRESENTS. On cherche donc la forme « Objectif « ... » » dans le texte,
+# et on exige que chaque nom cite ainsi existe.
+import re as _re_j
+_cites_nommes = set()
+for etape in core.CALIBRATION_JOURNEY:
+    for action in etape["action"]:
+        for m in _re_j.finditer("Objectif\s*«\s*([^»]+?)\s*»", action):
+            _cites_nommes.add(m.group(1))
+_fantomes = sorted(n for n in _cites_nommes if n not in libelles)
+assert not _fantomes, (
+    "le parcours envoie choisir un Objectif qui n'existe pas dans la liste",
+    _fantomes, sorted(libelles))
+print("10. le parcours ★ cite les {} objectifs de mesure, et aucun fantôme "
+      "({} nom(s) vérifié(s)) OK".format(len(mesure), len(_cites_nommes)))
 
 # --- La zone F800-F1500 doit être MESURABLE ----------------------------
 # Il n'y avait rien entre 800 et 1500, et c'est exactement là que le
@@ -272,3 +345,5 @@ assert not _manque, ("la Planche 1 ne grave pas toutes les colonnes de ②",
 print("Zone F800-F1500 : {} vitesses intérieures ({}), gravées par la "
       "Planche 1 et saisissables en ② OK".format(
           len(interieurs), interieurs))
+
+print("\nTOUS LES TESTS objectifs_grille PASSENT")
