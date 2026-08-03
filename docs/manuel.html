@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.59.0</span><br>
+      <span class="ver">Version 2.59.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.59.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.59.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -740,6 +740,9 @@
     <p><b>Et le champ «&nbsp;Sous le seuil&nbsp;» disparaît en fuseau</b>, parce qu'il n'y sert à rien&nbsp;: seul le générateur en rangées lit ce réglage. Il restait affiché, et Christophe l'avait mis sur «&nbsp;Pointillé dégressif&nbsp;» en croyant l'obtenir — sous son seuil il aura du bois nu. Un contrôle visible qui ne fait rien est un contrôle qui ment.</p>
     <p><b>Le fuseau marche aussi en RANGÉES, et il gagne un ANGLE (v2.59.0).</b> Le matin même j'avais écarté les rangées au motif que le Z aurait un demi-tour à rattraper à chaque bout&nbsp;; la gravure de Christophe a périmé l'objection — au pas 0,50 la course du Z n'est que de 2,5&nbsp;mm, le demi-tour ne coûte donc presque rien. Tout est partagé avec la spirale (même échelle hauteur/puissance, même échantillonnage, même rabotage de pente, même avance rapide sur bois nu)&nbsp;: seul le CHEMIN change. Le demi-tour est volontairement <em>dans</em> la liste de points, pour que le rabotage le voie — c'est là que le Z a le plus d'écart à rattraper, deux rangées voisines pouvant réclamer des hauteurs opposées à un pas de distance.</p>
     <p><b>L'angle tourne la TRAJECTOIRE, pas seulement l'image.</b> Tourner l'image seule grave le sujet <em>penché</em> avec des lignes droites — l'exact contraire de ce qu'on veut, constaté sur l'aperçu avant correction. Le bon couple&nbsp;: on échantillonne l'image tournée de −θ (les rangées horizontales y traversent le sujet à +θ), <em>puis</em> on tourne la trajectoire de +θ. Le sujet revient droit, les lignes restent à θ. Le cadrage suit la boîte tournée, et le rectangle gravé grandit — 50×76 → 116×119&nbsp;mm à 30° — donc la largeur demandée est agrandie d'autant pour que le <b>sujet</b> garde sa taille. Réservé aux deux fuseaux&nbsp;: les trois autres tramages en balayage passent par un émetteur horizontal par construction.</p>
+    <p><b>Le noir doit rester fait de LIGNES — «&nbsp;couverture maxi&nbsp;» (v2.59.1).</b> Christophe, sa deuxième gravure en main&nbsp;: «&nbsp;c'est encore un peu trop&nbsp;» — pour une énergie de <b>5,14</b>, déjà <em>sous</em> son repère de noir franc à 6,4. Ce qu'il voyait n'était pas de la puissance mais de la <b>couverture</b>&nbsp;: au pas 0,50 le trait le plus épais valait 0,50 aussi, donc les tours se touchaient et le noir perdait toute structure de ligne (cheveux et veste en aplats, quand la joue montrait encore ses traits).</p>
+    <p><b>Et baisser la puissance n'y change rien</b>, ce qui rend ce réglage nécessaire&nbsp;: mesuré de S1000 à S400, la couverture reste à 100&nbsp;% — tant que la brûlure <em>mesurée</em> dépasse le pas (3,14&nbsp;mm contre 0,50 sur son hêtre), c'est le PAS qui plafonne le trait, jamais S. Le champ «&nbsp;Couverture maxi du noir&nbsp;» descend ce plafond sous le pas&nbsp;: à 85&nbsp;% les noirs gardent 15&nbsp;% de bois entre les tours et restent faits de traits, le rendu taille-douce. Le défaut (100&nbsp;%) reproduit l'ancien fichier au bit près. Le verdict annonce la couverture obtenue et, à 100&nbsp;%, dit explicitement que tourner le bouton de puissance ne servirait à rien.</p>
+    <p><i>À noter&nbsp;:</i> les repères 6,4 / 13,2 ont été relevés sur le tramage en <em>rangées</em>, au foyer, avec des traits de 0,2&nbsp;mm. Trois planches disent maintenant que la cible utile est plus basse sous le fuseau.</p>
     <p><b>Et mettre le seuil blanc à 0.</b> Le seuil coupe le faisceau dans les clairs, ce qui hache la spirale en pointillés — l'inverse du rendu visé, où le trait ne se coupe JAMAIS et où les clairs sont simplement fins. C'est l'intention d'origine du mode («&nbsp;jamais de bois nu&nbsp;»), et ici c'est la bonne.</p>
     <p><b>Vérifie le dégagement</b>&nbsp;: la course annoncée par le verdict, au-dessus de la pièce, plus la hauteur de bec. Le verdict le rappelle au-delà de 40&nbsp;mm — ce qui n'arrive plus qu'aux pas très larges.</p>
     <p><b>Huitième tramage : la SPIRALE (v2.52.0).</b> « Lignes gravées » enroulé&nbsp;: un trait <b>unique</b> du centre au bord, dont l'épaisseur rend le gris. Mêmes réglages, mêmes paliers, même physique que le tramage en rangées — seul le <em>chemin</em> change. Son intérêt propre&nbsp;: <b>aucun demi-tour</b>, là où les rangées en font un par ligne.</p>
@@ -1180,7 +1183,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.59.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.59.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

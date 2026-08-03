@@ -290,6 +290,19 @@ Four things hold it together:
   you switch from spiral to rows. Four suites went red on that alone: any test about the
   power-modulated behaviour must uncheck it explicitly, exactly like the power ceiling
   (*"un test ne doit pas dépendre de ce qu'il a réglé hier"*).
+- **`couverture_max` — the black must stay made of LINES** (v2.59.1). Christophe, second engraving in
+  hand: *"c'est encore un peu trop"* — at an energy of **5.14**, already BELOW his 6.4 solid-black
+  anchor. What he was seeing was not power but **coverage**: at pitch 0.50 the thickest trace was
+  0.50 too, so neighbouring turns touched and the black lost every trace of line structure (hair and
+  jacket flat, while the cheek still showed its strokes). **Lowering S does not fix it** — measured
+  from S1000 down to S400, coverage stays at 100 %, because as long as the *measured* burn exceeds
+  the pitch (3.14 mm against 0.50 on his beech) it is the PITCH that caps the trace, never the power.
+  So a dedicated control was the only way. `largeur_max = pitch × couverture_max`, default 1.0 which
+  reproduces the previous output bit for bit. At 85 % the blacks keep 15 % of bare wood between turns
+  — the copperplate look he was after. The verdict states the coverage obtained, and at 100 % says
+  explicitly that turning the power down would change nothing.
+  **Note the anchors do not govern this regime**: 6.4 / 13.2 were measured on rows at focus with
+  0.2 mm traces. Three boards now say the useful target under the spindle is lower.
 - **`white_threshold = 0` for this look.** The threshold cuts the beam in the lights, which breaks the
   spiral into dashes — the opposite of the reference, where the line never breaks and the lights are
   merely thin. It is the original "jamais de bois nu" intent, and here it is the right one.

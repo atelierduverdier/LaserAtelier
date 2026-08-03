@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.59.0"
+VERSION = "2.59.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9082,7 +9082,7 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
                       line_min_mm=0.10, pre_gcode="", post_gcode="",
                       frame_only=False, quiet=False, white_threshold=0.0,
                       power_max=None, pas_arc_mm=None, cellule_mm=None,
-                      angle_trame=0.0):
+                      angle_trame=0.0, couverture_max=1.0):
     """Spirale dont la largeur vient de la HAUTEUR, pas de la puissance.
 
     Le trait est un fuseau CONTINU : la tête se lève progressivement et le
@@ -9112,8 +9112,19 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
     w = len(darkness_rows[0]) if h else 0
     # LE PAS PLAFONNE LE FUSEAU : au-delà, les tours voisins se recouvrent
     # et le noir n'est plus un fuseau mais un aplat repassé.
-    ech = echelle_fuseau_z(material, feed, power_max=power_max,
-                           line_min_mm=line_min_mm, largeur_max=pitch)
+    #
+    # `couverture_max` descend ce plafond SOUS le pas. À 100 % (défaut) les
+    # tours se touchent exactement au plus noir : la couverture est pleine,
+    # et le noir n'a plus aucune structure de ligne -- c'est ce que
+    # Christophe a vu sur sa gravure du 03/08/2026, cheveux et veste en
+    # aplats alors que la joue montrait encore ses traits. Il l'avait pris
+    # pour un excès de puissance ; baisser S n'y change pourtant RIEN, car
+    # tant que la brûlure mesurée dépasse le pas c'est le pas qui plafonne.
+    # À 85 %, les noirs gardent 15 % de bois entre les tours et restent
+    # faits de traits : le rendu taille-douce.
+    ech = echelle_fuseau_z(
+        material, feed, power_max=power_max, line_min_mm=line_min_mm,
+        largeur_max=pitch * max(0.05, min(1.0, float(couverture_max))))
     if ech is None:
         if not quiet:
             FreeCAD.Console.PrintWarning(
@@ -9286,7 +9297,7 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
                                  white_threshold=0.0, power_max=None,
                                  pas_arc_mm=None, defocus=0.0,
                                  fuseau_z=False, cellule_mm=None,
-                                 angle_trame=0.0):
+                                 angle_trame=0.0, couverture_max=1.0):
     """Photo en SPIRALE : un trait unique du centre au bord, dont
     l'ÉPAISSEUR rend le gris -- le principe de « Lignes gravées », enroulé.
 
@@ -9326,7 +9337,7 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
             post_gcode=post_gcode, frame_only=frame_only, quiet=quiet,
             white_threshold=white_threshold, power_max=power_max,
             pas_arc_mm=pas_arc_mm, cellule_mm=cellule_mm,
-            angle_trame=angle_trame)
+            angle_trame=angle_trame, couverture_max=couverture_max)
     niveaux = swell_power_levels(material, feed, line_min_mm,
                                  power_max=power_max, defocus=defocus)
     if niveaux is None:
@@ -9495,7 +9506,7 @@ def _rangees_fuseau_z(darkness_rows, pitch, z_work, feed, material,
                       line_min_mm=0.10, pre_gcode="", post_gcode="",
                       frame_only=False, quiet=False, white_threshold=0.0,
                       power_max=None, cellule_mm=None, pas_arc_mm=None,
-                      angle_trame=0.0):
+                      angle_trame=0.0, couverture_max=1.0):
     """Rangées horizontales dont la largeur vient de la HAUTEUR.
 
     Le fuseau de la spirale, déroulé en lignes. Christophe, 03/08/2026 :
@@ -9510,8 +9521,9 @@ def _rangees_fuseau_z(darkness_rows, pitch, z_work, feed, material,
     CHEMIN change -- c'est la même règle que pour la spirale à puissance."""
     h = len(darkness_rows)
     w = len(darkness_rows[0]) if h else 0
-    ech = echelle_fuseau_z(material, feed, power_max=power_max,
-                           line_min_mm=line_min_mm, largeur_max=pitch)
+    ech = echelle_fuseau_z(
+        material, feed, power_max=power_max, line_min_mm=line_min_mm,
+        largeur_max=pitch * max(0.05, min(1.0, float(couverture_max))))
     if ech is None:
         if not quiet:
             FreeCAD.Console.PrintWarning(
@@ -9650,7 +9662,8 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
                                      white_threshold=0.0, fond_clair="nu",
                                      power_max=None, defocus=0.0,
                                      fuseau_z=False, cellule_mm=None,
-                                     pas_arc_mm=None, angle_trame=0.0):
+                                     pas_arc_mm=None, angle_trame=0.0,
+                                     couverture_max=1.0):
     """Photo en LIGNES GRAVÉES : chaque ligne est balayée en continu au
     FOYER, et c'est l'ÉPAISSEUR du trait qui rend le gris -- fin dans les
     clairs, épais dans les foncés, comme une gravure sur cuivre. Aucun
@@ -9685,7 +9698,7 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
             post_gcode=post_gcode, frame_only=frame_only, quiet=quiet,
             white_threshold=white_threshold, power_max=power_max,
             cellule_mm=cellule_mm, pas_arc_mm=pas_arc_mm,
-            angle_trame=angle_trame)
+            angle_trame=angle_trame, couverture_max=couverture_max)
     niveaux = swell_power_levels(material, feed, line_min_mm,
                                  power_max=power_max, defocus=defocus)
     if niveaux is None:

@@ -555,3 +555,80 @@ assert min(p[0] for p in _q16) > -1e-6 and min(p[1] for p in _q16) > -1e-6, (
 print("16. angle : chemin tourné (boîte {:.0f}x{:.0f} -> {:.0f}x{:.0f} mm), "
       "distances conservées, recalé au zéro OK".format(
           _bx0, _by0, _bx45, _by45))
+
+# --- 17. La COUVERTURE MAXI, et pourquoi la puissance ne la remplace pas -
+# Christophe, 03/08/2026, sa gravure en main : « c'est encore un peu trop ».
+# Son énergie valait pourtant 5,14, SOUS son repère de noir franc (6,4). Ce
+# qu'il voyait n'était pas de la puissance mais de la COUVERTURE : au pas
+# 0,50 le trait le plus épais valait 0,50 aussi, donc les tours se
+# touchaient et le noir n'avait plus aucune structure de ligne.
+#
+# Le piège, et la raison d'être de ce réglage : BAISSER LA PUISSANCE N'Y
+# CHANGE RIEN. Tant que la brûlure mesurée dépasse le pas, c'est le pas qui
+# plafonne le trait, jamais S.
+_PAS17 = 0.50
+_couvs = {}
+for _s17 in (core.S_MAX, 0.7 * core.S_MAX, 0.4 * core.S_MAX):
+    _e17 = core.echelle_fuseau_z(MAT, 350.0, power_max=_s17,
+                                 line_min_mm=0.10, largeur_max=_PAS17)
+    assert _e17 is not None, _s17
+    _couvs[_s17] = _e17[2] / _PAS17
+assert all(abs(c - 1.0) < 1e-6 for c in _couvs.values()), (
+    "la puissance change la couverture : le plafond au pas ne joue plus",
+    _couvs)
+# ... alors que la couverture, elle, la commande directement.
+for _c17 in (1.0, 0.85, 0.6):
+    _e17 = core.echelle_fuseau_z(MAT, 350.0, power_max=core.S_MAX,
+                                 line_min_mm=0.10,
+                                 largeur_max=_PAS17 * _c17)
+    assert abs(_e17[2] / _PAS17 - _c17) < 1e-6, (
+        "la couverture demandée n'est pas celle obtenue", _c17,
+        _e17[2] / _PAS17)
+# Et le G-code la respecte : le trait le plus épais doit laisser du bois.
+_g17 = core.generate_gcode_photo_spirale(
+    _rows15, _PAS17, core.Z_WORK_MM, 350.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, fuseau_z=True, quiet=True, couverture_max=0.85)
+# La ligne « Trait ... par la HAUTEUR » porte la largeur maxi : on la
+# cherche par son texte, pas par son RANG -- l'en-tête gagne des lignes.
+_l17 = [_l for _l in _g17.split("\n") if "par la HAUTEUR" in _l]
+assert _l17 and "0.42" in _l17[0], (_l17 or ["(ligne absente)"])[0]
+# Le défaut (100 %) reproduit l'ancien rendu au bit près : un fichier gravé
+# avant ce réglage doit rester reproductible.
+_a17 = core.generate_gcode_photo_spirale(
+    _rows15, _PAS17, core.Z_WORK_MM, 350.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, fuseau_z=True, quiet=True)
+_b17 = core.generate_gcode_photo_spirale(
+    _rows15, _PAS17, core.Z_WORK_MM, 350.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, fuseau_z=True, quiet=True, couverture_max=1.0)
+assert _a17 == _b17, "le défaut 100 % ne reproduit pas l'ancien comportement"
+print("17. couverture : commandée par le réglage, INSENSIBLE à la puissance "
+      "(100 % à S{:.0f} comme à S{:.0f}), défaut reproductible OK".format(
+          core.S_MAX, 0.4 * core.S_MAX))
+
+# --- 18. Le verdict dit la couverture, et alerte à 100 % ----------------
+_p18 = tp.TaskPanelHalftone()
+_m18 = [_p18.combo_photo_mat.itemText(i)
+        for i in range(_p18.combo_photo_mat.count())]
+if MAT in _m18:
+    _p18.combo_photo_mat.setCurrentIndex(_m18.index(MAT))
+_p18.combo_mode.setCurrentIndex(
+    [i for i, t in enumerate(tp._TRAMAGES) if t["cle"] == "spirale"][0])
+_p18.chk_fuseau_z.setChecked(True)
+_p18.spn_line_min.setValue(0.10)
+_p18.spn_power_max.setValue(core.S_MAX)
+_p18.spn_pitch.setValue(_PAS17)
+_p18.spn_line_feed.setValue(350.0)
+for _c18, _alerte in ((100.0, True), (85.0, False)):
+    _p18.spn_couverture.setValue(_c18)
+    _p18._maj_regime()
+    _v18 = texte(_p18.lbl_regime)
+    assert "couvre {:.0f} %".format(_c18) in _v18, (_c18, _v18[:200])
+    assert ("aplat sans trait" in _v18) == _alerte, (
+        "à {:.0f} % l'alerte « aplat » devrait être {}".format(
+            _c18, "présente" if _alerte else "absente"), _v18[:240])
+    if _alerte:
+        # ... et elle doit dire que baisser S ne sert à rien, sinon
+        # l'utilisateur va tourner le bouton de puissance pour rien.
+        assert "pas qui plafonne" in _v18, _v18[:240]
+print("18. verdict : couverture annoncée, alerte « aplat » à 100 % seulement "
+      "OK")

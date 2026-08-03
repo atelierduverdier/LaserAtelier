@@ -10450,6 +10450,36 @@ class TaskPanelHalftone:
             "par mm² et sort pâle.")
         form.addRow(self.chk_fuseau_z)
 
+        # LA COUVERTURE MAXI DU NOIR. À 100 %, le trait le plus épais vaut
+        # exactement le pas : au plus noir, les tours se touchent et il ne
+        # reste aucune structure de ligne. Christophe l'a vu sur sa gravure
+        # du 03/08/2026 -- cheveux et veste en aplats quand la joue montrait
+        # encore ses traits -- et l'a pris pour un excès de puissance.
+        #
+        # Ce n'en était pas un, et c'est ce qui rend ce réglage nécessaire :
+        # baisser S ne change RIEN à la couverture. Tant que la brûlure
+        # mesurée dépasse le pas (3,14 mm contre 0,50 sur son hêtre), c'est
+        # le PAS qui plafonne le trait, pas la puissance -- vérifié de S900
+        # à S350, couverture 100 % dans les quatre cas.
+        self.spn_couverture = QtWidgets.QDoubleSpinBox()
+        self.spn_couverture.setRange(20.0, 100.0)
+        self.spn_couverture.setDecimals(0)
+        self.spn_couverture.setSingleStep(5.0)
+        self.spn_couverture.setValue(100.0)
+        self.spn_couverture.setSuffix(" %")
+        self.spn_couverture.setToolTip(
+            "Part du pas que remplit le trait le plus ÉPAIS.\n"
+            "\n"
+            "À 100 % les tours se touchent au plus noir : l'aplat est plein\n"
+            "et le noir perd toute structure de ligne. En dessous, il reste\n"
+            "du bois entre les tours et le noir reste fait de traits --\n"
+            "le rendu taille-douce. 85 % est un bon point de départ.\n"
+            "\n"
+            "C'est le SEUL réglage qui agit sur la couverture : baisser la\n"
+            "puissance réduit l'énergie mais pas la largeur, car tant que la\n"
+            "brûlure mesurée dépasse le pas, c'est le pas qui plafonne.")
+        form.addRow("Couverture maxi du noir :", self.spn_couverture)
+
         # Le pendant HAUT de « épaisseur mini ». La table des largeurs ne
         # connaît que la largeur, jamais la PROFONDEUR : à pleine puissance
         # le trait fait bien la largeur annoncée, mais il peut creuser et
@@ -10617,6 +10647,7 @@ class TaskPanelHalftone:
             # c'est-à-dire les deux fuseaux. Les autres passent par
             # `_emit_raster_rows`, horizontal par construction.
             _set_row_visible(form, self.spn_angle_trame, fuseau)
+            _set_row_visible(form, self.spn_couverture, fuseau)
             # Une hauteur FIXE et un fuseau qui balaie la hauteur sont deux
             # réponses à la même question : n'en montrer qu'une.
             _set_row_visible(form, self.combo_dz_trait,
@@ -10775,6 +10806,7 @@ class TaskPanelHalftone:
             "dz_trait": self.combo_dz_trait,
             "fuseau_z": self.chk_fuseau_z,
             "angle_trame": self.spn_angle_trame,
+            "couverture": self.spn_couverture,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -10800,6 +10832,8 @@ class TaskPanelHalftone:
             lambda _i: self._update_grid_info())
         self.chk_fuseau_z.toggled.connect(lambda _v: self._update_grid_info())
         self.spn_angle_trame.valueChanged.connect(
+            lambda _v: self._update_grid_info())
+        self.spn_couverture.valueChanged.connect(
             lambda _v: self._update_grid_info())
         self.combo_rotation.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.chk_invert.toggled.connect(lambda _v: self._update_grid_info())
@@ -11117,7 +11151,7 @@ class TaskPanelHalftone:
                 ech = core.echelle_fuseau_z(
                     material, feed_l, power_max=self.spn_power_max.value(),
                     line_min_mm=self.spn_line_min.value(),
-                    largeur_max=pitch)
+                    largeur_max=pitch * self.spn_couverture.value() / 100.0)
                 if ech is None:
                     return None, ("aucun niveau de défocus mesuré pour "
                                   "« {} » : le fuseau n'a rien pour se "
@@ -11530,7 +11564,8 @@ class TaskPanelHalftone:
                 power_max=self.spn_power_max.value(),
                 defocus=self._dz_trait(), fuseau_z=self._fuseau_z(),
                 cellule_mm=self._cellule_fuseau(),
-                angle_trame=self.spn_angle_trame.value(), **extra)
+                angle_trame=self.spn_angle_trame.value(),
+                couverture_max=self.spn_couverture.value() / 100.0, **extra)
         if cle == "spirale":
             # Même famille que « enfle » : mêmes réglages, même table de
             # largeurs mesurées. Le fond pointillé n'existe pas ici (il se
@@ -11546,7 +11581,8 @@ class TaskPanelHalftone:
                 power_max=self.spn_power_max.value(),
                 defocus=self._dz_trait(), fuseau_z=self._fuseau_z(),
                 cellule_mm=self._cellule_fuseau(),
-                angle_trame=self.spn_angle_trame.value(), **extra)
+                angle_trame=self.spn_angle_trame.value(),
+                couverture_max=self.spn_couverture.value() / 100.0, **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame
         # de points, silencieusement -- du G-code valide pour le mauvais
@@ -11958,10 +11994,10 @@ class TaskPanelHalftone:
         Ce qui décide ici, c'est la COURSE du Z et la vitesse de l'axe.
 
         Renvoie (ok, bouton), comme les autres verdicts."""
-        ech = core.echelle_fuseau_z(mat, feed,
-                                    power_max=self.spn_power_max.value(),
-                                    line_min_mm=self.spn_line_min.value(),
-                                    largeur_max=pas)
+        ech = core.echelle_fuseau_z(
+            mat, feed, power_max=self.spn_power_max.value(),
+            line_min_mm=self.spn_line_min.value(),
+            largeur_max=pas * self.spn_couverture.value() / 100.0)
         if ech is None:
             msgs.append(
                 "Aucun niveau de défocus mesuré pour ce matériau : le "
@@ -11971,11 +12007,22 @@ class TaskPanelHalftone:
         table, w_min, w_max, avert = ech
         course = table[-1][0] - table[0][0]
         mini = core.longueur_mini_fuseau(feed, course)
+        # LA COUVERTURE EST DITE, parce que c'est elle qui décide si le
+        # noir garde ses traits ou devient un aplat -- et que Christophe
+        # l'avait prise pour un excès de puissance.
         msgs.append(
             "Fuseau <b>{:.2f} → {:.2f} mm</b> à F{:.0f} : la tête monte de "
-            "<b>{:.0f} mm</b> et la puissance suit de S{:.0f} à S{:.0f} "
-            "pour garder la teinte.".format(
-                w_min, w_max, feed, course, table[0][1], table[-1][1]))
+            "<b>{:.0f} mm</b>, la puissance suit de S{:.0f} à S{:.0f} pour "
+            "garder la teinte, et le noir couvre <b>{:.0f} %</b> du pas."
+            .format(w_min, w_max, feed, course, table[0][1], table[-1][1],
+                    100.0 * w_max / pas))
+        if w_max >= pas - 1e-6:
+            msgs.append(
+                "À 100 % les tours se touchent : le noir sera un <b>aplat "
+                "sans trait</b>. Baisser la puissance n'y changerait rien — "
+                "c'est le pas qui plafonne le trait, pas S. Pour un noir "
+                "qui reste fait de lignes, descends «&nbsp;couverture maxi"
+                "&nbsp;» vers 85 %.")
         # LE CHIFFRE QUI DÉCIDE DU RENDU. L'axe Z fait Z_MAX_FEED_MM_MIN ;
         # au-delà LinuxCNC ralentit tout le mouvement pour qu'il suive, ce
         # qui change le temps de pose donc la noirceur, sans rien dire. Le
