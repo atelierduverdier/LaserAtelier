@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.47.0</span><br>
+      <span class="ver">Version 2.48.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.47.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.48.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -956,6 +956,14 @@
     <p>Le bouton « <b>Choisir dans le nuancier…</b> » montre cette même liste en <strong>pastilles cliquables</strong> plutôt qu'en lignes de texte : chaque disque est teinté par la noirceur mesurée du réglage, sous les mêmes titres de groupe. On compare des nuances à l'œil, comme sur la planche gravée, au lieu de lire des nombres. Cliquer une pastille applique son réglage, exactement comme la liste — c'est la même liste montrée autrement, pas une seconde source qui pourrait diverger.</p>
     <p>Une pastille <strong>hachurée</strong> vient de la grille de largeurs brûlées : sa largeur est mesurée mais sa noirceur n'a jamais été jugée, et lui inventer un gris la ferait passer pour une mesure. Sa légende affiche alors la largeur qu'on connaît, plutôt qu'un «&nbsp;--&nbsp;%&nbsp;» inutile.</p>
     <p><b>Une planche par bande de noirceur (v2.45.0).</b> Un nuancier fourni fait une planche encombrante où les tons utiles se noient. Le menu «&nbsp;<b>Tons à graver</b>&nbsp;» de la section ② grave <em>une bande</em> — très clairs, clairs, moyens, foncés — avec le compte de tons affiché pour chacune, et l'encombrement recalculé en direct&nbsp;: on grave la tranche qu'on cherche sur une petite chute, pas les 47&nbsp;tons.</p>
+    <p><b>L'atelier relu en débutant (v2.48.0).</b> Cinq changements sortis d'une relecture complète, en se mettant à la place de quelqu'un qui vient d'installer l'atelier&nbsp;:</p>
+    <ul>
+      <li><b>Les captures du manuel et du site étaient fausses.</b> Le rendu hors écran ne trouvait pas les polices du système et retombait sur une police sans les <b>chiffres cerclés</b>&nbsp;: chaque image affichait «&nbsp;@ Entrer les mesures&nbsp;» au lieu de «&nbsp;①&nbsp;Entrer les mesures&nbsp;», et le cadenas des mesures verrouillées disparaissait aussi. Toute la convention ①②③ — l'ossature du mode d'emploi — était donc invisible pour qui découvre l'atelier par la documentation. Depuis la v2.13.2. Les vingt captures sont régénérées.</li>
+      <li><b>Le menu range désormais par ordre d'apprentissage</b> (calibration d'abord, modes de travail ensuite), alors que la <b>barre d'outils</b> reste rangée par tâche. Le Guide dit «&nbsp;CALIBRER (une fois)&nbsp;» pendant que les sept icônes de calibration arrivaient derrière douze boutons inutilisables tant que rien n'est mesuré. Deux publics, deux ordres&nbsp;: on ne fait plus payer tous les jours à celui qui sait ce qui n'aide qu'à la première heure.</li>
+      <li><b>Un atelier vierge le dit.</b> Les six modes de travail affichent un bandeau «&nbsp;rien n'est encore mesuré&nbsp;» qui renvoie au Guide — et qui <b>disparaît pour toujours</b> dès qu'un seul matériau porte une mesure. Le seul signal, jusqu'ici, était un discret «&nbsp;— (aucune mesure) —&nbsp;» au fond d'un menu déroulant.</li>
+      <li><b>L'étape ★3 s'affiche là où l'on travaille.</b> Elle était accrochée à la Grille de test, qui ne grave plus les planches de largeurs&nbsp;; le bandeau «&nbsp;★ Étape 3/4&nbsp;» vivait donc sur un panneau que le texte de l'étape n'utilise plus, pendant que l'<b>Assistant matériau</b> — où l'on va réellement — n'en portait aucun.</li>
+      <li><b>Moins de numérotations concurrentes.</b> Le flux de travail était numéroté 1→6 en toutes lettres à côté du schéma qui porte déjà la même suite, des ★1-4 de la calibration et des ①②③ des panneaux&nbsp;: quatre systèmes pour une seule progression. Le texte garde les <em>verbes</em>, les numéros restent à la calibration et aux étapes internes d'un panneau. Et la section «&nbsp;Photo du résultat&nbsp;» s'ouvre repliée tant qu'il n'y a aucune photo — vide, elle occupait la moitié du panneau, précisément à la première ouverture.</li>
+    </ul>
     <p><b>Une planche de moins à graver (v2.47.0).</b> L'objectif «&nbsp;Largeurs brûlées — grille au foyer&nbsp;» a été <b>retiré</b>. Il gravait exactement la grille que la <b>Planche&nbsp;1</b> grave déjà — mêmes puissances, mêmes vitesses que la saisie ② — mais en cellules remplies&nbsp;: environ huit traits par case au lieu d'un, soit <b>4&nbsp;500&nbsp;mm brûlés contre 420</b> pour les mêmes trente-cinq nombres. Et c'est la Planche&nbsp;1, la moins chère, qui bénéficie du <b>cadrage automatique</b> à la mesure. Deux planches pour une mesure, la plus coûteuse étant la moins bien outillée&nbsp;: c'était de l'empilement, pas un choix. Pour calibrer un matériau neuf, c'est donc <b>Planche&nbsp;1</b> (foyer) et <b>Planche&nbsp;2</b> (défocus 15 et 36), toutes deux cadrées toutes seules&nbsp;; l'objectif «&nbsp;grille en défocus&nbsp;» ne subsiste que pour un défocus <em>libre</em>, que les planches ne savent pas viser.</p>
     <p><b>Et ses traits sont désormais horizontaux.</b> Les objectifs de mesure ne pouvaient pas imposer l'angle des hachures, et le panneau est à 45° par défaut&nbsp;: la planche sortait en diagonale. Or la mesure à la ligne moyenne les <em>colonnes</em> de l'image — un trait oblique n'est pas mesurable, ni à la main ni automatiquement. L'objectif force maintenant 0°.</p>
     <p><b>Une fiche par planche, et non par matériau (v2.46.0).</b> Les fiches de disposition s'<b>empilent</b> désormais (douze au plus) au lieu de s'écraser&nbsp;: graver la palette entière puis une bande claire sur une chute laisse les <em>deux</em> planches cliquables. Une photo est rattachée à sa planche par les <b>4 coins</b> qu'on y clique — caler une photo, c'est déclarer quelle planche elle montre&nbsp;; s'il y a plusieurs planches et que la photo n'est pas encore calée, l'atelier demande une fois laquelle, puis s'en souvient. Une vieille photo <em>sans cadre gravé</em> reste inexploitable ici, et l'infobulle le dit&nbsp;: il n'y a pas de coins à cliquer.</p>
@@ -1137,7 +1145,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.47.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.48.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

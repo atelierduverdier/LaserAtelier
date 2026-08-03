@@ -87,6 +87,39 @@ def _autocrop_bas(img, fond):
     return dernier
 
 
+def _stabiliser(app, inner):
+    """Fige la mise en page AVANT de photographier.
+
+    `adjustSize()` rétrécit le conteneur à son sizeHint -- donc les
+    paragraphes deviennent PLUS ÉTROITS qu'à la largeur pour laquelle ils
+    venaient de figer leur hauteur minimale. Il leur faut alors plus de
+    lignes que de place : le texte débordait sur la rangée suivante, et
+    l'image partait au manuel et au site avec des phrases écrites l'une
+    sur l'autre (constaté le 03/08/2026 sur la Bande de calibration :
+    « ★ Étape 1/4… » recouvrait « 1. charge le préréglage… »).
+
+    On redemande donc à chaque paragraphe sa hauteur À SA LARGEUR
+    D'ARRIVÉE, et on recommence tant que la largeur bouge encore -- deux
+    tours suffisent en pratique, la borne est là pour ne jamais boucler.
+    L'application, elle, se corrige d'elle-même : tout redimensionnement
+    réel déclenche le même recalcul (`_WrapLabel.resizeEvent`)."""
+    from PySide6 import QtWidgets as _W
+    largeur = None
+    for _ in range(6):
+        inner.layout().activate()
+        inner.adjustSize()
+        app.processEvents()
+        for lab in inner.findChildren(_W.QLabel):
+            ajuste = getattr(lab, "_ajuster_hauteur", None)
+            if ajuste is not None:
+                ajuste()
+        inner.layout().activate()
+        app.processEvents()
+        if inner.width() == largeur:
+            break
+        largeur = inner.width()
+
+
 def _grab(tp, nom_classe):
     """Construit le panneau hors écran et rend son image entière."""
     from PySide6 import QtCore, QtWidgets
@@ -108,9 +141,7 @@ def _grab(tp, nom_classe):
         app.processEvents()
     inner = w.widget()
     if inner is not None and inner.layout() is not None:
-        inner.layout().activate()
-        inner.adjustSize()
-        app.processEvents()
+        _stabiliser(app, inner)
     img = w.grab().toImage()
     fond = img.pixel(3, img.height() - 3)
     bas = min(_autocrop_bas(img, fond) + 6, img.height())

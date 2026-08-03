@@ -324,6 +324,42 @@ class _WrapLabel(QtWidgets.QLabel):
         QtCore.QTimer.singleShot(120, self._ajuster_hauteur)
 
 
+def _bandeau_non_calibre(form):
+    """Bandeau « rien n'est mesuré » en tête d'un mode de TRAVAIL.
+
+    Les cinq modes de calibration disent où l'on en est (`_calibration_banner`) ;
+    les modes de travail ne disaient rien. Un débutant qui clique « Gravure
+    photo » -- le 6e bouton de la barre, bien avant la moindre icône de
+    calibration -- obtenait un panneau complet, sans un mot lui signalant
+    qu'aucune mesure n'existe. Le seul signal était un discret
+    « -- (aucune mesure) -- » au fond d'un menu déroulant.
+
+    NE S'AFFICHE QUE SUR UN ATELIER VIERGE : dès qu'un seul matériau porte
+    une largeur ou un ton, il disparaît partout et pour toujours. Un
+    avertissement qu'on voit tous les jours cesse d'être lu -- et celui-ci
+    ne s'adresse qu'à la première heure."""
+    try:
+        if core.burn_width_materials() or core.shade_materials():
+            return False
+    except Exception:
+        return False
+    lbl = _WrapLabel(
+        "<b><span style=\"color:#ff8a00\">★ Rien n'est encore mesuré sur "
+        "cet atelier.</span></b> Tu peux te servir de ce mode, mais les "
+        "largeurs de trait, les espacements et les tons seront <b>devinés</b>, "
+        "pas mesurés. Commence par le <b>Guide rapide</b> (1re icône) : il "
+        "donne les quatre étapes dans l'ordre, et la première ne prend qu'une "
+        "chute et dix minutes.")
+    holder = QtWidgets.QWidget()
+    lay = QtWidgets.QVBoxLayout(holder)
+    lay.setContentsMargins(0, 2, 0, 6)
+    lay.setSpacing(0)
+    lay.addWidget(lbl)
+    form.addRow(holder)
+    _hline(form)
+    return True
+
+
 def _calibration_banner(form, mode_titre):
     """Bandeau ★ toujours visible en tête d'un mode de calibration : il situe
     ce mode dans le PARCOURS DE PREMIÈRE CALIBRATION (numéro d'étape + le
@@ -4020,7 +4056,21 @@ def _make_photo_section(form, cle_getter, titre="Photo du résultat", entete=Non
     section selon le flux du panneau (ex. « ③ Photo du résultat »). Renvoie
     {"reload": fn} : l'appelant appelle reload() en fin d'__init__ et à
     chaque changement de matériau."""
-    _section(form, titre, "sect_photo.svg")
+    # REPLIÉE TANT QU'IL N'Y A AUCUNE PHOTO. Vide, cette section fait
+    # ~1200 px (le grand cadre « — aucune photo — » plus son blanc) : sur la
+    # Bande de calibration elle occupait la MOITIÉ du panneau, à la première
+    # ouverture, c'est-à-dire précisément quand il ne peut par définition y
+    # avoir aucune photo. Un débutant y voit un écran à moitié chargé.
+    # Dès qu'une photo existe, la section s'ouvre comme avant.
+    #
+    # `ouvert` n'est qu'un DÉFAUT : un repli fait à la main reste respecté
+    # (cf. _activer_sections), donc ceci ne rouvre rien que l'utilisateur
+    # aurait fermé exprès.
+    try:
+        _a_des_photos = bool(core.result_photos(cle_getter()))
+    except Exception:
+        _a_des_photos = True          # dans le doute, comportement d'avant
+    _section(form, titre, "sect_photo.svg", ouvert=_a_des_photos)
     # Ce que l'appelant veut voir JUSTE SOUS le titre -- typiquement le
     # sélecteur de planche. Placé avant l'appel, il atterrissait au-dessus
     # de la carte de section, donc visuellement rattaché à la section
@@ -5263,22 +5313,30 @@ class TaskPanelGuide:
                         action=", puis ".join(e["action"])))
         _bullet_list(form, puces_calib)
 
+        # PAS DE NUMÉROS ICI. Le schéma en tête du panneau porte déjà la
+        # suite 1→6 ; les répéter en chiffres créait une TROISIÈME
+        # numérotation à côté des ★1-4 de la calibration et des ①②③ des
+        # panneaux -- trois systèmes pour une seule progression, où
+        # « étape 1 » ne désigne pas la même chose selon l'endroit où on
+        # le lit. On garde les VERBES du schéma, qui suffisent à s'y
+        # retrouver, et les numéros restent à la calibration (★) et aux
+        # étapes internes d'un panneau (①②③).
         _section(form, "Le flux de travail", "sect_options.svg")
         _bullet_list(form, [
-            "1. CALIBRER (une fois) : Préférences (engrenage) -- focale, "
+            "<b>CALIBRER</b> (une fois) : Préférences (engrenage) -- focale, "
             "calibration du point via la Bande de calibration défocus, "
             "offsets de l'outil laser via le Test des offsets.",
-            "2. TESTER sur une chute : Grille de test ou Rampe "
-            "puissance/vitesse pour trouver les bons réglages du matériau.",
-            "3. MOTIF : Hachures 2D (remplissage), texte/forme (Gravure "
+            "<b>TESTER</b> sur une chute : Assistant matériau (les planches), "
+            "ou Grille de test / Rampe puissance-vitesse pour dégrossir.",
+            "<b>MOTIF</b> : Hachures 2D (remplissage), texte/forme (Gravure "
             "remplie), image (Gravure photo) -- et Projection si la pièce "
             "est courbe.",
-            "4. G-CODE : Marquage, Gravure remplie ou Découpe génèrent le "
+            "<b>G-CODE</b> : Marquage, Gravure remplie ou Découpe génèrent le "
             "fichier .ngc.",
-            "5. CADRAGE : chaque mode propose un fichier d'aperçu séparé "
+            "<b>CADRAGE</b> : chaque mode propose un fichier d'aperçu séparé "
             "(rectangle englobant, laser éteint) à lancer d'abord pour "
             "vérifier le positionnement.",
-            "6. GRAVER : sur LinuxCNC, faire T{} M6 AVANT de lancer le "
+            "<b>GRAVER</b> : sur LinuxCNC, faire T{} M6 AVANT de lancer le "
             "fichier (rappelé dans chaque G-code généré).".format(int(core.LASER_TOOL)),
         ])
 
@@ -7078,6 +7136,7 @@ class TaskPanelHatch:
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         _panel_header(form, "hatch.svg", "Hachures 2D (géométrie)")
+        _bandeau_non_calibre(form)
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
         # et non redimensionnable de manière fiable (bug de redimensionnement
         # observé côté FreeCAD) -- avec DontWrapRows, chaque ligne est forcée
@@ -7432,6 +7491,7 @@ class TaskPanelFilledEngraving:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "filled.svg", "Gravure remplie (noir)")
+        _bandeau_non_calibre(form)
         _reselect_button(form, self._on_recapture_selection,
                          lambda: self.selection)
         _intro(form,
@@ -9904,11 +9964,21 @@ class TaskPanelOffsetTest:
         croix fraisée -> correction d'offset X/Y à reporter dans la table
         d'outils du laser (tool.tbl ; l'atelier ne gère pas tool.tbl)."""
         _section(form, "② Entrer les mesures (écart des croix)", "sect_measure.svg")
-        form.addRow(_WrapLabel(
+        # DANS UN CONTENEUR VBox, comme les autres paragraphes du projet :
+        # posé en rangée directe, QFormLayout n'honore pas son
+        # heightForWidth et la rangée reste trop basse -- ce paragraphe-ci
+        # débordait de 9 px sur l'étiquette « Écart dX : » juste dessous
+        # (mesuré le 03/08/2026).
+        _para = QtWidgets.QWidget()
+        _lay = QtWidgets.QVBoxLayout(_para)
+        _lay.setContentsMargins(0, 0, 0, 4)
+        _lay.setSpacing(0)
+        _lay.addWidget(_WrapLabel(
             "Mesure l'écart entre le centre de la croix LASER et celui de la "
             "croix FRAISÉE : dX = X_laser − X_fraisé, dY = Y_laser − Y_fraisé "
             "(signés). La correction à reporter dans tool.tbl est calculée "
             "ci-dessous."))
+        form.addRow(_para)
         self.spn_dx = QtWidgets.QDoubleSpinBox()
         self.spn_dx.setRange(-50.0, 50.0)
         self.spn_dx.setDecimals(2)
@@ -10078,6 +10148,7 @@ class TaskPanelHalftone:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "halftone.svg", "Gravure photo (trame de points)")
+        _bandeau_non_calibre(form)
         _intro(form,
                "Grave une image (PNG/JPG...) en TRAME DE POINTS laser, comme "
                "une photo de journal. Choisis l'image, la largeur et le pas "
@@ -12904,6 +12975,7 @@ class TaskPanelCurved:
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         _panel_header(form, "curved.svg", "Marquage de motif (plat ou courbe)")
+        _bandeau_non_calibre(form)
         self.btn_resel = _reselect_button(form, self._on_recapture_selection,
                                           lambda: self.selection)
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
@@ -14156,6 +14228,7 @@ class TaskPanelFlat:
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
         _panel_header(form, "flat.svg", "Découpe multi-passes (plat)")
+        _bandeau_non_calibre(form)
         _reselect_button(form, self._on_recapture_selection,
                          lambda: self.selection)
         # WrapLongRows (pas DontWrapRows) : le panneau des tâches est étroit
@@ -14723,6 +14796,7 @@ class TaskPanelCurvedCut:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _panel_header(form, "curved_cut.svg", "Découpe multi-passes (courbe)")
+        _bandeau_non_calibre(form)
         _reselect_button(form, self._on_recapture_selection,
                          lambda: self.selection)
         _intro(form,
@@ -15189,6 +15263,10 @@ class TaskPanelAssistant:
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         _panel_header(form, "assistant.svg", "Assistant matériau")
+        # Le bandeau ★ : c'est ICI qu'on caractérise un matériau, donc c'est
+        # ici que doit s'afficher « Étape 3/4 ». Il vivait sur la Grille de
+        # test, qui ne grave plus les planches de largeurs.
+        _calibration_banner(form, "Assistant matériau")
         _intro(form,
                "Caractérise un matériau du début à la fin : grave les trois "
                "planches, mesure au pied à coulisse, saisis — l'atelier en "

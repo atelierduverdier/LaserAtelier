@@ -52,6 +52,18 @@ def main(filtres):
     env["PYTHONPATH"] = os.pathsep.join(
         [lib, ICI, RACINE] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
     env["QT_QPA_PLATFORM"] = "offscreen"
+    # LES POLICES DU SYSTÈME, sinon les captures mentent. L'AppImage impose
+    # son propre environnement et fontconfig ne trouvait aucune config
+    # (« Cannot load default config file »), si bien que Qt retombait sur
+    # une police sans les chiffres cerclés : toutes les captures livrées au
+    # manuel et au site affichaient « @ Entrer les mesures » au lieu de
+    # « ① Entrer les mesures ». Toute la convention ①②③ -- l'ossature du
+    # mode d'emploi -- était invisible pour qui découvre par la doc.
+    # Constaté le 03/08/2026 sur une capture publiée depuis la v2.13.2.
+    for cle, chemin in (("FONTCONFIG_PATH", "/etc/fonts"),
+                        ("FONTCONFIG_FILE", "/etc/fonts/fonts.conf")):
+        if os.path.exists(chemin):
+            env.setdefault(cle, chemin)
 
     # `captures.py` n'est pas un test (il n'est pas nommé test_*, donc le glob
     # ne le voit pas) mais il a besoin du MÊME interpréteur et du même

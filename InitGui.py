@@ -90,11 +90,43 @@ class LaserAtelierWorkbench(Workbench):
             # ===== RÉGLAGES (tout à droite, bord écran) =====
             "LaserAtelier_Settings",
         ]
-        # Barre d'outils ET menu : la même liste groupée par séparateurs.
-        # (Testé aussi en sous-menus déroulants : n'apportait qu'un niveau à
-        # dérouler de plus sans gain de clarté -- on garde la liste plate.)
+        # DEUX ORDRES, parce qu'il y a DEUX publics -- et un seul ordre ne
+        # pouvait pas les servir tous les deux.
+        #
+        # La BARRE reste rangée par tâche : ceux qui savent déjà y vont
+        # dix fois par jour, et pousser sept icônes de calibration devant
+        # leurs boutons quotidiens serait payer tous les jours pour la
+        # première heure.
+        #
+        # Le MENU, lui, est rangé par ORDRE D'APPRENTISSAGE : calibration
+        # d'abord, modes de travail ensuite. C'est là qu'on va quand on ne
+        # sait pas, et le Guide dit « 1. CALIBRER (une fois) » -- il était
+        # contredit par une barre où les sept icônes de calibration
+        # arrivaient après douze boutons inutilisables tant que rien n'est
+        # mesuré. (Constaté le 03/08/2026 en relisant l'atelier en
+        # débutant.)
         self.appendToolbar("Atelier Laser", self.command_list)
-        self.appendMenu("Atelier Laser", self.command_list)
+        self.appendMenu("Atelier Laser", self._ordre_apprentissage())
+
+    def _ordre_apprentissage(self):
+        """La même liste, remise dans l'ordre où on l'apprend.
+
+        Construite PAR EXTRACTION de `command_list`, jamais recopiée à la
+        main : une commande ajoutée à la barre et oubliée ici disparaîtrait
+        du menu sans que rien ne le signale."""
+        ordre_calib = ["LaserAtelier_DefocusCalibration", "LaserAtelier_OffsetTest",
+                       "LaserAtelier_Assistant", "LaserAtelier_TestGrid",
+                       "LaserAtelier_PowerRamp", "LaserAtelier_Nuancier",
+                       "LaserAtelier_Kerf"]
+        presentes = [c for c in self.command_list if c != "Separator"]
+        # INTERSECTION, jamais la liste en dur telle quelle : le menu est un
+        # RE-CLASSEMENT de la barre, jamais un sur-ensemble. Sinon une
+        # commande retirée de la barre resterait au menu -- une entrée qui
+        # pointe vers une commande non enregistrée.
+        calibration = [c for c in ordre_calib if c in presentes]
+        tete = [c for c in ["LaserAtelier_Guide"] if c in presentes]
+        reste = [c for c in presentes if c not in calibration and c not in tete]
+        return (tete + ["Separator"] + calibration + ["Separator"] + reste)
 
     def Activated(self):
         """Un document ouvert, toujours.

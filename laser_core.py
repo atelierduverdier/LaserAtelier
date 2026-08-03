@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.47.0"
+VERSION = "2.48.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -4889,7 +4889,14 @@ CALIBRATION_JOURNEY = [
     {
         "n": 3,
         "portee": "materiau",
-        "mode": "Grille de test puissance / vitesse",
+        # L'ASSISTANT, pas la Grille de test. L'étape a longtemps porté le
+        # nom du panneau où l'on gravait ; depuis la v2.47.0 les largeurs se
+        # mesurent sur les PLANCHES (Assistant), la Grille de test ne
+        # servant plus qu'à ce qu'elles ne savent pas faire. Le bandeau
+        # « ★ Étape 3/4 » s'affichait donc sur un panneau que le texte de
+        # l'étape n'utilise plus, pendant que l'Assistant -- où l'on va
+        # réellement -- n'en portait aucun.
+        "mode": "Assistant matériau",
         "but": "caractériser un matériau (largeurs brûlées + noirceurs)",
         # DEUX grilles, pas une : la version au foyer ne suffit pas. Une
         # largeur mesurée au foyer est rejetée par darkness_fluence_curve
@@ -4905,19 +4912,18 @@ CALIBRATION_JOURNEY = [
         # lettre finissait donc sans un seul ton exploitable par
         # `darkness_fluence_curve`, sans que rien ne le signale.
         "action": [
-            "grave la PLANCHE 1 (Assistant matériau) : ce sont ces "
-            "largeurs-là qui calent le remplissage, le bouton « Auto "
-            "(½ point) » des Hachures et le tramage « Lignes gravées ». "
-            "Son cadrage à la mesure est automatique, case après case",
-            "puis la PLANCHE 2, pour les mêmes mesures bec remonté -- c'est "
-            "ce niveau qui cale un remplissage large. Elle est cadrée "
-            "automatiquement elle aussi. L'Objectif « Largeurs brûlées — "
-            "grille en défocus » ne sert qu'à un défocus AUTRE que 15 ou 36",
-            "puis l'Objectif « Noirceur — bande en balayage (photo "
-            "calibrée) » : là on ne mesure plus, on JUGE la noirceur de "
-            "chaque aplat. C'est ce "
-            "couple noirceur + défocus + largeur qui, seul, fait marcher la "
-            "gravure photo calibrée et le « ton sur mesure »",
+            "grave la PLANCHE 1 (foyer), puis mesure la largeur de chaque "
+            "trait : le cadrage est automatique, tu n'as qu'à ajuster et "
+            "valider. Ces largeurs calent le remplissage, le bouton « Auto "
+            "(½ point) » des Hachures et le tramage « Lignes gravées »",
+            "grave la PLANCHE 2 (défocus) et mesure-la pareil : c'est ce "
+            "niveau-là qui cale un remplissage large",
+            "pour la gravure photo CALIBRÉE seulement : ouvre la Grille de "
+            "test et prends l'Objectif « Noirceur — bande en balayage (photo "
+            "calibrée) ». "
+            "Là on ne mesure plus, on JUGE la noirceur de chaque aplat -- "
+            "c'est ce couple noirceur + défocus + largeur qui la fait "
+            "marcher, avec le « ton sur mesure »",
         ],
         "reporter": "« ② Entrer les mesures » ci-dessous -- les largeurs dans "
                     "les grilles, les noirceurs dans « Noirceur jugée à "
@@ -4931,6 +4937,24 @@ CALIBRATION_JOURNEY = [
         "but": "mesurer le trait pour tenir les cotes",
         "action": ["charge le préréglage ★ « Standard (20 mm) » (test Carré)"],
         "reporter": "Compensation de kerf des modes de découpe",
+    },
+    {
+        # La Grille de test garde un bandeau, mais comme COMPLÉMENT : depuis
+        # la v2.47.0 les largeurs se mesurent sur les planches, et elle ne
+        # sert plus qu'à ce qu'elles ne couvrent pas (défocus libre,
+        # noirceur en aplat, essai de découpe). Sans cette entrée elle
+        # n'aurait plus aucun bandeau -- un panneau de calibration muet sur
+        # sa place dans le parcours.
+        "n": None,
+        "portee": "materiau",
+        "mode": "Grille de test puissance / vitesse",
+        "but": "ce que les planches ne savent pas faire : un défocus LIBRE, "
+               "une noirceur jugée en aplat, un essai de découpe",
+        "action": ["choisis un Objectif -- « Noirceur — bande en balayage » "
+                   "pour la courbe du nuancier, « Largeurs brûlées — grille "
+                   "en défocus » seulement à un défocus autre que 15 ou 36"],
+        "reporter": "« ② Entrer les mesures » ci-dessous -- complément de "
+                    "l'étape 3, qui se grave dans l'Assistant matériau",
     },
     {
         "n": None,
