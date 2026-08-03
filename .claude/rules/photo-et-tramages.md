@@ -303,6 +303,19 @@ Four things hold it together:
   explicitly that turning the power down would change nothing.
   **Note the anchors do not govern this regime**: 6.4 / 13.2 were measured on rows at focus with
   0.2 mm traces. Three boards now say the useful target under the spindle is lower.
+- **THE PREVIEW IS FAITHFUL; WHAT DIFFERS IS THE BURN HALO** (settled 2026-08-03). Christophe:
+  *"je ne le trouve pas fidèle au résultat"*, then, after looking again: *"c'est les brûlures des
+  traits qui m'ont mis en défaut"*. Measuring first was what saved this: the suspicion fell on the
+  tone model, and the tone model is **right** — every spindle level is painted at 1.00, pure black,
+  so the grey comes entirely from coverage, exactly as on the wood. "Fixing" it would have broken
+  what worked. One real but small defect did turn up on the way (the thumbnail's one-pixel floor,
+  v2.59.2, +7.6 % → +4.0 % of ink).
+  **Do NOT paint a fake halo.** Its width depends on air assist — the workshop's own unrecorded
+  variable (*with air: brown halo; without: clean, but the lens fouls faster*) — so any halo drawn
+  today would be an invented number dressed as a prediction, the "fabricated table" trap. It becomes
+  modellable the day a board is rectified with the halo measured against the trace, at both air
+  settings. Note also that the halo fills the lights, so it darkens the real piece relative to the
+  preview: part of "c'est encore un peu trop" may be halo rather than coverage.
 - **`white_threshold = 0` for this look.** The threshold cuts the beam in the lights, which breaks the
   spiral into dashes — the opposite of the reference, where the line never breaks and the lights are
   merely thin. It is the original "jamais de bois nu" intent, and here it is the right one.
