@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.53.1"
+VERSION = "2.54.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5273,7 +5273,16 @@ def burn_width_defocus_scaled(power, feed, defocus, material=None):
     mat = _burn_width_material(material)
     if not mat:
         return None
-    table = load_burn_widths(mat)
+    return _largeur_defocus(load_burn_widths(mat), power, feed, defocus)
+
+
+def _largeur_defocus(table, power, feed, defocus):
+    """Le corps de `burn_width_defocus_scaled`, sur une table DÉJÀ CHARGÉE.
+
+    Séparé pour que l'échelle du fuseau puisse échantillonner des centaines
+    de hauteurs sans relire le JSON à chaque fois : c'est la leçon de
+    §24 des lignes gravées (le panneau photo mettait 14 s à s'ouvrir parce
+    qu'une table de 161 points faisait 161 lectures de config)."""
     pts = table.get("defocus") or []
     if not pts:
         return None
@@ -5329,6 +5338,211 @@ def burn_width_defocus_scaled(power, feed, defocus, material=None):
     if spot0 <= 0:
         return w0
     return w0 * spot_diameter_at_defocus(defocus, SPOT_FOCUS_MM, ha) / spot0
+
+
+# Marge sur la vitesse de l'axe Z pour le fuseau. L'axe annonce
+# `Z_MAX_FEED_MM_MIN` en régime établi ; il doit aussi ACCÉLÉRER pour y
+# arriver, et un profil calculé au ras de la limite ferait ralentir tout le
+# mouvement par LinuxCNC -- ce qui changerait le temps de pose, donc la
+# noirceur, sans rien dire. On ne demande donc que la moitié.
+FUSEAU_MARGE_Z = 0.5
+
+# Pas d'échantillonnage LE LONG de la spirale, en fuseau. Rien à voir avec
+# le pas radial : celui-ci vaut la largeur du trait (jusqu'à 3,4 mm), et
+# échantillonner aussi grossièrement redonnerait exactement le défaut qu'on
+# corrige -- une largeur qui change par marches de 3,4 mm. Le trait, lui,
+# doit enfler continûment. 0,4 mm est en dessous de ce que l'oeil sépare sur
+# du bois, et le surcoût est en blocs de G-code, pas en temps : le mouvement
+# ne s'arrête pas (G64) et avec M67 le changement de puissance est gratuit.
+FUSEAU_PAS_ARC_MM = 0.4
+
+# Nombre de paliers de l'échelle du fuseau. Les hauteurs sont CONTINUES (le
+# Z balaie), c'est la table qui est échantillonnée -- 128 pas sur une course
+# de 30 mm font 0,23 mm de marche, très en dessous de ce que le bois montre.
+FUSEAU_PALIERS = 128
+
+
+def largeur_max_mesuree(material, feed, power_max=None):
+    """La plus large brûlure que ce matériau sache faire à cette vitesse,
+    au niveau de défocus mesuré le plus haut. None sans mesure.
+
+    C'est la borne HAUTE du fuseau, et elle est mesurée et non calculée :
+    le cône optique, extrapolé, annonce des largeurs que le bois ne fait
+    pas (0,50 mm mesuré contre 1,18 optique à S200 sur hêtre)."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return None
+    table = load_burn_widths(mat)
+    niveaux = niveaux_defocus_mesures(mat)
+    if not niveaux:
+        return None
+    s = float(power_max) if power_max else S_MAX
+    return _largeur_defocus(table, s, feed, max(float(n) for n in niveaux))
+
+
+def echelle_fuseau_z(material, feed, power_max=None, line_min_mm=0.10,
+                     paliers=FUSEAU_PALIERS):
+    """Échelle du FUSEAU : noirceur -> (hauteur Z, puissance, largeur).
+
+    Renvoie `(table, w_min, w_max, avert)` ou None. `table` est une liste
+    de `paliers` triplets `(dz, S, largeur)`, du plus fin au plus épais ;
+    `avert` liste ce que la machine ne peut pas tenir.
+
+    LE PRINCIPE, demandé par Christophe le 03/08/2026 (croquis à l'appui) :
+    la largeur du trait ne vient plus de la PUISSANCE mais de la HAUTEUR.
+    La tête se lève progressivement, le point s'élargit, et un seul trait
+    passe de 0,1 mm à la largeur maximale que le matériau sait donner --
+    un fuseau continu, là où la modulation par la puissance faisait des
+    marches d'une case (« cela me fait des lignes à étages »).
+
+    LA PUISSANCE SUIT LA LARGEUR, sans quoi le large sort PÂLE : à S
+    constant, un trait dix fois plus large reçoit dix fois moins d'énergie
+    par mm² (la spirale du 31/07/2026 est sortie marbrée au bout large et
+    carbonisée au bout fin, pour cette raison exacte). On garde donc la
+    fluence constante -- S proportionnel à la largeur, le même modèle que
+    `puissance_fluence_largeur` -- puis on BORNE S à la plage mesurée. Là
+    où la borne mord, la teinte cesse d'être constante et `avert` le dit :
+    une recette bornée en silence est une recette inventée.
+
+    Pourquoi ce n'est pas circulaire : S ne dépend que de la largeur VISÉE,
+    jamais de la hauteur. On fixe donc S d'abord, puis on cherche la
+    hauteur par dichotomie sur la table mesurée (la largeur y croît avec la
+    hauteur). La table est chargée UNE fois -- cf. `_largeur_defocus`.
+
+    Les hauteurs intermédiaires ne sont pas des niveaux mesurés, et c'est
+    ASSUMÉ ici, contrairement au défocus fixe du tramage en rangées : là-bas
+    une hauteur non mesurée donne un régime muet qu'on ne saurait pas
+    expliquer, ici le Z balaie par construction et ne peut que passer entre
+    les niveaux. Les ANCRES, elles, restent mesurées."""
+    mat = _burn_width_material(material)
+    if not mat or feed <= 0:
+        return None
+    table = load_burn_widths(mat)
+    niveaux = [float(n) for n in niveaux_defocus_mesures(mat)]
+    if not niveaux:
+        return None
+    z_haut = max(niveaux)
+    s_haut = float(power_max) if power_max else S_MAX
+    # La plus faible puissance MESURÉE : sous elle la table ne dit rien, et
+    # `_bilinear_burn` rendrait la largeur du bord comme si elle gravait.
+    pts_s = [float(p.get("power", 0) or 0)
+             for p in (table.get("defocus") or []) + (table.get("focus") or [])
+             if p.get("width")]
+    if not pts_s:
+        return None
+    s_bas = min(pts_s)
+    w_max = _largeur_defocus(table, s_haut, feed, z_haut)
+    if not w_max or w_max <= 0:
+        return None
+    # Le plus FIN que la machine sache faire : au foyer, à la plus faible
+    # puissance mesurée. Le champ « épaisseur mini » ne peut pas descendre
+    # sous ça -- il choisit dans ce que le bois a montré, pas en dessous.
+    w_plancher = _bilinear_burn(table.get("focus") or [], s_bas, feed)
+    if not w_plancher or w_plancher <= 0:
+        w_plancher = _largeur_defocus(table, s_bas, feed, 0.0) or 0.05
+    w_min = max(float(line_min_mm), w_plancher)
+    avert = []
+    if w_min > float(line_min_mm) + 1e-9:
+        avert.append("le trait ne descend pas sous {:.2f} mm : c'est la "
+                     "brûlure mesurée au foyer à S{:.0f}, la plus faible "
+                     "puissance de la table (demandé : {:.2f})".format(
+                         w_min, s_bas, float(line_min_mm)))
+    if w_max <= w_min + 1e-9:
+        return None
+
+    def _z_pour(largeur, s):
+        """Hauteur donnant cette largeur à cette puissance -- DICHOTOMIE sur
+        les mesures, jamais une inversion du cône optique : le cône
+        surestime la brûlure d'un facteur 2 près du foyer."""
+        lo, hi = 0.0, z_haut
+        w_lo = _largeur_defocus(table, s, feed, lo)
+        if w_lo is not None and w_lo >= largeur:
+            return 0.0          # déjà trop large au foyer : on y reste
+        for _ in range(40):
+            mi = 0.5 * (lo + hi)
+            w = _largeur_defocus(table, s, feed, mi)
+            if w is None:
+                return hi
+            if w < largeur:
+                lo = mi
+            else:
+                hi = mi
+        return 0.5 * (lo + hi)
+
+    n = max(2, int(paliers))
+    ech, borne_bas, borne_haut = [], False, False
+    for k in range(n):
+        w = w_min + (w_max - w_min) * k / float(n - 1)
+        # FLUENCE CONSTANTE : S proportionnel à la largeur, ancré sur le
+        # haut (c'est le noir qui doit être noir).
+        s = s_haut * w / w_max
+        if s < s_bas:
+            s, borne_bas = s_bas, True
+        if s > s_haut:
+            s, borne_haut = s_haut, True
+        dz = _z_pour(w, s)
+        ech.append((dz, s, _largeur_defocus(table, s, feed, dz) or w))
+    # La hauteur doit CROÎTRE avec la largeur : sous la borne basse de
+    # puissance elle peut repartir en arrière (S figé, donc il faut monter
+    # plus haut pour un trait plus large -- mais l'arrondi de dichotomie
+    # peut inverser deux voisins). On rend la suite monotone.
+    for i in range(1, len(ech)):
+        if ech[i][0] < ech[i - 1][0]:
+            ech[i] = (ech[i - 1][0], ech[i][1], ech[i][2])
+    if borne_bas:
+        avert.append("dans les clairs, la puissance bute sur S{:.0f} (la "
+                     "plus faible mesurée) : ces traits seront plus foncés "
+                     "que le fuseau ne le voudrait".format(s_bas))
+    if borne_haut:
+        avert.append("dans les foncés, la puissance bute sur S{:.0f}".format(
+            s_haut))
+    return ech, w_min, w_max, avert
+
+
+def pente_z_max(feed):
+    """Combien de mm de hauteur l'axe Z peut prendre par mm parcouru en XY,
+    à cette vitesse de gravure.
+
+    C'est LA contrainte du fuseau, et elle est dure : au-delà, LinuxCNC ne
+    refuse pas -- il RALENTIT tout le mouvement pour que le Z suive, donc
+    le temps de pose change, donc la noirceur, sans que rien ne le dise.
+    Le générateur limite donc lui-même la pente, ce qui lisse le profil le
+    long du trait : c'est ce qui donne un fuseau plutôt qu'un escalier."""
+    if feed <= 0:
+        return 0.0
+    return FUSEAU_MARGE_Z * Z_MAX_FEED_MM_MIN / float(feed)
+
+
+def longueur_mini_fuseau(feed, dz_course):
+    """Longueur minimale, en mm de trace, pour monter de `dz_course` mm à
+    cette vitesse. Le chiffre à annoncer AVANT de graver : c'est lui qui
+    dit quel niveau de détail le fuseau peut rendre."""
+    p = pente_z_max(feed)
+    return (float(dz_course) / p) if p > 1e-9 else float("inf")
+
+
+def limiter_pente_z(dzs, distances, pente_max):
+    """Rabote un profil de hauteurs pour qu'il ne monte ni ne descende plus
+    vite que `pente_max` mm de Z par mm parcouru.
+
+    Deux passes, avant puis arrière : une seule laisserait les descentes
+    trop raides intactes. Le résultat est le profil le plus proche du
+    demandé qui respecte la pente PARTOUT -- vérifié en mesurant la pente
+    obtenue, jamais en se fiant au raisonnement."""
+    if pente_max <= 1e-9 or not dzs:
+        return list(dzs)
+    out = list(dzs)
+    for i in range(1, len(out)):
+        d = distances[i - 1] if i - 1 < len(distances) else 0.0
+        marge = pente_max * d
+        out[i] = min(out[i], out[i - 1] + marge)
+        out[i] = max(out[i], out[i - 1] - marge)
+    for i in range(len(out) - 2, -1, -1):
+        d = distances[i] if i < len(distances) else 0.0
+        marge = pente_max * d
+        out[i] = min(out[i], out[i + 1] + marge)
+        out[i] = max(out[i], out[i + 1] - marge)
+    return out
 
 
 def burn_width_focus_max(material=None):
@@ -8787,12 +9001,179 @@ def points_spirale(largeur_mm, hauteur_mm, pas_mm, pas_arc_mm=None):
     return pts
 
 
+def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
+                      line_min_mm=0.10, pre_gcode="", post_gcode="",
+                      frame_only=False, quiet=False, white_threshold=0.0,
+                      power_max=None, pas_arc_mm=None):
+    """Spirale dont la largeur vient de la HAUTEUR, pas de la puissance.
+
+    Le trait est un fuseau CONTINU : la tête se lève progressivement et le
+    point s'élargit, exactement le croquis de Christophe du 03/08/2026.
+    La modulation par la puissance, elle, ne pouvait faire que des marches
+    d'un pas -- au pas 1,16 mm ça se voit, et c'est ce qu'il a signalé.
+
+    Trois choses tiennent ce générateur, dans cet ordre :
+
+    1. LA PENTE DU Z EST BORNÉE. L'axe fait `Z_MAX_FEED_MM_MIN` ; au-delà
+       LinuxCNC ne refuse pas, il ralentit TOUT le mouvement pour que le Z
+       suive -- le temps de pose change donc, et la noirceur avec, sans que
+       rien ne le dise. On rabote donc le profil nous-mêmes
+       (`limiter_pente_z`), ce qui a l'effet recherché : ça lisse.
+    2. LA PUISSANCE SUIT LA LARGEUR (`echelle_fuseau_z`), sinon le large
+       sort pâle -- à S constant un trait dix fois plus large reçoit dix
+       fois moins d'énergie par mm².
+    3. PAS D'AVANCE RAPIDE SUR LE BOIS NU, contrairement à la spirale à
+       puissance. Le budget de pente est calculé POUR `feed` ; accélérer
+       sur les blancs le crèverait en silence, juste là où le fuseau
+       redescend le plus vite (du noir au blanc)."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    ech = echelle_fuseau_z(material, feed, power_max=power_max,
+                           line_min_mm=line_min_mm)
+    if ech is None:
+        if not quiet:
+            FreeCAD.Console.PrintWarning(
+                "Spirale (fuseau Z) : aucun niveau de défocus mesuré pour "
+                "« {} » -- grave la Planche 2 (Assistant matériau).\n".format(
+                    material))
+        return None
+    table, w_min, w_max, avert = ech
+    n = len(table)
+
+    largeur, hauteur = w * pitch, h * pitch
+    # ÉCHANTILLONNAGE FIN, indépendant du pas radial. Au pas 3,4 mm la
+    # spirale à puissance ne pose un point que tous les 3,4 mm : la largeur
+    # y change par marches de 3,4 mm, ce qui est très exactement l'escalier
+    # que le fuseau doit supprimer. Attrapé par le test, pas à l'oeil.
+    pts = points_spirale(largeur, hauteur, pitch,
+                         pas_arc_mm or min(FUSEAU_PAS_ARC_MM, pitch))
+    if len(pts) < 2:
+        return None
+
+    def _niveau(x, y):
+        """Rang dans l'échelle, ou None pour du bois nu (hors image ou sous
+        le seuil de blanc)."""
+        col = int(round(x / pitch))
+        rang = h - 1 - int(round(y / pitch))
+        if not (0 <= col < w and 0 <= rang < h):
+            return None
+        return swell_niveau(darkness_rows[rang][col], n, white_threshold)
+
+    rangs = [_niveau(x, y) for x, y in pts]
+    # Le Z suit l'image MÊME sous le seuil de blanc : le faisceau s'y
+    # éteint, mais faire redescendre la tête au foyer puis la relever
+    # coûterait de la pente pour rien -- et c'est la pente qui manque.
+    dz_voulu = [table[r if r is not None else 0][0] for r in rangs]
+    dists = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
+    pente = pente_z_max(feed)
+    dz = limiter_pente_z(dz_voulu, dists, pente)
+    # La PUISSANCE suit la hauteur RÉELLEMENT tenue, pas celle qu'on
+    # voulait : après rabotage le trait est plus fin que prévu dans les
+    # descentes raides, et lui servir la puissance du trait large le
+    # brûlerait. On relit donc l'échelle à la hauteur obtenue.
+    hauteurs = [t[0] for t in table]
+
+    def _rang_pour_z(z):
+        lo, hi = 0, n - 1
+        while lo < hi:
+            mi = (lo + hi) // 2
+            if hauteurs[mi] < z:
+                lo = mi + 1
+            else:
+                hi = mi
+        return lo
+
+    puis = []
+    for i, z in enumerate(dz):
+        if rangs[i] is None:
+            puis.append(0.0)
+        else:
+            puis.append(table[_rang_pour_z(z)][1])
+
+    z_bas = z_work + min(dz)
+    z_haut = z_work + max(dz)
+    z_safe = z_haut + TRAVEL_CLEARANCE_MM
+    longueur = sum(dists)
+    course = max(dz) - min(dz)
+    lines = []
+    lines.append("(G-Code Laser - Photo : SPIRALE, fuseau par la hauteur Z)")
+    lines.append("(Image : {} x {} px au pas {:.2f}mm, F{:.0f})".format(
+        w, h, pitch, feed))
+    lines.append("(Spirale : {:.0f} points, {:.0f} mm de trace, un seul trait "
+                 "du centre au bord -- aucun demi-tour)".format(
+                     len(pts), longueur))
+    lines.append("(Trait {:.2f} a {:.2f} mm par la HAUTEUR : Z {:.2f} a "
+                 "{:.2f} ({:.1f} mm de course), S {:.0f} a {:.0f})".format(
+                     w_min, w_max, z_bas, z_haut, course,
+                     min(p for p in puis if p > 0) if any(p > 0 for p in puis) else 0,
+                     max(puis) if puis else 0))
+    lines.append("(Pente Z bornee a {:.2f} mm/mm ({:.0f}% de l'axe) : le "
+                 "fuseau complet demande {:.0f} mm de trace au minimum)".format(
+                     pente, 100.0 * FUSEAU_MARGE_Z,
+                     longueur_mini_fuseau(feed, course)))
+    if w_max > pitch + 1e-9:
+        lines.append("(ATTENTION : trait maxi {:.2f}mm > pas {:.2f}mm -- les "
+                     "tours se recouvrent dans les fonces)".format(w_max, pitch))
+    if white_threshold > 0.0:
+        lines.append("(Seuil blanc {:.0f} % : sous cette noirceur, bois NU "
+                     "(faisceau coupe, mouvement continu))".format(
+                         100.0 * white_threshold))
+    for a in avert:
+        lines.append("(NOTE : {})".format(a))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        lines.extend(build_frame_trace(0.0, largeur, 0.0, hauteur, z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    lines.append("G0 X{:.4f} Y{:.4f}".format(pts[0][0], pts[0][1]))
+    lines.append("G0 Z{:.4f}".format(z_work + dz[0]))
+
+    # UN BLOC PAR POINT : le Z bouge à chaque fois, donc rien à fusionner.
+    # Avec M67 le changement de puissance ne coûte aucun arrêt ; sans lui,
+    # un S par bloc arrête la machine -- le fuseau est donc un mode qui
+    # suppose M67 (cf. la note de l'en-tête du dialecte).
+    p_prec = None
+    for i in range(1, len(pts)):
+        x, y = pts[i]
+        pw = puis[i]
+        if pw != p_prec:
+            lines.extend(cmd_power_prefix(pw))
+            p_prec = pw
+        suf = cmd_power_suffix(pw)
+        lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}{}".format(
+            x, y, z_work + dz[i], feed, (" " + suf) if suf else ""))
+
+    lines.extend(cmd_power_prefix(0.0))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
 def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
                                  material, line_min_mm=0.10,
                                  pre_gcode="", post_gcode="",
                                  frame_only=False, quiet=False,
                                  white_threshold=0.0, power_max=None,
-                                 pas_arc_mm=None, defocus=0.0):
+                                 pas_arc_mm=None, defocus=0.0,
+                                 fuseau_z=False):
     """Photo en SPIRALE : un trait unique du centre au bord, dont
     l'ÉPAISSEUR rend le gris -- le principe de « Lignes gravées », enroulé.
 
@@ -8811,11 +9192,27 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
 
     Les points hors de l'image (les coins, que la spirale traverse) sont
     du bois nu, franchis à l'avance rapide comme les plages blanches des
-    balayages -- même règle, même constante `TRANSIT_BLANC_MINI_MM`."""
+    balayages -- même règle, même constante `TRANSIT_BLANC_MINI_MM`.
+
+    `fuseau_z` change le MOTEUR de la largeur : au lieu de la puissance
+    (une valeur par case, donc des marches d'un pas -- « cela me fait des
+    lignes à étages », Christophe le 03/08/2026, croquis à l'appui), c'est
+    la HAUTEUR qui la porte. La tête se lève progressivement, le point
+    s'élargit, et le trait devient un fuseau continu, du plus fin que le
+    bois sache faire à la plus large brûlure MESURÉE. La puissance suit
+    pour garder la fluence (cf. `echelle_fuseau_z`), et la pente du Z est
+    bornée pour que l'axe n'oblige jamais LinuxCNC à ralentir."""
     h = len(darkness_rows)
     w = len(darkness_rows[0]) if h else 0
     if h < 1 or w < 1 or pitch <= 0 or feed <= 0:
         return None
+    if fuseau_z:
+        return _spirale_fuseau_z(
+            darkness_rows, pitch, z_work, feed, material,
+            line_min_mm=line_min_mm, pre_gcode=pre_gcode,
+            post_gcode=post_gcode, frame_only=frame_only, quiet=quiet,
+            white_threshold=white_threshold, power_max=power_max,
+            pas_arc_mm=pas_arc_mm)
     niveaux = swell_power_levels(material, feed, line_min_mm,
                                  power_max=power_max, defocus=defocus)
     if niveaux is None:

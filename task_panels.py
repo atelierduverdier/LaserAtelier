@@ -10387,6 +10387,33 @@ class TaskPanelHalftone:
             "réellement obtenue s'affiche dans le verdict en dessous.")
         form.addRow("Défocus du trait :", self.combo_dz_trait)
 
+        # LE FUSEAU. Le défocus ci-dessus est une hauteur FIXE : la largeur
+        # y vient de la puissance, une valeur par case, donc des marches
+        # d'un pas -- au pas 1,16 mm ça se voit, et Christophe l'a signalé
+        # le 03/08/2026 (« cela me fait des lignes à étages », croquis à
+        # l'appui). Ici la tête se LÈVE progressivement le long du trait :
+        # le point s'élargit, et le trait devient un fuseau continu, du plus
+        # fin que le bois sache faire à sa plus large brûlure mesurée.
+        #
+        # Réservé à la spirale : un seul trait continu, donc le Z n'a jamais
+        # de fin de rangée à rattraper.
+        self.chk_fuseau_z = QtWidgets.QCheckBox(
+            "Fuseau : la HAUTEUR fait la largeur (trait continu)")
+        self.chk_fuseau_z.setToolTip(
+            "La tête se lève progressivement au lieu de moduler la\n"
+            "puissance : le point s'élargit, et le trait passe sans marche\n"
+            "du plus fin au plus large que ce matériau sache brûler.\n"
+            "\n"
+            "Le prix est le DÉTAIL : l'axe Z a une vitesse limite, donc le\n"
+            "trait ne peut pas grossir plus vite qu'une certaine pente. Le\n"
+            "verdict annonce la longueur mini d'un fuseau complet à la\n"
+            "vitesse choisie -- rien de plus fin ne sera rendu.\n"
+            "\n"
+            "La puissance suit la largeur pour garder la teinte : sans ça\n"
+            "un trait dix fois plus large reçoit dix fois moins d'énergie\n"
+            "par mm² et sort pâle.")
+        form.addRow(self.chk_fuseau_z)
+
         # Le pendant HAUT de « épaisseur mini ». La table des largeurs ne
         # connaît que la largeur, jamais la PROFONDEUR : à pleine puissance
         # le trait fait bien la largeur annoncée, mais il peut creuser et
@@ -10538,8 +10565,12 @@ class TaskPanelHalftone:
                              t["reglage"] == "trait_mini")
             _set_row_visible(form, self.combo_fond,
                              t["reglage"] == "trait_mini")
+            fuseau = t["cle"] == "spirale" and self.chk_fuseau_z.isChecked()
+            _set_row_visible(form, self.chk_fuseau_z, t["cle"] == "spirale")
+            # Une hauteur FIXE et un fuseau qui balaie la hauteur sont deux
+            # réponses à la même question : n'en montrer qu'une.
             _set_row_visible(form, self.combo_dz_trait,
-                             t["reglage"] == "trait_mini")
+                             t["reglage"] == "trait_mini" and not fuseau)
             self.combo_fond.setEnabled(self.spn_white.value() > 0.0)
             # « Largeur du point » pilote le DÉFOCUS : elle n'a aucun sens
             # pour un tramage qui grave au foyer, où la largeur du trait vient
@@ -10632,6 +10663,8 @@ class TaskPanelHalftone:
         self.combo_photo_mat.currentIndexChanged.connect(lambda _i: self._maj_regime())
         self.combo_mode.currentIndexChanged.connect(lambda _i: self._maj_regime())
         self.combo_dz_trait.currentIndexChanged.connect(lambda _i: self._maj_regime())
+        self.chk_fuseau_z.toggled.connect(lambda _v: (_sync_mode(),
+                                                      self._maj_regime()))
         _sync_mode()
         self._maj_regime()      # verdict visible DÈS l'ouverture, pas seulement
         # après avoir touché un champ : c'est à l'ouverture qu'on hérite d'un
@@ -10690,6 +10723,7 @@ class TaskPanelHalftone:
             # mesures change de longueur des qu'une planche est versee, et un
             # rang designerait alors silencieusement une autre hauteur.
             "dz_trait": self.combo_dz_trait,
+            "fuseau_z": self.chk_fuseau_z,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -10713,6 +10747,7 @@ class TaskPanelHalftone:
         self.combo_mode.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.combo_dz_trait.currentIndexChanged.connect(
             lambda _i: self._update_grid_info())
+        self.chk_fuseau_z.toggled.connect(lambda _v: self._update_grid_info())
         self.combo_rotation.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.chk_invert.toggled.connect(lambda _v: self._update_grid_info())
         self._update_grid_info()
@@ -10958,37 +10993,79 @@ class TaskPanelHalftone:
             # _emit_raster_rows fusionne les S égaux -- l'aperçu dessine
             # donc les mêmes segments que la machine gravera.
             feed_l = self.spn_line_feed.value()
-            dz = self._dz_trait()
-            niv = core.swell_power_levels(
-                material, feed_l, self.spn_line_min.value(),
-                power_max=self.spn_power_max.value(), defocus=dz)
-            if niv is None:
-                return None, core.swell_refus_message(
-                    material, feed_l, self.spn_power_max.value(), defocus=dz)
-            puissances, w_min, w_max = niv
-            n = len(puissances)
-            # Seuil de blanc ET fond pointillé viennent de la MÊME grille
-            # que le générateur : sans ça l'aperçu montrerait un fond blanc
-            # que la machine graverait quand même (ou l'inverse), et le
-            # pointillé — qui dépend de la POSITION de la case — serait
-            # forcément dessiné ailleurs.
-            grille = core.swell_niveaux_grille(
-                darkness, n, self.spn_white.value() / 100.0,
-                self.combo_fond.currentData())
-            t = teinte(puissances[-1], feed_l, w_max, dz)
-            for row in range(h):
-                y = (h - 1 - row) * pitch
-                col = 0
-                while col < w:
-                    k0 = grille[row][col]
-                    c0 = col
-                    while col < w and grille[row][col] == k0:
-                        col += 1
-                    if k0 is None:      # bois nu : rien à peindre
+            if self._fuseau_z():
+                # La spirale se peint en SPIRALE, et le fuseau avec sa vraie
+                # largeur point par point : c'est la règle « chaque tramage
+                # peint comme il grave ». Un fuseau rendu en rangées de
+                # largeur constante ne montrerait rien de ce qu'on essaie.
+                ech = core.echelle_fuseau_z(
+                    material, feed_l, power_max=self.spn_power_max.value(),
+                    line_min_mm=self.spn_line_min.value())
+                if ech is None:
+                    return None, ("aucun niveau de défocus mesuré pour "
+                                  "« {} » : le fuseau n'a rien pour se "
+                                  "construire".format(material))
+                table_f, w_min_f, w_max_f, _av = ech
+                n_f = len(table_f)
+                pts_f = core.points_spirale(w * pitch, h * pitch, pitch)
+                dists_f = [((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
+                           for a, b in zip(pts_f, pts_f[1:])]
+                rangs_f = []
+                for x, y in pts_f:
+                    c = int(round(x / pitch))
+                    r = h - 1 - int(round(y / pitch))
+                    rangs_f.append(
+                        None if not (0 <= c < w and 0 <= r < h)
+                        else core.swell_niveau(darkness[r][c], n_f, white))
+                # MÊME rabotage de pente que le générateur : sans lui
+                # l'aperçu montrerait des transitions que la machine ne
+                # sait pas faire, donc un détail qu'on n'aura pas.
+                dz_f = core.limiter_pente_z(
+                    [table_f[k if k is not None else 0][0] for k in rangs_f],
+                    dists_f, core.pente_z_max(feed_l))
+                haut_f = [t[0] for t in table_f]
+                for i in range(len(pts_f) - 1):
+                    if rangs_f[i] is None:
                         continue
-                    largeur_k = w_min + (w_max - w_min) * k0 / float(n - 1)
-                    strokes.append(([(c0 * pitch, y), (col * pitch, y)],
-                                    largeur_k, t))
+                    k = min(range(n_f), key=lambda j: abs(haut_f[j] - dz_f[i]))
+                    strokes.append(([pts_f[i], pts_f[i + 1]], table_f[k][2],
+                                    teinte(table_f[k][1], feed_l,
+                                           table_f[k][2], dz_f[i])))
+            elif True:
+                # La largeur vient de la PUISSANCE : une valeur par case,
+                # donc des rangées de segments d'un pas.
+                dz = self._dz_trait()
+                niv = core.swell_power_levels(
+                    material, feed_l, self.spn_line_min.value(),
+                    power_max=self.spn_power_max.value(), defocus=dz)
+                if niv is None:
+                    return None, core.swell_refus_message(
+                        material, feed_l, self.spn_power_max.value(),
+                        defocus=dz)
+                puissances, w_min, w_max = niv
+                n = len(puissances)
+                # Seuil de blanc ET fond pointillé viennent de la MÊME
+                # grille que le générateur : sans ça l'aperçu montrerait un
+                # fond blanc que la machine graverait quand même (ou
+                # l'inverse), et le pointillé — qui dépend de la POSITION
+                # de la case — serait forcément dessiné ailleurs.
+                grille = core.swell_niveaux_grille(
+                    darkness, n, self.spn_white.value() / 100.0,
+                    self.combo_fond.currentData())
+                t = teinte(puissances[-1], feed_l, w_max, dz)
+                for row in range(h):
+                    y = (h - 1 - row) * pitch
+                    col = 0
+                    while col < w:
+                        k0 = grille[row][col]
+                        c0 = col
+                        while col < w and grille[row][col] == k0:
+                            col += 1
+                        if k0 is None:      # bois nu : rien à peindre
+                            continue
+                        largeur_k = w_min + (w_max - w_min) * k0 / float(n - 1)
+                        strokes.append(([(c0 * pitch, y), (col * pitch, y)],
+                                        largeur_k, t))
         elif t["cle"] in ("dither", "simili"):
             # Deux tramages BINAIRES balayés : chaque case allumée est
             # brûlée sur un PAS entier, à puissance et vitesse fixes. Seul
@@ -11221,6 +11298,12 @@ class TaskPanelHalftone:
         combo.setCurrentIndex(idx)
         combo.blockSignals(bloc)
 
+    def _fuseau_z(self):
+        """Le fuseau est-il actif ? SOURCE UNIQUE : générateur, aperçu et
+        verdict lisent cette méthode, jamais la case directement."""
+        return (self._tramage()["cle"] == "spirale"
+                and self.chk_fuseau_z.isChecked())
+
     def _dz_trait(self):
         """Hauteur de défocalisation choisie pour les tramages à trait qui
         enfle, en mm. 0 = au foyer. SOURCE UNIQUE : générateur, aperçu et
@@ -11228,6 +11311,8 @@ class TaskPanelHalftone:
         trois régimes différents pour une seule gravure."""
         if self._tramage()["reglage"] != "trait_mini":
             return 0.0
+        if self._fuseau_z():
+            return 0.0      # la hauteur balaie : aucune hauteur fixe
         try:
             return float(self.combo_dz_trait.currentData() or 0.0)
         except (TypeError, ValueError):
@@ -11324,7 +11409,7 @@ class TaskPanelHalftone:
                 line_min_mm=self.spn_line_min.value(),
                 white_threshold=self.spn_white.value() / 100.0,
                 power_max=self.spn_power_max.value(),
-                defocus=self._dz_trait(), **extra)
+                defocus=self._dz_trait(), fuseau_z=self._fuseau_z(), **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame
         # de points, silencieusement -- du G-code valide pour le mauvais
@@ -11499,6 +11584,8 @@ class TaskPanelHalftone:
         # vitesse : toute la suite du verdict lit CE défocus, celui-là même
         # que le générateur ajoutera au Z de travail.
         dz = self._dz_trait()
+        if self._fuseau_z():
+            return self._verdict_fuseau(msgs, pas, mat, feed)
         plage = core.burn_width_range(mat, feed, defocus=dz)
         if plage is None:
             if dz > 1e-9:
@@ -11727,6 +11814,65 @@ class TaskPanelHalftone:
                             pas, 100.0 * (1.0 - trait / pas), trait))
             return False, False
         return True, False
+
+    def _verdict_fuseau(self, msgs, pas, mat, feed):
+        """Verdict du FUSEAU : la largeur vient de la hauteur, donc ni la
+        plage de puissances ni le contraste de `swell_plage` ne s'appliquent.
+        Ce qui décide ici, c'est la COURSE du Z et la vitesse de l'axe.
+
+        Renvoie (ok, bouton), comme les autres verdicts."""
+        ech = core.echelle_fuseau_z(mat, feed,
+                                    power_max=self.spn_power_max.value(),
+                                    line_min_mm=self.spn_line_min.value())
+        if ech is None:
+            msgs.append(
+                "Aucun niveau de défocus mesuré pour ce matériau : le "
+                "fuseau n'a rien pour se construire. Grave la <b>Planche "
+                "2</b> (Assistant matériau), ou décoche le fuseau.")
+            return False, False
+        table, w_min, w_max, avert = ech
+        course = table[-1][0] - table[0][0]
+        mini = core.longueur_mini_fuseau(feed, course)
+        msgs.append(
+            "Fuseau <b>{:.2f} → {:.2f} mm</b> à F{:.0f} : la tête monte de "
+            "<b>{:.0f} mm</b> et la puissance suit de S{:.0f} à S{:.0f} "
+            "pour garder la teinte.".format(
+                w_min, w_max, feed, course, table[0][1], table[-1][1]))
+        # LE CHIFFRE QUI DÉCIDE DU RENDU. L'axe Z fait Z_MAX_FEED_MM_MIN ;
+        # au-delà LinuxCNC ralentit tout le mouvement pour qu'il suive, ce
+        # qui change le temps de pose donc la noirceur, sans rien dire. Le
+        # générateur borne donc lui-même la pente -- et ce que ça coûte,
+        # c'est du DÉTAIL, qu'il faut annoncer avant de graver.
+        msgs.append(
+            "Un fuseau complet demande au moins <b>{:.0f} mm</b> de trace à "
+            "cette vitesse (pente Z bornée à {:.0f} % de l'axe) : rien de "
+            "plus fin que ça ne sera rendu.".format(
+                mini, 100.0 * core.FUSEAU_MARGE_Z))
+        ok = True
+        large = (self._grid_size(self._load_image())[0] - 1) * pas \
+            if self._load_image() is not None else 0.0
+        if large > 0 and mini > large / 4.0:
+            msgs.append(
+                "Sur une image de {:.0f} mm de large, ça ne fait que "
+                "<b>{:.1f} motifs</b> en travers : soit tu ralentis, soit "
+                "tu acceptes un rendu très graphique.".format(
+                    large, large / mini))
+            ok = False
+        # La COURSE se paie en dégagement : la tête monte vraiment de cette
+        # hauteur au-dessus de la pièce. Personne d'autre ne le vérifie.
+        if course > 40.0:
+            msgs.append(
+                "<b>Vérifie le dégagement</b> : {:.0f} mm au-dessus de la "
+                "pièce, plus la hauteur de bec.".format(course))
+        if w_max > pas + 1e-9:
+            msgs.append(
+                "Trait maxi {:.2f} mm &gt; pas {:.2f} : les tours se "
+                "recouvrent dans les foncés. Pas à viser : <b>{:.2f} "
+                "mm</b>.".format(w_max, pas, w_max))
+            ok = False
+        for a in avert:
+            msgs.append(a[:1].upper() + a[1:] + ".")
+        return ok, False
 
     def _corriger_regime(self):
         """Aligne largeur du point ET vitesse sur la calibration -- les deux

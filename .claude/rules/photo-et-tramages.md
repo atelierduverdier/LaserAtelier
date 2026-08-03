@@ -184,6 +184,48 @@ spot size stops answering to power, which is what the original rule got right.
 At focus the burn width isn't the spot size, it's *where the beam profile crosses the wood's burn
 threshold* — and that point moves a lot with power.
 
+### The width can come from the HEIGHT instead — `fuseau_z` (v2.54.0)
+
+Modulating **power** gives one value per cell, so the width changes in steps of one pitch.
+Invisible at focus/pitch 0.20; very visible at defocus/pitch 1.16 — Christophe, 2026-08-03, with a
+sketch: *"cela me fait des lignes à étages… je pensais que la tête en Z allait se lever
+progressivement, ce qui aurait pour conséquence de grossir le trait progressivement"*. He was right,
+and 0.1 → 1 mm is simply not reachable by power at any regime (focus gives 0.12 → 0.20).
+
+`echelle_fuseau_z(material, feed, power_max, line_min_mm)` → `(table, w_min, w_max, avert)`, the
+shared source for generator, preview and verdict. Wired into the **spiral only** — one continuous
+path, so Z never has a row end to recover from.
+
+Four things hold it together:
+
+- **The Z slope is capped** (`pente_z_max`, `limiter_pente_z`, `FUSEAU_MARGE_Z = 0.5`). Past the axis
+  limit LinuxCNC does not refuse — it **slows the whole move** so Z can follow, which changes dwell
+  time and therefore darkness, silently. Capping ourselves also *is* the smoothing. The cost is
+  **detail**, and it must be announced before burning: `longueur_mini_fuseau` is the number that says
+  what the mode can render. On beech: 54 mm of Z course, so a full spindle needs 14 mm of trace at
+  F200 and 32 mm at F400 — on a 117 mm image, 8 motifs across, or 3.6.
+- **Power follows width** (S ∝ diameter, same model as `puissance_fluence_largeur`), clamped to the
+  measured span, and `avert` says where the clamp bites. Without it a 20× wider trace gets 20× less
+  energy per mm² — the July spiral came out mottled at the wide end and charred at the thin one.
+- **The spiral must be sampled finely along the arc** (`FUSEAU_PAS_ARC_MM = 0.4`), NOT at the radial
+  pitch. At pitch 3.4 the default sampling puts a point every 3.4 mm, so the width still changed in
+  3.4 mm steps — the very staircase this mode exists to remove. Caught by the test (largest Z step
+  12.75 mm on a 36 mm course), never by eye.
+- **No rapid transit over bare wood**, unlike the power spiral: the slope budget is computed for
+  `feed`, and speeding up on the whites would blow it exactly where the spindle collapses fastest.
+
+Intermediate heights are **not** measured levels, and that is deliberate here — unlike the fixed
+defocus of the row tramage, where an unmeasured height gives a mute regime nobody could explain. The
+Z sweeps by construction; the **anchors** stay measured.
+
+`_largeur_defocus(table, …)` is `burn_width_defocus_scaled`'s body on an already-loaded table: the
+ladder bisects hundreds of heights, and going through the public function would reload the config
+each time — the same defect that made the photo panel take 14 s to open.
+
+Verify the slope on the **emitted G-code**, never on the function that produced it. Size the
+tolerance on coordinate rounding (4 decimals → the *length* error dominates the *height* one, and a
+tolerance set on dz alone is too tight and goes red on rounding).
+
 ### Report the coverage SPREAD, not the ratio
 
 `min(1, w_max/pitch) - w_min/pitch`, not `1 - w_min/w_max`. The ratio is pitch-independent, so the
