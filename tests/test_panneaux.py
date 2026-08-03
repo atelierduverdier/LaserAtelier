@@ -1266,6 +1266,46 @@ assert "ActiveDocument is None" in _act, (
     "il ne doit creer un document QUE s'il n'y en a aucun")
 print("document : l'atelier en assure un, et n'en cree pas un deuxieme OK")
 
+# --- Un paragraphe doit RENDRE la place qu'il n'utilise plus ------------
+# Christophe, 03/08/2026 : « probleme de mise en page » sur le verdict des
+# lignes gravees. Mesure : `_WrapLabel` grandissait mais ne redescendait
+# JAMAIS. `heightForWidth` d'un QLabel replie repond d'apres la BOITE
+# courante et non d'apres le texte, donc une fois la hauteur minimale
+# montee il rendait indefiniment l'ancienne valeur -- 102 px conserves pour
+# un texte qui en demande 17, et le widget suivant pousse 85 px trop bas.
+# Le verdict de ce panneau passe de 2 a 5 lignes selon le regime : il
+# gardait donc en permanence la place du pire message jamais affiche.
+_hote_par = _Qt.QWidget()
+_lay_par = _Qt.QFormLayout(_hote_par)
+_par = tp._WrapLabel("")
+_lay_par.addRow(_par)
+_apres = _Qt.QLabel("SUIVANT")
+_lay_par.addRow(_apres)
+_hote_par.setAttribute(tp.QtCore.Qt.WA_DontShowOnScreen, True)
+_hote_par.resize(500, 400)
+_hote_par.show()
+
+
+def _hauteurs_par(nb_mots):
+    _par.setText("<span>x " + "verdict " * nb_mots + "</span>")
+    for _ in range(12):
+        _Qt.QApplication.processEvents()
+    return _par.height(), _apres.y()
+
+
+_h_court, _y_court = _hauteurs_par(4)
+_h_long, _y_long = _hauteurs_par(60)
+_h_retour, _y_retour = _hauteurs_par(4)
+assert _h_long > _h_court + 20, ("un paragraphe long doit grandir la rangee",
+                                 _h_court, _h_long)
+assert _h_retour == _h_court, (
+    "le paragraphe garde la hauteur du pire message affiche", _h_court,
+    _h_long, _h_retour)
+assert _y_retour == _y_court, (
+    "le widget suivant reste pousse vers le bas", _y_court, _y_retour)
+print("paragraphe : {} -> {} -> {} px, la rangee rend la place OK".format(
+    _h_court, _h_long, _h_retour))
+
 # references, on laisse Qt digerer, et on sort explicitement.
 for _nom_w, _w in list(globals().items()):
     if _nom_w.startswith("_hote") and isinstance(_w, _Qt.QWidget):

@@ -820,3 +820,53 @@ assert _c15 > 2.0 * _c0, (
 print("29. verdict, aperçu et G-code : une seule hauteur (défocus 15) OK "
       "-- aperçu couvert à {:.0f} % contre {:.0f} % au foyer".format(
           100.0 * _c15, 100.0 * _c0))
+
+# --- 30. Une couverture ne dépasse jamais 100 %, un contraste jamais < 0 -
+# Capture de Christophe, 03/08/2026, à défocus 15 / F650 / pas 0,14 : le
+# panneau affichait « couverture 479 → 100 %, contraste -379 points ». Le
+# plafond `min(1.0, ...)` était bien posé sur le HAUT de la couverture et
+# oublié sur le BAS. Un pas plus fin que le trait le plus fin n'est pas un
+# contraste médiocre : c'est l'absence totale de contraste, toutes les cases
+# couvrant déjà 100 %, et l'image sort noire unie. Le verdict doit le dire.
+_pn.combo_photo_mat.setCurrentIndex(_mats.index(MAT_DZ))
+_pn.combo_mode.setCurrentIndex(6)
+_pn.spn_line_feed.setValue(200.0)
+_nb_fin = 0
+for _v, _dzv in (("0", 0.0), ("15", 15.0)):
+    for _i in range(_pn.combo_dz_trait.count()):
+        if _pn.combo_dz_trait.itemData(_i) == _v:
+            _pn.combo_dz_trait.setCurrentIndex(_i)
+    _pl = core.swell_plage(MAT_DZ, 200.0, _pn.spn_power_max.value(),
+                           defocus=_dzv)
+    if _pl is None or _pl[2] < core.SWELL_RAPPORT_MINI:
+        continue
+    _wmin = max(_pn.spn_line_min.value(), _pl[0])
+    for _demande in (0.10, 0.30, _wmin, _pl[1], 2.0, 3.0):
+        _pn.spn_pitch.setValue(_demande)
+        # RELIRE la valeur : le champ borne à [0,10 ; 3,00], et un test qui
+        # raisonne sur la valeur DEMANDÉE juge le panneau sur un pas qu'il
+        # n'a jamais eu.
+        _pas = _pn.spn_pitch.value()
+        _pn._maj_regime()
+        _v2 = re.sub("<[^>]+>", "", texte(_pn.lbl_regime))
+        for _n in re.findall(r"couverture (-?\d+) → (-?\d+) %", _v2):
+            assert 0 <= int(_n[0]) <= 100 and 0 <= int(_n[1]) <= 100, (
+                "couverture hors de [0, 100]", _pas, _dzv, _v2[:160])
+        for _n in re.findall(r"contraste <?b?>?(-?\d+) points", _v2):
+            assert int(_n) >= 0, ("contraste négatif", _pas, _dzv, _v2[:160])
+        if _pas < _wmin - 1e-9:
+            assert "noire unie" in _v2, (
+                "un pas sous le trait le plus fin doit annoncer l'aplat "
+                "noir, pas un contraste", _pas, _v2[:200])
+            assert "⚠" in _v2, ("et le verdict doit être rouge", _v2[:80])
+            _nb_fin += 1
+        # L'ÉNERGIE est dite dans TOUS les cas. Elle sautait dès que le pas
+        # était perfectible -- c'est-à-dire exactement quand le risque de
+        # carbonisation est le plus grand : le `return` du conseil de pas
+        # passait par-dessus. Un pas se rattrape, du bois brûlé non.
+        assert "nergie" in _v2, ("le verdict se tait sur l'énergie",
+                                 _pas, _dzv, _v2[:200])
+assert _nb_fin >= 2, ("aucun pas trop fin testé : le test ne prouve rien",
+                      _nb_fin)
+print("30. couverture bornée à 100 %, contraste jamais négatif, énergie "
+      "toujours dite ({} pas trop fins vérifiés) OK".format(_nb_fin))

@@ -260,13 +260,32 @@ class _WrapLabel(QtWidgets.QLabel):
         w = self.width()
         if w <= 0:
             return
+        if getattr(self, "_en_ajustement", False):
+            return          # setMinimumHeight ci-dessous rappelle resizeEvent
+        # RELÂCHER LE MINIMUM AVANT DE MESURER. `heightForWidth` d'un QLabel
+        # replié répond d'après la BOÎTE courante et non d'après le texte :
+        # une fois le paragraphe agrandi, il rend indéfiniment l'ancienne
+        # hauteur, `h == self.minimumHeight()` est vrai, et la rangée ne
+        # redescend PLUS JAMAIS. Mesuré le 03/08/2026 sur un _WrapLabel isolé
+        # dans un QFormLayout : 4 mots -> 17 px, 60 mots -> 102, retour à
+        # 4 mots -> 102 px conservés pour 17 nécessaires, et le widget suivant
+        # reste poussé 85 px trop bas. Le verdict des « lignes gravées » passe
+        # de 2 à 5 lignes selon le régime : ce panneau gardait donc en
+        # permanence la place du pire message qu'il ait affiché.
+        avant = self.minimumHeight()
+        self._en_ajustement = True
         try:
-            h = self.heightForWidth(w)
-        except RuntimeError:
-            return  # widget C++ déjà détruit (timer différé)
-        if h <= 0 or h == self.minimumHeight():
-            return
-        self.setMinimumHeight(h)
+            self.setMinimumHeight(0)
+            try:
+                h = self.heightForWidth(w)
+            except RuntimeError:
+                return  # widget C++ déjà détruit (timer différé)
+            if h <= 0 or h == avant:
+                self.setMinimumHeight(avant)
+                return
+            self.setMinimumHeight(h)
+        finally:
+            self._en_ajustement = False
         # updateGeometry() se contente d'INVALIDER le layout parent -- Qt ne
         # le recalcule qu'au tour de boucle suivant (LayoutRequest posté),
         # d'où le flash de chevauchement vu à l'écran : la rangée reste à
@@ -11512,6 +11531,7 @@ class TaskPanelHalftone:
             msgs.append(m[:1].upper() + m[1:])
             return False, False
         if enfle:
+            ok_enfle = True
             w_min = max(self.spn_line_min.value(), plage[0])
             w_max = plage[1]
             # Le contraste, c'est l'ÉCART DE COUVERTURE réellement obtenu --
@@ -11527,6 +11547,38 @@ class TaskPanelHalftone:
             # déjà et seuls les clairs s'assombrissent. Sur hêtre à F800
             # (0,10 → 0,30 mm) : 67 points au pas 0,30, mais 50 au pas 0,40
             # comme au pas 0,20.
+            # UN PAS PLUS FIN QUE LE TRAIT LE PLUS FIN n'est pas un
+            # contraste médiocre, c'est l'absence totale de contraste :
+            # TOUS les paliers couvrent déjà 100 %, l'image sort noire
+            # unie. Signalé par Christophe le 03/08/2026 sur une capture
+            # où le panneau affichait « couverture 479 -> 100 %, contraste
+            # -379 points » -- un chiffre négatif, donc dénué de sens, et
+            # au-dessus une phrase qui continuait comme si de rien n'était.
+            # Le plafond manquait sur `bas` alors qu'il était bien là sur
+            # `haut` : une couverture ne dépasse pas 100 %, jamais.
+            #
+            # Le dire COURT. Le message d'origine faisait 445 caractères
+            # dans ce cas, dont l'essentiel était faux, et il débordait de
+            # sa rangée. Ici il n'y a qu'une chose à dire, et l'énergie
+            # avec, parce qu'un pas aussi fin est toujours une surchauffe.
+            if pas < w_min - 1e-9:
+                en = core.energie_lignes_gravees(mat, feed, pas, plafond,
+                                                 defocus=dz)
+                cout = ""
+                if en is not None:
+                    cout = (" L'énergie surfacique y vaut <b>{:.1f}</b> "
+                            "(noir franc {:.1f}, carbonisé {:.1f}) : à ce "
+                            "pas, chaque point est repassé {:.1f}×.".format(
+                                en[0], core.ENERGIE_LG_ANCRE_NOIR,
+                                core.ENERGIE_LG_ANCRE_CARBONISE,
+                                w_min / pas))
+                msgs.append(
+                    "Pas {:.2f} mm <b>plus fin que le trait le plus FIN</b> "
+                    "({:.2f} mm) : tous les paliers couvrent déjà 100 %, "
+                    "l'image sortira <b>noire unie</b>, sans aucun "
+                    "contraste.{} Pas à viser : <b>{:.2f} mm</b>.".format(
+                        pas, w_min, cout, w_max))
+                return False, False
             bas = w_min / pas
             haut = min(1.0, w_max / pas)
             ecart = haut - bas
@@ -11607,8 +11659,14 @@ class TaskPanelHalftone:
                 msgs.append(conseil)
                 # Simple conseil tant que la perte reste modeste ; alerte
                 # quand on laisse vraiment du contraste sur la table.
+                #
+                # Mais SANS sortir : ce `return` sautait par-dessus la ligne
+                # d'énergie, si bien que le panneau se taisait sur le risque
+                # de carbonisation exactement quand le pas était mal choisi
+                # -- c'est-à-dire quand il est le plus probable. Un pas
+                # perfectible se rattrape ; du bois brûlé, non.
                 if ecart < 0.8 * ecart_max:
-                    return False, False
+                    ok_enfle = False
             # L'ÉNERGIE, enfin. Le panneau ne parlait ici que de contraste et
             # de couverture -- deux façons de regarder la LARGEUR. Le
             # 01/08/2026 une recette à F200 a carbonisé le hêtre là où F1000
@@ -11651,7 +11709,7 @@ class TaskPanelHalftone:
                     return False, False
                 msgs.append("Énergie surfacique {:.1f}. {}{}".format(
                     e, ancres, eco))
-            return True, False
+            return ok_enfle, False
         # À partir d'ici : similigravure seule (les lignes gravées ont rendu
         # leur verdict au-dessus). Un point brûlé à fond, donc la largeur du
         # haut de la plage.

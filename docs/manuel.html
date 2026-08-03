@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.53.0</span><br>
+      <span class="ver">Version 2.53.1</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.53.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.53.1</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -817,6 +817,7 @@
     <p>Un sélecteur <b>«&nbsp;Défocus du trait&nbsp;»</b> propose donc, à côté du foyer, les hauteurs <b>réellement mesurées</b> pour le matériau — et elles seules. Ce n'est pas une prudence de principe&nbsp;: entre deux niveaux le modèle interpole, et un niveau qui ne porte qu'une seule puissance rend la même largeur à S200 et à S1000, soit un rapport de 1,00× que rien à l'écran n'expliquerait. Une hauteur libre offrirait surtout des régimes muets.</p>
     <p><b>Ce qu'on échange.</b> Au foyer, un portrait de 120&nbsp;mm au pas 0,20 fait 600 rangées&nbsp;; à défocus 15 au pas 1,20, il en fait 100. Il y a donc six fois moins de détail — et c'est le but&nbsp;: «&nbsp;ce n'est pas le nombre de lignes qui compte, c'est le style donné au portrait par l'épaisseur de ligne, même s'il y a moins de détails&nbsp;» (Christophe, 03/08/2026). Le rendu quitte le grain photographique pour la gravure sur bois. Le verdict du panneau nomme la hauteur dans sa première phrase, parce qu'une plage sans son régime ne dit pas de quelle gravure elle parle&nbsp;: 0,12 → 0,20&nbsp;mm et 0,67 → 1,16 sont le même bois, la même vitesse, et deux gravures sans rapport.</p>
     <p>Le contraste réellement obtenu, lui, est l'<b>écart de couverture</b>&nbsp;: de <code>fin/pas</code> à <code>épais/pas</code>, ce dernier plafonné à 100&nbsp;%. Ce n'est pas le rapport <code>1 − fin/épais</code>, qui ne dépend pas du pas et resterait figé pendant que l'image change à vue d'œil. Et cet écart passe par un <b>maximum au pas qui vaut exactement le trait le plus épais</b>&nbsp;: au-dessus les noirs n'atteignent jamais 100&nbsp;%, en dessous ils y sont déjà et seuls les clairs s'assombrissent. Sur hêtre à F800 (0,10 → 0,30&nbsp;mm)&nbsp;: <b>67 points au pas 0,30</b>, mais 50 au pas 0,40 comme au pas 0,20 — resserrer le pas <em>noircit</em> l'image sans lui rendre du contraste. Le panneau affiche l'écart réel et nomme le pas optimal.</p>
+    <p><b>Le piège du pas trop fin (v2.53.1).</b> Sous le trait le plus FIN, il n'y a plus de contraste du tout&nbsp;: <em>tous</em> les paliers couvrent déjà 100&nbsp;% et l'image sort <b>noire unie</b> — en brûlant plusieurs fois le même bois. À défocus 15 sur hêtre, le trait le plus fin fait 0,67&nbsp;mm&nbsp;; un pas de 0,14 hérité d'un réglage au foyer y repasse <b>4,8 fois</b> sur chaque point, pour une énergie surfacique de 9,9 quand le noir franc est à 6,4. Le panneau le disait mal&nbsp;: il annonçait «&nbsp;couverture 479 → 100&nbsp;%, contraste −379 points&nbsp;», un chiffre négatif donc dénué de sens, faute d'avoir plafonné le BAS de la couverture comme le HAUT l'était. Il nomme désormais l'aplat noir, le nombre de repasses et le pas à viser. <b>Changer de hauteur, c'est changer de pas</b>&nbsp;: les deux vont ensemble.</p>
     <table class="reglages">
       <tr><th>Régime</th><th>Trait</th><th>Rapport</th><th>Pas conseillé</th></tr>
       <tr><td><b>Au foyer, F800</b></td><td>0,12 → 0,20&nbsp;mm</td><td>1,67×</td><td>0,20&nbsp;mm</td></tr>
@@ -1161,7 +1162,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.53.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.53.1 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
