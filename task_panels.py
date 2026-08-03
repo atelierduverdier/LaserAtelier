@@ -10563,9 +10563,15 @@ class TaskPanelHalftone:
             # seuil est effectivement demandé.
             _set_row_visible(form, self.spn_power_max,
                              t["reglage"] == "trait_mini")
-            _set_row_visible(form, self.combo_fond,
-                             t["reglage"] == "trait_mini")
             fuseau = t["cle"] == "spirale" and self.chk_fuseau_z.isChecked()
+            # ... ET PAS EN FUSEAU : `_spirale_fuseau_z` ne lit jamais
+            # `fond_clair`, seul le générateur en rangées le fait. Le champ
+            # restait affiché et promettait un pointillé que la machine ne
+            # gravait pas -- Christophe l'avait réglé sur « Pointillé
+            # dégressif » le 03/08/2026 en croyant l'obtenir. Un contrôle
+            # visible qui ne fait rien est un contrôle qui ment.
+            _set_row_visible(form, self.combo_fond,
+                             t["reglage"] == "trait_mini" and not fuseau)
             _set_row_visible(form, self.chk_fuseau_z, t["cle"] == "spirale")
             # Une hauteur FIXE et un fuseau qui balaie la hauteur sont deux
             # réponses à la même question : n'en montrer qu'une.
@@ -11897,6 +11903,42 @@ class TaskPanelHalftone:
                 "recouvrent dans les foncés. Pas à viser : <b>{:.2f} "
                 "mm</b>.".format(w_max, pas, w_max))
             ok = False
+        # L'ÉNERGIE. Elle manquait ici alors que le verdict des lignes
+        # gravées la dit depuis le 01/08 -- et c'est elle qui décide de la
+        # brûlure. Christophe a gravé son portrait le 03/08/2026 au pas
+        # 0,50 à F200 sous plafond S900, soit un indice de 9,0, et a jugé
+        # sur le bois « un peu trop de puissance » : le panneau avait le
+        # chiffre et se taisait. Au plus noir, le trait remplit le pas :
+        # l'énergie surfacique y est donc exactement celle d'un aplat.
+        e = core.energie_surfacique(self.spn_power_max.value(), feed, pas)
+        if e:
+            ancres = ("Repères gravés sur hêtre : <b>{:.1f} → noir "
+                      "franc</b>, <b>{:.1f} → carbonisé</b>.".format(
+                          core.ENERGIE_LG_ANCRE_NOIR,
+                          core.ENERGIE_LG_ANCRE_CARBONISE))
+            # LA VITESSE QUI VISE LE NOIR FRANC. Un chiffre sans quoi en
+            # faire renvoie l'utilisateur à sa calculette ; l'énergie va
+            # comme 1/vitesse, donc la cible se calcule d'une règle de
+            # trois. Ralentir ou accélérer, le verbe suit le sens.
+            f_noir = (self.spn_power_max.value()
+                      / (pas * core.ENERGIE_LG_ANCRE_NOIR))
+            vise = ""
+            if f_noir > 0 and abs(f_noir - feed) > 0.05 * feed:
+                vise = (" Pour viser le noir franc à ce pas : <b>F{:.0f}</b>"
+                        " ({}).".format(
+                            f_noir,
+                            "plus vite" if f_noir > feed else "plus lent"))
+            if e > core.SEUIL_ENERGIE_LIGNES_GRAVEES:
+                msgs.append(
+                    "<b>Énergie surfacique {:.1f}</b> (S{:.0f} au pas "
+                    "{:.2f} à F{:.0f}) : au-delà du noir, l'énergie en trop "
+                    "ne noircit plus, elle CREUSE. {}{}".format(
+                        e, self.spn_power_max.value(), pas, feed, ancres,
+                        vise))
+                ok = False
+            else:
+                msgs.append("Énergie surfacique {:.1f}. {}{}".format(
+                    e, ancres, vise))
         for a in avert:
             msgs.append(a[:1].upper() + a[1:] + ".")
         return ok, False

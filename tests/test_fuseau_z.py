@@ -400,3 +400,78 @@ print("12. la largeur varie dans une case de pas ({} niveaux distincts), et "
       "un pixel isolé ne monte qu'au niveau {} sur 64 ; le panneau bâtit "
       "une grille {:.0f}x plus fine que le pas OK".format(
           len(set(_dedans)), _max_pic, _rap))
+
+# --- 13. Le verdict dit l'ÉNERGIE, et nomme la vitesse du noir franc ----
+# Christophe a gravé le 03/08/2026 au pas 0,50 à F200 sous plafond S900,
+# soit un indice de 9,0 contre 6,4 pour son « noir franc » gravé, et a jugé
+# sur le bois « un peu trop de puissance ». Le panneau avait le chiffre et
+# se taisait : le verdict du fuseau parlait de largeur, de course et de
+# détail, jamais de brûlure. Celui des lignes gravées le dit depuis le
+# 01/08 -- deux verdicts d'une même famille, un seul informé.
+_p13 = tp.TaskPanelHalftone()
+_m13 = [_p13.combo_photo_mat.itemText(i)
+        for i in range(_p13.combo_photo_mat.count())]
+if MAT in _m13:
+    _p13.combo_photo_mat.setCurrentIndex(_m13.index(MAT))
+_p13.combo_mode.setCurrentIndex(
+    [i for i, t in enumerate(tp._TRAMAGES) if t["cle"] == "spirale"][0])
+_p13.chk_fuseau_z.setChecked(True)
+_p13.spn_line_min.setValue(0.10)
+_p13.spn_power_max.setValue(900.0)
+_p13.spn_pitch.setValue(0.50)
+_p13.spn_white.setValue(5.0)
+for _f13 in (200.0, 280.0):
+    _p13.spn_line_feed.setValue(_f13)
+    _p13._maj_regime()
+    _v13 = texte(_p13.lbl_regime)
+    _e13 = 900.0 / (0.50 * _f13)
+    assert "nergie surfacique" in _v13, (
+        "le verdict du fuseau ne dit pas l'énergie -- c'est pourtant elle "
+        "qui décide de la brûlure", _f13, _v13[:160])
+    assert "{:.1f}".format(_e13) in _v13, (
+        "l'énergie annoncée n'est pas S/(pas x vitesse)", _e13, _v13[:200])
+    # Les deux ancres MESURÉES, sans quoi le chiffre ne dit pas de quel
+    # côté on est.
+    for _a13 in (core.ENERGIE_LG_ANCRE_NOIR, core.ENERGIE_LG_ANCRE_CARBONISE):
+        assert "{:.1f}".format(_a13) in _v13, (_a13, _v13[:200])
+# ... et il NOMME la vitesse qui vise le noir franc, sinon le chiffre
+# renvoie l'utilisateur à sa calculette.
+_p13.spn_line_feed.setValue(200.0)
+_p13._maj_regime()
+_v13 = texte(_p13.lbl_regime)
+# `texte()` retire le balisage : chercher <b> ici passerait à côté.
+_cible13 = re.search(r"noir franc à ce pas : F(\d+)", _v13)
+assert _cible13, ("le verdict ne nomme pas la vitesse du noir franc",
+                  _v13[:260])
+_fc = float(_cible13.group(1))
+assert abs(900.0 / (0.50 * _fc) - core.ENERGIE_LG_ANCRE_NOIR) < 0.1, (
+    "la vitesse nommée ne donne pas l'énergie du noir franc", _fc,
+    900.0 / (0.50 * _fc))
+print("13. verdict du fuseau : énergie + les 2 ancres + la vitesse du noir "
+      "franc (F{:.0f} au pas 0,50) OK".format(_fc))
+
+# --- 14. Un champ sans effet ne doit pas rester affiché -----------------
+# « Sous le seuil » (bois nu / pointillé dégressif) n'est lu QUE par le
+# générateur en rangées ; `_spirale_fuseau_z` ne reçoit même pas
+# `fond_clair`. Le champ restait pourtant visible en fuseau, et Christophe
+# l'avait réglé sur « Pointillé dégressif » le 03/08/2026 en croyant
+# l'obtenir : sous son seuil il aura du bois nu. Un contrôle visible qui ne
+# fait rien est un contrôle qui ment.
+import inspect as _insp13
+_src_fus = _insp13.getsource(core._spirale_fuseau_z)
+assert "fond_clair" not in _src_fus, (
+    "le générateur du fuseau lit maintenant fond_clair : ce test et la "
+    "règle qui va avec sont à revoir")
+_p13.form.setAttribute(tp.QtCore.Qt.WA_DontShowOnScreen, True)
+_p13.form.resize(700, 900)
+_p13.form.show()
+for _ in range(8):
+    tp.QtWidgets.QApplication.processEvents()
+for _etat, _attendu in ((True, True), (False, False)):
+    _p13.chk_fuseau_z.setChecked(_etat)
+    for _ in range(8):
+        tp.QtWidgets.QApplication.processEvents()
+    assert _p13.combo_fond.isHidden() == _attendu, (
+        "fuseau={} : « Sous le seuil » devrait être {}".format(
+            _etat, "caché" if _attendu else "visible"))
+print("14. « Sous le seuil » caché en fuseau, visible en rangées OK")

@@ -253,6 +253,21 @@ Four things hold it together:
   ±width/2 along the angle bisector. The asymmetry a viewer perceives comes from the sampling
   window being anchored by its **corner** (`getImageData(x, y, w, w)`), so the width at a point
   reflects the image half a window down-right of it. Don't build an asymmetric ribbon to chase it.
+- **THE VERDICT MUST SAY THE ENERGY** (v2.58.0). The spindle's verdict spoke of width, Z course and
+  detail — never of burning. Christophe engraved on 2026-08-03 at pitch 0.50 / F200 / ceiling S900,
+  i.e. an index of **9.0** against his engraved anchor of 6.4 for a solid black, and judged it on the
+  wood: *"un peu trop de puissance"*. The panel held the number and stayed quiet, while the row
+  tramage's verdict has printed it since 01/08 — two verdicts of one family, one of them informed.
+  At the darkest the trace fills the pitch, so the areal energy is exactly a flat's:
+  `energie_surfacique(power_max, feed, pitch)`. It also **names the feed that lands on the black
+  anchor** (`power_max / (pitch × 6.4)`, F281 here) — a number with nothing to do with it sends the
+  reader to a calculator. Note the pitch drives energy as much as the feed does: his 0.50 doubled it
+  against the 1.0 I had quoted him at 4.5.
+- **A control that does nothing must not stay on screen.** `fond_clair` (bare wood / dotted) is read
+  only by the row generator; `_spirale_fuseau_z` never even receives it. The field stayed visible in
+  spindle mode and Christophe had set it to "Pointillé dégressif" believing he would get it — under
+  his threshold he gets bare wood. Hidden when the spindle is on; §14 asserts both states and that
+  the generator still ignores `fond_clair`.
 - **`white_threshold = 0` for this look.** The threshold cuts the beam in the lights, which breaks the
   spiral into dashes — the opposite of the reference, where the line never breaks and the lights are
   merely thin. It is the original "jamais de bois nu" intent, and here it is the right one.
