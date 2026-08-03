@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>2.62.8</b></span>
+        <span class="badge">Version <b>2.62.9</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -301,7 +301,7 @@
 <section id="presentation">
   <div class="sec-tag">● Présentation</div>
   <h2>Un atelier pensé pour le laser sur CNC</h2>
-  <p class="sec-lede">L'Atelier Laser ajoute à FreeCAD 19 modes regroupés par thème : gravure à plat, gravure sur surface 3D courbe, découpe multi-passes, tests &amp; calibration, et assemblage de jobs. Chaque mode génère un fichier G-code prêt pour LinuxCNC, GRBL ou grblHAL (au choix, par profil laser), avec estimation de durée, aperçu du trajet dans la vue 3D et fichier de cadrage à vérifier avant de lancer.</p>
+  <p class="sec-lede">L'Atelier Laser ajoute à FreeCAD 20 modes regroupés par thème : gravure à plat, gravure sur surface 3D courbe, découpe multi-passes, tests &amp; calibration, et assemblage de jobs. Chaque mode génère un fichier G-code prêt pour LinuxCNC, GRBL ou grblHAL (au choix, par profil laser), avec estimation de durée, aperçu du trajet dans la vue 3D et fichier de cadrage à vérifier avant de lancer.</p>
 
   <div class="cols" style="margin-top:24px">
     <div class="panel">
@@ -403,7 +403,7 @@
 <!-- ============ MODES ============ -->
 <section id="modes">
   <div class="sec-tag">● Les modes</div>
-  <h2>19 modes, regroupés par thème</h2>
+  <h2>20 modes, regroupés par thème</h2>
   <p class="sec-lede">Ils apparaissent dans cet ordre dans la barre d'outils et le menu «&nbsp;Atelier Laser&nbsp;». Voici chaque panneau, avec sa capture et le cas d'usage.</p>
 
   <!-- GROUPE : Gravure à plat -->
@@ -447,6 +447,7 @@
       </div>
     </div>
     <div class="mode">
+      <div class="shot"><img src="screenshots/panneaux/21_calligraphie.png" alt="Panneau Calligraphie (pleins et déliés)"></div>
       <div class="body">
         <div class="head"><span class="mi"><img src="assets/calligraphie.svg" alt=""></span><h4>Calligraphie (pleins et déliés)</h4></div>
         <p>Grave un texte dans une <b>vraie police calligraphique</b> (<code>.otf</code>/<code>.ttf</code> lue sur ton disque) en <b>un seul passage</b>. On extrait le squelette de la lettre et sa largeur locale&nbsp;; la largeur devient une <b>hauteur Z</b> — la tête se lève pour élargir le trait dans les pleins, redescend pour les déliés. Rien n'est rempli ni repassé&nbsp;: un plein est un endroit où la tête était haute.</p>

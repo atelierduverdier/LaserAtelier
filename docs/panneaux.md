@@ -25,6 +25,16 @@ Remplit une face de hachures (parallèles / croisées / défocus) — géométri
 
 ![Hachures 2D](screenshots/panneaux/02_hachures_2d.png)
 
+### Texte (trait simple)
+Du texte en police **mono-trait** : une seule passe de plume par branche, pas un contour rempli. 44 polices (Hershey, EMS, Relief SingleLine, Cutlings), et le bouton « Voir… » les écrit toutes avec votre texte pour choisir en les voyant. Crée un objet fil, à graver ensuite avec Marquage.
+
+![Texte (trait simple)](screenshots/panneaux/18_text.png)
+
+### Calligraphie (pleins et déliés)
+Un texte gravé dans une **vraie police calligraphique** (`.otf`/`.ttf` lue sur votre disque) en un seul passage : on extrait le squelette de la lettre et sa largeur locale, et la largeur devient une **hauteur Z** — la tête se lève pour élargir le trait dans les pleins, redescend pour les déliés. Le verdict dit si les pleins demandés tiennent dans ce que le matériau sait donner, et propose la taille qui les ferait tenir.
+
+![Calligraphie (pleins et déliés)](screenshots/panneaux/21_calligraphie.png)
+
 ### Gravure remplie (noir)
 Texte/forme en noir plein : remplissage défocus rentré du bord + contour net, styles de trait, compensation puissance/défocus.
 
@@ -61,6 +71,11 @@ Passes progressives, kerf, trous d'abord, attaches, amorce, copies en matrice.
 
 ## Tests & calibration
 
+### Assistant matériau
+Caractériser un matériau du début à la fin, dans l'ordre : graver les trois planches, saisir les mesures (au pied à coulisse ou **sur la photo redressée**, le cadrage de chaque trait étant calculé), puis en déduire largeurs, espacements et régimes. C'est d'ici que sort la table de brûlures dont dépendent le défocus, le fuseau Z et la calligraphie.
+
+![Assistant matériau](screenshots/panneaux/17_assistant.png)
+
 ### Calibration kerf
 Carré test pour mesurer le kerf réel.
 
@@ -90,6 +105,11 @@ Job mixte fraise + laser : l'écart entre les deux croix corrige `tool.tbl`.
 La palette de gris mesurée d'un matériau (tons noirceur/S/F/défocus/largeur), appliquée d'un clic dans les modes.
 
 ![Nuancier](screenshots/panneaux/14_nuancier.png)
+
+### Catalogue (planche d'exemples)
+Une planche d'**exemples** gravée en un seul job : styles de Marquage, texte mono-trait, gravure remplie, chacun étiqueté avec ses réglages. À garder sur l'établi — c'est l'échantillonnier auquel on compare une idée avant de la graver en grand.
+
+![Catalogue (planche d'exemples)](screenshots/panneaux/19_catalogue.png)
 
 ## Assemblage & réglages
 

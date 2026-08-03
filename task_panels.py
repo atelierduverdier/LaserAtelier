@@ -10606,7 +10606,12 @@ class TaskPanelCalligraphie:
         self.lbl_verdict = _WrapLabel("")
         form.addRow(self.lbl_verdict)
         self.btn_apercu = QtWidgets.QPushButton("Aperçu du tracé gravé")
+        # `_preview_row` efface le libellé (boutons-icônes) : l'infobulle
+        # doit donc NOMMER l'action, sinon un bouton sans texte ne se
+        # devine qu'au survol.
         self.btn_apercu.setToolTip(
+            "Aperçu du tracé gravé.\n"
+            "\n"
             "Dessine le trait tel qu'il sortira : largeur bornée par la\n"
             "table du matériau ET pente Z limitée par la machine.")
         self.btn_apercu.clicked.connect(self._on_apercu)
