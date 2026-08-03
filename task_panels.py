@@ -2095,6 +2095,30 @@ class _MesuresPlanchesControleur:
             self._pile_niveaux.addWidget(lbl)
             self._pile_niveaux.addWidget(self._creer_bloc(gr))
         self._levels = list(niveaux)
+        # FAIRE RETOMBER LA MISE EN PAGE TOUT DE SUITE. On vient d'enlever
+        # des widgets (`setParent(None)` + `deleteLater`, donc une
+        # destruction DIFFÉRÉE) et d'en ajouter d'autres, sur un panneau
+        # visible et logé dans une zone défilante. Tant que la disposition
+        # n'a pas été recalculée de bout en bout, un cadre peut garder la
+        # taille qu'il avait avant pendant que son contenu se dessine
+        # ailleurs -- Christophe, 03/08/2026, sur son défocus 15 : « la
+        # première valeur m'a fait une drôle de chose sur le tableau, et une
+        # fois que j'ai enregistré les mesures tout est redevenu normal »
+        # (enregistrer déclenche `reload`, donc une passe complète).
+        #
+        # HONNÊTETÉ : ce symptôme n'a PAS été reproduit en headless, où il
+        # n'y a pas de vraie passe de dessin. Forcer le recalcul ici est
+        # sans risque et lève la cause la plus probable ; ce n'est pas une
+        # cause démontrée. Si l'affichage se dérange encore, c'est ailleurs.
+        self._pile_niveaux.activate()
+        self._boite_niveaux.updateGeometry()
+        w = self._boite_niveaux.parentWidget()
+        while w is not None:
+            if w.layout() is not None:
+                w.layout().activate()
+            if isinstance(w, QtWidgets.QScrollArea):
+                break
+            w = w.parentWidget()
         # Les cases visées viennent d'être détruites : garder un pointeur
         # dessus ferait planter le prochain setValue sur un objet C++ mort.
         self._derniere_case = None
