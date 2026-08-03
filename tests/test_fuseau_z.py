@@ -251,3 +251,48 @@ assert max(_sauts) < _course / 8.0, (
     "marches, pas un fuseau", max(_sauts), _course)
 print("9. course {:.0f} mm, plus grand saut {:.2f} mm (< 1/8) : un fuseau, "
       "pas un escalier OK".format(_course, max(_sauts)))
+
+# --- 10. LE PAS PLAFONNE LE FUSEAU --------------------------------------
+# Sans plafond, le fuseau montait jusqu'à la plus large brûlure du matériau
+# (3,43 mm sur hêtre), ce qui imposait un pas de 3,43 : 34 tours sur 120 mm,
+# une spirale clairsemée et pointillée. Christophe, 03/08/2026, aperçu à
+# l'appui : « on est loin de ce que je veux ». Au-delà du pas, les tours
+# voisins se recouvrent de toute façon -- le noir n'est plus un fuseau mais
+# un aplat repassé deux fois.
+_sans = core.echelle_fuseau_z(MAT, 200.0, power_max=core.S_MAX,
+                              line_min_mm=0.10)
+_large = _sans[2]
+for _cap in (_large / 4.0, _large / 2.0):
+    _av = core.echelle_fuseau_z(MAT, 200.0, power_max=core.S_MAX,
+                                line_min_mm=0.10, largeur_max=_cap)
+    assert _av is not None, _cap
+    assert abs(_av[2] - _cap) < 0.01, ("le plafond n'est pas respecté",
+                                       _cap, _av[2])
+    # Et il rend du DÉTAIL : la course du Z tombe avec la largeur maxi, donc
+    # la longueur mini d'un fuseau aussi.
+    _c_sans = _sans[0][-1][0] - _sans[0][0][0]
+    _c_avec = _av[0][-1][0] - _av[0][0][0]
+    assert _c_avec < _c_sans, ("plafonner doit raccourcir la course Z",
+                              _c_sans, _c_avec)
+# Un plafond PLUS LARGE que ce que le matériau sait faire ne doit rien
+# changer : c'est la mesure qui gagne, jamais le souhait.
+_haut = core.echelle_fuseau_z(MAT, 200.0, power_max=core.S_MAX,
+                              line_min_mm=0.10, largeur_max=_large * 3.0)
+assert abs(_haut[2] - _large) < 1e-6, ("un plafond au-delà des mesures ne "
+                                       "doit pas les dépasser", _haut[2])
+# Et le générateur passe bien le PAS comme plafond : au pas fin, le G-code
+# ne doit pas monter la tête comme au pas large.
+_g10a = core.generate_gcode_photo_spirale(
+    _rows, _large, core.Z_WORK_MM, 200.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, fuseau_z=True, quiet=True)
+_g10b = core.generate_gcode_photo_spirale(
+    _rows, _large / 3.0, core.Z_WORK_MM, 200.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, fuseau_z=True, quiet=True)
+_c10a = max(hauteurs_z(_g10a)) - min(hauteurs_z(_g10a))
+_c10b = max(hauteurs_z(_g10b)) - min(hauteurs_z(_g10b))
+assert _c10b < _c10a * 0.8, (
+    "le générateur ne plafonne pas le fuseau au pas : même course de Z à "
+    "deux pas très différents", _c10a, _c10b)
+print("10. le pas plafonne le fuseau ({:.2f} mm de course au pas large "
+      "contre {:.2f} au pas fin), les mesures gardent le dernier mot OK"
+      .format(_c10a, _c10b))

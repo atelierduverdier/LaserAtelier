@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.54.0</span><br>
+      <span class="ver">Version 2.55.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.54.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.55.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -730,7 +730,9 @@
     <p><b>La puissance suit la largeur</b>, sinon le large sort <em>pâle</em>&nbsp;: à S constant, un trait vingt fois plus large reçoit vingt fois moins d'énergie par mm² — c'est exactement ce qui avait donné une spirale marbrée au bout large et carbonisée au bout fin en juillet. S est donc proportionnel au diamètre, puis <b>borné à la plage mesurée</b>, et le panneau dit où la borne mord plutôt que de servir une recette inventée.</p>
     <p><b>Le prix est le DÉTAIL, et il se chiffre.</b> L'axe Z fait 1500&nbsp;mm/min&nbsp;; le trait ne peut donc pas grossir plus vite qu'une certaine pente. Sur hêtre, la course est de <b>54&nbsp;mm</b>, si bien qu'un fuseau complet demande <b>14&nbsp;mm</b> de trace à F200 et <b>32&nbsp;mm</b> à F400 — soit 8&nbsp;motifs en travers d'une image de 117&nbsp;mm, ou 3,6. Le verdict l'annonce <em>avant</em> de graver, parce que c'est ce chiffre, et lui seul, qui dit ce que le mode saura rendre.</p>
     <p>Pourquoi le générateur borne cette pente lui-même&nbsp;: <b>au-delà, LinuxCNC ne refuse pas</b>. Il ralentit tout le mouvement pour que le Z suive — donc le temps de pose change, donc la noirceur, sans que rien ne le dise. Le rabotage a d'ailleurs l'effet recherché&nbsp;: il <em>lisse</em>. Deux conséquences pratiques&nbsp;: la spirale est échantillonnée finement le long de l'arc (0,4&nbsp;mm) et non au pas radial, sans quoi la largeur changerait encore par marches de 3,4&nbsp;mm&nbsp;; et le bois nu n'est plus franchi à l'avance rapide, qui crèverait le budget de pente juste là où le fuseau redescend le plus vite.</p>
-    <p><b>Vérifie le dégagement</b>&nbsp;: 54&nbsp;mm au-dessus de la pièce, plus la hauteur de bec. Le verdict le rappelle au-delà de 40&nbsp;mm de course.</p>
+    <p><b>Le PAS plafonne le fuseau (v2.55.0).</b> La première version laissait le fuseau monter jusqu'à la plus large brûlure du matériau — 3,43&nbsp;mm sur hêtre — ce qui impose un pas de 3,43, donc <b>34 tours sur 120&nbsp;mm</b> : une spirale clairsemée, et pointillée par-dessus le marché. Christophe, aperçu à l'appui&nbsp;: «&nbsp;on est loin de ce que je veux&nbsp;». Au-delà du pas, les tours voisins se recouvrent de toute façon et le noir n'est plus un fuseau mais un aplat repassé deux fois. Le pas borne donc le haut du fuseau, et ça rend en prime du <b>détail</b>, la course du Z tombant avec la largeur maxi&nbsp;: au pas 3,0 il faut 41&nbsp;mm de course et 5,4&nbsp;mm de trace par fuseau&nbsp;; <b>au pas 1,0, il ne faut plus que 9&nbsp;mm de course et 1,2&nbsp;mm de trace</b> — et l'image compte 120 tours. Un plafond plus large que les mesures ne les dépasse jamais&nbsp;: c'est la mesure qui a le dernier mot.</p>
+    <p><b>Et mettre le seuil blanc à 0.</b> Le seuil coupe le faisceau dans les clairs, ce qui hache la spirale en pointillés — l'inverse du rendu visé, où le trait ne se coupe JAMAIS et où les clairs sont simplement fins. C'est l'intention d'origine du mode («&nbsp;jamais de bois nu&nbsp;»), et ici c'est la bonne.</p>
+    <p><b>Vérifie le dégagement</b>&nbsp;: la course annoncée par le verdict, au-dessus de la pièce, plus la hauteur de bec. Le verdict le rappelle au-delà de 40&nbsp;mm — ce qui n'arrive plus qu'aux pas très larges.</p>
     <p><b>Huitième tramage : la SPIRALE (v2.52.0).</b> « Lignes gravées » enroulé&nbsp;: un trait <b>unique</b> du centre au bord, dont l'épaisseur rend le gris. Mêmes réglages, mêmes paliers, même physique que le tramage en rangées — seul le <em>chemin</em> change. Son intérêt propre&nbsp;: <b>aucun demi-tour</b>, là où les rangées en font un par ligne.</p>
     <p>Né d'un rendu essayé sur <i>muffinman.io/vertigo</i>. Le SVG qui en sort n'est pas gravable tel quel&nbsp;: c'est le <b>contour d'un ruban</b> (donc deux traits par tour une fois importé, qui fondent en aplat), et il module l'épaisseur de <b>0,02 à 0,80&nbsp;mm</b> quand ce laser sait faire <b>0,10 à 0,30</b> au foyer — la moitié basse de sa gamme est sous le plancher de la machine. Ici la modulation sort de la table de largeurs <b>mesurée</b>, comme partout ailleurs dans l'atelier.</p>
     <p><b>Le format décide.</b> Mesuré sur le portrait réel (120&nbsp;×&nbsp;180&nbsp;mm, pas 0,16, F1000, plafond S900)&nbsp;: la spirale grave la même longueur que les rangées (70,7 contre 72,6&nbsp;m) mais parcourt <b>159&nbsp;m à vide contre 19,9</b>, parce qu'elle couvre le disque circonscrit — sur un format 2:3, les coins sont 70&nbsp;% de surface en plus. 91&nbsp;min et 42&nbsp;Mo, contre 75&nbsp;min et 6&nbsp;Mo en rangées. Sur un <b>carré</b> 120&nbsp;×&nbsp;120, elle retombe à 55&nbsp;min et 25&nbsp;Mo. <b>Ce tramage est fait pour un sujet carré ou rond</b> — ce qui est aussi, précisément, l'esthétique du rendu qui l'a inspiré.</p>
@@ -1169,7 +1171,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.54.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.55.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

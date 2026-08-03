@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.54.0"
+VERSION = "2.55.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5381,7 +5381,7 @@ def largeur_max_mesuree(material, feed, power_max=None):
 
 
 def echelle_fuseau_z(material, feed, power_max=None, line_min_mm=0.10,
-                     paliers=FUSEAU_PALIERS):
+                     paliers=FUSEAU_PALIERS, largeur_max=None):
     """Échelle du FUSEAU : noirceur -> (hauteur Z, puissance, largeur).
 
     Renvoie `(table, w_min, w_max, avert)` ou None. `table` est une liste
@@ -5413,7 +5413,19 @@ def echelle_fuseau_z(material, feed, power_max=None, line_min_mm=0.10,
     ASSUMÉ ici, contrairement au défocus fixe du tramage en rangées : là-bas
     une hauteur non mesurée donne un régime muet qu'on ne saurait pas
     expliquer, ici le Z balaie par construction et ne peut que passer entre
-    les niveaux. Les ANCRES, elles, restent mesurées."""
+    les niveaux. Les ANCRES, elles, restent mesurées.
+
+    `largeur_max` PLAFONNE le haut du fuseau -- l'appelant y met le PAS, et
+    c'est presque toujours ce qu'il faut : au-delà du pas, les tours voisins
+    se recouvrent et le noir devient un aplat repassé deux fois, donc plus
+    du fuseau mais de la carbonisation. Sans ce plafond, le fuseau montait
+    jusqu'à la plus large brûlure du matériau (3,43 mm sur hêtre), ce qui
+    imposait un pas de 3,43 -- soit 34 tours sur 120 mm, une spirale
+    clairsemée. Christophe, 03/08/2026, aperçu à l'appui : « on est loin de
+    ce que je veux ». Le rendu qu'il vise est DENSE : au pas 1,0 mm, 120
+    tours. Plafonner rend en prime du DÉTAIL, parce que la course du Z
+    diminue avec la largeur maxi et que la longueur mini d'un fuseau lui
+    est proportionnelle."""
     mat = _burn_width_material(material)
     if not mat or feed <= 0:
         return None
@@ -5434,6 +5446,8 @@ def echelle_fuseau_z(material, feed, power_max=None, line_min_mm=0.10,
     w_max = _largeur_defocus(table, s_haut, feed, z_haut)
     if not w_max or w_max <= 0:
         return None
+    if largeur_max and largeur_max > 0:
+        w_max = min(w_max, float(largeur_max))
     # Le plus FIN que la machine sache faire : au foyer, à la plus faible
     # puissance mesurée. Le champ « épaisseur mini » ne peut pas descendre
     # sous ça -- il choisit dans ce que le bois a montré, pas en dessous.
@@ -9028,8 +9042,10 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
        redescend le plus vite (du noir au blanc)."""
     h = len(darkness_rows)
     w = len(darkness_rows[0]) if h else 0
+    # LE PAS PLAFONNE LE FUSEAU : au-delà, les tours voisins se recouvrent
+    # et le noir n'est plus un fuseau mais un aplat repassé.
     ech = echelle_fuseau_z(material, feed, power_max=power_max,
-                           line_min_mm=line_min_mm)
+                           line_min_mm=line_min_mm, largeur_max=pitch)
     if ech is None:
         if not quiet:
             FreeCAD.Console.PrintWarning(

@@ -11000,7 +11000,8 @@ class TaskPanelHalftone:
                 # largeur constante ne montrerait rien de ce qu'on essaie.
                 ech = core.echelle_fuseau_z(
                     material, feed_l, power_max=self.spn_power_max.value(),
-                    line_min_mm=self.spn_line_min.value())
+                    line_min_mm=self.spn_line_min.value(),
+                    largeur_max=pitch)
                 if ech is None:
                     return None, ("aucun niveau de défocus mesuré pour "
                                   "« {} » : le fuseau n'a rien pour se "
@@ -11823,7 +11824,8 @@ class TaskPanelHalftone:
         Renvoie (ok, bouton), comme les autres verdicts."""
         ech = core.echelle_fuseau_z(mat, feed,
                                     power_max=self.spn_power_max.value(),
-                                    line_min_mm=self.spn_line_min.value())
+                                    line_min_mm=self.spn_line_min.value(),
+                                    largeur_max=pas)
         if ech is None:
             msgs.append(
                 "Aucun niveau de défocus mesuré pour ce matériau : le "

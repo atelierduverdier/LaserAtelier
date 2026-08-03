@@ -213,6 +213,17 @@ Four things hold it together:
   12.75 mm on a 36 mm course), never by eye.
 - **No rapid transit over bare wood**, unlike the power spiral: the slope budget is computed for
   `feed`, and speeding up on the whites would blow it exactly where the spindle collapses fastest.
+- **THE PITCH CAPS THE SPINDLE** (`largeur_max=pitch`, passed by generator, preview and verdict). The
+  first shipped version let the spindle run to the material's widest measured burn (3.43 mm on beech),
+  which forces a 3.43 mm pitch — **34 turns on 120 mm, a sparse dotted spiral**. Christophe, preview in
+  hand: *"on est loin de ce que je veux"*. Past the pitch, neighbouring turns overlap anyway: the black
+  stops being a spindle and becomes a twice-burned flat. Capping also buys **detail**, because the Z
+  course falls with the top width and the minimum spindle length is proportional to it — pitch 3.0 →
+  41 mm of course and 5.4 mm minimum; **pitch 1.0 → 9 mm and 1.2 mm**. A cap wider than the
+  measurements must not exceed them: the measurement always wins.
+- **`white_threshold = 0` for this look.** The threshold cuts the beam in the lights, which breaks the
+  spiral into dashes — the opposite of the reference, where the line never breaks and the lights are
+  merely thin. It is the original "jamais de bois nu" intent, and here it is the right one.
 
 Intermediate heights are **not** measured levels, and that is deliberate here — unlike the fixed
 defocus of the row tramage, where an unmeasured height gives a mute regime nobody could explain. The
