@@ -10256,6 +10256,42 @@ class TaskPanelHalftone:
             "ce réglage sert à orienter la gravure sur la pièce.")
         form.addRow("Rotation :", self.combo_rotation)
 
+        # L'ANGLE DU TRAME. Les cinq tramages en balayage passent tous par
+        # `_emit_raster_rows`, qui fait des rangées HORIZONTALES par
+        # construction -- `grid[rangée][colonne]` devient directement y et
+        # x. Y ajouter un angle voudrait dire réécrire l'émetteur partagé.
+        #
+        # On tourne donc l'IMAGE de -θ avant d'échantillonner : les rangées
+        # horizontales traversent alors le sujet à +θ. Même résultat, aucun
+        # générateur touché, et ça marche pour les cinq tramages d'un coup.
+        #
+        # Le prix est la SURFACE : le rectangle englobant d'une image
+        # tournée grandit (×1,41 dans chaque sens à 45°), donc la gravure
+        # dure plus longtemps et les coins restent nus. La largeur demandée
+        # est agrandie d'autant pour que le SUJET garde sa taille -- sans
+        # ça, demander 120 mm à 45° rendrait le portrait 1,41 fois plus
+        # petit sans prévenir.
+        self.spn_angle_trame = QtWidgets.QDoubleSpinBox()
+        self.spn_angle_trame.setRange(-90.0, 90.0)
+        self.spn_angle_trame.setDecimals(0)
+        self.spn_angle_trame.setSingleStep(5.0)
+        self.spn_angle_trame.setValue(0.0)
+        self.spn_angle_trame.setSuffix(" °")
+        self.spn_angle_trame.setToolTip(
+            "Angle des lignes de la trame sur le sujet (0 = horizontales).\n"
+            "\n"
+            "L'image est échantillonnée tournée de -θ, PUIS la trajectoire\n"
+            "est tournée de +θ : le sujet reste droit et ce sont les lignes\n"
+            "qui penchent. Réservé aux deux fuseaux, dont la trajectoire est\n"
+            "bâtie point par point. Le rectangle gravé\n"
+            "grandit d'autant (×1,41 à 45°), les coins restent nus, et la\n"
+            "durée suit -- la largeur demandée est agrandie pour que le\n"
+            "sujet, lui, garde sa taille.\n"
+            "\n"
+            "Pour un simple quart de tour, préfère « Rotation » : elle ne\n"
+            "coûte pas un pixel de plus.")
+        form.addRow("Angle de la trame :", self.spn_angle_trame)
+
         self.chk_invert = QtWidgets.QCheckBox("Inverser (négatif)")
         self.chk_invert.setToolTip(
             "Par défaut, les zones SOMBRES de l'image sont gravées (la\n"
@@ -10563,16 +10599,24 @@ class TaskPanelHalftone:
             # seuil est effectivement demandé.
             _set_row_visible(form, self.spn_power_max,
                              t["reglage"] == "trait_mini")
-            fuseau = t["cle"] == "spirale" and self.chk_fuseau_z.isChecked()
-            # ... ET PAS EN FUSEAU : `_spirale_fuseau_z` ne lit jamais
-            # `fond_clair`, seul le générateur en rangées le fait. Le champ
+            fuseau = (t["reglage"] == "trait_mini"
+                      and self.chk_fuseau_z.isChecked())
+            # ... ET PAS EN FUSEAU : aucun des deux générateurs de fuseau ne
+            # lit `fond_clair`, seul celui des rangées à PUISSANCE le fait.
+            # Le champ
             # restait affiché et promettait un pointillé que la machine ne
             # gravait pas -- Christophe l'avait réglé sur « Pointillé
             # dégressif » le 03/08/2026 en croyant l'obtenir. Un contrôle
             # visible qui ne fait rien est un contrôle qui ment.
             _set_row_visible(form, self.combo_fond,
                              t["reglage"] == "trait_mini" and not fuseau)
-            _set_row_visible(form, self.chk_fuseau_z, t["cle"] == "spirale")
+            _set_row_visible(form, self.chk_fuseau_z,
+                             t["reglage"] == "trait_mini")
+            # L'angle tourne l'image ET la trajectoire : il ne vaut que pour
+            # les tramages dont la trajectoire est bâtie point par point,
+            # c'est-à-dire les deux fuseaux. Les autres passent par
+            # `_emit_raster_rows`, horizontal par construction.
+            _set_row_visible(form, self.spn_angle_trame, fuseau)
             # Une hauteur FIXE et un fuseau qui balaie la hauteur sont deux
             # réponses à la même question : n'en montrer qu'une.
             _set_row_visible(form, self.combo_dz_trait,
@@ -10730,6 +10774,7 @@ class TaskPanelHalftone:
             # rang designerait alors silencieusement une autre hauteur.
             "dz_trait": self.combo_dz_trait,
             "fuseau_z": self.chk_fuseau_z,
+            "angle_trame": self.spn_angle_trame,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -10754,6 +10799,8 @@ class TaskPanelHalftone:
         self.combo_dz_trait.currentIndexChanged.connect(
             lambda _i: self._update_grid_info())
         self.chk_fuseau_z.toggled.connect(lambda _v: self._update_grid_info())
+        self.spn_angle_trame.valueChanged.connect(
+            lambda _v: self._update_grid_info())
         self.combo_rotation.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.chk_invert.toggled.connect(lambda _v: self._update_grid_info())
         self._update_grid_info()
@@ -10807,7 +10854,12 @@ class TaskPanelHalftone:
         return img
 
     def _grid_size(self, img):
-        cols = max(2, int(round(self.spn_width.value() / self.spn_pitch.value())) + 1)
+        # `_largeur_trame_mm` et non `spn_width` : sous un angle, le
+        # rectangle GRAVÉ est celui de l'image tournée, plus large que le
+        # sujet. Prendre la largeur demandée telle quelle rétrécirait le
+        # sujet de 1,41 à 45° sans rien dire.
+        cols = max(2, int(round(self._largeur_trame_mm()
+                                / self.spn_pitch.value())) + 1)
         rows = max(2, int(round(cols * img.height() / float(img.width()))))
         return cols, rows
 
@@ -10825,6 +10877,39 @@ class TaskPanelHalftone:
         return (pas / float(self.SOUS_ECHANTILLON_FUSEAU)
                 if self._fuseau_z() else pas)
 
+    def _tourner_pour_trame(self, img):
+        """Tourne l'image de -θ, sur fond BLANC, pour que les rangées
+        horizontales de la trame traversent le sujet à +θ.
+
+        Le fond doit être peint en blanc AVANT : une rotation Qt laisse les
+        coins transparents, et `convertToFormat(Grayscale8)` rend le
+        transparent NOIR -- les quatre coins seraient gravés à fond."""
+        angle = self.spn_angle_trame.value() if hasattr(
+            self, "spn_angle_trame") else 0.0
+        if abs(angle) < 1e-9 or img is None:
+            return img
+        t = QtGui.QTransform().rotate(-angle)
+        tourne = img.transformed(t, QtCore.Qt.SmoothTransformation)
+        fond = QtGui.QImage(tourne.size(), QtGui.QImage.Format_RGB32)
+        fond.fill(QtGui.QColor(255, 255, 255))
+        p = QtGui.QPainter(fond)
+        p.drawImage(0, 0, tourne)
+        p.end()
+        return fond
+
+    def _largeur_trame_mm(self):
+        """Largeur du rectangle GRAVÉ, en mm. Elle vaut la largeur demandée
+        hors rotation ; sous un angle elle est agrandie du rapport des
+        boîtes englobantes, pour que le SUJET garde la taille demandée."""
+        large = self.spn_width.value()
+        img = self._load_image()
+        if img is None or abs(self.spn_angle_trame.value()) < 1e-9:
+            return large
+        tourne = self._tourner_pour_trame(img)
+        if tourne is None or img.width() <= 0:
+            return large
+        return large * tourne.width() / float(img.width())
+
     def _build_rows(self, silent=False, max_cells=None):
         """Grille de noirceur 0..1 (lignes haut -> bas) depuis l'image, ou
         None (message d'erreur sauf si silent). max_cells : plafonne la
@@ -10837,6 +10922,7 @@ class TaskPanelHalftone:
                 QtWidgets.QMessageBox.critical(
                     self.form, "Erreur", "Choisis d'abord une image valide.")
             return None
+        img = self._tourner_pour_trame(img)
         cols, rows = self._grid_size(img)
         sous = self.SOUS_ECHANTILLON_FUSEAU if self._fuseau_z() else 1
         cols, rows = cols * sous, rows * sous
@@ -11039,14 +11125,20 @@ class TaskPanelHalftone:
                 table_f, w_min_f, w_max_f, _av = ech
                 n_f = len(table_f)
                 # MÊME cellule et MÊME fenêtre de moyenne que le
-                # générateur : `spirale_niveaux` est la source unique. Le
+                # générateur : `fuseau_niveaux_chemin` est la source unique. Le
                 # pitch de l'aperçu vient de la grille réduite, donc la
                 # cellule s'en déduit et ne se recopie pas.
                 cell_f, pas_f = cell, pitch
-                pts_f = core.points_spirale(w * cell_f, h * cell_f, pas_f)
+                # LE MÊME CHEMIN que le générateur : spirale ou serpentin.
+                # Peindre l'un pour l'autre montrerait un grain qui n'a rien
+                # à voir -- c'est la règle « chaque tramage peint comme il
+                # grave », et les deux chemins sortent des mêmes fonctions.
+                _chemin = (core.points_spirale if t["cle"] == "spirale"
+                           else core.points_serpentin)
+                pts_f = _chemin(w * cell_f, h * cell_f, pas_f)
                 dists_f = [((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
                            for a, b in zip(pts_f, pts_f[1:])]
-                rangs_f = core.spirale_niveaux(darkness, cell_f, pas_f,
+                rangs_f = core.fuseau_niveaux_chemin(darkness, cell_f, pas_f,
                                                pts_f, n_f, white)
                 # MÊME rabotage de pente que le générateur : sans lui
                 # l'aperçu montrerait des transitions que la machine ne
@@ -11054,6 +11146,11 @@ class TaskPanelHalftone:
                 dz_f = core.limiter_pente_z(
                     [table_f[k if k is not None else 0][0] for k in rangs_f],
                     dists_f, core.pente_z_max(feed_l))
+                # ... et la trajectoire TOURNÉE, comme le générateur : sans
+                # ça l'aperçu montrerait le sujet penché avec des lignes
+                # droites, soit l'inverse de ce qui sera gravé.
+                pts_f = core.tourner_points(pts_f,
+                                            self.spn_angle_trame.value())
                 haut_f = [t[0] for t in table_f]
                 for i in range(len(pts_f) - 1):
                     if rangs_f[i] is None:
@@ -11332,7 +11429,12 @@ class TaskPanelHalftone:
     def _fuseau_z(self):
         """Le fuseau est-il actif ? SOURCE UNIQUE : générateur, aperçu et
         verdict lisent cette méthode, jamais la case directement."""
-        return (self._tramage()["cle"] == "spirale"
+        # Les DEUX tramages à trait qui enfle depuis le 03/08/2026 : la
+        # spirale et les rangées. L'objection d'origine -- le Z aurait un
+        # demi-tour à rattraper à chaque bout de rangée -- a été périmée par
+        # la gravure de Christophe : au pas 0,50 la course du Z n'est que de
+        # 2,5 mm, le demi-tour ne coûte donc presque rien.
+        return (self._tramage()["reglage"] == "trait_mini"
                 and self.chk_fuseau_z.isChecked())
 
     def _dz_trait(self):
@@ -11426,7 +11528,9 @@ class TaskPanelHalftone:
                 white_threshold=self.spn_white.value() / 100.0,
                 fond_clair=self.combo_fond.currentData(),
                 power_max=self.spn_power_max.value(),
-                defocus=self._dz_trait(), **extra)
+                defocus=self._dz_trait(), fuseau_z=self._fuseau_z(),
+                cellule_mm=self._cellule_fuseau(),
+                angle_trame=self.spn_angle_trame.value(), **extra)
         if cle == "spirale":
             # Même famille que « enfle » : mêmes réglages, même table de
             # largeurs mesurées. Le fond pointillé n'existe pas ici (il se
@@ -11441,7 +11545,8 @@ class TaskPanelHalftone:
                 white_threshold=self.spn_white.value() / 100.0,
                 power_max=self.spn_power_max.value(),
                 defocus=self._dz_trait(), fuseau_z=self._fuseau_z(),
-                cellule_mm=self._cellule_fuseau(), **extra)
+                cellule_mm=self._cellule_fuseau(),
+                angle_trame=self.spn_angle_trame.value(), **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame
         # de points, silencieusement -- du G-code valide pour le mauvais

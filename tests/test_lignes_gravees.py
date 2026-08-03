@@ -126,6 +126,11 @@ print("8. pas 0.15 < trait maxi : le G-code prévient ; au pas 0.30 il se tait "
 
 # --- 9. L'aperçu et le G-code sortent de la MÊME table -----------------
 p = tp.TaskPanelHalftone()
+# La case « Fuseau » est partagée par la spirale et les rangées, et
+# son état est MÉMORISÉ : sans ce décochage explicite, ce test juge
+# le fuseau au lieu de la modulation par la puissance -- exactement
+# le piège du plafond de puissance ci-dessus.
+p.chk_fuseau_z.setChecked(False)
 mats = [p.combo_photo_mat.itemText(i) for i in range(p.combo_photo_mat.count())]
 p.combo_photo_mat.setCurrentIndex(mats.index(MAT))
 p.edt_image.setText(image_demo())
@@ -727,6 +732,11 @@ print("27. {} refus vérifiés ({} en défocus) : la vitesse nommée est "
 # 03/08/2026). Et le sélecteur ne concerne que les tramages à trait qui
 # enfle : la similigravure doit rester au foyer, son point EST le grain.
 _pn = tp.TaskPanelHalftone()
+# La case « Fuseau » est partagée par la spirale et les rangées, et
+# son état est MÉMORISÉ : sans ce décochage explicite, ce test juge
+# le fuseau au lieu de la modulation par la puissance -- exactement
+# le piège du plafond de puissance ci-dessus.
+_pn.chk_fuseau_z.setChecked(False)
 _mats = [_pn.combo_photo_mat.itemText(i)
          for i in range(_pn.combo_photo_mat.count())]
 if MAT_DZ in _mats:      # le combo se peuple depuis le nuancier

@@ -153,6 +153,11 @@ print("5. la similigravure grave des lignes jointives OK")
 # l'exception était avalée, le défaut restait) -- donc « material »: "Hêtre"
 # n'aurait rien fait du tout.
 p = tp.TaskPanelHalftone()
+# La case « Fuseau » est partagée par la spirale et les rangées, et
+# son état est MÉMORISÉ : sans ce décochage explicite, ce test juge
+# le fuseau au lieu de la modulation par la puissance -- exactement
+# le piège du plafond de puissance ci-dessus.
+p.chk_fuseau_z.setChecked(False)
 
 # Le panneau restaure les DERNIERS réglages de Christophe : son plafond de
 # puissance rognerait la plage sans que la recette y soit pour rien. Un test

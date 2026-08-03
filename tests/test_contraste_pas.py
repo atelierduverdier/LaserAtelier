@@ -25,6 +25,11 @@ MAT = u"Hêtre"
 # l'atelier mesure -- arrivé le 01/08/2026.
 figer_largeurs(core, MAT)
 p = tp.TaskPanelHalftone()
+# La case « Fuseau » est partagée par la spirale et les rangées, et
+# son état est MÉMORISÉ : sans ce décochage explicite, ce test juge
+# le fuseau au lieu de la modulation par la puissance -- exactement
+# le piège du plafond de puissance ci-dessus.
+p.chk_fuseau_z.setChecked(False)
 
 # Le panneau restaure les DERNIERS réglages de Christophe : son plafond de
 # puissance (v2.8.0) rognerait la plage et ferait tomber le contraste de 67

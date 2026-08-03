@@ -206,14 +206,19 @@ _p.spn_power_max.setValue(core.S_MAX)
 _p.spn_line_min.setValue(0.10)
 _p.spn_line_feed.setValue(200.0)
 _p.spn_pitch.setValue(3.40)
-# La case n'existe QUE pour la spirale : les rangées n'ont pas de trait
-# continu où faire monter la tête.
+# La case n'existe que pour les tramages à TRAIT QUI ENFLE -- la spirale
+# et les rangées depuis le 03/08/2026. Les autres n'ont pas de largeur de
+# trait à piloter : leur gris vient d'une densité ou d'une surface.
+_avec_fuseau = {t["cle"] for t in tp._TRAMAGES
+                if t["reglage"] == "trait_mini"}
+assert _avec_fuseau == {"enfle", "spirale"}, _avec_fuseau
 for _i, _t in enumerate(tp._TRAMAGES):
     _p.combo_mode.setCurrentIndex(_i)
     _p.chk_fuseau_z.setChecked(True)
-    if _t["cle"] != "spirale":
+    if _t["cle"] not in _avec_fuseau:
         assert not _p._fuseau_z(), (
-            "le fuseau ne doit s'appliquer qu'à la spirale", _t["cle"])
+            "le fuseau ne doit s'appliquer qu'aux traits qui enflent",
+            _t["cle"])
 _p.combo_mode.setCurrentIndex(
     [i for i, t in enumerate(tp._TRAMAGES) if t["cle"] == "spirale"][0])
 _p.chk_fuseau_z.setChecked(True)
@@ -350,7 +355,7 @@ _L12 = 40                       # cases fines -> 10 mm de large
 _rows12 = [[(x % _SOUS) / float(_SOUS - 1) for x in range(_L12)]
            for _ in range(_L12)]
 _pts12 = core.points_spirale(_L12 * _C12, _L12 * _C12, _PAS12)
-_niv12 = core.spirale_niveaux(_rows12, _C12, _PAS12, _pts12, 64, 0.0)
+_niv12 = core.fuseau_niveaux_chemin(_rows12, _C12, _PAS12, _pts12, 64, 0.0)
 _dedans = [k for k in _niv12 if k is not None]
 assert len(set(_dedans)) > 1, (
     "la largeur ne varie pas alors que l'image varie dans la case de pas",
@@ -360,8 +365,8 @@ assert len(set(_dedans)) > 1, (
 _plat = [[0.0] * _L12 for _ in range(_L12)]
 _pic = [list(r) for r in _plat]
 _pic[_L12 // 2][_L12 // 2] = 1.0
-_n_plat = core.spirale_niveaux(_plat, _C12, _PAS12, _pts12, 64, 0.0)
-_n_pic = core.spirale_niveaux(_pic, _C12, _PAS12, _pts12, 64, 0.0)
+_n_plat = core.fuseau_niveaux_chemin(_plat, _C12, _PAS12, _pts12, 64, 0.0)
+_n_pic = core.fuseau_niveaux_chemin(_pic, _C12, _PAS12, _pts12, 64, 0.0)
 _touches = [i for i, (a, b) in enumerate(zip(_n_plat, _n_pic))
             if a is not None and b is not None and a != b]
 assert _touches, "un pixel isolé ne change rien du tout : la fenêtre est nulle"
@@ -475,3 +480,78 @@ for _etat, _attendu in ((True, True), (False, False)):
         "fuseau={} : « Sous le seuil » devrait être {}".format(
             _etat, "caché" if _attendu else "visible"))
 print("14. « Sous le seuil » caché en fuseau, visible en rangées OK")
+
+# --- 15. Le fuseau marche AUSSI en rangées ------------------------------
+# Christophe, 03/08/2026 : « maintenant si je veux le faire en ligne
+# horizontale ». Ce matin j'avais écarté les rangées au motif que le Z
+# aurait un demi-tour à rattraper à chaque bout ; sa gravure a périmé
+# l'objection -- au pas 0,50 la course du Z n'est que de 2,5 mm.
+_rows15 = [[abs(math.sin(4.0 * x / 30.0) * math.cos(4.0 * y / 30.0))
+            for x in range(30)] for y in range(30)]
+_g15 = core.generate_gcode_photo_swell_lines(
+    _rows15, 1.0, core.Z_WORK_MM, 200.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, white_threshold=0.05, fuseau_z=True, quiet=True)
+assert _g15, "aucun G-code de rangées en fuseau"
+assert "fuseau par la hauteur" in _g15.lower(), _g15.split("\n")[1]
+_p15 = _trajet(_g15)
+assert len(_p15) > 200, len(_p15)
+_z15 = sorted({round(_q[2], 3) for _q in _p15})
+assert len(_z15) > 20, ("le Z ne balaie pas en rangées", len(_z15))
+# LA PENTE, sur le G-code émis, demi-tours compris -- c'est là qu'elle est
+# le plus sollicitée, puisque deux rangées voisines peuvent réclamer des
+# hauteurs opposées à un pas de distance.
+_pente15, _dmin15 = 0.0, None
+for _a, _b in zip(_p15, _p15[1:]):
+    _d = math.hypot(_b[0] - _a[0], _b[1] - _a[1])
+    if _d > 1e-9:
+        _pente15 = max(_pente15, abs(_b[2] - _a[2]) / _d)
+        _dmin15 = _d if _dmin15 is None else min(_dmin15, _d)
+_bud15 = core.pente_z_max(200.0)
+assert _pente15 <= _bud15 + (_bud15 * 1.5e-4 + 1.0e-4) / _dmin15, (
+    "les rangées crèvent le budget de pente au demi-tour", _pente15, _bud15)
+print("15. rangées en fuseau : {} hauteurs, pente {:.3f} tenue sous {:.3f} "
+      "OK".format(len(_z15), _pente15, _bud15))
+
+# --- 16. L'angle tourne le TRACÉ, pas seulement l'image -----------------
+# Tourner l'image seule grave le portrait PENCHÉ avec des lignes droites --
+# l'inverse de ce qu'on veut. Vu sur l'aperçu avant correction.
+_pts16 = [(0.0, 0.0), (10.0, 0.0), (10.0, 5.0)]
+_d16 = core.tourner_points(_pts16, 0.0)
+assert _d16 == _pts16, "un angle nul doit rendre le chemin tel quel"
+_t16 = core.tourner_points(_pts16, 90.0)
+# Une rotation conserve les DISTANCES : c'est ce qui rend le rabotage de
+# pente valable sur l'un ou l'autre des deux chemins.
+for _a, _b in zip(zip(_pts16, _pts16[1:]), zip(_t16, _t16[1:])):
+    _l1 = math.dist(_a[0], _a[1])
+    _l2 = math.dist(_b[0], _b[1])
+    assert abs(_l1 - _l2) < 1e-9, (_l1, _l2)
+# ... et le chemin est recalé sur (0, 0), convention de l'atelier.
+assert abs(min(q[0] for q in _t16)) < 1e-9
+assert abs(min(q[1] for q in _t16)) < 1e-9
+# Sur le G-code : à 45° la boîte englobante d'un serpentin carré grandit.
+_g16a = core.generate_gcode_photo_swell_lines(
+    _rows15, 1.0, core.Z_WORK_MM, 200.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, fuseau_z=True, quiet=True, angle_trame=0.0)
+_g16b = core.generate_gcode_photo_swell_lines(
+    _rows15, 1.0, core.Z_WORK_MM, 200.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, fuseau_z=True, quiet=True, angle_trame=45.0)
+
+
+def _boite(gcode):
+    _q = _trajet(gcode)
+    return (max(p[0] for p in _q) - min(p[0] for p in _q),
+            max(p[1] for p in _q) - min(p[1] for p in _q))
+
+
+_bx0, _by0 = _boite(_g16a)
+_bx45, _by45 = _boite(_g16b)
+assert _bx45 > _bx0 * 1.2 and _by45 > _by0 * 1.2, (
+    "à 45° la boîte englobante doit grandir : le tracé n'a pas tourné",
+    (_bx0, _by0), (_bx45, _by45))
+# Et le fichier reste recalé au zéro pièce.
+_q16 = _trajet(_g16b)
+assert min(p[0] for p in _q16) > -1e-6 and min(p[1] for p in _q16) > -1e-6, (
+    "le tracé tourné sort du zéro pièce")
+print("16. angle : chemin tourné (boîte {:.0f}x{:.0f} -> {:.0f}x{:.0f} mm), "
+      "distances conservées, recalé au zéro OK".format(
+          _bx0, _by0, _bx45, _by45))

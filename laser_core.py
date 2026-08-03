@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.58.0"
+VERSION = "2.59.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9022,10 +9022,11 @@ def points_spirale(largeur_mm, hauteur_mm, pas_mm, pas_arc_mm=None):
 FUSEAU_FENETRE = 0.8
 
 
-def spirale_niveaux(darkness_rows, cellule_mm, pitch, pts, n_niveaux,
-                    white_threshold=0.0):
-    """Rang dans l'échelle du fuseau pour chaque point de la spirale, ou
-    None (bois nu / hors image). SOURCE UNIQUE du générateur ET de l'aperçu.
+def fuseau_niveaux_chemin(darkness_rows, cellule_mm, pitch, pts, n_niveaux,
+                          white_threshold=0.0):
+    """Rang dans l'échelle du fuseau pour chaque point d'un CHEMIN
+    quelconque -- spirale ou serpentin de rangées --, ou None (bois nu /
+    hors image). SOURCE UNIQUE des générateurs ET de l'aperçu.
 
     DEUX choses la distinguent d'une simple lecture de case, et ce sont
     elles qui font le rendu -- Christophe les a repérées à l'oeil en
@@ -9080,7 +9081,8 @@ def spirale_niveaux(darkness_rows, cellule_mm, pitch, pts, n_niveaux,
 def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
                       line_min_mm=0.10, pre_gcode="", post_gcode="",
                       frame_only=False, quiet=False, white_threshold=0.0,
-                      power_max=None, pas_arc_mm=None, cellule_mm=None):
+                      power_max=None, pas_arc_mm=None, cellule_mm=None,
+                      angle_trame=0.0):
     """Spirale dont la largeur vient de la HAUTEUR, pas de la puissance.
 
     Le trait est un fuseau CONTINU : la tête se lève progressivement et le
@@ -9135,8 +9137,8 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
     if len(pts) < 2:
         return None
 
-    rangs = spirale_niveaux(darkness_rows, cell, pitch, pts, n,
-                            white_threshold)
+    rangs = fuseau_niveaux_chemin(darkness_rows, cell, pitch, pts, n,
+                                  white_threshold)
     # Le Z suit l'image MÊME sous le seuil de blanc : le faisceau s'y
     # éteint, mais faire redescendre la tête au foyer puis la relever
     # coûterait de la pente pour rien -- et c'est la pente qui manque.
@@ -9144,6 +9146,10 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
     dists = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
     pente = pente_z_max(feed)
     dz = limiter_pente_z(dz_voulu, dists, pente)
+    # L'image est échantillonnée sur le chemin DROIT (repère de la grille),
+    # la machine parcourt le chemin TOURNÉ. Une rotation ne change aucune
+    # distance : le rabotage de pente reste valable.
+    pts = tourner_points(pts, angle_trame)
     # La PUISSANCE suit la hauteur RÉELLEMENT tenue, pas celle qu'on
     # voulait : après rabotage le trait est plus fin que prévu dans les
     # descentes raides, et lui servir la puissance du trait large le
@@ -9231,7 +9237,12 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
     lines.append("G0 Z{:.4f}".format(z_safe))
 
     if frame_only:
-        lines.extend(build_frame_trace(0.0, largeur, 0.0, hauteur, z_safe))
+        # Le cadre suit la trajectoire TOURNÉE : un rectangle droit
+        # autour d'une gravure penchée ne cadre rien.
+        _xs = [q[0] for q in pts]
+        _ys = [q[1] for q in pts]
+        lines.extend(build_frame_trace(min(_xs), max(_xs),
+                                       min(_ys), max(_ys), z_safe))
         lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
         lines.append("M2")
         return sanitize_gcode_for_linuxcnc("\n".join(lines))
@@ -9274,7 +9285,8 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
                                  frame_only=False, quiet=False,
                                  white_threshold=0.0, power_max=None,
                                  pas_arc_mm=None, defocus=0.0,
-                                 fuseau_z=False, cellule_mm=None):
+                                 fuseau_z=False, cellule_mm=None,
+                                 angle_trame=0.0):
     """Photo en SPIRALE : un trait unique du centre au bord, dont
     l'ÉPAISSEUR rend le gris -- le principe de « Lignes gravées », enroulé.
 
@@ -9313,7 +9325,8 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
             line_min_mm=line_min_mm, pre_gcode=pre_gcode,
             post_gcode=post_gcode, frame_only=frame_only, quiet=quiet,
             white_threshold=white_threshold, power_max=power_max,
-            pas_arc_mm=pas_arc_mm, cellule_mm=cellule_mm)
+            pas_arc_mm=pas_arc_mm, cellule_mm=cellule_mm,
+            angle_trame=angle_trame)
     niveaux = swell_power_levels(material, feed, line_min_mm,
                                  power_max=power_max, defocus=defocus)
     if niveaux is None:
@@ -9422,12 +9435,222 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
     return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
 
+def points_serpentin(largeur_mm, hauteur_mm, pitch, pas_arc_mm=None):
+    """Points d'un SERPENTIN de rangées horizontales, du bas vers le haut :
+    une rangée vers la droite, la suivante vers la gauche, sans lever.
+
+    `pas_arc_mm` échantillonne le long de la rangée, indépendamment du pas
+    entre rangées -- même raison que pour la spirale : c'est la finesse de
+    ce pas-là qui décide si la largeur du trait varie continûment ou par
+    marches.
+
+    Le demi-tour est INCLUS dans la liste (le dernier point d'une rangée et
+    le premier de la suivante sont voisins d'un `pitch`), pour que le
+    rabotage de pente du Z le voie et le traite comme le reste du chemin --
+    c'est justement là que le Z doit rattraper le plus d'écart."""
+    if largeur_mm <= 0 or hauteur_mm <= 0 or pitch <= 0:
+        return []
+    pas_arc = float(pas_arc_mm or pitch)
+    if pas_arc <= 0:
+        return []
+    n_col = max(2, int(round(largeur_mm / pas_arc)) + 1)
+    n_rang = max(1, int(round(hauteur_mm / pitch)) + 1)
+    pts = []
+    for r in range(n_rang):
+        y = r * pitch
+        if y > hauteur_mm + 1e-9:
+            break
+        xs = [min(largeur_mm, i * pas_arc) for i in range(n_col)]
+        if r % 2:
+            xs.reverse()
+        pts.extend((x, y) for x in xs)
+    return pts
+
+
+def tourner_points(pts, angle_deg):
+    """Tourne un chemin de `angle_deg` (sens horaire vu de dessus) et le
+    recale sur (0, 0). Renvoie la liste telle quelle si l'angle est nul.
+
+    À QUOI ÇA SERT, et pourquoi tourner l'image ne suffit pas : pour graver
+    des lignes à 30° sur un portrait DROIT, on échantillonne l'image tournée
+    de -30° (les rangées horizontales y traversent le sujet à +30°) PUIS on
+    tourne la trajectoire de +30°. Le sujet revient droit, les lignes
+    restent à 30°. N'en faire que la moitié -- tourner l'image seule --
+    grave le portrait PENCHÉ avec des lignes horizontales, ce qui est
+    exactement le contraire (constaté sur l'aperçu, 03/08/2026).
+
+    Le recalage sur (0, 0) suit la convention de l'atelier : tout fichier
+    est écrit au zéro pièce, et une rotation déplace la boîte englobante."""
+    if not pts or abs(float(angle_deg)) < 1e-9:
+        return list(pts)
+    a = math.radians(-float(angle_deg))      # horaire = -theta en maths
+    ca, sa = math.cos(a), math.sin(a)
+    tournes = [(x * ca - y * sa, x * sa + y * ca) for x, y in pts]
+    x0 = min(q[0] for q in tournes)
+    y0 = min(q[1] for q in tournes)
+    return [(q[0] - x0, q[1] - y0) for q in tournes]
+
+
+def _rangees_fuseau_z(darkness_rows, pitch, z_work, feed, material,
+                      line_min_mm=0.10, pre_gcode="", post_gcode="",
+                      frame_only=False, quiet=False, white_threshold=0.0,
+                      power_max=None, cellule_mm=None, pas_arc_mm=None,
+                      angle_trame=0.0):
+    """Rangées horizontales dont la largeur vient de la HAUTEUR.
+
+    Le fuseau de la spirale, déroulé en lignes. Christophe, 03/08/2026 :
+    « maintenant si je veux le faire en ligne horizontale ». Ce matin j'avais
+    écarté les rangées au motif que le Z aurait un demi-tour à rattraper à
+    chaque bout ; sa gravure a périmé l'objection -- au pas 0,50 la course
+    du Z n'est que de 2,5 mm, donc le demi-tour ne coûte presque rien.
+
+    Tout le reste est partagé avec la spirale : `echelle_fuseau_z` pour la
+    table hauteur/puissance, `fuseau_niveaux_chemin` pour l'échantillonnage
+    fin avec moyenne de fenêtre, `limiter_pente_z` pour la pente. Seul le
+    CHEMIN change -- c'est la même règle que pour la spirale à puissance."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    ech = echelle_fuseau_z(material, feed, power_max=power_max,
+                           line_min_mm=line_min_mm, largeur_max=pitch)
+    if ech is None:
+        if not quiet:
+            FreeCAD.Console.PrintWarning(
+                "Lignes gravées (fuseau Z) : aucun niveau de défocus mesuré "
+                "pour « {} » -- grave la Planche 2 (Assistant matériau).\n"
+                .format(material))
+        return None
+    table, w_min, w_max, avert = ech
+    n = len(table)
+    cell = float(cellule_mm) if cellule_mm and cellule_mm > 0 else pitch
+    largeur, hauteur = w * cell, h * cell
+    pts = points_serpentin(largeur, hauteur, pitch,
+                           pas_arc_mm or min(FUSEAU_PAS_ARC_MM, pitch))
+    if len(pts) < 2:
+        return None
+
+    # L'IMAGE est échantillonnée sur le chemin DROIT (c'est le repère de
+    # la grille), la MACHINE parcourt le chemin TOURNÉ. Les distances ne
+    # changent pas dans une rotation, donc le rabotage de pente peut se
+    # calculer sur l'un ou l'autre.
+    rangs = fuseau_niveaux_chemin(darkness_rows, cell, pitch, pts, n,
+                                  white_threshold)
+    dz_voulu = [table[r if r is not None else 0][0] for r in rangs]
+    dists = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
+    pente = pente_z_max(feed)
+    dz = limiter_pente_z(dz_voulu, dists, pente)
+    pts = tourner_points(pts, angle_trame)
+    hauteurs = [t[0] for t in table]
+
+    def _rang_pour_z(z):
+        lo, hi = 0, n - 1
+        while lo < hi:
+            mi = (lo + hi) // 2
+            if hauteurs[mi] < z:
+                lo = mi + 1
+            else:
+                hi = mi
+        return lo
+
+    puis = [0.0 if rangs[i] is None else table[_rang_pour_z(z)][1]
+            for i, z in enumerate(dz)]
+    # MÊME règle que la spirale : avance rapide sur le bois nu, mais
+    # seulement là où le Z ne bouge pas.
+    avances = [feed] * len(dz)
+    i = 0
+    while i < len(dz) - 1:
+        if puis[i] > 0.0:
+            i += 1
+            continue
+        j = i
+        while (j + 1 < len(dz) and puis[j + 1] <= 0.0
+               and abs(dz[j + 1] - dz[i]) < 1e-6):
+            j += 1
+        d = sum(dists[k] for k in range(i, j))
+        if d >= TRANSIT_BLANC_MINI_MM:
+            for k in range(i, j):
+                avances[k] = max(RAPID_FEED_MM_MIN, feed)
+        i = max(j, i + 1)
+
+    z_bas, z_haut = z_work + min(dz), z_work + max(dz)
+    z_safe = z_haut + TRAVEL_CLEARANCE_MM
+    trace = sum(dists)
+    course = max(dz) - min(dz)
+    lines = []
+    lines.append("(G-Code Laser - Photo : lignes gravees, fuseau par la "
+                 "hauteur Z)")
+    lines.append("(Image : {} x {} cases de {:.2f}mm au pas {:.2f}mm, F{:.0f} "
+                 "-- moyenne sur {:.2f}mm)".format(
+                     w, h, cell, pitch, feed, FUSEAU_FENETRE * pitch))
+    lines.append("(Serpentin : {:.0f} rangees, {:.0f} mm de trace)".format(
+        hauteur / pitch + 1, trace))
+    lines.append("(Trait {:.2f} a {:.2f} mm par la HAUTEUR : Z {:.2f} a {:.2f} "
+                 "[{:.1f} mm de course], S {:.0f} a {:.0f})".format(
+                     w_min, w_max, z_bas, z_haut, course,
+                     min([p for p in puis if p > 0] or [0]), max(puis or [0])))
+    lines.append("(Pente Z bornee a {:.2f} mm/mm [{:.0f}% de l'axe] : le "
+                 "fuseau complet demande {:.0f} mm de trace au minimum)".format(
+                     pente, 100.0 * FUSEAU_MARGE_Z,
+                     longueur_mini_fuseau(feed, course)))
+    if white_threshold > 0.0:
+        lines.append("(Seuil blanc {:.0f} % : sous cette noirceur, bois NU "
+                     "[faisceau coupe, mouvement continu])".format(
+                         100.0 * white_threshold))
+    for a in avert:
+        lines.append("(NOTE : {})".format(a))
+    lines.append("G21")
+    lines.append("G90")
+    lines.append("G94")
+    if cmd_path_blend():
+        lines.append(cmd_path_blend())
+    lines.append(cmd_tool_comp())
+    lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+
+    if frame_only:
+        # Le cadre suit la trajectoire TOURNÉE : un rectangle droit
+        # autour d'une gravure penchée ne cadre rien.
+        _xs = [q[0] for q in pts]
+        _ys = [q[1] for q in pts]
+        lines.extend(build_frame_trace(min(_xs), max(_xs),
+                                       min(_ys), max(_ys), z_safe))
+        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+        lines.append("M2")
+        return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+    if pre_gcode.strip():
+        lines.append("(-- G-code personnalisé (avant) --)")
+        lines.append(pre_gcode.strip())
+    lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
+    lines.append("G0 X{:.4f} Y{:.4f}".format(pts[0][0], pts[0][1]))
+    lines.append("G0 Z{:.4f}".format(z_work + dz[0]))
+    p_prec = None
+    for i in range(1, len(pts)):
+        x, y = pts[i]
+        pw = puis[i]
+        if pw != p_prec:
+            lines.extend(cmd_power_prefix(pw))
+            p_prec = pw
+        suf = cmd_power_suffix(pw)
+        lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}{}".format(
+            x, y, z_work + dz[i], avances[i - 1], (" " + suf) if suf else ""))
+    lines.extend(cmd_power_prefix(0.0))
+    lines.append("G0 Z{:.4f}".format(z_safe))
+    if post_gcode.strip():
+        lines.append("(-- G-code personnalisé (après) --)")
+        lines.append(post_gcode.strip())
+    lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+    lines.append("M2")
+    return sanitize_gcode_for_linuxcnc("\n".join(lines))
+
+
 def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
                                      material, line_min_mm=0.10,
                                      pre_gcode="", post_gcode="",
                                      frame_only=False, quiet=False,
                                      white_threshold=0.0, fond_clair="nu",
-                                     power_max=None, defocus=0.0):
+                                     power_max=None, defocus=0.0,
+                                     fuseau_z=False, cellule_mm=None,
+                                     pas_arc_mm=None, angle_trame=0.0):
     """Photo en LIGNES GRAVÉES : chaque ligne est balayée en continu au
     FOYER, et c'est l'ÉPAISSEUR du trait qui rend le gris -- fin dans les
     clairs, épais dans les foncés, comme une gravure sur cuivre. Aucun
@@ -9455,6 +9678,14 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
     w = len(darkness_rows[0]) if h else 0
     if h < 1 or w < 1 or pitch <= 0 or feed <= 0:
         return None
+    if fuseau_z:
+        return _rangees_fuseau_z(
+            darkness_rows, pitch, z_work, feed, material,
+            line_min_mm=line_min_mm, pre_gcode=pre_gcode,
+            post_gcode=post_gcode, frame_only=frame_only, quiet=quiet,
+            white_threshold=white_threshold, power_max=power_max,
+            cellule_mm=cellule_mm, pas_arc_mm=pas_arc_mm,
+            angle_trame=angle_trame)
     niveaux = swell_power_levels(material, feed, line_min_mm,
                                  power_max=power_max, defocus=defocus)
     if niveaux is None:

@@ -45,6 +45,11 @@ print("1. {} panneaux construits sans erreur ({} sautés : ils exigent une "
 img = image_demo()
 assert img, "aucune image de test disponible"
 p = tp.TaskPanelHalftone()
+# La case « Fuseau » est partagée par la spirale et les rangées, et
+# son état est MÉMORISÉ : sans ce décochage explicite, ce test juge
+# le fuseau au lieu de la modulation par la puissance -- exactement
+# le piège du plafond de puissance ci-dessus.
+p.chk_fuseau_z.setChecked(False)
 mats = [p.combo_photo_mat.itemText(i) for i in range(p.combo_photo_mat.count())]
 assert u"Hêtre" in mats, mats
 p.combo_photo_mat.setCurrentIndex(mats.index(u"Hêtre"))
@@ -222,6 +227,11 @@ print("4. hors régime : aperçu ET générateur refusent, en nommant F{:.0f} "
 from PySide6 import QtWidgets
 
 p5 = tp.TaskPanelHalftone()
+# La case « Fuseau » est partagée par la spirale et les rangées, et
+# son état est MÉMORISÉ : sans ce décochage explicite, ce test juge
+# le fuseau au lieu de la modulation par la puissance -- exactement
+# le piège du plafond de puissance ci-dessus.
+p5.chk_fuseau_z.setChecked(False)
 p5.edt_image.setText(image_demo())
 p5.spn_width.setValue(30.0)
 p5.combo_mode.setCurrentIndex(0)

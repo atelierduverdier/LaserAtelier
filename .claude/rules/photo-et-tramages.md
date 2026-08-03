@@ -268,6 +268,28 @@ Four things hold it together:
   spindle mode and Christophe had set it to "Pointillé dégressif" believing he would get it — under
   his threshold he gets bare wood. Hidden when the spindle is on; §14 asserts both states and that
   the generator still ignores `fond_clair`.
+- **THE SPINDLE ALSO RUNS ON ROWS** (v2.59.0), and the angle with it. On 2026-08-03 I had ruled rows
+  out because Z would have a turn to recover at each end; his engraving killed the objection — at
+  pitch 0.50 the Z course is only 2.5 mm, so the turn costs almost nothing. `points_serpentin` +
+  `_rangees_fuseau_z` reuse everything: same ladder, same `fuseau_niveaux_chemin` (renamed from
+  `spirale_niveaux` — a "spiral" name on path-generic code misleads), same slope limiter, same
+  rapid-transit rule. Only the PATH changes. The turn is deliberately **inside** the point list so the
+  slope limiter sees it: that is where Z must recover the most, two neighbouring rows being one pitch
+  apart and possibly wanting opposite heights.
+- **THE ANGLE ROTATES THE PATH, NOT ONLY THE IMAGE.** Rotating the image alone engraves the subject
+  **tilted** with straight lines — the exact opposite of what is wanted (seen on the preview before
+  the fix). The correct pair: sample the image rotated by −θ (horizontal rows then cross the subject
+  at +θ) **then** rotate the emitted path by +θ (`tourner_points`, re-anchored to (0, 0) per the
+  workshop's zero-piece convention). A rotation preserves distances, so the slope limiter is valid on
+  either path. The frame (`frame_only`) must use the ROTATED bounding box. The engraved rectangle
+  grows — 50×76 → 116×119 mm at 30° — so `_grid_size` reads `_largeur_trame_mm()`, which scales the
+  requested width by the bbox ratio: otherwise asking for 120 mm at 45° would shrink the subject by
+  1.41 without a word. Restricted to the two spindles, whose path is built point by point; the other
+  three raster tramages go through `_emit_raster_rows`, horizontal by construction.
+- **The spindle checkbox is SHARED by both tramages and its state is remembered**, so it follows when
+  you switch from spiral to rows. Four suites went red on that alone: any test about the
+  power-modulated behaviour must uncheck it explicitly, exactly like the power ceiling
+  (*"un test ne doit pas dépendre de ce qu'il a réglé hier"*).
 - **`white_threshold = 0` for this look.** The threshold cuts the beam in the lights, which breaks the
   spiral into dashes — the opposite of the reference, where the line never breaks and the lights are
   merely thin. It is the original "jamais de bois nu" intent, and here it is the right one.
