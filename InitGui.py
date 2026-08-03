@@ -44,11 +44,32 @@ class LaserAtelierWorkbench(Workbench):
     def Initialize(self):
         import commands
         commands.register_commands()
+        # L'ORDRE D'APPRENTISSAGE, pour la barre comme pour le menu.
+        # Le Guide dit « CALIBRER (une fois) » : les sept icônes de
+        # calibration arrivaient pourtant derrière DOUZE boutons de travail
+        # qu'on ne peut pas utiliser tant que rien n'est mesuré. Christophe
+        # a relevé la contradiction le 03/08/2026 -- l'atelier n'a qu'un
+        # utilisateur, et c'est lui qui trouvait l'ordre illogique : son
+        # avis passe avant l'argument ergonomique du « bouton quotidien
+        # d'abord ».
         self.command_list = [
             # -- Découverte --
             "LaserAtelier_Guide",
             "Separator",
-            # ===== BOUTONS DE TRAVAIL (à gauche) =====
+            # ===== CALIBRATION : PREMIÈRE UTILISATION DU LASER =====
+            # Une fois par laser (pas par matériau) -- à refaire seulement
+            # après un changement optique ou un démontage/remontage.
+            "LaserAtelier_DefocusCalibration",  # ★1 foyer + point + défocus
+            "LaserAtelier_OffsetTest",          # ★2 offsets X/Y
+            "Separator",
+            # ===== CALIBRATION : AJOUTER UN MATÉRIAU =====
+            "LaserAtelier_Assistant",           # ★3 planches -> mesures
+            "LaserAtelier_TestGrid",            # complément (défocus libre…)
+            "LaserAtelier_PowerRamp",           # repérage rapide S/F
+            "LaserAtelier_Nuancier",            # tons mesurés (gris/photo)
+            "LaserAtelier_Kerf",                # ★4 kerf (si découpe)
+            "Separator",
+            # ===== BOUTONS DE TRAVAIL =====
             # -- Import de dessins --
             "LaserAtelier_ImporterSVG",
             "Separator",
@@ -70,63 +91,21 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_Combined",
             "LaserAtelier_JobsToCombined",
             "Separator",
-            # ===== CALIBRATION : PREMIÈRE UTILISATION DU LASER =====
-            # Une fois par laser (pas par matériau) -- à refaire seulement
-            # après un changement optique ou un démontage/remontage.
-            "LaserAtelier_DefocusCalibration",  # ★1 foyer + point + défocus
-            "LaserAtelier_OffsetTest",          # ★2 offsets X/Y (démontage/remontage)
-            "Separator",
-            # ===== CALIBRATION : AJOUTER UN MATÉRIAU =====
-            # À refaire pour chaque nouveau matériau (bois, épaisseur...).
-            "LaserAtelier_Assistant",           # point d'entrée : planches -> mesures -> déductions
-            "LaserAtelier_TestGrid",            # ★3 planche matériau (foyer + défocus, S x F)
-            "LaserAtelier_PowerRamp",           # repérage rapide S/F, complément continu de ★3
-            "LaserAtelier_Nuancier",            # tons mesurés (gris/photo)
-            "LaserAtelier_Kerf",                # ★4 kerf (si découpe de ce matériau)
-            "Separator",
             # -- Référence --
-            "LaserAtelier_Catalogue",           # planche d'exemples (une fois calibré)
+            "LaserAtelier_Catalogue",
             "Separator",
             # ===== RÉGLAGES (tout à droite, bord écran) =====
             "LaserAtelier_Settings",
         ]
-        # DEUX ORDRES, parce qu'il y a DEUX publics -- et un seul ordre ne
-        # pouvait pas les servir tous les deux.
-        #
-        # La BARRE reste rangée par tâche : ceux qui savent déjà y vont
-        # dix fois par jour, et pousser sept icônes de calibration devant
-        # leurs boutons quotidiens serait payer tous les jours pour la
-        # première heure.
-        #
-        # Le MENU, lui, est rangé par ORDRE D'APPRENTISSAGE : calibration
-        # d'abord, modes de travail ensuite. C'est là qu'on va quand on ne
-        # sait pas, et le Guide dit « 1. CALIBRER (une fois) » -- il était
-        # contredit par une barre où les sept icônes de calibration
-        # arrivaient après douze boutons inutilisables tant que rien n'est
-        # mesuré. (Constaté le 03/08/2026 en relisant l'atelier en
-        # débutant.)
+        # Barre d'outils ET menu : la même liste groupée par séparateurs.
+        # (Testé aussi en sous-menus déroulants : n'apportait qu'un niveau à
+        # dérouler de plus sans gain de clarté -- on garde la liste plate.
+        # Testé aussi en DEUX ordres, barre par tâche et menu par
+        # apprentissage : deux vérités à tenir pour un seul utilisateur,
+        # abandonné le 03/08/2026 au profit d'un ordre unique.)
         self.appendToolbar("Atelier Laser", self.command_list)
-        self.appendMenu("Atelier Laser", self._ordre_apprentissage())
+        self.appendMenu("Atelier Laser", self.command_list)
 
-    def _ordre_apprentissage(self):
-        """La même liste, remise dans l'ordre où on l'apprend.
-
-        Construite PAR EXTRACTION de `command_list`, jamais recopiée à la
-        main : une commande ajoutée à la barre et oubliée ici disparaîtrait
-        du menu sans que rien ne le signale."""
-        ordre_calib = ["LaserAtelier_DefocusCalibration", "LaserAtelier_OffsetTest",
-                       "LaserAtelier_Assistant", "LaserAtelier_TestGrid",
-                       "LaserAtelier_PowerRamp", "LaserAtelier_Nuancier",
-                       "LaserAtelier_Kerf"]
-        presentes = [c for c in self.command_list if c != "Separator"]
-        # INTERSECTION, jamais la liste en dur telle quelle : le menu est un
-        # RE-CLASSEMENT de la barre, jamais un sur-ensemble. Sinon une
-        # commande retirée de la barre resterait au menu -- une entrée qui
-        # pointe vers une commande non enregistrée.
-        calibration = [c for c in ordre_calib if c in presentes]
-        tete = [c for c in ["LaserAtelier_Guide"] if c in presentes]
-        reste = [c for c in presentes if c not in calibration and c not in tete]
-        return (tete + ["Separator"] + calibration + ["Separator"] + reste)
 
     def Activated(self):
         """Un document ouvert, toujours.

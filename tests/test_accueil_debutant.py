@@ -14,7 +14,10 @@ h = preparer(config_reelle=False)      # atelier VIERGE : le cas du débutant
 core, tp = h.core, h.tp
 from PySide6 import QtWidgets as _Qt
 
-# --- 1. Le menu range la calibration en tete ----------------------------
+# --- 1. La BARRE range la calibration en tete ---------------------------
+# Le 03/08/2026 le menu seul avait ete reordonne, la barre gardant l'ordre
+# par tache : deux verites a tenir pour UN utilisateur, et c'est lui qui
+# trouvait la barre illogique. Un seul ordre depuis.
 # PAR CHEMIN, jamais `import InitGui` : plusieurs ateliers de ce FreeCAD
 # ont un module de ce nom, et c'est celui de « fasteners » qui repondait
 # (AttributeError sur addLanguagePath, sans rien dire d'utile).
@@ -27,6 +30,12 @@ import FreeCADGui as _Gui
 _bi.Workbench = object
 _Gui.addWorkbench = lambda *a, **k: None
 _bi.Gui = _Gui                 # `Gui` aussi est injecte par FreeCAD, pas importe
+# `addCommand` n'existe que dans le FreeCAD graphique. On le bouche en
+# ENREGISTRANT les noms : ca permet au passage de verifier que toute
+# commande postee a la barre a bien ete enregistree -- une entree qui
+# pointe dans le vide est grisee a l'ecran, sans explication.
+_enregistrees = []
+_Gui.addCommand = lambda nom, cmd: _enregistrees.append(nom)
 _spec = _ilu.spec_from_file_location(
     "laseratelier_initgui",
     _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
@@ -36,30 +45,45 @@ _spec.loader.exec_module(_ig)
 
 
 class _FauxWB(_ig.LaserAtelierWorkbench):
+    """Le VRAI Initialize(), avec la barre et le menu interceptes.
+
+    Lire `command_list` sans passer par Initialize() ne prouverait rien :
+    c'est lui qui la construit, et c'est lui qui la donne aux deux
+    surfaces. On verifie donc ce qui est REELLEMENT poste."""
+
     def __init__(self):
-        pass
+        self.pose = {}
+
+    def appendToolbar(self, nom, liste):
+        self.pose["barre"] = list(liste)
+
+    def appendMenu(self, nom, liste):
+        self.pose["menu"] = list(liste)
 
 
 _wb = _FauxWB()
-_wb.command_list = [
-    "LaserAtelier_Guide", "Separator",
-    "LaserAtelier_Hatch", "LaserAtelier_Halftone", "Separator",
-    "LaserAtelier_DefocusCalibration", "LaserAtelier_Assistant",
-    "LaserAtelier_Kerf", "Separator", "LaserAtelier_Settings",
-]
-_menu = _wb._ordre_apprentissage()
+_wb.Initialize()
+_menu = _wb.pose["barre"]
+assert _wb.pose["menu"] == _menu, (
+    "la barre et le menu ne postent plus la même liste")
 # Aucune commande perdue en route : c'est la faute qui ne se verrait pas.
-assert set(c for c in _menu if c != "Separator") == \
-       set(c for c in _wb.command_list if c != "Separator"), (
-    "des commandes disparaissent du menu", _menu)
 assert _menu[0] == "LaserAtelier_Guide", _menu[:2]
+# Toute icone de la barre doit correspondre a une commande ENREGISTREE.
+_fantomes = [c for c in _menu
+             if c != "Separator" and c not in _enregistrees]
+assert not _fantomes, (
+    "la barre poste des commandes qui n'ont jamais ete enregistrees : "
+    "elles apparaitront grisees, sans explication", _fantomes)
+assert len(set(c for c in _menu if c != "Separator")) == \
+       len([c for c in _menu if c != "Separator"]), (
+    "une commande apparaît deux fois dans la barre", _menu)
 _i_calib = _menu.index("LaserAtelier_DefocusCalibration")
 _i_travail = _menu.index("LaserAtelier_Hatch")
 assert _i_calib < _i_travail, (
     "le menu met un mode de travail avant la calibration, alors que le "
     "Guide dit de calibrer d'abord", _menu)
-print("1. le menu range la calibration avant les modes de travail, sans "
-      "rien perdre OK")
+print("1. la barre range la calibration ({}e) avant les modes de travail "
+      "({}e) OK".format(_i_calib + 1, _i_travail + 1))
 
 # --- 2. Sur un atelier VIERGE, les modes de travail le DISENT ------------
 # Le seul signal etait un « -- (aucune mesure) -- » au fond d'un menu
