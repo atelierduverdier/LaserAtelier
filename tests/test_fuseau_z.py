@@ -334,3 +334,69 @@ assert _n11 > 50, ("aucune avance rapide : les coins hors image sont "
                    "parcourus à la vitesse de gravure pour rien", _n11)
 print("11. {} blocs à l'avance rapide, tous faisceau coupé ET Z plat OK"
       .format(_n11))
+
+# --- 12. La largeur varie DANS une case de pas, et la fenêtre lisse ------
+# Christophe, 03/08/2026, en comparant avec l'original de Vertigo : « il y a
+# un traitement en plus, on voit que le trait suit un tracé afin de rendre
+# plus de détail ». Il avait raison, et la cause était que la grille de
+# noirceur avait la résolution du PAS : tous les points d'un tour tombant
+# dans la même case recevaient la même largeur. Le trait avançait donc par
+# marches d'un pas, invisibles au pas 0,2 mm, criantes au pas 1,0.
+_PAS12, _SOUS = 1.0, 4
+_C12 = _PAS12 / _SOUS
+_L12 = 40                       # cases fines -> 10 mm de large
+# Un dégradé qui varie À L'INTÉRIEUR d'une case de pas : quatre cases fines
+# par pas, chacune plus foncée que la précédente.
+_rows12 = [[(x % _SOUS) / float(_SOUS - 1) for x in range(_L12)]
+           for _ in range(_L12)]
+_pts12 = core.points_spirale(_L12 * _C12, _L12 * _C12, _PAS12)
+_niv12 = core.spirale_niveaux(_rows12, _C12, _PAS12, _pts12, 64, 0.0)
+_dedans = [k for k in _niv12 if k is not None]
+assert len(set(_dedans)) > 1, (
+    "la largeur ne varie pas alors que l'image varie dans la case de pas",
+    set(_dedans))
+# La MOYENNE, pas le point : un pic d'un seul pixel ne doit pas faire
+# bomber le trait comme s'il occupait toute la fenêtre.
+_plat = [[0.0] * _L12 for _ in range(_L12)]
+_pic = [list(r) for r in _plat]
+_pic[_L12 // 2][_L12 // 2] = 1.0
+_n_plat = core.spirale_niveaux(_plat, _C12, _PAS12, _pts12, 64, 0.0)
+_n_pic = core.spirale_niveaux(_pic, _C12, _PAS12, _pts12, 64, 0.0)
+_touches = [i for i, (a, b) in enumerate(zip(_n_plat, _n_pic))
+            if a is not None and b is not None and a != b]
+assert _touches, "un pixel isolé ne change rien du tout : la fenêtre est nulle"
+_max_pic = max(_n_pic[i] for i in _touches)
+assert _max_pic < 32, (
+    "un pixel isolé porte le trait à mi-course ou plus : la valeur est prise "
+    "AU POINT, pas moyennée sur la fenêtre", _max_pic)
+# Et la fenêtre a bien la taille annoncée : au moins 2 cases de large.
+assert core.FUSEAU_FENETRE * _PAS12 / _C12 >= 2.0
+# Et le PANNEAU doit vraiment construire cette grille fine : tester le
+# coeur avec sa propre grille laisserait passer un panneau resté au pas
+# (vérifié en le sabotant -- §12 restait vert).
+from harness import image_demo as _img_demo
+_ph = tp.TaskPanelHalftone()
+_mh = [_ph.combo_photo_mat.itemText(i)
+       for i in range(_ph.combo_photo_mat.count())]
+if MAT in _mh:
+    _ph.combo_photo_mat.setCurrentIndex(_mh.index(MAT))
+_ph.combo_mode.setCurrentIndex(
+    [i for i, t in enumerate(tp._TRAMAGES) if t["cle"] == "spirale"][0])
+_ph.edt_image.setText(_img_demo())
+_ph.spn_width.setValue(60.0)
+_ph.spn_pitch.setValue(1.0)
+_ph.chk_fuseau_z.setChecked(False)
+_gros = _ph._build_rows(silent=True)
+_ph.chk_fuseau_z.setChecked(True)
+_fin = _ph._build_rows(silent=True)
+assert _gros and _fin
+_rap = len(_fin[0]) / float(len(_gros[0]))
+assert _rap >= _ph.SOUS_ECHANTILLON_FUSEAU - 0.01, (
+    "le panneau construit la grille du fuseau à la résolution du PAS : tous "
+    "les points d'un tour dans une même case auront la même largeur",
+    len(_gros[0]), len(_fin[0]))
+assert abs(_ph._cellule_fuseau() - 1.0 / _ph.SOUS_ECHANTILLON_FUSEAU) < 1e-9
+print("12. la largeur varie dans une case de pas ({} niveaux distincts), et "
+      "un pixel isolé ne monte qu'au niveau {} sur 64 ; le panneau bâtit "
+      "une grille {:.0f}x plus fine que le pas OK".format(
+          len(set(_dedans)), _max_pic, _rap))

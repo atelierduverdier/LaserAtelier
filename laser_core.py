@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.56.0"
+VERSION = "2.57.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9015,10 +9015,72 @@ def points_spirale(largeur_mm, hauteur_mm, pas_mm, pas_arc_mm=None):
     return pts
 
 
+# Côté de la fenêtre de moyenne, en fraction du PAS. Repris de Vertigo
+# (`rectangleSize = 0.8 * (distanceBetweenLines + maximumLineWidth)`), qui
+# est la référence dont ce rendu vient. En dessous, la largeur du trait
+# saute d'un pixel à l'autre ; au-dessus, l'image se noie.
+FUSEAU_FENETRE = 0.8
+
+
+def spirale_niveaux(darkness_rows, cellule_mm, pitch, pts, n_niveaux,
+                    white_threshold=0.0):
+    """Rang dans l'échelle du fuseau pour chaque point de la spirale, ou
+    None (bois nu / hors image). SOURCE UNIQUE du générateur ET de l'aperçu.
+
+    DEUX choses la distinguent d'une simple lecture de case, et ce sont
+    elles qui font le rendu -- Christophe les a repérées à l'oeil en
+    comparant avec l'original (03/08/2026, « il y a un traitement en plus,
+    on voit que le trait suit un tracé afin de rendre plus de détail ») :
+
+    1. LA GRILLE EST PLUS FINE QUE LE PAS. La première version lisait une
+       grille à la résolution du pas et prenait la case la plus proche :
+       tous les points d'un tour tombant dans la même case recevaient donc
+       la MÊME largeur, et le trait avançait par marches d'un pas. Vertigo,
+       lui, échantillonne l'image à sa résolution native tous les 3 px,
+       indépendamment de l'écart entre les tours.
+    2. LA VALEUR EST UNE MOYENNE SUR UNE FENÊTRE, pas un point. Un point
+       isolé sur un grain de bois ou un pixel de bruit ferait bomber le
+       trait ; la moyenne sur `FUSEAU_FENETRE` x pas rend ce que le trait
+       va réellement couvrir.
+
+    La moyenne passe par une IMAGE INTÉGRALE construite une fois : la
+    fenêtre coûte alors quatre lectures quelle que soit sa taille. Une
+    double boucle par point ferait 25 lectures x ~90 000 points sur un
+    portrait -- le genre de coût qui a déjà fait mettre 14 s à ce panneau
+    pour s'ouvrir."""
+    h = len(darkness_rows)
+    w = len(darkness_rows[0]) if h else 0
+    if h < 1 or w < 1 or cellule_mm <= 0:
+        return []
+    # Image intégrale : I[r][c] = somme du rectangle (0,0)-(r-1,c-1).
+    integ = [[0.0] * (w + 1) for _ in range(h + 1)]
+    for r in range(h):
+        ligne, prec, cur = darkness_rows[r], integ[r], integ[r + 1]
+        acc = 0.0
+        for c in range(w):
+            acc += ligne[c]
+            cur[c + 1] = prec[c + 1] + acc
+    demi = max(0, int(round(0.5 * FUSEAU_FENETRE * pitch / cellule_mm)))
+    out = []
+    for x, y in pts:
+        c0 = int(round(x / cellule_mm))
+        r0 = h - 1 - int(round(y / cellule_mm))
+        if not (0 <= c0 < w and 0 <= r0 < h):
+            out.append(None)                 # hors image : bois nu
+            continue
+        c1, c2 = max(0, c0 - demi), min(w, c0 + demi + 1)
+        r1, r2 = max(0, r0 - demi), min(h, r0 + demi + 1)
+        aire = (c2 - c1) * (r2 - r1)
+        somme = (integ[r2][c2] - integ[r1][c2]
+                 - integ[r2][c1] + integ[r1][c1])
+        out.append(swell_niveau(somme / aire, n_niveaux, white_threshold))
+    return out
+
+
 def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
                       line_min_mm=0.10, pre_gcode="", post_gcode="",
                       frame_only=False, quiet=False, white_threshold=0.0,
-                      power_max=None, pas_arc_mm=None):
+                      power_max=None, pas_arc_mm=None, cellule_mm=None):
     """Spirale dont la largeur vient de la HAUTEUR, pas de la puissance.
 
     Le trait est un fuseau CONTINU : la tête se lève progressivement et le
@@ -9060,26 +9122,21 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
     table, w_min, w_max, avert = ech
     n = len(table)
 
-    largeur, hauteur = w * pitch, h * pitch
-    # ÉCHANTILLONNAGE FIN, indépendant du pas radial. Au pas 3,4 mm la
-    # spirale à puissance ne pose un point que tous les 3,4 mm : la largeur
-    # y change par marches de 3,4 mm, ce qui est très exactement l'escalier
-    # que le fuseau doit supprimer. Attrapé par le test, pas à l'oeil.
+    # LA GRILLE PEUT ÊTRE PLUS FINE QUE LE PAS. `cellule_mm` est le côté
+    # d'une case ; par défaut le pas, ce qui reproduit l'ancien rendu.
+    cell = float(cellule_mm) if cellule_mm and cellule_mm > 0 else pitch
+    largeur, hauteur = w * cell, h * cell
+    # ÉCHANTILLONNAGE FIN LE LONG DE L'ARC, indépendant du pas radial. Au
+    # pas 3,4 mm la spirale à puissance ne pose un point que tous les
+    # 3,4 mm : la largeur y change par marches de 3,4 mm, ce qui est très
+    # exactement l'escalier que le fuseau doit supprimer.
     pts = points_spirale(largeur, hauteur, pitch,
                          pas_arc_mm or min(FUSEAU_PAS_ARC_MM, pitch))
     if len(pts) < 2:
         return None
 
-    def _niveau(x, y):
-        """Rang dans l'échelle, ou None pour du bois nu (hors image ou sous
-        le seuil de blanc)."""
-        col = int(round(x / pitch))
-        rang = h - 1 - int(round(y / pitch))
-        if not (0 <= col < w and 0 <= rang < h):
-            return None
-        return swell_niveau(darkness_rows[rang][col], n, white_threshold)
-
-    rangs = [_niveau(x, y) for x, y in pts]
+    rangs = spirale_niveaux(darkness_rows, cell, pitch, pts, n,
+                            white_threshold)
     # Le Z suit l'image MÊME sous le seuil de blanc : le faisceau s'y
     # éteint, mais faire redescendre la tête au foyer puis la relever
     # coûterait de la pente pour rien -- et c'est la pente qui manque.
@@ -9140,8 +9197,9 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
     course = max(dz) - min(dz)
     lines = []
     lines.append("(G-Code Laser - Photo : SPIRALE, fuseau par la hauteur Z)")
-    lines.append("(Image : {} x {} px au pas {:.2f}mm, F{:.0f})".format(
-        w, h, pitch, feed))
+    lines.append("(Image : {} x {} cases de {:.2f}mm au pas {:.2f}mm, "
+                 "F{:.0f} -- moyenne sur {:.2f}mm)".format(
+                     w, h, cell, pitch, feed, FUSEAU_FENETRE * pitch))
     lines.append("(Spirale : {:.0f} points, {:.0f} mm de trace, un seul trait "
                  "du centre au bord -- aucun demi-tour)".format(
                      len(pts), longueur))
@@ -9216,7 +9274,7 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
                                  frame_only=False, quiet=False,
                                  white_threshold=0.0, power_max=None,
                                  pas_arc_mm=None, defocus=0.0,
-                                 fuseau_z=False):
+                                 fuseau_z=False, cellule_mm=None):
     """Photo en SPIRALE : un trait unique du centre au bord, dont
     l'ÉPAISSEUR rend le gris -- le principe de « Lignes gravées », enroulé.
 
@@ -9255,7 +9313,7 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
             line_min_mm=line_min_mm, pre_gcode=pre_gcode,
             post_gcode=post_gcode, frame_only=frame_only, quiet=quiet,
             white_threshold=white_threshold, power_max=power_max,
-            pas_arc_mm=pas_arc_mm)
+            pas_arc_mm=pas_arc_mm, cellule_mm=cellule_mm)
     niveaux = swell_power_levels(material, feed, line_min_mm,
                                  power_max=power_max, defocus=defocus)
     if niveaux is None:

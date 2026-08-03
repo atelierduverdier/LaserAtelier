@@ -10805,6 +10805,20 @@ class TaskPanelHalftone:
         rows = max(2, int(round(cols * img.height() / float(img.width()))))
         return cols, rows
 
+    # Le fuseau lit l'image à une grille PLUS FINE que le pas : une case
+    # par pas donnait la même largeur à tous les points d'un tour tombant
+    # dans cette case, donc un trait qui avance par marches. Vertigo -- la
+    # référence dont ce rendu vient -- échantillonne l'image à sa
+    # résolution native. 4 cases par pas suffisent : la moyenne se fait
+    # ensuite sur 0,8 pas, donc sur 3 cases de large.
+    SOUS_ECHANTILLON_FUSEAU = 4
+
+    def _cellule_fuseau(self):
+        """Côté d'une case de la grille, en mm. Le pas hors fuseau."""
+        pas = self.spn_pitch.value()
+        return (pas / float(self.SOUS_ECHANTILLON_FUSEAU)
+                if self._fuseau_z() else pas)
+
     def _build_rows(self, silent=False, max_cells=None):
         """Grille de noirceur 0..1 (lignes haut -> bas) depuis l'image, ou
         None (message d'erreur sauf si silent). max_cells : plafonne la
@@ -10818,6 +10832,8 @@ class TaskPanelHalftone:
                     self.form, "Erreur", "Choisis d'abord une image valide.")
             return None
         cols, rows = self._grid_size(img)
+        sous = self.SOUS_ECHANTILLON_FUSEAU if self._fuseau_z() else 1
+        cols, rows = cols * sous, rows * sous
         if max_cells and cols * rows > max_cells:
             factor = (max_cells / float(cols * rows)) ** 0.5
             cols = max(2, int(cols * factor))
@@ -10908,13 +10924,21 @@ class TaskPanelHalftone:
         pitch = self.spn_pitch.value()
         if h < 1 or w < 1 or pitch <= 0:
             return None, "grille vide"
+        # TAILLE D'UNE CASE, en mm. Elle vaut le pas partout SAUF en fuseau,
+        # où la grille est volontairement plus fine -- et où l'aperçu la
+        # réduit encore pour tenir son plafond de cases. On la DÉDUIT donc
+        # de la largeur réellement demandée, au lieu de supposer « une case
+        # = un pas » : cette supposition aurait peint l'image quatre fois
+        # trop grande sans rien dire.
+        cell = (self.spn_width.value() / float(w)
+                if self._fuseau_z() and self.spn_width.value() > 0 else pitch)
         t = self._tramage()
         material = self.combo_photo_mat.currentData()
         white = self.spn_white.value() / 100.0
         spot = self.spn_spot_width.value()
         power = self.spn_power.value()
         marge = self._MARGE_APERCU_MM
-        sc = max(1.0, largeur_px / float(w * pitch + 2 * marge))
+        sc = max(1.0, largeur_px / float(w * cell + 2 * marge))
 
         if t["nuancier"]:
             return self._apercu_lignes_calibrees(darkness, pitch, sc, marge)
@@ -11008,16 +11032,16 @@ class TaskPanelHalftone:
                                   "construire".format(material))
                 table_f, w_min_f, w_max_f, _av = ech
                 n_f = len(table_f)
-                pts_f = core.points_spirale(w * pitch, h * pitch, pitch)
+                # MÊME cellule et MÊME fenêtre de moyenne que le
+                # générateur : `spirale_niveaux` est la source unique. Le
+                # pitch de l'aperçu vient de la grille réduite, donc la
+                # cellule s'en déduit et ne se recopie pas.
+                cell_f, pas_f = cell, pitch
+                pts_f = core.points_spirale(w * cell_f, h * cell_f, pas_f)
                 dists_f = [((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
                            for a, b in zip(pts_f, pts_f[1:])]
-                rangs_f = []
-                for x, y in pts_f:
-                    c = int(round(x / pitch))
-                    r = h - 1 - int(round(y / pitch))
-                    rangs_f.append(
-                        None if not (0 <= c < w and 0 <= r < h)
-                        else core.swell_niveau(darkness[r][c], n_f, white))
+                rangs_f = core.spirale_niveaux(darkness, cell_f, pas_f,
+                                               pts_f, n_f, white)
                 # MÊME rabotage de pente que le générateur : sans lui
                 # l'aperçu montrerait des transitions que la machine ne
                 # sait pas faire, donc un détail qu'on n'aura pas.
@@ -11410,7 +11434,8 @@ class TaskPanelHalftone:
                 line_min_mm=self.spn_line_min.value(),
                 white_threshold=self.spn_white.value() / 100.0,
                 power_max=self.spn_power_max.value(),
-                defocus=self._dz_trait(), fuseau_z=self._fuseau_z(), **extra)
+                defocus=self._dz_trait(), fuseau_z=self._fuseau_z(),
+                cellule_mm=self._cellule_fuseau(), **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame
         # de points, silencieusement -- du G-code valide pour le mauvais

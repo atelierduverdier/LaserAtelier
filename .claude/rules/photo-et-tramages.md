@@ -235,6 +235,24 @@ Four things hold it together:
   course falls with the top width and the minimum spindle length is proportional to it — pitch 3.0 →
   41 mm of course and 5.4 mm minimum; **pitch 1.0 → 9 mm and 1.2 mm**. A cap wider than the
   measurements must not exceed them: the measurement always wins.
+- **SAMPLE THE IMAGE FINER THAN THE PITCH, AND AVERAGE A WINDOW** (`spirale_niveaux`, v2.57.0 —
+  shared source for generator and preview). The first versions read a darkness grid at *pitch*
+  resolution and took the nearest cell: every spiral point falling in one cell got the **same** width,
+  so the line advanced in steps of one pitch. Invisible at pitch 0.2, glaring at pitch 1.0.
+  Christophe spotted it by comparing against the original: *"il y a un traitement en plus, on voit
+  que le trait suit un tracé afin de rendre plus de détail"*. Reading Vertigo's own source
+  (`convert-image-to-spiral.ts`) confirms it: it samples at **3 px of arc**, against the image's own
+  resolution, and takes the **mean of a square** of `0.8 × (gap + max width)` — not one pixel. Ported
+  as: the panel builds the grid `SOUS_ECHANTILLON_FUSEAU = 4` times finer than the pitch, and
+  `spirale_niveaux` box-averages `FUSEAU_FENETRE = 0.8 × pitch` through a **summed-area table** (four
+  reads per point whatever the window; a double loop would be 25 reads × ~90 000 points). Side
+  benefit, measured: the smoothing cuts the Z travel too — 231 → 206 min on the 120 mm portrait.
+  Test the panel's grid, not only the core function: §12 stayed green with the panel reverted to
+  pitch resolution until a panel-level assertion was added.
+- **Vertigo's ribbon is SYMMETRIC about the spiral** — `getOuterDots` places the two edges at
+  ±width/2 along the angle bisector. The asymmetry a viewer perceives comes from the sampling
+  window being anchored by its **corner** (`getImageData(x, y, w, w)`), so the width at a point
+  reflects the image half a window down-right of it. Don't build an asymmetric ribbon to chase it.
 - **`white_threshold = 0` for this look.** The threshold cuts the beam in the lights, which breaks the
   spiral into dashes — the opposite of the reference, where the line never breaks and the lights are
   merely thin. It is the original "jamais de bois nu" intent, and here it is the right one.
