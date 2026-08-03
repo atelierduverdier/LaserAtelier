@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.62.0"
+VERSION = "2.62.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1135,6 +1135,60 @@ def _fichiers_planche(base):
         if racine == tige or racine.startswith(tige + "_"):
             out.append(os.path.join(d, nom))
     return out
+
+
+# Les fichiers DÉRIVÉS d'une planche : ils portent le même nom, ils se
+# proposent dans le même dialogue, et ils ne se mesurent PAS.
+SUFFIXES_DERIVES = ("_apercu", "_reperes")
+
+
+def base_planche(chemin):
+    """La base « …_redresse » d'une planche, à partir de N'IMPORTE LEQUEL de
+    ses fichiers (image de mesure, aperçu, contrôle des repères, fiche).
+
+    Sans ça, chaque appelant refaisait le découpage à sa façon, et le plus
+    courant -- `splitext(chemin)[0] + ".json"` -- rate la fiche dès que
+    l'utilisateur a désigné l'aperçu : il n'y a pas de
+    `…_redresse_apercu.json`, donc le logiciel demandait l'échelle à la
+    main alors qu'elle était écrite à dix centimètres de là."""
+    racine = os.path.splitext(str(chemin or ""))[0]
+    for suf in SUFFIXES_DERIVES:
+        if racine.endswith(suf):
+            racine = racine[:-len(suf)]
+            break
+    return racine if racine.endswith("_redresse") else None
+
+
+def fiche_planche(chemin):
+    """La fiche .json d'une planche, depuis n'importe lequel de ses
+    fichiers. `{}` si elle n'existe pas ou n'est pas lisible."""
+    base = base_planche(chemin)
+    if not base:
+        return {}
+    try:
+        with open(base + ".json") as fh:
+            return json.load(fh) or {}
+    except Exception:
+        return {}
+
+
+def image_de_mesure(chemin):
+    """L'image sur laquelle on MESURE, depuis n'importe quel fichier de la
+    planche. None si elle manque.
+
+    L'aperçu et le contrôle des repères sont des JPEG réduits : sur la
+    planche Sapin du 03/08/2026, 15,38 px/mm contre 50 pour l'image de
+    mesure. Mesurer sur l'aperçu en appliquant l'échelle de la fiche donne
+    des largeurs 3,25 fois trop petites -- et RIEN ne le signale, puisque
+    les deux images montrent la même planche. C'est la façon la plus
+    silencieuse de ruiner une séance de calibration."""
+    base = base_planche(chemin)
+    if not base:
+        return None
+    for ext in (".png", ".jpg", ".jpeg"):
+        if os.path.isfile(base + ext):
+            return base + ext
+    return None
 
 
 def planches_redressees():

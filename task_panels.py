@@ -1129,11 +1129,14 @@ def _redresser_photo_planche(parent, on_range=None):
                 len(faits), verdict))
         if on_range is not None:
             # La galerie doit montrer la photo qu'on VIENT de ranger : sans
-            # ça il faut fermer et rouvrir le panneau pour la voir.
-            on_range(planche)
+            # ça il faut fermer et rouvrir le panneau pour la voir. Et la
+            # LISTE DE MESURE aussi : bâtie à l'ouverture du panneau, elle
+            # ignorait la planche qu'on venait de redresser et « Mesurer sur
+            # l'image redressée » ouvrait l'ancienne, sans le dire.
+            on_range(planche, faits[-1].get("fichier"))
 
 
-def _boutons_planches(form, ecrire):
+def _boutons_planches(form, ecrire, apres_redressement=None):
     """Les boutons « Planche 1/2/3 » + « toutes en 1 fichier » (partagés
     entre la Grille de test et l'Assistant matériau) : chacun génère son
     G-code et le remet à `ecrire(gcode, chemin_defaut)` -- le recadrage au
@@ -1263,7 +1266,9 @@ def _boutons_planches(form, ecrire):
     combo_planche.currentIndexChanged.connect(lambda _i: photo_pl["reload"]())
     photo_pl["reload"]()
 
-    def _apres_redressement(planche):
+    def _apres_redressement(planche, image=None):
+        if apres_redressement is not None:
+            apres_redressement(image)
         i = combo_planche.findData(planche)
         if i >= 0:
             combo_planche.blockSignals(True)
@@ -1570,12 +1575,28 @@ class _MesuresPlanchesControleur:
             return self._image_mesure
         # Plus de devinette silencieuse : la liste déroulante du bloc porte
         # le choix, et elle est déjà pré-remplie avec la plus récente.
+        parent = self._parent.form if getattr(self._parent, "form", None) else None
         chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
-            self._parent.form if getattr(self._parent, "form", None) else None,
-            "Planche redressée", core.dossier_planches(),
+            parent, "Planche redressée", core.dossier_planches(),
             "Images redressées (*.png *.jpg);;Tous (*)")
-        if chemin:
-            self._image_mesure = chemin
+        if not chemin:
+            return chemin
+        # L'APERÇU N'EST PAS L'IMAGE DE MESURE, et rien ne les distingue à
+        # l'oeil : même planche, même cadrage. Sur la planche Sapin du
+        # 03/08/2026 l'aperçu fait 15,38 px/mm contre 50 -- mesurer dessus
+        # avec l'échelle de la fiche donne des largeurs 3,25 fois trop
+        # petites, en silence. Le dialogue les propose tous les deux (ils
+        # sont .jpg), donc on redirige, et on le DIT.
+        vraie = core.image_de_mesure(chemin)
+        if vraie and os.path.abspath(vraie) != os.path.abspath(chemin):
+            QtWidgets.QMessageBox.information(
+                parent, "Image de mesure",
+                "« {} » est un aperçu réduit, pas l'image de mesure : les "
+                "largeurs y seraient fausses sans que rien ne le signale.\n\n"
+                "On mesure sur « {} ».".format(
+                    os.path.basename(chemin), os.path.basename(vraie)))
+            chemin = vraie
+        self._image_mesure = chemin
         return chemin
 
     def _grille_de(self, sp):
@@ -1730,6 +1751,23 @@ class _MesuresPlanchesControleur:
                 b.combo_planche.setCurrentIndex(i)
                 b.combo_planche.blockSignals(False)
 
+    def rafraichir_planches(self, choisir=None):
+        """Relire le dossier des planches et, si demandé, sélectionner la
+        nouvelle.
+
+        La liste était bâtie UNE FOIS, à l'ouverture du panneau. Redresser
+        une photo pendant la séance -- ce que fait le bouton juste au-dessus
+        -- laissait donc la liste d'avant, et « Mesurer sur l'image
+        redressée » ouvrait l'ancienne planche sans le dire. Christophe, le
+        03/08/2026, sur sa planche 1 en sapin : « il m'ouvre la mauvaise
+        image »."""
+        self._image_mesure = choisir or None
+        for b in self._blocs_vivants():
+            b.combo_planche.blockSignals(True)
+            b.combo_planche.clear()
+            self._remplir_planches(b)
+            b.combo_planche.blockSignals(False)
+
     def _changer_image(self):
         """L'utilisateur veut une AUTRE planche : on oublie la retenue."""
         self._image_mesure = None
@@ -1863,13 +1901,9 @@ class _MesuresPlanchesControleur:
         # valeur supposée : une échelle devinée donnerait des millimètres
         # faux sans que rien ne le signale.
         pxmm = 50.0
-        fiche = os.path.splitext(chemin)[0] + ".json"
-        if os.path.exists(fiche):
-            try:
-                with open(fiche) as fh:
-                    pxmm = float(json.load(fh).get("pxmm") or pxmm)
-            except Exception:
-                pass
+        _fiche = core.fiche_planche(chemin)
+        if _fiche.get("pxmm"):
+            pxmm = float(_fiche["pxmm"])
         else:
             pxmm, ok = QtWidgets.QInputDialog.getDouble(
                 None, "Échelle de l'image",
@@ -16426,7 +16460,16 @@ class TaskPanelAssistant:
             "bas-gauche de la chute, sur le dessus). Grave-les sur le même "
             "matériau et dans les mêmes conditions (filet d'air, propreté de "
             "la lentille) que tes futurs jobs."))
-        _boutons_planches(form, self._ecrire_planche)
+        # Le contrôleur de mesures n'existe pas encore ici (il est construit
+        # dans la section ② juste en dessous) : on passe donc un rappel
+        # PARESSEUX plutôt que l'objet. Sans lui, la liste des planches du
+        # bloc de mesure resterait celle de l'ouverture du panneau.
+        _boutons_planches(
+            form, self._ecrire_planche,
+            apres_redressement=lambda img: (
+                self._mesures.rafraichir_planches(
+                    core.image_de_mesure(img) if img else None)
+                if getattr(self, "_mesures", None) else None))
 
         _section(form, "② Entrer les mesures (largeurs)", "sect_measure.svg")
         form.addRow(_WrapLabel(
