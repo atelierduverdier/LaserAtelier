@@ -211,8 +211,22 @@ Four things hold it together:
   pitch. At pitch 3.4 the default sampling puts a point every 3.4 mm, so the width still changed in
   3.4 mm steps — the very staircase this mode exists to remove. Caught by the test (largest Z step
   12.75 mm on a 36 mm course), never by eye.
-- **No rapid transit over bare wood**, unlike the power spiral: the slope budget is computed for
-  `feed`, and speeding up on the whites would blow it exactly where the spindle collapses fastest.
+- **Rapid transit over bare wood, but ONLY where the Z is flat** (v2.56.0). The first version banned
+  it outright, on the grounds that the slope budget is computed for `feed`. True where the head is
+  climbing — false outside the image, in the corners the spiral crosses because it runs to the
+  half-diagonal: there the Z does not move at all. On a 50 mm image at pitch 1.0 those corners are
+  **41 % of the path**, and the ban cost a quarter of the job (56 → 43 min).
+- **THE Z MOTION IS ENGRAVING TIME, and it is the mode's dominant cost.** LinuxCNC's `F` applies to
+  the *vector*: 0.4 mm of XY with 1.5 mm of Z is a 1.55 mm move, so the engraving advances at 26 % of
+  the programmed feed. Measured on the workshop's portrait at 50 mm / pitch 1.0: XY path 6 381 mm,
+  **Z path 7 031 mm** — the Z travels as far as the XY, because the spiral crosses the subject 305
+  times and each crossing is a full up-and-down. Result: the spindle costs **2.1×** the same spiral
+  done by power (43 vs 20 min). That is the price of the look, and it must be quoted, not discovered.
+  Lowering the slope limit is NOT the lever: 7.5 → 3.0 buys 13 % of time for a visibly softer image,
+  and 1.0 destroys the face. `limiter_pente_z` is not the culprit either — it *removes* 18 % of the
+  Z travel the image asks for. Size (time ∝ R²) and pitch are the real levers.
+  **Any duration quoted for this mode must come from `estimate_job_time_seconds` on the emitted
+  G-code, never from `trace / feed`** — the XY-only figure is 25 to 80 % optimistic.
 - **THE PITCH CAPS THE SPINDLE** (`largeur_max=pitch`, passed by generator, preview and verdict). The
   first shipped version let the spindle run to the material's widest measured burn (3.43 mm on beech),
   which forces a 3.43 mm pitch — **34 turns on 120 mm, a sparse dotted spiral**. Christophe, preview in

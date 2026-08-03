@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.55.0"
+VERSION = "2.56.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9036,10 +9036,14 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
     2. LA PUISSANCE SUIT LA LARGEUR (`echelle_fuseau_z`), sinon le large
        sort pâle -- à S constant un trait dix fois plus large reçoit dix
        fois moins d'énergie par mm².
-    3. PAS D'AVANCE RAPIDE SUR LE BOIS NU, contrairement à la spirale à
-       puissance. Le budget de pente est calculé POUR `feed` ; accélérer
-       sur les blancs le crèverait en silence, juste là où le fuseau
-       redescend le plus vite (du noir au blanc)."""
+    3. L'AVANCE RAPIDE SUR LE BOIS NU, mais SEULEMENT LÀ OÙ LE Z EST PLAT.
+       Le budget de pente est calculé pour `feed` : accélérer pendant que
+       la tête monte le crèverait en silence. Mais hors de l'image -- les
+       coins du rectangle, que la spirale traverse parce qu'elle va jusqu'à
+       la demi-diagonale -- le Z ne bouge pas du tout, et il n'y a donc
+       aucune pente à protéger. Sur une image de 50 mm au pas 1,0, ces
+       coins font 41 % du trajet : les avoir interdits d'avance rapide
+       coûtait un quart du job."""
     h = len(darkness_rows)
     w = len(darkness_rows[0]) if h else 0
     # LE PAS PLAFONNE LE FUSEAU : au-delà, les tours voisins se recouvrent
@@ -9106,6 +9110,29 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
         else:
             puis.append(table[_rang_pour_z(z)][1])
 
+    # L'AVANCE DE CHAQUE SEGMENT. `feed` partout, SAUF sur les longues
+    # plages où le faisceau est coupé ET où la tête ne monte pas : là on
+    # passe à l'avance rapide, comme les fonds blancs des balayages
+    # (v2.45.0), avec la même constante. Le Z plat est la condition qui
+    # manquait dans la première version -- elle interdisait l'avance rapide
+    # PARTOUT, y compris dans les coins hors image où le Z ne bouge pas
+    # d'un cheveu.
+    avances = [feed] * len(dz)
+    i = 0
+    while i < len(dz) - 1:
+        if puis[i] > 0.0:
+            i += 1
+            continue
+        j = i
+        while (j + 1 < len(dz) and puis[j + 1] <= 0.0
+               and abs(dz[j + 1] - dz[i]) < 1e-6):
+            j += 1
+        d = sum(dists[k] for k in range(i, j))
+        if d >= TRANSIT_BLANC_MINI_MM:
+            for k in range(i, j):
+                avances[k] = max(RAPID_FEED_MM_MIN, feed)
+        i = max(j, i + 1)
+
     z_bas = z_work + min(dz)
     z_haut = z_work + max(dz)
     z_safe = z_haut + TRAVEL_CLEARANCE_MM
@@ -9171,7 +9198,7 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
             p_prec = pw
         suf = cmd_power_suffix(pw)
         lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}{}".format(
-            x, y, z_work + dz[i], feed, (" " + suf) if suf else ""))
+            x, y, z_work + dz[i], avances[i - 1], (" " + suf) if suf else ""))
 
     lines.extend(cmd_power_prefix(0.0))
     lines.append("G0 Z{:.4f}".format(z_safe))

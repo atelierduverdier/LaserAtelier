@@ -296,3 +296,41 @@ assert _c10b < _c10a * 0.8, (
 print("10. le pas plafonne le fuseau ({:.2f} mm de course au pas large "
       "contre {:.2f} au pas fin), les mesures gardent le dernier mot OK"
       .format(_c10a, _c10b))
+
+# --- 11. L'avance rapide : bois nu ET Z plat, jamais autrement -----------
+# La première version du fuseau INTERDISAIT l'avance rapide partout, au
+# motif que le budget de pente est calculé pour `feed`. Vrai là où la tête
+# monte -- faux hors de l'image, dans les coins que la spirale traverse
+# parce qu'elle va jusqu'à la demi-diagonale : là le Z ne bouge pas d'un
+# cheveu. Sur une image de 50 mm au pas 1,0, ces coins font 41 % du trajet,
+# et l'interdiction coûtait un quart du job (56 -> 43 min).
+_g11 = core.generate_gcode_photo_spirale(
+    _rows, 1.0, core.Z_WORK_MM, 200.0, MAT, line_min_mm=0.10,
+    power_max=core.S_MAX, white_threshold=0.0, fuseau_z=True, quiet=True)
+assert _g11
+_s11, _z11, _n11 = 0.0, None, 0
+for _l in _g11.split("\n"):
+    if _l.startswith("("):
+        continue
+    _m = re.search(r"\bS(\d+)", _l)
+    if _m:
+        _s11 = float(_m.group(1))
+    _mq = re.search(r"M67 E0 Q([\d.]+)", _l)
+    if _mq:
+        _s11 = float(_mq.group(1))
+    _mm = re.match(r"G1 X(-?[\d.]+) Y(-?[\d.]+) Z(-?[\d.]+) F(\d+)", _l)
+    if not _mm:
+        continue
+    _z, _f = float(_mm.group(3)), float(_mm.group(4))
+    if _f > 200.0 + 1e-9:
+        _n11 += 1
+        assert _s11 == 0, ("avance rapide FAISCEAU ALLUMÉ : le trait "
+                           "sortirait fin là où il devrait être épais", _l)
+        assert _z11 is None or abs(_z - _z11) < 1e-6, (
+            "avance rapide pendant que le Z monte : la pente calculée pour "
+            "`feed` est crevée, LinuxCNC ralentira sans le dire", _l)
+    _z11 = _z
+assert _n11 > 50, ("aucune avance rapide : les coins hors image sont "
+                   "parcourus à la vitesse de gravure pour rien", _n11)
+print("11. {} blocs à l'avance rapide, tous faisceau coupé ET Z plat OK"
+      .format(_n11))
