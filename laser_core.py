@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.49.0"
+VERSION = "2.49.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -10828,46 +10828,57 @@ def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="",
     sont vides."""
     if z_focus is None:
         z_focus = Z_WORK_MM
-    empilees = [
-        ("Planche 1 : foyer",
-         generate_gcode_planche_focus(z_focus=z_focus, quiet=quiet, body_only=True)),
-        ("Planche 2 : defocus",
-         generate_gcode_planche_defocus(z_focus=z_focus, quiet=quiet, body_only=True)),
-    ]
-    empilees = [(label, c) for label, c in empilees if c]
-    # COLONNE DE DROITE : la 3 (haute et étroite) et la 2b (étroite aussi).
-    # Les empiler à gauche donnerait une planche de 30 cm de long ; à
-    # droite, elles tiennent dans la hauteur déjà occupée par 1 + 2.
-    droite = [
-        ("Planche 3 : point",
-         generate_gcode_planche_spot(z_focus=z_focus, quiet=quiet, body_only=True)),
-        ("Planche 2b : defocus profond",
-         generate_gcode_planche_defocus_profond(z_focus=z_focus, quiet=quiet,
-                                                body_only=True)),
-    ]
-    droite = [(label, c) for label, c in droite if c]
-    if not empilees and not droite:
+
+    def _corps(fn):
+        return fn(z_focus=z_focus, quiet=quiet, body_only=True)
+
+    p1 = _corps(generate_gcode_planche_focus)
+    p2 = _corps(generate_gcode_planche_defocus)
+    p2b = _corps(generate_gcode_planche_defocus_profond)
+    p3 = _corps(generate_gcode_planche_spot)
+    if not any((p1, p2, p2b, p3)):
         return None
 
-    def _empiler(items, dx, corps_decales):
-        """Empile verticalement une colonne, renvoie sa largeur maxi."""
-        y_off, x_max = 0.0, 0.0
-        for label, c in items:
-            bbox = gcode_bbox_xy(c)
-            dy = 0.0
-            if bbox is not None:
-                xmin, xmax, ymin, ymax = bbox
-                dy = y_off - ymin
-                y_off = ymax + dy + gap_mm
-                x_max = max(x_max, xmax + dx - xmin if dx else xmax)
-            corps_decales.append(
-                (label, shift_gcode_xy(c, dx - (bbox[0] if bbox and dx else 0.0), dy)))
-        return x_max
-
     corps_decales = []
-    x_max = _empiler(empilees, 0.0, corps_decales)
-    if droite:
-        _empiler(droite, (x_max + gap_mm) if empilees else 0.0, corps_decales)
+
+    def _poser(label, c, x, y):
+        """Pose un corps avec son coin bas-gauche en (x, y). Renvoie son
+        encombrement (largeur, hauteur), (0, 0) s'il est vide."""
+        if not c:
+            return 0.0, 0.0
+        bb = gcode_bbox_xy(c)
+        if bb is None:
+            corps_decales.append((label, c))
+            return 0.0, 0.0
+        xmin, xmax, ymin, ymax = bb
+        corps_decales.append((label, shift_gcode_xy(c, x - xmin, y - ymin)))
+        return xmax - xmin, ymax - ymin
+
+    # LA DISPOSITION, mesurée plutôt que devinée (03/08/2026, sur les
+    # quatre fichiers que Christophe venait de générer) :
+    #
+    #     +----------------+  +-----+     planche 1 : 145 x  64
+    #     |       2        |3 |     |     planche 2 :  94 x  94
+    #     +----------------+--+ 2b  |     planche 2b:  64 x 114
+    #     |       1           |     |     planche 3 :  43 x  88
+    #     +-------------------+-----+
+    #
+    # La 3, haute et ÉTROITE, se glisse dans le vide laissé à droite de la
+    # 2 -- vide qui existe parce que la 1 est bien plus large qu'elle.
+    # Deux colonnes simples (1+2 à gauche, 3+2b à droite) donnaient
+    # 224 x 217 mm ; ceci donne **231 x 173**, soit 87 cm2 et surtout
+    # 44 mm de HAUTEUR en moins : ça change la chute sur laquelle ça tient.
+    # Christophe avait proposé d'échanger 3 et 2b -- mesuré à 500 cm2,
+    # donc un peu pire ; son intuition qu'il restait de la place, elle,
+    # était juste.
+    w1, h1 = _poser("Planche 1 : foyer", p1, 0.0, 0.0)
+    y_haut = h1 + gap_mm if h1 else 0.0
+    w2, h2 = _poser("Planche 2 : defocus", p2, 0.0, y_haut)
+    w3, _h3 = _poser("Planche 3 : point", p3,
+                     (w2 + gap_mm) if w2 else 0.0, y_haut)
+    larg_gauche = max(w1, (w2 + gap_mm + w3) if w3 else w2)
+    _poser("Planche 2b : defocus profond", p2b,
+           (larg_gauche + gap_mm) if larg_gauche else 0.0, 0.0)
 
     lines = []
     lines.append("(G-Code Laser - Planches de calibration combinees "

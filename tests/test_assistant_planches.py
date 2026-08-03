@@ -99,6 +99,55 @@ try:
           "({} lignes contre {} pour la planche 1 seule) OK".format(
               len(_tout.split("\n")), len(_p1.split("\n"))))
 
+    # --- 3bis. Les 4 planches ne se CHEVAUCHENT pas ---------------------
+    # Un fichier combine qui superpose deux planches est irrattrapable : on
+    # s'en apercoit sur le bois, apres la gravure. La disposition a ete
+    # resserree le 03/08/2026 (231 x 173 mm au lieu de 225 x 217, soit
+    # 44 mm de hauteur en moins) en glissant la planche 3 dans le vide a
+    # droite de la 2 -- exactement le genre de calcul ou deux planches
+    # peuvent se mettre a se toucher.
+    _ecrits.clear()
+    trouves["Toutes les planches"].click()
+    _g = _ecrits[-1][1]
+    _boites, _cur = {}, None
+    for _l in _g.split("\n"):
+        _m = _re.match(r"\(===== (Planche [^:]+) :", _l)
+        if _m:
+            _cur = _m.group(1); _boites.setdefault(_cur, [1e9, -1e9, 1e9, -1e9])
+            continue
+        _m = _re.match(r"G[01] X(-?[\d.]+) Y(-?[\d.]+)", _l)
+        if _m and _cur:
+            _x, _y = float(_m.group(1)), float(_m.group(2))
+            _b = _boites[_cur]
+            _b[0] = min(_b[0], _x); _b[1] = max(_b[1], _x)
+            _b[2] = min(_b[2], _y); _b[3] = max(_b[3], _y)
+    _reelles = {n: b for n, b in _boites.items() if b[1] > b[0]}
+    assert len(_reelles) >= 3, ("moins de 3 planches dans le fichier combiné",
+                               sorted(_boites))
+    _noms = sorted(_reelles)
+    for _i in range(len(_noms)):
+        for _j in range(_i + 1, len(_noms)):
+            _a, _c = _reelles[_noms[_i]], _reelles[_noms[_j]]
+            _croise = (_a[0] < _c[1] - 1e-6 and _c[0] < _a[1] - 1e-6
+                       and _a[2] < _c[3] - 1e-6 and _c[2] < _a[3] - 1e-6)
+            assert not _croise, (
+                "deux planches se superposent dans le fichier combiné",
+                _noms[_i], _reelles[_noms[_i]], _noms[_j], _reelles[_noms[_j]])
+    _xs = [v for b in _reelles.values() for v in b[:2]]
+    _ys = [v for b in _reelles.values() for v in b[2:]]
+    _W, _H = max(_xs) - min(_xs), max(_ys) - min(_ys)
+    # La disposition doit rester COMPACTE. Pas une cote figee (elle bouge
+    # avec les plages S/F) mais un plafond : la somme des surfaces ne doit
+    # pas etre noyee dans du vide.
+    _utile = sum((b[1] - b[0]) * (b[3] - b[2]) for b in _reelles.values())
+    assert _utile / (_W * _H) > 0.6, (
+        "le fichier combiné gaspille plus de 40 % de sa surface : les "
+        "planches sont mal rangées",
+        round(100 * _utile / (_W * _H)), round(_W, 1), round(_H, 1))
+    print("3bis. {} planches côte à côte sans se toucher, {:.0f} x {:.0f} mm, "
+          "{:.0f} % de surface utile OK".format(
+              len(_reelles), _W, _H, 100 * _utile / (_W * _H)))
+
     # --- 4. Le bandeau ★3 est là, et il est LE bon -----------------------
     # L'etape 3 a longtemps designe la Grille de test ; depuis la v2.47.0
     # les planches se gravent ICI, et le bandeau doit suivre.
