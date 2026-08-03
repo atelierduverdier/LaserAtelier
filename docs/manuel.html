@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.52.0</span><br>
+      <span class="ver">Version 2.53.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.52.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.53.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -812,13 +812,17 @@
 
     <h4>Lignes gravées&nbsp;: le trait enfle, et les gros traits ne servent à rien</h4>
     <p>Une ligne continue par rangée, faisceau jamais coupé, dont l'<b>épaisseur</b> rend le gris&nbsp;: fine dans les clairs, épaisse dans les foncés, comme une gravure sur cuivre. Là encore le gris est une géométrie — mais lue cette fois sur les <b>largeurs brûlées mesurées</b>, pas sur le nuancier. Conséquence directe&nbsp;: plus jamais de bois nu, ce qui était le reproche fait au premier portrait calibré, dont 27&nbsp;% de la surface n'était pas gravée du tout.</p>
-    <p>Ce mode se grave <b>au foyer</b>, et c'est contre-intuitif&nbsp;: les gros traits relevés en défocus par la rampe puissance/vitesse — jusqu'à 2,60&nbsp;mm — n'y servent à rien. Ce qui compte n'est pas la largeur absolue mais le <b>rapport</b> entre le trait le plus fin et le plus épais. Or en défocus le point est déjà large&nbsp;: sa taille est fixée par la géométrie du faisceau et la puissance n'y change presque rien.</p>
+    <p>Ce mode s'est longtemps gravé <b>au foyer</b>, et rien d'autre. Le raisonnement était que ce qui compte n'est pas la largeur absolue mais le <b>rapport</b> entre le trait le plus fin et le plus épais&nbsp;: en défocus le point est déjà large, sa taille est fixée par la géométrie du faisceau, et la puissance n'y change presque rien. La table de juillet donnait 3,0× au foyer contre 1,6× à 15&nbsp;mm — l'affaire semblait close.</p>
+    <p><b>La remesure d'août l'a rouverte (v2.53.0).</b> Sur la table refaite, le foyer à F800 ne rend plus que 1,67× (0,12 → 0,20&nbsp;mm), tandis que le défocus 15 à F650 donne <b>1,73×</b> avec un trait de 0,67 à 1,16&nbsp;mm — donc un pas six fois plus large, six fois moins de rangées, et bien moins d'énergie. La règle était juste quand elle a été écrite&nbsp;; la mesure l'a périmée. C'est exactement le cas de figure que ce manuel décrit ailleurs sous «&nbsp;une table fabriquée est pire qu'une table vide&nbsp;»&nbsp;: la valeur figée survit à la mesure qui la contredit.</p>
+    <p>Un sélecteur <b>«&nbsp;Défocus du trait&nbsp;»</b> propose donc, à côté du foyer, les hauteurs <b>réellement mesurées</b> pour le matériau — et elles seules. Ce n'est pas une prudence de principe&nbsp;: entre deux niveaux le modèle interpole, et un niveau qui ne porte qu'une seule puissance rend la même largeur à S200 et à S1000, soit un rapport de 1,00× que rien à l'écran n'expliquerait. Une hauteur libre offrirait surtout des régimes muets.</p>
+    <p><b>Ce qu'on échange.</b> Au foyer, un portrait de 120&nbsp;mm au pas 0,20 fait 600 rangées&nbsp;; à défocus 15 au pas 1,20, il en fait 100. Il y a donc six fois moins de détail — et c'est le but&nbsp;: «&nbsp;ce n'est pas le nombre de lignes qui compte, c'est le style donné au portrait par l'épaisseur de ligne, même s'il y a moins de détails&nbsp;» (Christophe, 03/08/2026). Le rendu quitte le grain photographique pour la gravure sur bois. Le verdict du panneau nomme la hauteur dans sa première phrase, parce qu'une plage sans son régime ne dit pas de quelle gravure elle parle&nbsp;: 0,12 → 0,20&nbsp;mm et 0,67 → 1,16 sont le même bois, la même vitesse, et deux gravures sans rapport.</p>
     <p>Le contraste réellement obtenu, lui, est l'<b>écart de couverture</b>&nbsp;: de <code>fin/pas</code> à <code>épais/pas</code>, ce dernier plafonné à 100&nbsp;%. Ce n'est pas le rapport <code>1 − fin/épais</code>, qui ne dépend pas du pas et resterait figé pendant que l'image change à vue d'œil. Et cet écart passe par un <b>maximum au pas qui vaut exactement le trait le plus épais</b>&nbsp;: au-dessus les noirs n'atteignent jamais 100&nbsp;%, en dessous ils y sont déjà et seuls les clairs s'assombrissent. Sur hêtre à F800 (0,10 → 0,30&nbsp;mm)&nbsp;: <b>67 points au pas 0,30</b>, mais 50 au pas 0,40 comme au pas 0,20 — resserrer le pas <em>noircit</em> l'image sans lui rendre du contraste. Le panneau affiche l'écart réel et nomme le pas optimal.</p>
     <table class="reglages">
-      <tr><th>Régime</th><th>Trait</th><th>Rapport</th><th>Contraste maximal</th></tr>
-      <tr><td><b>Au foyer</b></td><td>0,10 → 0,30&nbsp;mm</td><td><b>3,0×</b></td><td><b>67&nbsp;%</b></td></tr>
-      <tr><td>Défocus 15</td><td>0,80 → 1,30&nbsp;mm</td><td>1,6×</td><td>38&nbsp;%</td></tr>
-      <tr><td>Défocus 36</td><td>1,90 → 2,60&nbsp;mm</td><td>1,4×</td><td>27&nbsp;%</td></tr>
+      <tr><th>Régime</th><th>Trait</th><th>Rapport</th><th>Pas conseillé</th></tr>
+      <tr><td><b>Au foyer, F800</b></td><td>0,12 → 0,20&nbsp;mm</td><td>1,67×</td><td>0,20&nbsp;mm</td></tr>
+      <tr><td><b>Défocus 15, F650</b></td><td>0,67 → 1,16&nbsp;mm</td><td><b>1,73×</b></td><td><b>1,16&nbsp;mm</b></td></tr>
+      <tr><td>Défocus 15, F800</td><td>1,00 → 1,14&nbsp;mm</td><td>1,14× — refusé</td><td>—</td></tr>
+      <tr><td>Défocus 36 et au-delà</td><td colspan="3">1,49× au mieux (F200) — <b>refusé à toute vitesse</b> sur ce hêtre</td></tr>
     </table>
     <p>Mesures relevées sur hêtre. Au foyer, la largeur brûlée n'est pas la taille du point&nbsp;: c'est <b>l'endroit où le profil du faisceau franchit le seuil de brûlure du bois</b> — et ce point-là se déplace beaucoup quand la puissance monte. D'où le 3×, là où le défocus plafonne à 1,4×.</p>
     <p>Deuxième fait mesuré&nbsp;: la vitesse ne change rien tant qu'on reste dessous — 0,10 à 0,30&nbsp;mm à F200, F400 <em>et</em> F800, autant prendre la plus rapide — mais à partir de <b>F1500 la largeur est plate</b> à 0,10&nbsp;mm quelle que soit la puissance. Au-delà le trait n'enfle plus du tout, le mode n'a plus d'objet, et le panneau le dit franchement plutôt que de graver des lignes uniformes.</p>
@@ -1157,7 +1161,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.52.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.53.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

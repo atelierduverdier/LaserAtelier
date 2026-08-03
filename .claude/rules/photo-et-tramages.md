@@ -147,12 +147,42 @@ about the calibrated portrait: 27 % of the board unengraved).
 source for both `generate_gcode_photo_swell_lines` and the preview; it indexes rather than inverting
 per pixel, because the width table is a config read.
 
-Burns **at focus**, which is counter-intuitive — the fat lines the power/speed ramp records in defocus
-(up to 2.60 mm) are useless here. What matters is not absolute width but the **ratio**
-thinnest/thickest; in defocus the spot is already wide, its size set by beam geometry, and power
-barely moves it. Measured on Hêtre — defocus 36: 1.90→2.60 mm (1.4×); defocus 15: 0.80→1.30 (1.6×);
-**at focus: 0.10→0.30 (3.0×)**. At focus the burn width isn't the spot size, it's *where the beam
-profile crosses the wood's burn threshold* — and that point moves a lot with power.
+### The focus-only rule was TRUE, then the remeasure killed it (v2.53.0)
+
+For a long time this burned **at focus**, and only at focus. The reasoning was sound: what matters is
+not absolute width but the **ratio** thinnest/thickest, and in defocus the spot is already wide — its
+size set by beam geometry, power barely moving it. July's beech table said defocus 36: 1.90→2.60 mm
+(1.4×); defocus 15: 0.80→1.30 (1.6×); **at focus 0.10→0.30 (3.0×)**. Case closed.
+
+August's remeasure reopened it. On the current table, **focus at F800 gives only 1.67×**
+(0.12→0.20 mm) while **defocus 15 at F650 gives 1.73×** (0.67→1.16 mm) — with a pitch six times
+wider, so a sixth of the rows and far less energy. Same trap as the fabricated focus column: a value
+frozen into code outlives the measurement that contradicts it. `burn_width_power_table`,
+`burn_width_range`, `swell_plage`, `swell_max_feed`, `swell_plafond_suffisant`,
+`energie_lignes_gravees`, `swell_refus_message`, `swell_power_levels` and both generators now take
+`defocus=0.0`; the generators compute `z_grave = z_work + defocus` themselves, so the width table and
+the trajectory cannot describe two different heights.
+
+**Limited to MEASURED levels**, Christophe's explicit call on 2026-08-03: between two levels the model
+interpolates, and a level holding one power returns the same width at S200 and S1000 — a 1.00× ratio
+nothing on screen would explain. A non-measured height returns `[]` and a refusal that *lists* the
+measured levels. Two independent guards enforce it (the level check, and `s_dep` finding no measured
+power at that height) — a sabotage of either alone leaves the property standing.
+
+What is traded away is **detail**: a 120 mm portrait is 600 rows at focus/pitch 0.20 and 100 rows at
+defocus 15/pitch 1.20. That is the point, not a regression — *"c'est pas le nombre de lignes qui
+compte, c'est le style donné au portrait par l'épaisseur de ligne même s'il y a moins de détails"*.
+
+**The regime must be NAMED in the verdict's first sentence.** 0.12→0.20 and 0.67→1.16 mm are the same
+wood at the same feed and two unrelated engravings; a range without its height doesn't say which one
+it describes.
+
+On the workshop's beech, only **defocus 15** clears `SWELL_RAPPORT_MINI`, and only up to F650 — 36, 40,
+55 and 60 top out at 1.49× (F200) and refuse at every feed. Expect that: high defocus is where the
+spot size stops answering to power, which is what the original rule got right.
+
+At focus the burn width isn't the spot size, it's *where the beam profile crosses the wood's burn
+threshold* — and that point moves a lot with power.
 
 ### Report the coverage SPREAD, not the ratio
 
@@ -451,6 +481,16 @@ question.
 the message says so and names the **lowest** ceiling that unlocks (interpolated, e.g. S925 — not
 the measured step above). §20 and §21 of `test_lignes_gravees.py` freeze both properties,
 including that the verb matches the direction of the advised feed.
+
+**The same defect came back through the `defocus` argument on 2026-08-03**, in the same function: two
+of `swell_refus_message`'s calls (`swell_plafond_suffisant`, `swell_max_feed`) were left without it,
+so a refusal at defocus 15 advised *"Passer à F3000"* — the FOCUS answer — and quoted, in the same
+sentence, F3000's ratio *at defocus 15*: 1.00×, itself refused. The right answer was F650. Adding a
+regime argument to this family means threading it through **every** call inside the explanation, not
+only the decision. `swell_max_feed` also had to enumerate the feeds measured **at that level**: beech
+is measured at F1200/F3000 at focus and at F600/F650/F1100/F1550 at defocus 15, so scanning the focus
+list proposed feeds never measured up there and missed the ones that were. §27 of
+`test_lignes_gravees.py` freezes the property over every level, not just focus.
 
 ## Measurement margin is not burn margin (2026-08-01, engraved)
 

@@ -602,3 +602,221 @@ try:
 finally:
     core.load_config = _vrai
 print("24. table de largeurs et plafond suffisant : 1 lecture chacun OK")
+
+# --- 25. LE DÉFOCUS EST LIMITÉ AUX NIVEAUX MESURÉS ----------------------
+# Christophe, 03/08/2026 : « le défocus doit être limité aux niveaux
+# mesuré ». Ce n'est pas une prudence de principe. Entre deux niveaux le
+# modèle interpole, et un niveau qui ne porte qu'UNE puissance rend la même
+# largeur à S200 et à S1000 -- l'utilisateur lirait un rapport de 1,00x que
+# rien à l'écran n'expliquerait. Mieux vaut refuser en NOMMANT les hauteurs
+# disponibles.
+_niv = [float(n) for n in core.niveaux_defocus_mesures(MAT)]
+assert 15.0 in _niv and 36.0 in _niv, _niv
+assert core.burn_width_power_table(MAT, 400.0, defocus=15.0), \
+    "un niveau mesuré doit donner une table"
+# 7 mm : entre le foyer et 15, donc jamais mesuré, et hors tolérance de
+# rattachement (SNAP_DEFOCUS_TOLERANCE_MM = 2 mm).
+assert core.burn_width_power_table(MAT, 400.0, defocus=7.0) == [], \
+    "une hauteur jamais mesurée doit rendre une table VIDE, pas une interpolation"
+_m = core.swell_refus_message(MAT, 400.0, defocus=7.0)
+assert "aucune mesure à cette hauteur" in _m, _m
+# Le message doit LISTER les hauteurs utilisables : un refus qui ne dit pas
+# quoi choisir renvoie chercher dans la config.
+for _n in _niv:
+    assert "{:.0f}".format(_n) in _m, (_n, _m)
+assert "kerf" not in _m.lower(), \
+    ("le refus accuse la calibration alors que le kerf est mesuré : "
+     "c'est la HAUTEUR qui manque", _m)
+print("25. défocus hors des niveaux mesurés : table vide + refus qui liste "
+      "{} hauteurs OK".format(len(_niv)))
+
+
+# --- Un bois d'essai TAILLÉ pour le défocus -----------------------------
+# La table de référence du harnais ne convient pas ici : son rapport est
+# le même à toutes les vitesses ET à toutes les hauteurs, si bien qu'aucun
+# refus en défocus n'y nomme jamais de vitesse -- le test ne pourrait pas
+# atteindre le code qu'il prétend vérifier. La toucher casserait d'autres
+# tests (essayé : test_fuseau attend des traits de plus de 2 mm en
+# défocus). On se donne donc un matériau à part, dont la forme reproduit
+# celle du hêtre réel à défocus 15 : le trait enfle fort à F200 et plus du
+# tout à F800.
+MAT_DZ = u"Essai-défocus"
+core.save_burn_widths(MAT_DZ, {
+    "focus": [{"power": _s, "feed": _f, "width": _w}
+              for _f in (200.0, 400.0, 800.0)
+              for _s, _w in ((200.0, 0.10), (600.0, 0.20), (1000.0, 0.30))],
+    "defocus": [
+        {"power": _s, "feed": _f, "z_offset": _z,
+         # sensibilité à la puissance éteinte à partir de F900
+         "width": round((_z / 15.0) * (0.55 + 0.60 * (_s / 1000.0)
+                                       * max(0.0, 1.0 - _f / 900.0)), 3)}
+        for _z in (15.0, 36.0) for _f in (200.0, 400.0, 800.0)
+        for _s in (200.0, 600.0, 1000.0)],
+})
+# Un ton bidon, pour la seule raison que le combo « Matériau » du panneau
+# se peuple depuis le NUANCIER : sans lui le bois d'essai serait invisible
+# à §28 et §29, qui replieraient sur le hêtre et ne prouveraient rien.
+core.save_shades(MAT_DZ, [{"power": 1000.0, "feed": 200.0, "z_offset": 15.0,
+                           "width": 1.0, "darkness": 0.9}])
+# La forme obtenue est VÉRIFIÉE, pas déduite : le modèle interpole entre
+# le foyer et le premier niveau, donc le rapport sorti n'est pas celui
+# qu'on a écrit dans la table.
+_p200 = core.swell_plage(MAT_DZ, 200.0, None, defocus=15.0)
+_p800 = core.swell_plage(MAT_DZ, 800.0, None, defocus=15.0)
+assert _p200[2] >= core.SWELL_RAPPORT_MINI > _p800[2], (_p200, _p800)
+assert _p200[0] > 0.5, ("le trait doit être LARGE en défocus", _p200)
+
+# --- 26. Le G-code grave à z_work + défocus, dans TOUTE la famille -------
+# Le trait qui enfle a deux générateurs (lignes et spirale) : la largeur
+# était calculée à la hauteur demandée pendant que la trajectoire restait
+# au foyer, silencieusement. Propriété vérifiée sur la FAMILLE, pas sur le
+# seul cas signalé -- le va-et-vient des micro-traits avait déjà été
+# corrigé dans un générateur et oublié dans un autre, pendant un mois.
+_rows = [[0.0, 0.3, 0.6, 1.0]] * 4
+_familles = (("lignes", core.generate_gcode_photo_swell_lines),
+             ("spirale", core.generate_gcode_photo_spirale))
+for _nom, _gen in _familles:
+    _zs = {}
+    for _dz in (0.0, 15.0):
+        _g = _gen(_rows, 1.20, core.Z_WORK_MM, 200.0, MAT_DZ,
+                  line_min_mm=0.10, quiet=True, defocus=_dz)
+        assert _g, (_nom, _dz)
+        _zs[_dz] = min(hauteurs_z(_g))
+    assert abs(_zs[0.0] - core.Z_WORK_MM) < 1e-6, (_nom, _zs)
+    assert abs(_zs[15.0] - (core.Z_WORK_MM + 15.0)) < 1e-6, (
+        "{} : la trajectoire reste au foyer alors que les largeurs sont "
+        "calculées à 15 mm".format(_nom), _zs)
+print("26. les {} générateurs du trait qui enfle gravent à z_work + défocus "
+      "OK".format(len(_familles)))
+
+# --- 27. Un refus nomme une vitesse ACCEPTÉE AU MÊME défocus -------------
+# Généralisation de §19 à la hauteur. Le 03/08/2026, un refus à défocus 15
+# conseillait « Passer à F3000 » -- la réponse du FOYER, obtenue parce que
+# `swell_refus_message` appelait `swell_max_feed` sans lui passer le
+# défocus -- puis citait dans la même phrase le rapport de F3000 À DÉFOCUS
+# 15 : 1,00x, donc refusé à son tour. Une phrase qui se contredit.
+_cible = re.compile(r"(Descendre à|Passer à) F(\d+)")
+_verifs = {0.0: 0, 15.0: 0, 36.0: 0}
+for _dz in (0.0, 15.0, 36.0):
+    for _f in (200.0, 400.0, 800.0, 1500.0, 3000.0):
+        _pl = core.swell_plage(MAT_DZ, _f, None, defocus=_dz)
+        if _pl and _pl[2] >= core.SWELL_RAPPORT_MINI:
+            continue                    # accepté : rien à expliquer
+        _mm = _cible.search(core.swell_refus_message(MAT_DZ, _f, defocus=_dz))
+        if not _mm:
+            continue                    # refus qui ne conseille pas de vitesse
+        _c = float(_mm.group(2))
+        _p2 = core.swell_plage(MAT_DZ, _c, None, defocus=_dz)
+        assert _p2 is not None and _p2[2] >= core.SWELL_RAPPORT_MINI, (
+            "défocus {:.0f}, F{:.0f} : le refus envoie vers F{:.0f}, qui "
+            "refuse aussi".format(_dz, _f, _c), _p2)
+        assert (_mm.group(1) == "Descendre à") == (_c < _f), (
+            "le verbe contredit le sens", _dz, _f, _c)
+        _verifs[_dz] += 1
+# EN DÉFOCUS, au moins un : c'est là qu'était le défaut, et un test qui ne
+# vérifierait que le foyer passerait avec le bogue en place.
+assert _verifs[15.0] >= 1 and _verifs[36.0] >= 1, (
+    "aucun refus vérifié en défocus : le test n'atteint pas le code corrigé",
+    _verifs)
+print("27. {} refus vérifiés ({} en défocus) : la vitesse nommée est "
+      "acceptée AU MÊME défocus OK".format(
+          sum(_verifs.values()), _verifs[15.0] + _verifs[36.0]))
+
+# --- 28. Le panneau n'offre QUE des hauteurs mesurées -------------------
+# « le defocus doit etre limité aux niveaux mesuré » (Christophe,
+# 03/08/2026). Et le sélecteur ne concerne que les tramages à trait qui
+# enfle : la similigravure doit rester au foyer, son point EST le grain.
+_pn = tp.TaskPanelHalftone()
+_mats = [_pn.combo_photo_mat.itemText(i)
+         for i in range(_pn.combo_photo_mat.count())]
+if MAT_DZ in _mats:      # le combo se peuple depuis le nuancier
+    _pn.combo_photo_mat.setCurrentIndex(_mats.index(MAT_DZ))
+else:
+    _pn.combo_photo_mat.setCurrentIndex(_mats.index(MAT))
+_pn.combo_mode.setCurrentIndex(6)          # lignes gravées
+_offerts = sorted(float(_pn.combo_dz_trait.itemData(i))
+                  for i in range(_pn.combo_dz_trait.count()))
+_mesures = sorted([0.0] + [float(n) for n in core.niveaux_defocus_mesures(
+    _pn.combo_photo_mat.currentData())])
+assert _offerts == _mesures, (_offerts, _mesures)
+assert len(_offerts) >= 2, ("le sélecteur n'offre que le foyer : rien à "
+                            "choisir", _offerts)
+# Chaque hauteur offerte doit donner une table : un choix qui refuse
+# systématiquement n'aurait rien à faire dans la liste.
+for _dz in _offerts:
+    assert core.burn_width_power_table(
+        _pn.combo_photo_mat.currentData(), 200.0, defocus=_dz), _dz
+# Les trois tramages à trait qui enfle... et les autres, qui n'en veulent pas.
+_avec = [t["cle"] for t in tp._TRAMAGES if t["reglage"] == "trait_mini"]
+assert set(_avec) == {"enfle", "spirale"}, _avec
+for _i, _t in enumerate(tp._TRAMAGES):
+    _pn.combo_mode.setCurrentIndex(_i)
+    _dzt = _pn._dz_trait()
+    if _t["reglage"] == "trait_mini":
+        continue
+    assert _dzt == 0.0, ("le tramage « {} » ne défocalise pas, il doit lire "
+                         "0".format(_t["cle"]), _dzt)
+print("28. sélecteur = {} hauteurs mesurées, muet sur les {} autres "
+      "tramages OK".format(len(_offerts), len(tp._TRAMAGES) - len(_avec)))
+
+# --- 29. Verdict, aperçu et G-code lisent le MÊME défocus ---------------
+# Trois lecteurs, une seule hauteur. Le panneau a déjà livré une fois un
+# verdict calculé sur un régime et un G-code gravé dans un autre (défocus
+# 8,8 contre nuancier mesuré à 15, toutes les photos noires) : c'est le
+# défaut le plus coûteux de ce panneau, et il ne se voit pas à l'écran.
+_pn.combo_photo_mat.setCurrentIndex(_mats.index(MAT_DZ))
+_pn.combo_mode.setCurrentIndex(6)
+_pn.spn_power_max.setValue(core.S_MAX)
+_pn.spn_line_feed.setValue(200.0)       # la seule vitesse où ce bois enfle
+_pn.spn_pitch.setValue(1.00)
+_pn.spn_line_min.setValue(0.10)
+for _i in range(_pn.combo_dz_trait.count()):
+    if _pn.combo_dz_trait.itemData(_i) == "15":
+        _pn.combo_dz_trait.setCurrentIndex(_i)
+assert _pn._dz_trait() == 15.0
+_pn._maj_regime()
+_v = texte(_pn.lbl_regime)
+assert "défocus 15" in _v, ("le verdict ne nomme pas la hauteur gravée", _v)
+assert "⚠" not in _v, ("régime pourtant utilisable refusé", _v)
+_g29 = _pn._generate([[0.0, 0.4, 0.8, 1.0]] * 4, quiet=True)
+assert _g29, "aucun G-code"
+assert abs(min(hauteurs_z(_g29)) - (core.Z_WORK_MM + 15.0)) < 1e-6, (
+    "le G-code ne grave pas à la hauteur que le verdict annonce",
+    sorted(hauteurs_z(_g29)))
+# L'APERÇU, jugé sur l'image qu'il PEINT et non sur son existence : au
+# pas 1,00 mm le trait couvre 10 à 30 % au foyer contre 64 à 100 % à
+# défocus 15. Un aperçu resté au foyer sort donc beaucoup plus clair -- et
+# ne refuse pas, puisque le foyer est un régime valide. Un simple « pas
+# None » laissait passer exactement ça (vérifié en le sabotant).
+def _couvert(image):
+    """Part de l'image RÉELLEMENT brûlée (pixels qui ne sont plus le bois).
+
+    Et non la luminance moyenne : à défocus le trait est LARGE mais PÂLE
+    (la fluence va comme 1/largeur), au foyer étroit mais foncé -- les deux
+    se compensent presque exactement, 174,6 contre 174,2 sur ce bois
+    d'essai. Une moyenne ne distinguait donc pas deux gravures qui n'ont
+    rien à voir. La couverture, si : 10-30 % au foyer contre 64-100 %."""
+    _fond = image.pixelColor(0, 0).rgb()
+    _k, _n = 0, 0
+    for _y in range(image.height()):
+        for _x in range(image.width()):
+            _k += 1 if image.pixelColor(_x, _y).rgb() != _fond else 0
+            _n += 1
+    return _k / float(max(_n, 1))
+
+_rows29 = [[0.0, 0.4, 0.8, 1.0]] * 4
+_img29, _note29 = _pn._render_photo_preview(_rows29, 80)
+assert _img29 is not None, ("l'aperçu refuse un régime que le verdict "
+                            "approuve et que le G-code grave", _note29)
+for _i in range(_pn.combo_dz_trait.count()):
+    if _pn.combo_dz_trait.itemData(_i) == "0":
+        _pn.combo_dz_trait.setCurrentIndex(_i)
+_img0, _ = _pn._render_photo_preview(_rows29, 80)
+assert _img0 is not None
+_c15, _c0 = _couvert(_img29), _couvert(_img0)
+assert _c15 > 2.0 * _c0, (
+    "l'aperçu peint la même surface au foyer et à défocus 15 : il ne lit "
+    "donc pas la hauteur choisie", _c0, _c15)
+print("29. verdict, aperçu et G-code : une seule hauteur (défocus 15) OK "
+      "-- aperçu couvert à {:.0f} % contre {:.0f} % au foyer".format(
+          100.0 * _c15, 100.0 * _c0))

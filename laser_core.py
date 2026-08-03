@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.52.0"
+VERSION = "2.53.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -8257,23 +8257,56 @@ def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed, y0=0.0):
 # d'objet.
 
 
-def burn_width_power_table(material, feed, pas_s=5.0):
-    """[(S, largeur brûlée), ...] au FOYER pour cette vitesse, échantillonné
-    sur `burn_width_at` -- donc sur les mesures, jamais sur une formule
-    parallèle. S croissant, largeur rendue monotone : une largeur qui
-    redescendrait quand la puissance monte est une erreur de mesure, pas une
-    propriété du bois. [] si le matériau n'a pas de table."""
+def burn_width_power_table(material, feed, pas_s=5.0, defocus=0.0):
+    """[(S, largeur brûlée), ...] pour cette vitesse, échantillonné sur les
+    MESURES, jamais sur une formule parallèle. S croissant, largeur rendue
+    monotone : une largeur qui redescendrait quand la puissance monte est
+    une erreur de mesure, pas une propriété du bois. [] si le matériau n'a
+    pas de table.
+
+    `defocus` -- 0 = au foyer, sinon un NIVEAU RÉELLEMENT MESURÉ. Ouvert le
+    03/08/2026 : le tramage « trait qui enfle » était bloqué au foyer sur
+    une mesure de juillet (0,10 → 0,30 mm, soit 3,0x, contre 1,6x à
+    défocus 15). Cette table a été remesurée depuis, et le foyer y a perdu
+    son avantage -- 0,12 → 0,20 à F800, soit 1,67x, quand le défocus 15 à
+    F400 donne 0,67 → 1,21, soit 1,81x, avec un pas six fois plus large et
+    trois fois moins d'énergie. La règle était juste quand elle a été
+    écrite ; la remesure l'a périmée.
+
+    LIMITÉ AUX NIVEAUX MESURÉS, choix de Christophe et non une prudence de
+    principe : entre deux niveaux le modèle interpole, et un niveau qui ne
+    porte qu'UNE puissance rend la même largeur à S200 et à S1000 --
+    l'utilisateur verrait un rapport de 1,0x sans pouvoir comprendre
+    pourquoi (cf. `_niveaux_exploitables`). Un défocus qui ne correspond à
+    aucun niveau mesuré rend [], donc un refus PARLANT en amont."""
     if feed <= 0:
         return []
-    mesures = load_burn_widths(_burn_width_material(material) or "").get("focus")
-    if not mesures:
-        return []
+    mat = _burn_width_material(material) or ""
+    if defocus and defocus > 1e-9:
+        niveaux = niveaux_defocus_mesures(mat)
+        if not any(abs(float(n) - float(defocus)) <= SNAP_DEFOCUS_TOLERANCE_MM
+                   for n in niveaux):
+            return []
+        mesures = None          # on passe par le modèle feed-aware complet
+    else:
+        mesures = load_burn_widths(mat).get("focus")
+        if not mesures:
+            return []
     # Partir de la plus faible puissance MESURÉE, pas de S0 : sous la plage
     # mesurée `burn_width_at` borne et rend la largeur du bord, si bien que
     # S0 semble donner un trait de 0,10 mm alors qu'il ne grave rien. Le
     # tramage promet une ligne jamais coupée -- il ne doit jamais choisir
     # une puissance dont on ne sait rien.
-    s_dep = min(float(e.get("power", 0) or 0) for e in mesures)
+    if mesures is not None:
+        s_dep = min(float(e.get("power", 0) or 0) for e in mesures)
+    else:
+        pts = load_burn_widths(mat).get("defocus") or []
+        proches = [float(e.get("power", 0) or 0) for e in pts
+                   if abs(_snap_defocus_level(e.get("z_offset", 0.0))
+                          - float(defocus)) <= SNAP_DEFOCUS_TOLERANCE_MM]
+        if not proches:
+            return []
+        s_dep = min(proches)
     n = int(S_MAX / max(pas_s, 1.0))
     table = []
     plafond = 0.0
@@ -8285,7 +8318,8 @@ def burn_width_power_table(material, feed, pas_s=5.0):
         # `burn_width_at` qui rechargerait la config à chaque échantillon :
         # 161 lectures de JSON pour une seule table, payées par tout ce qui
         # appelle cette fonction.
-        w = _bilinear_burn(mesures, s, feed)
+        w = (_bilinear_burn(mesures, s, feed) if mesures is not None
+             else burn_width_defocus_scaled(s, feed, defocus, mat))
         if w is None:
             return []
         plafond = max(plafond, float(w))
@@ -8293,11 +8327,11 @@ def burn_width_power_table(material, feed, pas_s=5.0):
     return table
 
 
-def burn_width_range(material, feed):
+def burn_width_range(material, feed, defocus=0.0):
     """(largeur_mini, largeur_maxi) atteignables au foyer à cette vitesse,
     ou None. Les deux égales = le trait n'enfle plus, le tramage « lignes
     gravées » n'a plus d'objet (F >= 1500 sur hêtre : plat à 0,10 mm)."""
-    table = burn_width_power_table(material, feed)
+    table = burn_width_power_table(material, feed, defocus=defocus)
     if not table:
         return None
     return table[0][1], table[-1][1]
@@ -8324,7 +8358,7 @@ def burn_width_range(material, feed):
 SWELL_RAPPORT_MINI = 1.5
 
 
-def swell_plage(material, feed, power_max=None):
+def swell_plage(material, feed, power_max=None, defocus=0.0):
     """(largeur_mini, largeur_maxi, rapport) SOUS LE PLAFOND, ou None.
 
     SOURCE UNIQUE de la décision ET de son explication. Le refus se
@@ -8333,7 +8367,7 @@ def swell_plage(material, feed, power_max=None):
     0,18 mm, soit 1.50x -- sous le rapport 1.5x », une phrase qui se
     contredit elle-même, parce que le vrai rapport, plafond S900 appliqué,
     était 1,33. Deux calculs pour une seule question donnent toujours ça."""
-    table = burn_width_power_table(material, feed)
+    table = burn_width_power_table(material, feed, defocus=defocus)
     if not table:
         return None
     if power_max is not None:
@@ -8346,7 +8380,7 @@ def swell_plage(material, feed, power_max=None):
     return w_min, w_max, w_max / w_min
 
 
-def swell_max_feed(material, power_max=None):
+def swell_max_feed(material, power_max=None, defocus=0.0):
     """La vitesse mesurée la PLUS RAPIDE à laquelle le trait enfle encore,
     ou None. Sert à ne pas se contenter de dire « trop vite » : au-delà
     d'un seuil la largeur ne dépend plus de la puissance, et l'utile est
@@ -8356,7 +8390,20 @@ def swell_max_feed(material, power_max=None):
     vitesse jugée sans le plafond, alors que le tramage la jugera avec,
     renvoie l'utilisateur vers une vitesse qui refusera à son tour."""
     mat = _burn_width_material(material)
-    mesures = load_burn_widths(mat or "").get("focus") if mat else None
+    if not mat:
+        return None
+    tables = load_burn_widths(mat)
+    if defocus and defocus > 1e-9:
+        # LES VITESSES DU NIVEAU, pas celles du foyer. Sur le hêtre de
+        # l'atelier le foyer est mesuré à F1200 et F3000, jamais le défocus
+        # 15 -- qui l'est en revanche à F600, F650, F1100, F1550. Balayer la
+        # liste du foyer proposait donc des vitesses jamais mesurées à cette
+        # hauteur, et en manquait qui l'étaient.
+        mesures = [e for e in (tables.get("defocus") or [])
+                   if abs(_snap_defocus_level(e.get("z_offset", 0.0))
+                          - float(defocus)) <= SNAP_DEFOCUS_TOLERANCE_MM]
+    else:
+        mesures = tables.get("focus")
     if not mesures:
         return None
     vitesses = sorted({float(e.get("feed", 0) or 0) for e in mesures},
@@ -8368,19 +8415,19 @@ def swell_max_feed(material, power_max=None):
         # vitesse que le tramage refusera à son tour. Constaté aussitôt
         # après avoir posé le seuil : « descendre à F3000 » alors que F3000
         # était lui-même refusé.
-        p = swell_plage(material, f, power_max)
+        p = swell_plage(material, f, power_max, defocus=defocus)
         if p and p[2] >= SWELL_RAPPORT_MINI:
             return f
     return None
 
 
-def swell_plafond_suffisant(material, feed):
+def swell_plafond_suffisant(material, feed, defocus=0.0):
     """Le plafond de puissance le plus BAS qui fasse enfler le trait à cette
     vitesse, ou None si même à pleine puissance il n'enfle pas.
 
     Quand c'est le plafond qui bloque, changer de vitesse ne sert à rien :
     il faut nommer la puissance qui débloque, pas envoyer chercher."""
-    table = burn_width_power_table(material, feed)
+    table = burn_width_power_table(material, feed, defocus=defocus)
     if not table or table[0][1] <= 1e-9:
         return None
     # UN SEUL balayage. La version d'origine rappelait `swell_plage` -- donc
@@ -8427,7 +8474,7 @@ ENERGIE_LG_ANCRE_NOIR = 6.4
 ENERGIE_LG_ANCRE_CARBONISE = 13.2
 
 
-def energie_lignes_gravees(material, feed, pitch, power_max=None):
+def energie_lignes_gravees(material, feed, pitch, power_max=None, defocus=0.0):
     """(énergie, référence, rapport) du ton le plus NOIR des lignes gravées,
     ou None faute de mesure à quoi se comparer.
 
@@ -8451,7 +8498,7 @@ def energie_lignes_gravees(material, feed, pitch, power_max=None):
     `ref` peut donc valoir None sans empêcher le verdict."""
     if not material or feed <= 0 or pitch <= 0:
         return None
-    plage = swell_plage(material, feed, power_max)
+    plage = swell_plage(material, feed, power_max, defocus=defocus)
     if plage is None:
         return None
     s_noir = float(power_max) if power_max is not None else S_MAX
@@ -8463,15 +8510,35 @@ def energie_lignes_gravees(material, feed, pitch, power_max=None):
     return e, ref, rapport
 
 
-def swell_refus_message(material, feed, power_max=None):
+def swell_refus_message(material, feed, power_max=None, defocus=0.0):
     """Pourquoi les « lignes gravées » refusent, et QUOI FAIRE. Un message
     qui dit seulement « trop vite » laisse l'utilisateur chercher la bonne
     valeur ; celui-ci la nomme."""
+    # UN DÉFOCUS QUI N'EST PAS UN NIVEAU MESURÉ : la cause est là, et
+    # nulle part ailleurs. Sans cette branche le message répondait
+    # « aucune largeur brûlée mesurée pour Hêtre » -- faux, et il envoyait
+    # regraver une calibration entière au lieu de dire « choisis 15 ou 36 ».
+    if defocus and defocus > 1e-9:
+        niveaux = niveaux_defocus_mesures(_burn_width_material(material) or "")
+        if not any(abs(float(n) - float(defocus)) <= SNAP_DEFOCUS_TOLERANCE_MM
+                   for n in niveaux):
+            if not niveaux:
+                return ("aucun niveau de défocus mesuré pour « {} » : "
+                        "gravé la Planche 2 (Assistant matériau), ou reste "
+                        "au foyer.".format(material))
+            return ("défocus {:.0f} mm : aucune mesure à cette hauteur. "
+                    "Niveaux mesurés pour « {} » : {}. Le modèle sait "
+                    "interpoler, mais un niveau qui ne porte qu'une seule "
+                    "puissance rendrait la même largeur à S200 et à S1000 -- "
+                    "on préfère refuser que servir un rapport de 1,00x "
+                    "inexplicable.".format(
+                        float(defocus), material,
+                        ", ".join("{:.0f}".format(float(n)) for n in niveaux)))
     # Un plafond de puissance trop bas ne laisse plus qu'un ou deux paliers
     # mesurés : la cause est alors le PLAFOND, pas la vitesse. Le dire,
     # sinon le message accuse la vitesse qui, elle, va très bien.
     if power_max is not None:
-        table = burn_width_power_table(material, feed)
+        table = burn_width_power_table(material, feed, defocus=defocus)
         if table and len([1 for s, _w in table if s <= float(power_max) + 1e-9]) < 2:
             bas = min((s for s, _w in table), default=0)
             return ("le plafond S{:.0f} est sous la plus faible puissance "
@@ -8481,7 +8548,7 @@ def swell_refus_message(material, feed, power_max=None):
     # La plage est lue SOUS LE PLAFOND, exactement comme le refus l'a
     # calculée. Sinon le message cite un rapport qui n'est pas celui qui a
     # décidé -- et annonce « 1.50x, sous 1.5x ».
-    plage = swell_plage(material, feed, power_max)
+    plage = swell_plage(material, feed, power_max, defocus=defocus)
     if plage is None:
         return ("aucune largeur brûlée mesurée pour « {} » -- passer par "
                 "« Calibration du kerf » avant d'utiliser ce tramage."
@@ -8500,20 +8567,27 @@ def swell_refus_message(material, feed, power_max=None):
     # Le plafond d'abord : quand c'est lui qui bloque, changer de vitesse ne
     # débloquera rien, et envoyer chercher ailleurs fait perdre la soirée.
     if power_max is not None:
-        assez = swell_plafond_suffisant(material, feed)
+        assez = swell_plafond_suffisant(material, feed, defocus=defocus)
         if assez is not None and assez > float(power_max) + 1e-9:
-            large = swell_plage(material, feed, assez)
+            large = swell_plage(material, feed, assez, defocus=defocus)
             return ("à F{:.0f} {} -- mais c'est le PLAFOND S{:.0f} qui rogne "
                     "la plage, pas la vitesse. Remonter le plafond à S{:.0f} "
                     "suffit : le trait y va de {:.2f} à {:.2f} mm ({:.2f}x)."
                     .format(feed, cause, float(power_max), assez,
                             large[0], large[1], large[2]))
-    rapide = swell_max_feed(material, power_max)
+    # LE DÉFOCUS AUSSI. Sans lui, le 03/08/2026, un refus à défocus 15
+    # conseillait « Passer à F3000 » -- la réponse du FOYER -- et citait
+    # dans la même phrase le rapport de F3000 à défocus 15 : 1,00x, donc
+    # refusé à son tour. La bonne réponse était F400 (1,81x). Deux régimes
+    # dans une seule phrase : exactement ce que §19 interdit.
+    rapide = swell_max_feed(material, power_max, defocus=defocus)
     if rapide is None:
-        return ("sur « {} » le trait ne varie à AUCUNE vitesse mesurée : la "
+        ou = ("" if not defocus or defocus <= 1e-9
+              else " à défocus {:.0f} mm".format(float(defocus)))
+        return ("sur « {} » le trait ne varie à AUCUNE vitesse mesurée{} : la "
                 "table de largeurs est trop pauvre pour ce tramage."
-                .format(material))
-    autre = swell_plage(material, rapide, power_max)
+                .format(material, ou))
+    autre = swell_plage(material, rapide, power_max, defocus=defocus)
     # « Descendre » vers une vitesse PLUS RAPIDE se lisait comme une faute de
     # frappe et faisait douter du reste du message. Le verbe suit le sens.
     verbe = "Descendre à" if rapide < feed else "Passer à"
@@ -8523,7 +8597,7 @@ def swell_refus_message(material, feed, power_max=None):
 
 
 def swell_power_levels(material, feed, line_min_mm, niveaux=256,
-                       power_max=None):
+                       power_max=None, defocus=0.0):
     """Table noirceur -> S du tramage « lignes gravées ».
 
     SOURCE UNIQUE partagée par le générateur et l'aperçu photo. Renvoie
@@ -8543,7 +8617,7 @@ def swell_power_levels(material, feed, line_min_mm, niveaux=256,
     à la main, et non un calcul. Plafonner rogne le haut de la plage : sur
     hêtre F800 au pas 0,30, S900 donne 0,28 mm au lieu de 0,30, soit 58
     points de contraste au lieu de 67. C'est le prix, et il est modeste."""
-    table = burn_width_power_table(material, feed)
+    table = burn_width_power_table(material, feed, defocus=defocus)
     if not table:
         return None
     if power_max is not None:
@@ -8718,7 +8792,7 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
                                  pre_gcode="", post_gcode="",
                                  frame_only=False, quiet=False,
                                  white_threshold=0.0, power_max=None,
-                                 pas_arc_mm=None):
+                                 pas_arc_mm=None, defocus=0.0):
     """Photo en SPIRALE : un trait unique du centre au bord, dont
     l'ÉPAISSEUR rend le gris -- le principe de « Lignes gravées », enroulé.
 
@@ -8743,12 +8817,12 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
     if h < 1 or w < 1 or pitch <= 0 or feed <= 0:
         return None
     niveaux = swell_power_levels(material, feed, line_min_mm,
-                                 power_max=power_max)
+                                 power_max=power_max, defocus=defocus)
     if niveaux is None:
         if not quiet:
             FreeCAD.Console.PrintWarning(
                 "Spirale : {}\n".format(
-                    swell_refus_message(material, feed, power_max)))
+                    swell_refus_message(material, feed, power_max, defocus=defocus)))
         return None
     puissances, w_min, w_max = niveaux
     n = len(puissances)
@@ -8768,7 +8842,11 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
         k = swell_niveau(darkness_rows[rang][col], n, white_threshold)
         return 0.0 if k is None else puissances[k]
 
-    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    # LE DÉFOCUS DU TRAMAGE. Pas d'étiquettes ici,
+    # contrairement à la grille de test : toute la trame EST
+    # l'image, donc rien à garder net à une autre hauteur.
+    z_grave = z_work + max(0.0, float(defocus))
+    z_safe = z_grave + TRAVEL_CLEARANCE_MM
     longueur = sum(math.hypot(b[0] - a[0], b[1] - a[1])
                    for a, b in zip(pts, pts[1:]))
     lines = []
@@ -8807,7 +8885,7 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
         lines.append(pre_gcode.strip())
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     lines.append("G0 X{:.4f} Y{:.4f}".format(pts[0][0], pts[0][1]))
-    lines.append("G0 Z{:.4f}".format(z_work))
+    lines.append("G0 Z{:.4f}".format(z_grave))
 
     # Les puissances d'abord, pour repérer les longues plages de bois nu :
     # elles se franchissent à l'avance rapide, sans couper le mouvement --
@@ -8851,7 +8929,7 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
                                      pre_gcode="", post_gcode="",
                                      frame_only=False, quiet=False,
                                      white_threshold=0.0, fond_clair="nu",
-                                     power_max=None):
+                                     power_max=None, defocus=0.0):
     """Photo en LIGNES GRAVÉES : chaque ligne est balayée en continu au
     FOYER, et c'est l'ÉPAISSEUR du trait qui rend le gris -- fin dans les
     clairs, épais dans les foncés, comme une gravure sur cuivre. Aucun
@@ -8880,12 +8958,12 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
     if h < 1 or w < 1 or pitch <= 0 or feed <= 0:
         return None
     niveaux = swell_power_levels(material, feed, line_min_mm,
-                                 power_max=power_max)
+                                 power_max=power_max, defocus=defocus)
     if niveaux is None:
         if not quiet:
             FreeCAD.Console.PrintWarning(
                 "Lignes gravées : {}\n".format(
-                    swell_refus_message(material, feed, power_max)))
+                    swell_refus_message(material, feed, power_max, defocus=defocus)))
         return None
     puissances, w_min, w_max = niveaux
     n = len(puissances)
@@ -8893,7 +8971,11 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
             for ligne in swell_niveaux_grille(darkness_rows, n,
                                               white_threshold, fond_clair)]
 
-    z_safe = z_work + TRAVEL_CLEARANCE_MM
+    # LE DÉFOCUS DU TRAMAGE. Pas d'étiquettes ici,
+    # contrairement à la grille de test : toute la trame EST
+    # l'image, donc rien à garder net à une autre hauteur.
+    z_grave = z_work + max(0.0, float(defocus))
+    z_safe = z_grave + TRAVEL_CLEARANCE_MM
     lines = []
     lines.append("(G-Code Laser - Photo : lignes gravees, trait qui enfle)")
     lines.append("(Image : {} x {} px au pas {:.2f}mm, F{:.0f}, au foyer)".format(
@@ -8945,7 +9027,7 @@ def generate_gcode_photo_swell_lines(darkness_rows, pitch, z_work, feed,
         lines.append(pre_gcode.strip())
 
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
-    _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed)
+    _emit_raster_rows(lines, grid, pitch, z_grave, z_safe, feed)
 
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")

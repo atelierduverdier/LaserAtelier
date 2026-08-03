@@ -10340,6 +10340,34 @@ class TaskPanelHalftone:
             "s'affiche sous la grille.")
         form.addRow("Épaisseur mini du trait :", self.spn_line_min)
 
+        # LE DÉFOCUS DU TRAIT QUI ENFLE, limité aux niveaux MESURÉS.
+        # Ce tramage a longtemps été bloqué au foyer, sur une mesure de
+        # juillet où le foyer donnait 3,0x contre 1,6x à défocus 15. La
+        # table remesurée par Christophe a renversé le classement : au
+        # foyer F800 il ne reste que 1,67x, quand le défocus 15 à F400
+        # donne 1,81x -- avec un pas six fois plus large, donc trois fois
+        # moins de temps et d'énergie. Le prix est le GRAIN : 99 lignes sur
+        # 120 mm au lieu de 600. Christophe l'a tranché le 03/08/2026 :
+        # « c'est pas le nombre de lignes qui compte, c'est le style donné
+        # au portrait par l'épaisseur de ligne même s'il y a moins de
+        # détails. » Ce n'est donc pas une dégradation à minimiser, c'est
+        # l'effet recherché.
+        #
+        # LIMITÉ AUX NIVEAUX MESURÉS, à sa demande : entre deux niveaux le
+        # modèle interpole, et un niveau qui ne porte qu'une puissance rend
+        # la même largeur à S200 et S1000 -- un rapport de 1,00x que rien
+        # n'expliquerait à l'écran.
+        self.combo_dz_trait = QtWidgets.QComboBox()
+        self.combo_dz_trait.setToolTip(
+            "Hauteur de défocalisation du trait, parmi les niveaux\n"
+            "RÉELLEMENT mesurés pour ce matériau (Planche 2).\n"
+            "\n"
+            "Au foyer, le trait est fin et le grain photographique ; en\n"
+            "défocus il est large, le pas suit, et le rendu devient une\n"
+            "gravure sur bois -- moins de détails, plus de style. La plage\n"
+            "réellement obtenue s'affiche dans le verdict en dessous.")
+        form.addRow("Défocus du trait :", self.combo_dz_trait)
+
         # Le pendant HAUT de « épaisseur mini ». La table des largeurs ne
         # connaît que la largeur, jamais la PROFONDEUR : à pleine puissance
         # le trait fait bien la largeur annoncée, mais il peut creuser et
@@ -10491,6 +10519,8 @@ class TaskPanelHalftone:
                              t["reglage"] == "trait_mini")
             _set_row_visible(form, self.combo_fond,
                              t["reglage"] == "trait_mini")
+            _set_row_visible(form, self.combo_dz_trait,
+                             t["reglage"] == "trait_mini")
             self.combo_fond.setEnabled(self.spn_white.value() > 0.0)
             # « Largeur du point » pilote le DÉFOCUS : elle n'a aucun sens
             # pour un tramage qui grave au foyer, où la largeur du trait vient
@@ -10574,8 +10604,15 @@ class TaskPanelHalftone:
         form.addRow(self.btn_corriger_regime)
         for _w in (self.spn_spot_width, self.spn_pitch, self.spn_line_feed):
             _w.valueChanged.connect(lambda _v: self._maj_regime())
+        # ORDRE IMPORTANT : la liste des defocus depend du materiau, donc
+        # elle se reconstruit AVANT que le verdict ne la lise. Qt appelle les
+        # slots d'un meme signal dans l'ordre de connexion.
+        self._peupler_dz_trait()
+        self.combo_photo_mat.currentIndexChanged.connect(
+            lambda _i: self._peupler_dz_trait())
         self.combo_photo_mat.currentIndexChanged.connect(lambda _i: self._maj_regime())
         self.combo_mode.currentIndexChanged.connect(lambda _i: self._maj_regime())
+        self.combo_dz_trait.currentIndexChanged.connect(lambda _i: self._maj_regime())
         _sync_mode()
         self._maj_regime()      # verdict visible DÈS l'ouverture, pas seulement
         # après avoir touché un champ : c'est à l'ouverture qu'on hérite d'un
@@ -10630,6 +10667,10 @@ class TaskPanelHalftone:
             # matériau de la liste sans le dire. Stocké par son NOM (la donnée
             # de l'entrée), donc insensible à l'ordre du nuancier.
             "material": self.combo_photo_mat,
+            # Stocke la HAUTEUR (« 15 »), pas un rang : la liste des niveaux
+            # mesures change de longueur des qu'une planche est versee, et un
+            # rang designerait alors silencieusement une autre hauteur.
+            "dz_trait": self.combo_dz_trait,
         }
         _restore_last_values("halftone", self._last_fields)
 
@@ -10651,6 +10692,8 @@ class TaskPanelHalftone:
         self.combo_photo_mat.currentIndexChanged.connect(
             lambda _i: self._update_grid_info())
         self.combo_mode.currentIndexChanged.connect(lambda _i: self._update_grid_info())
+        self.combo_dz_trait.currentIndexChanged.connect(
+            lambda _i: self._update_grid_info())
         self.combo_rotation.currentIndexChanged.connect(lambda _i: self._update_grid_info())
         self.chk_invert.toggled.connect(lambda _v: self._update_grid_info())
         self._update_grid_info()
@@ -10848,11 +10891,15 @@ class TaskPanelHalftone:
             feeds = [max(1.0, seg / max(d / 1000.0, 1e-3) * 60.0)
                      for d in (self.spn_dwell_min.value(),
                                self.spn_dwell_max.value())]
-        # Un tramage AU FOYER ne défocalise pas : dans un cas le point doit
-        # rester net (similigravure), dans l'autre c'est la largeur brûlée au
-        # foyer qui répond à la puissance (lignes gravées).
-        z_ref = 0.0 if t["au_foyer"] else (core.defocus_for_spot_diameter(
-            spot, core.SPOT_FOCUS_MM, half_angle) or 0.0)
+        # Un tramage AU FOYER ne défocalise pas via « largeur du point ».
+        # La similigravure y reste clouée (le point DOIT être net, c'est lui
+        # le grain), mais les traits qui enflent ont leur propre sélecteur,
+        # limité aux niveaux mesurés : c'est CETTE hauteur que l'aperçu doit
+        # peindre, sans quoi il montrerait un régime que la machine ne
+        # gravera pas.
+        z_ref = (self._dz_trait() if t["au_foyer"]
+                 else (core.defocus_for_spot_diameter(
+                     spot, core.SPOT_FOCUS_MM, half_angle) or 0.0))
         plage = core.shade_feed_range(material, z_ref)
         theorique = plage is None or not all(
             plage[0] - 1e-6 <= f <= plage[1] + 1e-6 for f in feeds)
@@ -10892,12 +10939,13 @@ class TaskPanelHalftone:
             # _emit_raster_rows fusionne les S égaux -- l'aperçu dessine
             # donc les mêmes segments que la machine gravera.
             feed_l = self.spn_line_feed.value()
+            dz = self._dz_trait()
             niv = core.swell_power_levels(
                 material, feed_l, self.spn_line_min.value(),
-                power_max=self.spn_power_max.value())
+                power_max=self.spn_power_max.value(), defocus=dz)
             if niv is None:
                 return None, core.swell_refus_message(
-                    material, feed_l, self.spn_power_max.value())
+                    material, feed_l, self.spn_power_max.value(), defocus=dz)
             puissances, w_min, w_max = niv
             n = len(puissances)
             # Seuil de blanc ET fond pointillé viennent de la MÊME grille
@@ -10908,7 +10956,7 @@ class TaskPanelHalftone:
             grille = core.swell_niveaux_grille(
                 darkness, n, self.spn_white.value() / 100.0,
                 self.combo_fond.currentData())
-            t = teinte(puissances[-1], feed_l, w_max, 0.0)
+            t = teinte(puissances[-1], feed_l, w_max, dz)
             for row in range(h):
                 y = (h - 1 - row) * pitch
                 col = 0
@@ -11118,6 +11166,54 @@ class TaskPanelHalftone:
         idx = self.combo_mode.currentIndex()
         return _TRAMAGES[idx if 0 <= idx < len(_TRAMAGES) else 0]
 
+    def _peupler_dz_trait(self):
+        """Remplit « Défocus du trait » avec les niveaux RÉELLEMENT mesurés
+        pour le matériau courant, plus le foyer.
+
+        Limité aux niveaux mesurés à la demande de Christophe (03/08/2026) :
+        entre deux niveaux le modèle INTERPOLE, et un niveau qui ne porte
+        qu'une puissance rend la même largeur à S200 et à S1000 -- soit un
+        rapport de 1,00x, donc un refus, que rien à l'écran n'expliquerait.
+        Une hauteur libre offrirait donc surtout des régimes muets.
+
+        La sélection courante est conservée quand la hauteur existe encore
+        après changement de matériau : elle est désignée par sa VALEUR, pas
+        par son rang -- deux bois n'ont pas les mêmes niveaux mesurés."""
+        combo = self.combo_dz_trait
+        avant = combo.currentData()
+        mat = self.combo_photo_mat.currentData()
+        try:
+            niveaux = [float(n) for n in core.niveaux_defocus_mesures(mat)]
+        except Exception:
+            niveaux = []
+        niveaux = sorted(n for n in niveaux if n > 1e-9)
+        bloc = combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("0 mm — au foyer (trait fin, grain photo)", "0")
+        for n in niveaux:
+            combo.addItem("{:.0f} mm — mesuré".format(n),
+                          "{:.0f}".format(n))
+        idx = 0
+        if isinstance(avant, str):
+            for i in range(combo.count()):
+                if combo.itemData(i) == avant:
+                    idx = i
+                    break
+        combo.setCurrentIndex(idx)
+        combo.blockSignals(bloc)
+
+    def _dz_trait(self):
+        """Hauteur de défocalisation choisie pour les tramages à trait qui
+        enfle, en mm. 0 = au foyer. SOURCE UNIQUE : générateur, aperçu et
+        verdict lisent tous les trois cette méthode, sinon ils décrivent
+        trois régimes différents pour une seule gravure."""
+        if self._tramage()["reglage"] != "trait_mini":
+            return 0.0
+        try:
+            return float(self.combo_dz_trait.currentData() or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
     def _gen_kwargs(self):
         return {
             "pitch": self.spn_pitch.value(),
@@ -11180,8 +11276,12 @@ class TaskPanelHalftone:
                 power=self.spn_power.value(), feed=self.spn_line_feed.value(),
                 dot_spacing_mm=self.spn_dot_spacing.value(), **extra)
         if cle == "enfle":
-            # Lignes gravées : au foyer aussi -- c'est la largeur brûlée au
-            # foyer qui répond à la puissance (3x), pas celle du défocus.
+            # Le défocus vient du sélecteur, limité aux niveaux mesurés. Au
+            # foyer (0) le trait est fin et le grain photographique ; en
+            # défocus il est large et le rendu devient une gravure sur bois.
+            # `z_work` reste le zéro pièce : c'est le générateur qui ajoute
+            # la hauteur, pour que la table de largeurs et la trajectoire ne
+            # puissent pas décrire deux hauteurs différentes.
             k = self._gen_kwargs()
             return core.generate_gcode_photo_swell_lines(
                 rows, pitch=k["pitch"], z_work=core.Z_WORK_MM,
@@ -11190,7 +11290,8 @@ class TaskPanelHalftone:
                 line_min_mm=self.spn_line_min.value(),
                 white_threshold=self.spn_white.value() / 100.0,
                 fond_clair=self.combo_fond.currentData(),
-                power_max=self.spn_power_max.value(), **extra)
+                power_max=self.spn_power_max.value(),
+                defocus=self._dz_trait(), **extra)
         if cle == "spirale":
             # Même famille que « enfle » : mêmes réglages, même table de
             # largeurs mesurées. Le fond pointillé n'existe pas ici (il se
@@ -11203,7 +11304,8 @@ class TaskPanelHalftone:
                 material=self.combo_photo_mat.currentData(),
                 line_min_mm=self.spn_line_min.value(),
                 white_threshold=self.spn_white.value() / 100.0,
-                power_max=self.spn_power_max.value(), **extra)
+                power_max=self.spn_power_max.value(),
+                defocus=self._dz_trait(), **extra)
         # Repli : les deux tramages à POINTS. Un tramage ajouté à _TRAMAGES
         # sans brancher son générateur tomberait ici et sortirait une trame
         # de points, silencieusement -- du G-code valide pour le mauvais
@@ -11374,8 +11476,21 @@ class TaskPanelHalftone:
         mat = self.combo_photo_mat.currentData()
         feed = self.spn_line_feed.value()
         enfle = self._tramage()["reglage"] == "trait_mini"
-        plage = core.burn_width_range(mat, feed)
+        # La hauteur de travail fait partie du régime au même titre que la
+        # vitesse : toute la suite du verdict lit CE défocus, celui-là même
+        # que le générateur ajoutera au Z de travail.
+        dz = self._dz_trait()
+        plage = core.burn_width_range(mat, feed, defocus=dz)
         if plage is None:
+            if dz > 1e-9:
+                # Ne pas accuser le kerf : à cette hauteur il peut être
+                # mesuré et simplement muet à cette vitesse. Le message de
+                # refus nomme la vraie cause et liste les niveaux mesurés.
+                m = core.swell_refus_message(
+                    mat, feed, self.spn_power_max.value() if enfle else None,
+                    defocus=dz)
+                msgs.append(m[:1].upper() + m[1:])
+                return False, False
             msgs.append("Aucune largeur brûlée mesurée pour ce matériau : "
                         "passe par « Calibration du kerf », ce tramage n'a "
                         "que ça pour travailler.")
@@ -11386,14 +11501,14 @@ class TaskPanelHalftone:
         # pas. Un seul appel, dont on tire à la fois le refus et la plage.
         plafond = self.spn_power_max.value() if enfle else None
         niveaux = (core.swell_power_levels(mat, feed, self.spn_line_min.value(),
-                                           power_max=plafond)
+                                           power_max=plafond, defocus=dz)
                    if enfle else None)
         if enfle and niveaux is not None:
             plage = (niveaux[1], niveaux[2])
         if enfle and (niveaux is None or plage[1] - plage[0] < 1e-9):
             # Majuscule sur la PREMIÈRE lettre seulement : capitalize()
             # rabattrait « F800 » en « f800 » dans la suite du message.
-            m = core.swell_refus_message(mat, feed, plafond)
+            m = core.swell_refus_message(mat, feed, plafond, defocus=dz)
             msgs.append(m[:1].upper() + m[1:])
             return False, False
         if enfle:
@@ -11416,10 +11531,16 @@ class TaskPanelHalftone:
             haut = min(1.0, w_max / pas)
             ecart = haut - bas
             ecart_max = 1.0 - w_min / w_max
+            # La HAUTEUR est nommée : au foyer et à défocus 15 le même
+            # matériau à la même vitesse donne 0,14→0,22 mm et 0,67→1,20 --
+            # deux gravures sans rapport. Une plage sans son régime ne dit
+            # pas de quelle gravure elle parle.
+            ou = ("au foyer" if dz <= 1e-9
+                  else "à <b>défocus {:.0f} mm</b>".format(dz))
             msgs.append(
-                "Trait <b>{:.2f} → {:.2f} mm</b> à F{:.0f} : couverture "
+                "Trait <b>{:.2f} → {:.2f} mm</b> à F{:.0f} {} : couverture "
                 "{:.0f} → {:.0f} %, contraste <b>{:.0f} points</b>.".format(
-                    w_min, w_max, feed, 100.0 * bas, 100.0 * haut,
+                    w_min, w_max, feed, ou, 100.0 * bas, 100.0 * haut,
                     100.0 * ecart))
             # Ce plancher de couverture est aussi ce que reçoit une case
             # BLANCHE, faute de seuil : le palier le plus bas n'est pas
@@ -11462,8 +11583,9 @@ class TaskPanelHalftone:
             # première photo gravée dans ce tramage (30/07/2026) : F1000 au
             # pas 0,30 mm, trait plafonné à 0,23 au lieu de 0,30, et le
             # panneau conseillait le pas 0,23. 43 points au lieu de 67.
-            rapide = core.swell_max_feed(mat)
-            lente = core.burn_width_range(mat, rapide) if rapide else None
+            rapide = core.swell_max_feed(mat, defocus=dz)
+            lente = (core.burn_width_range(mat, rapide, defocus=dz)
+                     if rapide else None)
             if lente and feed > rapide + 1e-9:
                 w_lent = max(self.spn_line_min.value(), lente[0])
                 ecart_lent = min(1.0, lente[1] / pas) - w_lent / pas
@@ -11495,7 +11617,8 @@ class TaskPanelHalftone:
             # 5,7x contre 2,8x. Une grande largeur à basse vitesse, c'est
             # d'abord un long temps de pose.
             en = core.energie_lignes_gravees(mat, feed, pas,
-                                             self.spn_power_max.value())
+                                             self.spn_power_max.value(),
+                                             defocus=dz)
             if en is not None:
                 e, ref, rapport = en
                 # Les deux ancres MESURÉES sont citées à chaque fois : un
