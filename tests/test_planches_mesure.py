@@ -246,4 +246,44 @@ for _libelle, _avancer in (("Retenir → case suivante",
     _d.close()
 print("8. les 2 boutons qui avancent recadrent l'aperçu sur la nouvelle case OK")
 
+
+# --- 9. Ne PAS renseigner une case : les deux gestes du clavier --------
+# Christophe, 03/08/2026 : « dans la case, si je ne veux pas de mesure, avec
+# le clavier j'écris quoi ? ». Taper 0 marchait ; EFFACER le texte non — un
+# QDoubleSpinBox vidé garde sa valeur, et Qt remet l'ancienne en quittant la
+# case. Le champ paraissait vide et la mesure précédente partait quand même
+# à l'enregistrement, comme si elle avait été relevée. Sur une planche où
+# l'on saute les cases illisibles, c'est la façon la plus discrète
+# d'inventer une mesure.
+from PySide6 import QtCore                             # noqa: E402
+
+_gr9 = _m.grille_focus
+_gr9._chk.setChecked(False)
+_sp = _m._cases_ordonnees(_gr9)[0]
+_cle = next(k for k, w in _gr9.cells().items() if w is _sp)
+
+# a) taper 0
+_sp.setValue(0.30)
+_sp.setValue(0.0)
+assert _sp.text() == "—", ("0 devrait afficher « — »", _sp.text())
+assert _cle not in _gr9.values(), "une case à « — » part quand même à l'enregistrement"
+
+# b) effacer le texte, puis quitter la case
+_sp.setValue(0.30)
+assert _cle in _gr9.values(), "la mesure de départ n'est pas prise en compte"
+_sp.lineEdit().selectAll()
+_sp.lineEdit().del_()
+QtWidgets.QApplication.sendEvent(_sp, QtCore.QEvent(QtCore.QEvent.FocusOut))
+assert _sp.value() == 0.0, (
+    "effacer le texte laisse l'ancienne mesure : elle sera enregistrée "
+    "comme si elle avait été relevée", _sp.value())
+assert _cle not in _gr9.values(), "la case effacée part quand même"
+
+# c) et une VRAIE mesure ne doit pas se faire effacer au passage
+_sp.setValue(0.42)
+QtWidgets.QApplication.sendEvent(_sp, QtCore.QEvent(QtCore.QEvent.FocusOut))
+assert abs(_gr9.values().get(_cle, 0.0) - 0.42) < 1e-9, (
+    "une mesure saisie a été perdue en quittant la case", _sp.value())
+print("9. « — » par 0 ou par effacement ; une vraie mesure survit au focus OK")
+
 shutil.rmtree(DOSSIER, ignore_errors=True)

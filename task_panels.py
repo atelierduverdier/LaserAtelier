@@ -553,6 +553,21 @@ class _GrilleResultats(QtWidgets.QGroupBox):
     def eventFilter(self, obj, ev):
         if ev.type() == QtCore.QEvent.FocusIn and obj in self._cells.values():
             self.caseFocus.emit(obj)
+        # EFFACER LE TEXTE DOIT EFFACER LA MESURE. Un QDoubleSpinBox vidé au
+        # clavier garde sa valeur : en quittant la case, Qt réinterprète un
+        # texte vide et REMET l'ancienne. L'utilisateur voit un champ vide,
+        # croit la case vidée, et la mesure d'avant part quand même à
+        # l'enregistrement -- comme s'il l'avait relevée. Sur une planche de
+        # 35 cases où l'on saute celles qu'on ne sait pas lire, c'est la
+        # façon la plus discrète d'inventer une mesure.
+        #
+        # Christophe, 03/08/2026 : « dans la case, si je ne veux pas de
+        # mesure, avec le clavier j'écris quoi ? » -- taper 0 marchait,
+        # effacer non, et rien ne distinguait les deux à l'écran.
+        if (ev.type() == QtCore.QEvent.FocusOut
+                and obj in self._cells.values()
+                and not obj.lineEdit().text().strip()):
+            obj.setValue(obj.minimum())
         return False
 
     def nom_case(self, sp):
@@ -1664,9 +1679,19 @@ class _MesuresPlanchesControleur:
             self._mesure_cible.setValue(0.0)
             self._mesure_cible.clear()
         self._serie = []
-        txt = ("<b>{}</b> laissée SANS VALEUR. Si le trait est vierge et que "
-               "c'est ça qu'on veut noter, saisis <b>0</b> à la place : un "
-               "trait qui ne marque pas est une mesure.".format(nom))
+        # CE MESSAGE PROMETTAIT L'IMPOSSIBLE : il disait de saisir 0 pour
+        # noter un trait vierge, alors que 0 EST le minimum du champ, donc
+        # « — », donc précisément « pas mesuré » -- et `values()` ne retient
+        # que le strictement positif. Les deux gestes menaient au même
+        # endroit. Christophe, 03/08/2026 : « dans la case, si je ne veux pas
+        # de mesure, avec le clavier j'écris quoi ? ». Une consigne qu'on ne
+        # peut pas suivre coûte plus cher qu'une consigne absente.
+        txt = ("<b>{}</b> laissée SANS VALEUR — elle affiche « — » et sera "
+               "ignorée à l'enregistrement, sans rien effacer. Au clavier, "
+               "c'est <b>0</b> ou un champ effacé : les deux donnent « — ». "
+               "Un trait qui ne marque pas ne se note pas encore autrement : "
+               "il n'y a pas de valeur pour « ça ne grave pas »."
+               .format(nom))
         cases = self._cases_courantes()
         try:
             i = cases.index(self._mesure_cible) + 1
@@ -16494,9 +16519,11 @@ class TaskPanelAssistant:
         _section(form, "② Entrer les mesures (largeurs)", "sect_measure.svg")
         form.addRow(_WrapLabel(
             "Mesure la LARGEUR brûlée de chaque trait au pied à coulisse "
-            "(1/10 mm). « — » = non mesuré ; un trait vierge est une donnée "
-            "(seuil du matériau), laisse-le à « — ». Décoche le verrou d'une "
-            "grille pour saisir, puis « Enregistrer les mesures »."))
+            "(1/10 mm). Pour ne PAS renseigner une case, tape <b>0</b> ou "
+            "vide le champ : elle affiche « — » et sera ignorée à "
+            "l'enregistrement, sans effacer ce qu'elle contenait. Décoche le "
+            "verrou d'une grille pour saisir, puis « Enregistrer les "
+            "mesures »."))
         self._mesures = _MesuresPlanchesControleur(
             form, self, lambda: self.combo_mat.currentText(),
             on_saved=self._on_mesures_enregistrees)
