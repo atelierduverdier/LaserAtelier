@@ -360,6 +360,18 @@ assert "REDRESSE PAS" in _dit.upper(), (
     "le bouton de la planche 3 ne dit pas qu'elle ne se redresse pas", _dit)
 assert "coulisse" in _dit, (
     "il ne dit pas non plus comment la lire, alors", _dit)
+# La planche se GRAVE ici et se SAISIT ailleurs : le bouton doit nommer le
+# mode qui reçoit les mesures, sinon on les cherche. « je mets dans quel
+# menu cette planche 3 ? je ne me souviens plus » (03/08/2026).
+assert "Bande de calibration défocus" in _dit, (
+    "le bouton ne dit pas où saisir les mesures", _dit)
+# Et ce mode doit exister sous ce nom exact, sinon l'infobulle envoie dans
+# le vide -- un renommage de commande passerait sinon inaperçu.
+import commands as _cmds                                  # noqa: E402
+_res = _cmds.DefocusCalibrationCommand().GetResources()
+assert _res["MenuText"] == "Bande de calibration défocus", (
+    "le mode a été renommé ; l'infobulle de la planche 3 pointe dans le vide",
+    _res["MenuText"])
 print("12. planche 3 : sans mire, et le bouton le dit OK")
 
 shutil.rmtree(DOSSIER, ignore_errors=True)

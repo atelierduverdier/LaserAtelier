@@ -1214,7 +1214,12 @@ def _boutons_planches(form, ecrire, apres_redressement=None):
         "CELLE-CI NE SE REDRESSE PAS : elle n'a pas de croix de mire, et il\n"
         "n'y a rien à mesurer sur une photo. On lit ses 13 traits au pied à\n"
         "coulisse -- le plus FIN donne le foyer, et son Z la hauteur de\n"
-        "travail. Rien de tout cela n'entre dans les grilles de largeur.")
+        "travail. Rien de tout cela n'entre dans les grilles de largeur.\n"
+        "\n"
+        "OÙ SAISIR CES MESURES : mode « Bande de calibration défocus »,\n"
+        "section ② -- pas ici. Cette planche se grave depuis l'Assistant et\n"
+        "se saisit ailleurs, ce qui s'oublie ; trois champs y attendent le Ø\n"
+        "au foyer, une hauteur de test et le Ø mesuré à cette hauteur.")
     b3.clicked.connect(lambda: ecrire(core.generate_gcode_planche_spot(),
                                       "/tmp/planche3_point.ngc"))
     form.addRow(b3)
