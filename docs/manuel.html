@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.49.1</span><br>
+      <span class="ver">Version 2.50.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.49.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : six modules propres, dix-neuf modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.50.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -956,6 +956,11 @@
     <p>Le bouton « <b>Choisir dans le nuancier…</b> » montre cette même liste en <strong>pastilles cliquables</strong> plutôt qu'en lignes de texte : chaque disque est teinté par la noirceur mesurée du réglage, sous les mêmes titres de groupe. On compare des nuances à l'œil, comme sur la planche gravée, au lieu de lire des nombres. Cliquer une pastille applique son réglage, exactement comme la liste — c'est la même liste montrée autrement, pas une seconde source qui pourrait diverger.</p>
     <p>Une pastille <strong>hachurée</strong> vient de la grille de largeurs brûlées : sa largeur est mesurée mais sa noirceur n'a jamais été jugée, et lui inventer un gris la ferait passer pour une mesure. Sa légende affiche alors la largeur qu'on connaît, plutôt qu'un «&nbsp;--&nbsp;%&nbsp;» inutile.</p>
     <p><b>Une planche par bande de noirceur (v2.45.0).</b> Un nuancier fourni fait une planche encombrante où les tons utiles se noient. Le menu «&nbsp;<b>Tons à graver</b>&nbsp;» de la section ② grave <em>une bande</em> — très clairs, clairs, moyens, foncés — avec le compte de tons affiché pour chacune, et l'encombrement recalculé en direct&nbsp;: on grave la tranche qu'on cherche sur une petite chute, pas les 47&nbsp;tons.</p>
+    <p><b>Le fichier combiné dit sa taille, et se cadre lui-même (v2.50.0).</b> Deux ajouts demandés par Christophe, le fichier sous les yeux&nbsp;:</p>
+    <ul>
+      <li><b>La chute nécessaire est annoncée en tête</b>&nbsp;: <code>(CHUTE NECESSAIRE : 231 x 173 mm -- origine au coin BAS-GAUCHE)</code>. Chaque planche gravait déjà ses propres cotes sous sa réglette, mais l'encombrement de l'<em>ensemble</em> n'était écrit nulle part — il fallait ouvrir le fichier dans un visualiseur pour savoir sur quoi le poser.</li>
+      <li><b>Le job trace son cadre, puis s'arrête.</b> Le laser fait le tour du rectangle au <b>faisceau de visée</b> (S10 ici, réglable par laser), puis <code>M0</code>&nbsp;: la machine attend. On vérifie que la planche tombe bien sur la chute, et un <b>cycle-start</b> lance la gravure. Le cadrage restait jusqu'ici un <em>fichier séparé</em>, délibérément — «&nbsp;risque de le lancer en pensant vérifier alors que le laser va réellement graver juste après, <b>sans reprise de main entre les deux</b>&nbsp;». L'idée de Christophe lève exactement cette objection&nbsp;: le <code>M0</code> <em>est</em> la reprise de main. Le cadre est tracé <b>avant l'armement</b>, si bien que pendant le tour de vérification et toute la pause, le laser n'est pas armé.</li>
+    </ul>
     <p><b>Le fichier combiné tient sur une chute plus petite (v2.49.1).</b> Les quatre planches y étaient rangées en deux colonnes simples — 1 et 2 à gauche, 3 et 2b à droite — ce qui laissait un grand vide à droite de la planche&nbsp;2, la planche&nbsp;1 étant bien plus large qu'elle. La planche&nbsp;3, haute et <em>étroite</em>, s'y glisse&nbsp;: on passe de <b>225 × 217 mm</b> à <b>231 × 173 mm</b>, soit 87&nbsp;cm² et surtout <b>44&nbsp;mm de hauteur en moins</b> — c'est la chute sur laquelle ça tient qui change. Mesuré sur les quatre fichiers réels, pas estimé.</p>
     <p><b>La barre d'outils suit enfin le mode d'emploi (v2.49.0).</b> La v2.48 n'avait réordonné que le <em>menu</em>, en gardant la barre rangée par tâche — deux vérités à tenir pour un seul utilisateur, et c'est lui qui trouvait la barre illogique. Barre et menu partagent désormais <b>un seul ordre</b>&nbsp;: Guide, puis les sept icônes de <b>calibration</b>, puis les modes de travail, la référence et les réglages. Le Guide dit «&nbsp;CALIBRER (une fois)&nbsp;»&nbsp;; on le lit maintenant de gauche à droite.</p>
     <p><b>Et les boutons de l'Assistant sont enfin testés.</b> C'était le dernier angle mort de la calibration&nbsp;: l'Assistant matériau est le point d'entrée d'un matériau neuf, et aucun test ne <em>cliquait</em> ses cinq boutons de planches — il était seulement construit, donc on savait qu'il ne plantait pas à l'ouverture, et rien de plus. Chaque bouton est maintenant cliqué pour de vrai, et c'est le <b>G-code produit</b> qui est examiné&nbsp;: en-tête, fin <code>M2</code>, aucune pause faisceau allumé, et «&nbsp;Toutes les planches&nbsp;» qui réunit bien les planches en un seul fichier. Le sabotage de contrôle reproduit le défaut du 1<sup>er</sup> août (un bouton qui appelle une fonction inexistante) et le test le voit.</p>
@@ -1148,7 +1153,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.49.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.50.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

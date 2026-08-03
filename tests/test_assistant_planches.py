@@ -148,6 +148,55 @@ try:
           "{:.0f} % de surface utile OK".format(
               len(_reelles), _W, _H, 100 * _utile / (_W * _H)))
 
+    # --- 3ter. Cadrage embarque, PAUSE, puis gravure ---------------------
+    # Le projet refusait d'embarquer le cadrage dans le job reel : « risque
+    # de le lancer en pensant verifier alors que le laser va reellement
+    # graver juste apres, SANS REPRISE DE MAIN entre les deux ». L'idee de
+    # Christophe (03/08/2026) leve exactement cette objection : M0 EST la
+    # reprise de main. Ce qui doit rester vrai, et que ce controle fige :
+    #   - un seul M0, et RIEN qui grave avant lui ;
+    #   - pendant le tour de cadrage et la pause, le laser n'est pas arme.
+    _lignes = _g.split("\n")
+    _i_m0 = [i for i, l in enumerate(_lignes) if l.strip() == "M0"]
+    assert len(_i_m0) == 1, ("il faut UN seul arrêt, sinon on ne sait plus "
+                             "ce qu'on relance", len(_i_m0))
+    _i_m0 = _i_m0[0]
+    _visee = core.FRAME_POWER
+    _s = 0
+    for _l in _lignes[:_i_m0]:
+        _m = _re.search(r"\bQ(\d+)|\bS(\d+)", _l)
+        if _m:
+            _s = int(_m.group(1) or _m.group(2))
+        assert not (_l.startswith("G1 ") and _s > _visee), (
+            "le laser GRAVE avant la pause de cadrage : c'est exactement le "
+            "risque pour lequel le cadrage embarqué avait été refusé", _l, _s)
+    # ... et il est DÉSARMÉ au moment de la pause.
+    _etat = None
+    for _l in _lignes[:_i_m0]:
+        if _l.startswith("M3"):
+            _etat = "arme"
+        elif _l.startswith("M5"):
+            _etat = "desarme"
+    assert _etat != "arme", (
+        "le laser reste ARMÉ pendant la pause : on attend un cycle-start "
+        "devant une machine sous tension")
+    # La gravure, elle, commence bien apres.
+    _s, _apres = 0, False
+    for _l in _lignes[_i_m0:]:
+        _m = _re.search(r"\bQ(\d+)|\bS(\d+)", _l)
+        if _m:
+            _s = int(_m.group(1) or _m.group(2))
+        if _l.startswith("G1 ") and _s > _visee:
+            _apres = True
+            break
+    assert _apres, "rien ne grave après la pause : le job serait vide"
+    # Et la taille de la chute est annoncee en tete.
+    assert any("CHUTE NECESSAIRE" in l for l in _lignes[:6]), (
+        "l'encombrement total n'est pas annoncé en tête du fichier",
+        _lignes[:6])
+    print("3ter. cadrage au faisceau de visée (S{:.0f}), laser désarmé, UN "
+          "seul M0, gravure après OK".format(_visee))
+
     # --- 4. Le bandeau ★3 est là, et il est LE bon -----------------------
     # L'etape 3 a longtemps designe la Grille de test ; depuis la v2.47.0
     # les planches se gravent ICI, et le bandeau doit suivre.

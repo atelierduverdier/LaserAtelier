@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.49.1"
+VERSION = "2.50.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -10814,7 +10814,7 @@ def generate_gcode_planche_spot(z_focus=None, pre_gcode="", post_gcode="", quiet
 
 
 def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="", quiet=False,
-                                      gap_mm=15.0):
+                                      gap_mm=15.0, cadre_pause=True):
     """Grave les TROIS planches de calibration (foyer, défocus, largeur du
     point) dans UN SEUL fichier -- un seul armement (M3) au début, un seul
     désarmement (M5)/fin (M2) à la fin -- au lieu de les charger une par
@@ -10880,9 +10880,20 @@ def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="",
     _poser("Planche 2b : defocus profond", p2b,
            (larg_gauche + gap_mm) if larg_gauche else 0.0, 0.0)
 
+    # LA TAILLE DE LA CHUTE À PRÉPARER, en tête du fichier. Chaque planche
+    # grave déjà ses propres cotes sous sa réglette, mais l'encombrement de
+    # l'ENSEMBLE n'était écrit nulle part : il fallait ouvrir le fichier
+    # dans un visualiseur pour savoir sur quoi le poser. Demandé par
+    # Christophe le 03/08/2026, le fichier sous les yeux.
+    tout = "\n".join(c for _l, c in corps_decales if c)
+    bb_tout = gcode_bbox_xy(tout)
     lines = []
     lines.append("(G-Code Laser - Planches de calibration combinees "
                  "(foyer + defocus + defocus profond + point))")
+    if bb_tout is not None:
+        _xa, _xb, _ya, _yb = bb_tout
+        lines.append("(CHUTE NECESSAIRE : {:.0f} x {:.0f} mm -- origine au "
+                     "coin BAS-GAUCHE)".format(_xb - _xa, _yb - _ya))
     lines.append("G21")
     lines.append("G90")
     lines.append("G94")
@@ -10893,6 +10904,27 @@ def generate_gcode_planches_combinees(z_focus=None, pre_gcode="", post_gcode="",
     if pre_gcode.strip():
         lines.append("(-- G-code personnalisé (avant) --)")
         lines.append(pre_gcode.strip())
+    # LE CADRAGE EMBARQUÉ, SUIVI D'UNE PAUSE. Le projet avait
+    # délibérément REFUSÉ d'embarquer le cadrage au début d'un job --
+    # « risque de le lancer en pensant vérifier alors que le laser va
+    # réellement graver juste après, sans reprise de main entre les deux ».
+    # L'objection portait sur l'absence de reprise de main : `M0` EST
+    # cette reprise de main (arrêt inconditionnel, la machine attend le
+    # cycle-start). L'idée est de Christophe, le 03/08/2026, et elle
+    # répond exactement à ce qui avait motivé le refus.
+    #
+    # Le cadre est tracé AVANT l'armement : pendant le tour de
+    # vérification et pendant toute la pause, le laser n'est pas armé du
+    # tout. (`build_frame_trace` s'arme lui-même si FRAME_POWER > 0, pour
+    # un faisceau de visée visible, et se désarme derrière.)
+    if cadre_pause and bb_tout is not None:
+        _xa, _xb, _ya, _yb = bb_tout
+        lines.extend(build_frame_trace(_xa, _xb, _ya, _yb,
+                                       z_focus + TRAVEL_CLEARANCE_MM))
+        lines.append("M5 {sel}".format(sel=SPINDLE_SELECT))
+        lines.append("(-- PAUSE : verifie le cadrage, puis CYCLE START "
+                     "pour graver --)")
+        lines.append("M0")
     lines.append(CMD_ARM.format(sel=SPINDLE_SELECT, dwell=ARM_DWELL_S))
     for label, corps_c in corps_decales:
         lines.append("(===== {} =====)".format(label))
