@@ -286,4 +286,50 @@ assert abs(_gr9.values().get(_cle, 0.0) - 0.42) < 1e-9, (
     "une mesure saisie a été perdue en quittant la case", _sp.value())
 print("9. « — » par 0 ou par effacement ; une vraie mesure survit au focus OK")
 
+
+# --- 10. La fin de grille se termine, elle ne se grise pas -------------
+# Christophe, 03/08/2026, arrivé sur la dernière case : « quand j'ai fini,
+# j'ai pas de bouton terminé, juste annulé qui fonctionne mais c'est pas
+# intuitif ». « Retenir → case suivante » annonçait la fin et fermait ;
+# « — Pas de valeur → suivante » GRISAIT les trois boutons d'action et
+# laissait « Annuler » comme seule sortie apparente — après une heure de
+# mesures, et alors que rien n'était à annuler.
+#
+# Encore un contrôle sur LA FAMILLE : les deux boutons qui avancent doivent
+# terminer de la même façon.
+_annonces = sans_dialogues()
+
+for _libelle, _avancer in (("Retenir → case suivante",
+                            lambda d: d._retenir_et_suivant()),
+                           ("— Pas de valeur → suivante",
+                            lambda d: d._pas_de_valeur())):
+    _d, _cases = _ouvrir(_m, _IMG, _gr)
+    del _annonces[:]
+    # Se placer sur la DERNIÈRE case et avancer une fois de plus.
+    _m._derniere_case = _m._mesure_cible = _cases[-1]
+    _d.combo_cible.blockSignals(True)
+    _d.combo_cible.setCurrentIndex(len(_cases) - 1)
+    _d.combo_cible.blockSignals(False)
+    _avancer(_d)
+    assert _d.result() == QtWidgets.QDialog.Accepted, (
+        _libelle, "la fenêtre ne se ferme pas en fin de grille ; il ne reste "
+                  "que « Fermer » pour sortir")
+    assert _annonces, (_libelle, "la fin de grille n'est pas annoncée")
+    _dit = " ".join(a[2] for a in _annonces)
+    assert "dernière case" in _dit, (_libelle, "l'annonce ne dit pas pourquoi", _dit)
+    assert "Enregistrer les mesures" in _dit, (
+        _libelle, "l'annonce ne dit pas où sont passées les largeurs", _dit)
+print("10. les 2 boutons terminent la grille en l'annonçant OK")
+
+# --- 11. Le bouton de sortie ne promet pas d'annuler -------------------
+# Il ne défait rien : chaque largeur est écrite dans sa case au moment où on
+# la retient. L'étiquette « Annuler » faisait hésiter au pire moment.
+_d, _ = _ouvrir(_m, _IMG, _gr)
+_libelles = [b.text() for b in _d.findChildren(QtWidgets.QPushButton)]
+assert "Fermer" in _libelles, ("pas de bouton « Fermer »", _libelles)
+assert "Annuler" not in _libelles, (
+    "un bouton « Annuler » qui n'annule rien", _libelles)
+_d.close()
+print("11. la sortie s'appelle « Fermer », pas « Annuler » OK")
+
 shutil.rmtree(DOSSIER, ignore_errors=True)

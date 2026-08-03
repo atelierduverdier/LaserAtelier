@@ -3986,7 +3986,18 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         self.btn_ok.setEnabled(False)
         self.btn_ok.clicked.connect(self._retenir_et_fermer)
         ligne.addWidget(self.btn_rien)
-        b_non = QtWidgets.QPushButton("Annuler")
+        # PAS « Annuler » : ce bouton ne défait RIEN. Chaque largeur est
+        # écrite dans sa case au moment où on la retient, donc fermer ne
+        # peut rien reprendre -- mais l'étiquette laissait croire l'inverse,
+        # et c'était la seule sortie visible en fin de grille. Un bouton qui
+        # promet d'annuler ce qu'il ne peut pas annuler fait hésiter au pire
+        # moment : après une heure de mesures.
+        b_non = QtWidgets.QPushButton("Fermer")
+        b_non.setToolTip(
+            "Ferme la fenêtre. Les largeurs déjà retenues restent dans la\n"
+            "grille du panneau -- rien n'est perdu, rien n'est annulé.\n"
+            "C'est « Enregistrer les mesures », dans le panneau, qui les\n"
+            "écrit pour de bon dans le matériau.")
         b_non.clicked.connect(self.reject)
         b_img = QtWidgets.QPushButton("Changer de planche…")
         b_img.setToolTip("Ouvrir une autre planche redressée. Sans ça,\n"
@@ -4088,11 +4099,27 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
         # non, il reste bloqué ». La fenêtre a son propre libellé.
         self.lbl.setText(txt)
         if i is None:
-            self.btn_suiv.setEnabled(False)
-            self.btn_ok.setEnabled(False)
-            self.btn_rien.setEnabled(False)
-            return
+            return self._finir()
         self._avancer_vers(i)
+
+    def _finir(self, avant=""):
+        """Dernière case de la grille : on le dit, et on ferme.
+
+        LES DEUX BOUTONS QUI AVANCENT ARRIVENT ICI. « Retenir → case
+        suivante » annonçait la fin et fermait ; « — Pas de valeur →
+        suivante » se contentait de GRISER les trois boutons d'action, ce
+        qui laissait « Annuler » comme seule sortie apparente d'une séance
+        de mesures réussie. Christophe, 03/08/2026 : « quand j'ai fini, j'ai
+        pas de bouton terminé, juste annulé qui fonctionne mais c'est pas
+        intuitif ». Il avait raison de se méfier : rien ne disait que ses
+        mesures étaient déjà rangées."""
+        QtWidgets.QMessageBox.information(
+            self, "Mesure",
+            "{}C'était la dernière case de cette grille : la fenêtre se "
+            "ferme.\n\nLes largeurs sont dans la grille du panneau ; "
+            "« Enregistrer les mesures » les écrit dans le matériau."
+            .format(avant))
+        return self.accept()
 
     def _avancer_vers(self, i):
         """Viser la case i, et refaire le cadrage pour ELLE.
@@ -4126,11 +4153,7 @@ class _DialogueMesureTrait(QtWidgets.QDialog):
             return self.accept()
         suivant, _txt = self._on_retenir(self.valeur_mm())
         if suivant is None:
-            QtWidgets.QMessageBox.information(
-                self, "Mesure",
-                "Largeur rangée. C'était la dernière case de cette grille : "
-                "la fenêtre se ferme.")
-            return self.accept()
+            return self._finir("Largeur rangée. ")
         self._avancer_vers(suivant)
 
     def _on_changer(self):
