@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.62.1"
+VERSION = "2.62.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1188,6 +1188,53 @@ def image_de_mesure(chemin):
     for ext in (".png", ".jpg", ".jpeg"):
         if os.path.isfile(base + ext):
             return base + ext
+    return None
+
+
+# Les dispositions de planche que l'atelier sait produire, donc les seules
+# qu'un lecteur automatique peut reconnaître.
+CLES_PLANCHES = ("planche1", "planche2", "planche2b", "planche3",
+                 "planche_autre")
+
+
+def type_planche(chemin, infos=None):
+    """La CLÉ de planche (« planche1 », « planche2b »…) d'une planche
+    redressée, ou None si le nom ne le dit pas.
+
+    Le nom de fichier est `<laser>_<planche>_<date>_redresse`, et depuis que
+    l'utilisateur peut NOMMER sa planche au redressement, le champ planche
+    vaut par exemple `planche1-Sapin-au-foyer`. Les appelants qui testaient
+    `"_planche1_" in nom` ne reconnaissaient donc plus rien : le cadrage
+    automatique des cases, qui ne travaille que sur des dispositions
+    connues, s'est tu -- et se taire est son comportement normal quand il
+    ne sait pas, donc rien ne signalait la panne. Christophe, 03/08/2026,
+    sur sa planche 1 en sapin : « il faut que j'encadre chaque trait un à
+    un ». Deux fonctionnalités justes séparément, dont la seconde a rendu la
+    première muette.
+
+    La clé explicite de la fiche prime quand elle existe ; le découpage du
+    nom de fichier sert pour tout ce qui a été redressé avant."""
+    if infos is None:
+        infos = fiche_planche(chemin)
+    cle = (infos or {}).get("planche")
+    if cle:
+        return str(cle)
+    base = base_planche(chemin)
+    if not base:
+        return None
+    # On RECONNAÎT une clé connue, on ne la devine pas par découpage : le
+    # nom du laser peut contenir des soulignés, et « planche_autre » en
+    # contient un lui-même -- un découpage par champs le rate.
+    #
+    # Ce qui sépare « planche2 » de « planche2b », c'est LE DÉLIMITEUR qui
+    # suit, pas l'ordre d'essai : la clé doit être suivie d'un souligné (rien
+    # de saisi) ou d'un tiret (un nom saisi derrière). Sans lui, « planche2 »
+    # mordrait sur « planche2b » -- et un « planche2bis » qui n'existe pas
+    # serait lu comme une planche 2b.
+    nom = os.path.basename(base)
+    for cle in CLES_PLANCHES:
+        if any(("_" + cle + fin) in nom for fin in ("_", "-")):
+            return cle
     return None
 
 

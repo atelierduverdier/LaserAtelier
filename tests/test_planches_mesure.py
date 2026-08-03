@@ -30,8 +30,9 @@ def _poser_planche(nom, pxmm, quand):
         with open(base + suffixe + ext, "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\n" if not suffixe else b"\xff\xd8\xff")
     with open(base + ".json", "w") as fh:
-        json.dump({"fichier": base + ".png", "pxmm": pxmm,
-                   "nom": nom, "base_mm": [140.0, 60.0]}, fh)
+        json.dump({"fichier": base + ".png", "pxmm": pxmm, "nom": nom,
+                   "largeur_mm": 156.0, "hauteur_mm": 76.0,
+                   "base_mm": [140.0, 60.0]}, fh)
     os.utime(base + ".png", (quand, quand))
     return base
 
@@ -125,5 +126,62 @@ print("4. après un redressement, la liste est refaite et pointe sur « {} » OK
 _capture["on_range"]("planche1", None)
 assert _m._blocs[0].combo_planche.count() == 2, "la liste a été perdue"
 print("5. un redressement sans image ne casse ni la liste ni le panneau OK")
+
+
+# --- 6. Un nom saisi ne doit pas rendre la planche méconnaissable -------
+# Christophe, 03/08/2026 : « le calcul automatique non, il faut que
+# j'encadre chaque trait un à un ». Depuis qu'on peut NOMMER sa planche au
+# redressement, « planche1 » s'écrit « planche1-Sapin-au-foyer » dans le nom
+# de fichier -- et le cadreur testait `"_planche1_" in nom`. Il ne
+# reconnaissait donc plus rien et se taisait, ce qui est aussi son
+# comportement légitime quand il ne sait pas cadrer : la panne était
+# indiscernable du fonctionnement normal.
+_CAS = [
+    ("LT_planche1_20260801-0909_redresse.png", "planche1"),
+    ("LT_planche1-Sapin-au-foyer_20260803-2005_redresse.png", "planche1"),
+    ("LT_planche2_20260801-0958_redresse.png", "planche2"),
+    ("LT_planche2b_20260801-1114_redresse.png", "planche2b"),
+    ("LT_planche2b-hetre-profond_20260801-1114_redresse.png", "planche2b"),
+    ("LT_planche_autre_20260802-0735_redresse.png", "planche_autre"),
+    ("LT_planche_autre-tons-defocus_20260802-2011_redresse.png", "planche_autre"),
+    # Un nom de laser à soulignés ne doit pas non plus tromper le repérage.
+    ("Mon_Laser_Bleu_planche1-essai_20260803-2005_redresse.png", "planche1"),
+    # C'est le DÉLIMITEUR qui sépare « planche2 » de « planche2b », pas
+    # l'ordre d'essai des clés : une clé inconnue collée à une connue ne
+    # doit pas se faire lire comme elle.
+    ("LT_planche2bis_20260803-2005_redresse.png", None),
+    ("LT_planche12_20260803-2005_redresse.png", None),
+]
+for _nom, _attendu in _CAS:
+    _obtenu = core.type_planche(os.path.join(DOSSIER, _nom))
+    assert _obtenu == _attendu, ("type de planche mal lu", _nom, _obtenu, _attendu)
+assert core.type_planche("/tmp/photo_quelconque.png") is None
+print("6. type de planche reconnu sur {} écritures, nom saisi compris OK"
+      .format(len(_CAS)))
+
+# --- 7. Le cadreur PROPOSE vraiment sur une planche 1 nommée ------------
+# §6 vérifie la lecture du nom ; celui-ci vérifie que le cadreur s'en sert.
+# Sans lui, corriger `type_planche` sans le brancher passerait inaperçu.
+_NOMMEE = _poser_planche("LT_planche1-Sapin_20260803-2100", 50.0, 3000.0)
+_ANONYME = _poser_planche("LT_planche1_20260803-2101", 50.0, 3001.0)
+_gr = _m.grille_focus
+_cases = _m._cases_ordonnees(_gr)
+assert _cases, "aucune case dans la grille du foyer"
+_avec = _m._cadreur_auto(_ANONYME + ".png", 50.0, _gr, _cases)
+assert _avec is not None, "le cadreur refuse déjà une planche 1 sans nom"
+_nomme = _m._cadreur_auto(_NOMMEE + ".png", 50.0, _gr, _cases)
+assert _nomme is not None, (
+    "le cadreur se tait sur une planche 1 NOMMÉE : le nom saisi la rend "
+    "méconnaissable")
+_r1, _r2 = _avec(0), _nomme(0)
+assert _r1 is not None and _r2 is not None, "aucun cadre pour la 1re case"
+assert (_r1.x(), _r1.y(), _r1.width(), _r1.height()) == \
+       (_r2.x(), _r2.y(), _r2.width(), _r2.height()), (
+    "le nom saisi change le cadre calculé")
+_n_cadres = sum(1 for i in range(len(_cases)) if _nomme(i))
+assert _n_cadres == len(_cases), (
+    "toutes les cases ne sont pas cadrées", _n_cadres, len(_cases))
+print("7. planche 1 nommée : {} cases sur {} cadrées, au pixel près comme "
+      "sans nom OK".format(_n_cadres, len(_cases)))
 
 shutil.rmtree(DOSSIER, ignore_errors=True)

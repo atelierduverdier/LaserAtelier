@@ -1797,12 +1797,18 @@ class _MesuresPlanchesControleur:
         # Cadrer la planche 2 avec la grille du foyer donnerait un cadre
         # plausible sur le mauvais bloc -- une largeur crédible, à un
         # défocus qui n'est pas celui qu'on croit.
-        base = os.path.basename(chemin)
+        # La CLÉ de la planche, pas une sous-chaîne du nom de fichier :
+        # depuis qu'on peut nommer sa planche au redressement, « planche1 »
+        # s'écrit « planche1-Sapin-au-foyer » et `"_planche1_" in base` ne
+        # trouvait plus rien -- le cadrage se taisait, ce qui est aussi son
+        # comportement légitime quand il ne sait pas cadrer.
+        infos_photo = core.fiche_planche(chemin)
+        cle = core.type_planche(chemin, infos_photo)
         dz_cible = None
-        if "_planche1_" in base:
+        if cle == "planche1":
             if gr is not self.grille_focus:
                 return None
-        elif "_planche2b_" in base or "_planche2_" in base:
+        elif cle in ("planche2", "planche2b"):
             dz_cible = next((d for d, g in self.grilles_defocus.items()
                              if g is gr), None)
             if dz_cible is None:
@@ -1812,10 +1818,7 @@ class _MesuresPlanchesControleur:
             # celle d'une grille S x F, on ne propose rien plutôt qu'un
             # cadre faux.
             return None
-        try:
-            with open(os.path.splitext(chemin)[0] + ".json") as fh:
-                infos_photo = json.load(fh)
-        except Exception:
+        if not infos_photo:
             return None
         marge = core.marge_photo(infos_photo)
         if not marge:
@@ -1823,7 +1826,7 @@ class _MesuresPlanchesControleur:
         try:
             if dz_cible is None:
                 cadres, _infos = core.cadres_planche_focus()
-            elif "_planche2b_" in base:
+            elif cle == "planche2b":
                 cadres, _infos = core.cadres_planche_defocus(
                     powers=(600.0, 800.0, 1000.0), feeds=(200.0, 400.0),
                     defocus_levels_mm=core.DEFOCUS_LEVELS_PROFONDS_MM)
