@@ -11667,23 +11667,41 @@ def _rendre_calligraphie(chaines, prep, infos, largeur_px=1100):
     * en ruban et non en perles : dessiner un disque par point échantillonné
       donne des pointillés là où le trait est fin, et fait croire à un défaut
       de la machine alors que c'est le dessin qui est faux."""
-    ech = largeur_px / max(infos["largeur_mm"], 1e-9)
-    H = int(infos["hauteur_mm"] * ech) + 2
+    gestes = prep[0] if prep else None
+    if gestes is None:
+        suites = [[(x, y, w) for x, y, w in ch] for ch in chaines]
+    else:
+        suites = [[(pt.x, pt.y, pt.w) for pt in g] for g in gestes]
+
+    # LE CADRE SE MESURE SUR L'ENCRE, PAS SUR LE SQUELETTE.
+    #
+    # `infos` donne l'encombrement de la LIGNE MOYENNE ; un trait posé au
+    # bord déborde de sa demi-largeur, en haut, en bas et sur les côtés.
+    # Le défaut existait depuis toujours et ne se voyait pas tant que les
+    # pleins restaient fins : à 0,72 mm il manquait 0,36 mm, invisible. La
+    # plume passée à 16 % de la capitale les a portés à 2 mm, et
+    # Christophe a vu le « r » de Verdier coupé net -- « le rendu dépasse
+    # du cadre ». Ce n'était pas la plume, c'était le cadre.
+    demi = 0.5 * max((w for suite in suites for _x, _y, w in suite),
+                     default=0.0)
+    # La demi-largeur suffit à CONTENIR l'encre ; le millimètre de plus
+    # est de l'air, pour qu'une hampe ne vienne pas lécher le bord.
+    marge = demi + max(0.6, 0.008 * infos["largeur_mm"])
+    larg_mm = infos["largeur_mm"] + 2 * marge
+    haut_mm = infos["hauteur_mm"] + 2 * marge
+
+    ech = largeur_px / max(larg_mm, 1e-9)
+    H = int(haut_mm * ech) + 2
     img = QtGui.QImage(int(largeur_px) + 2, H, QtGui.QImage.Format_ARGB32)
     img.fill(QtGui.QColor(250, 246, 238))
     p = QtGui.QPainter(img)
     p.setRenderHint(QtGui.QPainter.Antialiasing, True)
     p.setPen(QtCore.Qt.NoPen)
     p.setBrush(QtGui.QColor(45, 30, 18))
-    gestes = prep[0] if prep else None
-    if gestes is None:
-        suites = [[(x, y, w) for x, y, w in ch] for ch in chaines]
-    else:
-        suites = [[(pt.x, pt.y, pt.w) for pt in g] for g in gestes]
     for suite in suites:
         for (x0, y0, w0), (x1, y1, w1) in zip(suite, suite[1:]):
-            X0, Y0 = x0 * ech, (infos["hauteur_mm"] - y0) * ech
-            X1, Y1 = x1 * ech, (infos["hauteur_mm"] - y1) * ech
+            X0, Y0 = (x0 + marge) * ech, (infos["hauteur_mm"] - y0 + marge) * ech
+            X1, Y1 = (x1 + marge) * ech, (infos["hauteur_mm"] - y1 + marge) * ech
             r0, r1 = 0.5 * w0 * ech, 0.5 * w1 * ech
             dx, dy = X1 - X0, Y1 - Y0
             n = math.hypot(dx, dy) or 1.0

@@ -144,3 +144,35 @@ assert _p._chaines() is None, (
     "retomber sur la plume")
 print("5. le panneau propose la plume, s'en sert cochée, et revient au "
       "fichier décochée OK")
+
+
+# --- 6. L'APERÇU CONTIENT L'ENCRE ---------------------------------------
+# Christophe : « le rendu dépasse du cadre » -- le « r » de Verdier coupé
+# net. Ce n'était pas la plume : l'aperçu se dimensionnait sur `infos`,
+# c'est-à-dire sur la LIGNE MOYENNE, alors qu'un trait posé au bord
+# déborde de sa demi-largeur. Le défaut était là depuis toujours et ne se
+# voyait pas tant que les pleins faisaient 0,7 mm ; à 2 mm il saute aux
+# yeux. Une plume plus grasse n'a rien cassé, elle a RÉVÉLÉ.
+from PySide6 import QtGui                                    # noqa: E402
+
+_ch6, _inf6 = core.chaines_plume("verdier", "Atelier du Verdier",
+                                 largeur_mm=120.0)
+_prep6 = core.preparer_calligraphie(_ch6, 200.0,
+                                    (core.burn_width_materials() or ["MDF"])[0],
+                                    power_max=900)
+_img = tp._rendre_calligraphie(_ch6, _prep6, _inf6)
+_fond = QtGui.QColor(250, 246, 238).rgb()
+_bord = 0
+for _x in range(_img.width()):
+    for _y in (0, _img.height() - 1):
+        if _img.pixel(_x, _y) != _fond:
+            _bord += 1
+for _y in range(_img.height()):
+    for _x in (0, _img.width() - 1):
+        if _img.pixel(_x, _y) != _fond:
+            _bord += 1
+assert _bord == 0, (
+    "{} pixels d'encre touchent le bord de l'aperçu : le tracé est coupé, "
+    "et c'est le cadre qui est trop petit, pas le tracé trop gros".format(_bord))
+print("6. l'aperçu contient l'encre : {}×{} px, aucun pixel sur le bord OK"
+      .format(_img.width(), _img.height()))
