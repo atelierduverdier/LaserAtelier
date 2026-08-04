@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.65.1"
+VERSION = "2.66.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -765,10 +765,9 @@ FRAME_POWER = 0.0                     # puissance (S) du faisceau pendant l'aper
                                       # 0 = laser éteint (défaut), sinon TRÈS FAIBLE (S5-S20)
                                       # juste pour visualiser la zone de travail sans marquer
 FRAME_FEED_MM_MIN = 1500.0            # vitesse du tracé de cadrage quand le faisceau est allumé
-Z_MAX_FEED_MM_MIN = 1500.0            # vitesse max supposée de l'axe Z (mm/min) -- sert
-                                      # uniquement à AVERTIR quand un trait en vague demande
-                                      # plus vite (LinuxCNC ralentira le trajet pour respecter
-                                      # la vraie limite machine, rien de dangereux)
+Z_MAX_FEED_MM_MIN = 1500.0            # vitesse max supposée de l'axe Z (mm/min) -- avertit
+                                      # quand un trait en vague demande plus vite, et PLAFONNE
+                                      # la compensation d'avance (cf. avance_compensee)
 ACCEL_MM_S2 = 600.0                   # accélération machine RÉELLE (mm/s2) pour l'estimation
                                       # de durée -- n'affecte jamais le G-code. Doit valoir le
                                       # MAX_ACCELERATION du .ini LinuxCNC : à 800 alors que la
@@ -5747,6 +5746,44 @@ def longueur_mini_fuseau(feed, dz_course):
     dit quel niveau de détail le fuseau peut rendre."""
     p = pente_z_max(feed)
     return (float(dz_course) / p) if p > 1e-9 else float("inf")
+
+
+def avance_compensee(dxy, dz, feed, z_feed_max=None):
+    """L'avance à COMMANDER pour que le trait avance en XY à `feed`.
+
+    En G94, `F` s'applique au vecteur PROGRAMMÉ. Quand le Z bouge, la tête
+    avance donc moins vite en XY que l'avance annoncée, dans le rapport
+    `d3D / dXY` -- et le faisceau, lui, ne faiblit pas. Le bois reçoit
+    l'énergie d'un déplacement de `d3D` étalée sur `dXY` de trait : à pente Z
+    maxi (7,5 mm/mm) cela fait **7,57 fois** l'énergie voulue, au même endroit
+    et sans que rien ne le dise.
+
+    Le projet connaissait déjà ce rapport -- il sert depuis v2.54.0 à estimer
+    la DURÉE, où il vaut 2,1x sur un portrait au fuseau -- sans jamais le
+    relier à la brûlure. Christophe, 04/08/2026, photo de « Atelier du
+    Verdier » encadrée en rouge : « je pense qu'il y a trop de puissance ou on
+    ne va pas assez vite dans certains endroits ». Mesuré sur le fichier qu'il
+    a gravé : 34 % des segments à 1,5x et plus, 9 % à 5x et plus, le pire à
+    7,57x -- exactement `sqrt(1 + 7,5^2)`, la pente Z maxi.
+
+    Compenser ramène le trait à l'avance sous laquelle les largeurs brûlées
+    ONT ÉTÉ MESURÉES : ce n'est pas un réglage de goût, c'est remettre la
+    machine dans le régime que décrit la table.
+
+    Le plafond n'est pas arbitraire non plus : c'est l'axe Z qui limite
+    (`Z_MAX_FEED_MM_MIN`). Au-delà, LinuxCNC ralentirait le mouvement entier,
+    et le HAL couperait la puissance à proportion -- ce qui compense tout
+    seul, mais sur une avance qu'on n'a pas choisie."""
+    dxy = float(dxy)
+    dz = abs(float(dz))
+    if dxy <= 1e-9:
+        return float(feed)
+    d3 = math.hypot(dxy, dz)
+    f = float(feed) * d3 / dxy
+    plafond = Z_MAX_FEED_MM_MIN if z_feed_max is None else float(z_feed_max)
+    if dz > 1e-9 and plafond > 0.0:
+        f = min(f, plafond * d3 / dz)
+    return max(f, float(feed))
 
 
 def limiter_pente_z(dzs, distances, pente_max):
@@ -12637,14 +12674,22 @@ def generate_gcode_calligraphie(chaines, z_work, feed, material,
         if z_dep < z_haut - 1e-6:
             lines.append("G0 Z{:.4f}".format(z_dep))
         z_cur = z_dep
+        prec = g[0]
         for p in g[1:]:
             if p.s != p_prec:
                 lines.extend(cmd_power_prefix(p.s))
                 p_prec = p.s
             suf = cmd_power_suffix(p.s)
+            # L'AVANCE EST CELLE DU TRAIT, PAS CELLE DU VECTEUR. Là où le
+            # fuseau grimpe -- au départ et à la fin de chaque geste, donc
+            # exactement où Christophe a encadré des pâtés -- le Z mange
+            # l'avance et la tête rampe en XY à faisceau constant.
+            f_bloc = avance_compensee(
+                math.hypot(p.x - prec.x, p.y - prec.y), p.dz - prec.dz, feed)
             lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}{}".format(
-                p.x, p.y, z_work + p.dz, feed, (" " + suf) if suf else ""))
+                p.x, p.y, z_work + p.dz, f_bloc, (" " + suf) if suf else ""))
             z_cur = z_work + p.dz
+            prec = p
     lines.extend(cmd_power_prefix(0.0))
     lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():

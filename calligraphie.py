@@ -110,6 +110,21 @@ PAS_ARC_MM = 0.4
 # Graziela, Swirly Canalope, Byliner. 5 % tombe au milieu du plateau.
 APPORT_MINI = 0.05
 
+# SOUDURE des bouts qui se touchent presque, en multiple de la largeur locale.
+# `parcourir` apparie nœud par nœud, donc deux jonctions voisines laissent
+# chacune pendre une branche, et les deux bouts se retrouvent à un ou deux
+# pixels l'un de l'autre sans jamais se voir. La tête relève, transite et
+# replonge AU MÊME ENDROIT : ce demi-millimètre est brûlé deux fois, avec deux
+# arrêts en prime, et il ressort en pâté noir. Quatorze de ces amas sur les
+# cinquante extrémités de « Atelier du Verdier ».
+#
+# Le seuil est proportionnel -- l'écart doit tenir dans la largeur de l'encre
+# à cet endroit -- donc insensible à la taille du texte. Balayé sur La
+# Graziela : 0,5 donne 26 gestes, 1,0 et 1,5 en donnent 22, 2,0 en donne 21,
+# à couverture et débordement inchangés (97,3 % et 18,2 %). On prend le début
+# du plateau.
+SOUDURE_EN_LARGEURS = 1.0
+
 _V8 = [(-1, 0), (-1, 1), (0, 1), (1, 1),
        (1, 0), (1, -1), (0, -1), (-1, -1)]     # P2..P9, sens horaire
 
@@ -486,13 +501,32 @@ def construire(sq):
     return aretes, cycles, rapport
 
 
-def _direction(chem, depuis_debut, n=8):
-    seg = chem[:n + 1] if depuis_debut else chem[-(n + 1):][::-1]
+def _direction(ch, depuis_debut, n=6):
+    """Direction du bout d'une chaîne, moyennée sur n pixels (le pixel seul
+    est trop bruité pour dire où le trait allait).
+
+    IL N'Y EN A QU'UNE. Le module en a porté DEUX du même nom pendant trois
+    versions -- celle-ci et une jumelle en n=8 écrite pour `parcourir` -- et
+    c'est la seconde définition rencontrée qui gagne en Python : `parcourir`
+    tournait donc en n=6 sans que sa signature le dise. Les mesures qui ont
+    validé le parcours de graphe ont été prises ainsi ; on garde n=6."""
+    seg = ch[:n + 1] if depuis_debut else ch[-(n + 1):][::-1]
     if len(seg) < 2:
         return (0.0, 0.0)
-    dy, dx = seg[0][0] - seg[-1][0], seg[0][1] - seg[-1][1]
+    dy = seg[0][0] - seg[-1][0]
+    dx = seg[0][1] - seg[-1][1]
     m = math.hypot(dx, dy) or 1.0
     return (dy / m, dx / m)
+
+
+def _pixels_entre(p, q):
+    """Les pixels du segment droit ouvert ]p, q[, un par pas d'un pixel.
+
+    Sert à REMPLIR un raccord : la chaîne cousue reste continue, donc
+    l'invariant « une chaîne ne saute jamais » vaut encore après soudure."""
+    n = max(1, int(round(math.hypot(q[0] - p[0], q[1] - p[1]))))
+    return [(int(round(p[0] + (q[0] - p[0]) * t / n)),
+             int(round(p[1] + (q[1] - p[1]) * t / n))) for t in range(1, n)]
 
 
 def parcourir(aretes, cycles):
@@ -554,66 +588,83 @@ def parcourir(aretes, cycles):
     return gestes + [list(c) for c in cycles]
 
 
-def _direction(ch, depuis_debut, n=6):
-    """Direction du bout d'une chaîne, moyennée sur n pixels (le pixel seul
-    est trop bruité pour dire où le trait allait)."""
-    seg = ch[:n + 1] if depuis_debut else ch[-(n + 1):][::-1]
-    if len(seg) < 2:
-        return (0.0, 0.0)
-    dy = seg[0][0] - seg[-1][0]
-    dx = seg[0][1] - seg[-1][1]
-    m = math.hypot(dx, dy) or 1.0
-    return (dy / m, dx / m)
+def souder(gestes, encre, larg_px, k_largeurs=SOUDURE_EN_LARGEURS,
+           cos_mini=0.0):
+    """Recolle deux gestes dont les bouts se touchent presque.
 
+    `parcourir` apparie les branches NŒUD PAR NŒUD : à une jonction de trois
+    branches il en marie deux et laisse la troisième pendre. Quand deux
+    jonctions sont voisines -- ce qui est la règle à un croisement de cursive,
+    l'amincissement y fabrique un petit pont -- chacune laisse son bout
+    pendre, et les deux bouts se retrouvent à un ou deux pixels l'un de
+    l'autre sans jamais se voir, puisqu'ils appartiennent à deux nœuds
+    différents.
 
-def coudre(chaines, tol=0.55):
-    """Recolle les chaînes qui se PROLONGENT à travers une jonction.
+    Ce qui en sort n'est pas seulement un geste de trop : la tête relève,
+    transite, replonge et repart AU MÊME ENDROIT. Ce demi-millimètre est donc
+    brûlé DEUX FOIS, avec en prime deux arrêts, et il ressort en pâté noir.
+    Christophe, 04/08/2026, photo de la gravure encadrée en rouge : « je
+    pense qu'il y a trop de puissance ou on ne va pas assez vite dans
+    certains endroits » -- quatorze de ces amas sur les cinquante extrémités.
 
-    Une cursive traverse ses propres croisements : le fût du « V » puis la
-    liaison vers le « e » sont UN geste, et l'amincissement les coupe en
-    deux parce qu'un troisième trait passe par là. Sans couture, la tête
-    relève et repique au milieu d'une lettre -- et surtout le fuseau perd sa
-    place : lever le Z demande de la LONGUEUR (cf. `longueur_mini_fuseau`),
-    donc hacher le trait, c'est raboter les pleins.
+    Trois conditions, dans cet ordre :
 
-    Le critère est la continuité de direction : on joint deux bouts voisins
-    si repartir sur le second prolonge le premier plutôt que de rebrousser.
-    `tol` est le cosinus minimal ; au-dessous, on préfère deux traits nets à
-    un coude inventé."""
-    ch = [list(c) for c in chaines]
+    * l'écart tient dans la LARGEUR DE L'ENCRE à cet endroit (`k_largeurs`) --
+      un critère proportionnel, donc insensible à la taille du texte ;
+    * le segment droit du raccord reste ENTIÈREMENT DANS L'ENCRE. C'est le
+      garde-fou : sans lui, refermer une chaîne sur un bout lointain a déjà
+      gravé un trait droit en travers des dix-huit lettres du mot ;
+    * repartir sur le second prolonge le premier plutôt que de rebrousser
+      (`cos_mini`).
+
+    Le raccord est rempli par ses pixels intermédiaires, si bien que la chaîne
+    reste continue : l'invariant « une chaîne ne saute jamais » vaut encore à
+    la sortie."""
+    ch = [list(g) for g in gestes]
+    H, W = encre.shape
+
+    def dans_encre(p, q):
+        for y, x in _pixels_entre(p, q) + [q]:
+            if not (0 <= y < H and 0 <= x < W) or not encre[y, x]:
+                return False
+        return True
+
     encore, garde = True, 0
     while encore and garde <= len(ch) + 5:
-        encore = False
-        garde += 1
+        encore, garde = False, garde + 1
+        cands = []
         for i in range(len(ch)):
             if ch[i] is None:
                 continue
-            for bout_i in (0, 1):
-                pi = ch[i][-1] if bout_i else ch[i][0]
-                di = _direction(ch[i], bout_i == 0)
-                meilleur, score = None, tol
-                for j in range(len(ch)):
-                    if j == i or ch[j] is None:
+            for bi in (0, 1):
+                pi = ch[i][-1] if bi else ch[i][0]
+                di = _direction(ch[i], bi == 0)
+                for j in range(i + 1, len(ch)):
+                    if ch[j] is None:
                         continue
-                    for bout_j in (0, 1):
-                        pj = ch[j][-1] if bout_j else ch[j][0]
-                        if abs(pi[0] - pj[0]) > 2 or abs(pi[1] - pj[1]) > 2:
+                    for bj in (0, 1):
+                        pj = ch[j][-1] if bj else ch[j][0]
+                        d = math.hypot(pi[0] - pj[0], pi[1] - pj[1])
+                        if d > k_largeurs * larg_px[pi[0], pi[1]]:
                             continue
-                        dj = _direction(ch[j], bout_j == 0)
+                        dj = _direction(ch[j], bj == 0)
                         s = -(di[0] * dj[0] + di[1] * dj[1])
-                        if s > score:
-                            meilleur, score = (j, bout_j), s
-                if meilleur:
-                    j, bout_j = meilleur
-                    a = ch[i] if bout_i else ch[i][::-1]
-                    b = ch[j][::-1] if bout_j else ch[j]
-                    ch[i] = a + b
-                    ch[j] = None
-                    encore = True
-                    break
-    # La couture concatène : si l'une des deux moitiés portait un saut, il
-    # survit dans le résultat. On repasse donc le même filtre.
-    return _couper_aux_sauts([c for c in ch if c])
+                        if s < cos_mini or not dans_encre(pi, pj):
+                            continue
+                        cands.append((-s, d, i, bi, j, bj))
+        cands.sort()
+        pris = set()
+        for _s, _d, i, bi, j, bj in cands:
+            if i in pris or j in pris:
+                continue
+            a = ch[i] if bi else ch[i][::-1]
+            b = ch[j][::-1] if bj else ch[j]
+            ch[i] = a + _pixels_entre(a[-1], b[0]) + b
+            ch[j] = None
+            pris.add(i)
+            pris.add(j)
+            encore = True
+    return [c for c in ch if c]
 
 
 # Échelle du contrôle de couverture. Dessiner quarante mille disques à la
@@ -856,7 +907,10 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
     # moins, c'est deux terminaisons franches en moins -- et une terminaison
     # au milieu d'un plein se grave en pâté.
     _ar, _cy, _rap = construire(sq)
-    brutes = parcourir(_ar, _cy)
+    # Le parcours apparie nœud par nœud ; la soudure rattrape ce qu'il ne peut
+    # pas voir, deux bouts pendants appartenant à deux jonctions voisines.
+    # Sans elle, la tête relève et repique au même endroit, qui sort en pâté.
+    brutes = souder(parcourir(_ar, _cy), b > 0, larg_px)
     fenetre = max(3, int(round(lissage_mm / max(pas_arc_mm, 1e-6))))
     chaines, w_min, w_max, longueur = [], float("inf"), 0.0, 0.0
     for ch in brutes:

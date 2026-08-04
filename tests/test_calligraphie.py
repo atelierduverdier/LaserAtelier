@@ -70,10 +70,42 @@ _sq2 = cal.amincir(_b2)
 _brut = cal.tracer(_sq2)
 _saut = _plus_grand_saut(_brut)
 assert _saut <= 3.0, ("le traçage a laissé un saut de {:.0f} px".format(_saut))
-_saut_c = _plus_grand_saut(cal.coudre(_brut))
-assert _saut_c <= 3.0, ("la couture a laissé un saut de {:.0f} px".format(_saut_c))
+# LA SOUDURE AUSSI DOIT TENIR L'INVARIANT. Elle joint deux bouts distants --
+# c'est tout son objet -- et elle le fait en REMPLISSANT le raccord de ses
+# pixels intermédiaires. Sans ce remplissage elle réintroduirait exactement
+# le trait droit du 03/08.
+_cousu = cal.souder(_brut, _b2, cal.largeur_locale(_b2))
+_saut_c = _plus_grand_saut(_cousu)
+assert _saut_c <= 3.0, ("la soudure a laissé un saut de {:.0f} px".format(_saut_c))
+assert len(_cousu) <= len(_brut), "la soudure a fabriqué des chaînes"
+# ET ELLE NE SOUDE QUE DANS L'ENCRE. Il faut pour le prouver une figure où
+# la garde CHANGE quelque chose : sur l'anneau ci-dessus, aucun raccord ne
+# sortait du dessin même sans elle, si bien que le contrôle passait aussi
+# bien avec la garde retirée -- il ne prouvait rien. Un chevron OUVERT à son
+# sommet, lui, offre deux bouts qui se prolongent tout droit avec du vide
+# entre eux : c'est exactement le trait en travers du mot, en miniature.
+_img2b = Image.new("L", (420, 260), 0)
+_dr2b = ImageDraw.Draw(_img2b)
+_dr2b.line([40, 220, 200, 60], fill=255, width=26)
+_dr2b.line([212, 66, 380, 220], fill=255, width=26)
+_b2b = np.array(_img2b) > 127
+_cousu2b = cal.souder(cal.tracer(cal.amincir(_b2b)), _b2b,
+                      cal.largeur_locale(_b2b))
+_hors = [(int(y), int(x)) for c in _cousu2b for y, x in c if not _b2b[int(y), int(x)]]
+assert not _hors, (
+    "la soudure a posé {} point(s) HORS de l'encre : c'est le trait droit "
+    "gravé en travers du dessin".format(len(_hors)), _hors[:3])
+assert len(_cousu2b) >= 2, (
+    "le chevron ouvert a été refermé : ses deux branches ne se touchent pas",
+    len(_cousu2b))
+for _c in _cousu:
+    for _y, _x in _c:
+        assert _b2[int(_y), int(_x)], (
+            "la soudure a posé un point HORS de l'encre", _y, _x)
 print("2. aucun saut dans les chaînes : au pire {:.1f} px (traçage) et "
-      "{:.1f} px (couture) OK".format(_saut, _saut_c))
+      "{:.1f} px (soudure) ; {} chaînes -> {} ; chevron ouvert laissé ouvert "
+      "({} gestes), rien hors de l'encre OK".format(
+          _saut, _saut_c, len(_brut), len(_cousu), len(_cousu2b)))
 
 # --- 3. Le trait gravé recouvre la lettre, sans déborder ----------------
 # LA mesure qui juge, et celle qui ne juge pas. « Somme des largeurs x
@@ -513,3 +545,88 @@ assert _inf11["n_chaines"] == len(_ch11)
 print("11. « {} » : {} arêtes -> {} gestes, aucun redondant ; tache détachée "
       "servie, intérieur des lettres non recomblé ; chiffres du verdict "
       "conformes au tracé OK".format(_TXT11, len(_ar_r), len(_ch11)))
+
+
+# --- 12. L'AVANCE EST CELLE DU TRAIT, PAS CELLE DU VECTEUR -------------
+# Christophe, 04/08/2026, photo de « Atelier du Verdier » gravée en v2.65.1,
+# dix-sept pâtés encadrés en rouge : « je pense qu'il y a trop de puissance
+# ou on ne va pas assez vite dans certains endroits ». Les deux, et pour une
+# seule raison.
+#
+# En G94, `F` s'applique au vecteur PROGRAMMÉ. Là où le fuseau grimpe à sa
+# pente maxi -- 7,5 mm de Z par mm de trait, donc exactement au départ et à
+# la fin de chaque geste -- la tête avance en XY 7,57 fois moins vite que
+# l'avance annoncée, à faisceau constant. Le bois reçoit l'énergie d'un
+# déplacement de 7,57 mm étalée sur 1 mm de trait.
+#
+# Mesuré sur le fichier qu'il a gravé : 20,6 % des segments à plus du DOUBLE
+# de l'énergie médiane par mm de trait, 7,5 % à plus du quintuple, le pire à
+# 12,4 fois la médiane. Le rapport était connu du projet depuis v2.54.0 --
+# il sert à estimer la DURÉE, 2,1x sur un portrait au fuseau -- sans jamais
+# avoir été relié à la brûlure.
+
+# (a) La fonction elle-même, sur des cas dont on connaît la réponse.
+assert core.avance_compensee(1.0, 0.0, 200.0) == 200.0, (
+    "un trait à Z plat ne doit rien changer à l'avance")
+_f12 = core.avance_compensee(1.0, 1.0, 200.0)
+assert abs(_f12 * 1.0 / math.sqrt(2.0) - 200.0) < 1e-6, (
+    "à 45° de pente, la vitesse XY obtenue n'est pas l'avance demandée",
+    _f12 * 1.0 / math.sqrt(2.0))
+# Le plafond est celui de l'axe Z, pas un chiffre en l'air.
+_d3 = math.hypot(1.0, 50.0)
+_f13 = core.avance_compensee(1.0, 50.0, 200.0)
+assert _f13 * 50.0 / _d3 <= core.Z_MAX_FEED_MM_MIN + 1e-6, (
+    "la compensation demande à l'axe Z plus vite que sa limite",
+    _f13 * 50.0 / _d3, core.Z_MAX_FEED_MM_MIN)
+assert _f13 >= 200.0, "la compensation ne doit jamais RALENTIR le trait"
+
+# (b) Sur le G-code réellement émis : plus aucun segment ne surcuit.
+def _energies_par_mm(gcode):
+    """Énergie déposée par mm de TRAIT VISIBLE, segment par segment.
+
+    C'est `S x temps / dXY`, donc `S x d3D / (F x dXY)` : ce que le bois
+    reçoit là où on le regarde, et non ce que la tête dépense en chemin.
+
+    La puissance se lit dans LES DEUX dialectes : `M67 E0 Q...` sur sa
+    propre ligne, ou le `S` accolé au `G1`. Le harnais force le second, la
+    config de l'atelier utilise le premier -- ne lire qu'un des deux fait
+    sortir zéro segment, ce qui passe pour un fichier sans défaut."""
+    pos, s_cur, out = None, 0.0, []
+    for l in gcode.split("\n"):
+        l = l.strip()
+        if l.startswith("("):
+            continue
+        m = re.search(r"M67 E0 Q(-?[\d.]+)", l) or re.search(r"\bS(\d+\.?\d*)", l)
+        if m:
+            s_cur = float(m.group(1))
+        if not (l.startswith("G1") or l.startswith("G0")):
+            continue
+        gx = re.search(r"X(-?[\d.]+)", l)
+        gy = re.search(r"Y(-?[\d.]+)", l)
+        gz = re.search(r"Z(-?[\d.]+)", l)
+        gf = re.search(r"F(-?[\d.]+)", l)
+        p = (float(gx.group(1)) if gx else (pos[0] if pos else 0.0),
+             float(gy.group(1)) if gy else (pos[1] if pos else 0.0),
+             float(gz.group(1)) if gz else (pos[2] if pos else 0.0))
+        if l.startswith("G1") and pos and gf and s_cur > 0:
+            dxy = math.hypot(p[0] - pos[0], p[1] - pos[1])
+            d3 = math.hypot(dxy, abs(p[2] - pos[2]))
+            if dxy > 1e-6:
+                out.append(s_cur * d3 / (float(gf.group(1)) * dxy))
+        pos = p
+    return out
+
+# Un fuseau RAIDE : c'est là que le Z mange l'avance. Le trait fuselé de §4
+# monte de 0,20 à 3,20 mm sur 20 mm, la pente y est bornée à son maximum.
+_e12 = _energies_par_mm(_g)
+assert len(_e12) > 50, ("trop peu de segments pour juger", len(_e12))
+_e12.sort()
+_med12 = _e12[len(_e12) // 2]
+_gros = [x for x in _e12 if x > 2.0 * _med12]
+assert not _gros, (
+    "des segments déposent plus du double de l'énergie médiane par mm de "
+    "trait : c'est le pâté que Christophe a encadré", len(_gros),
+    max(_gros) / _med12)
+print("12. avance compensée : Z plat inchangé, vitesse XY tenue à 45°, "
+      "plafond Z respecté ; sur le G-code, {} segments et le pire à {:.2f}x "
+      "l'énergie médiane OK".format(len(_e12), _e12[-1] / _med12))

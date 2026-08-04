@@ -34,8 +34,8 @@ visible.
 The loop branch of `tracer` closed a chain onto its first pixel without checking it had come back:
 a greedy walk that died in a dead end at the other end of the word got a straight segment across
 all eighteen letters of "Atelier du Verdier" — and it was engraved. `_couper_aux_sauts` is now
-applied at the exit of both `tracer` and `coudre` (the latter concatenates, so it inherits any jump
-its halves carried). Overflow beyond the glyph: **11.3 % → 1.2 %**.
+applied at the exit of `tracer`, and `souder` fills its joins pixel by pixel so a weld cannot
+reintroduce one. Overflow beyond the glyph: **11.3 % → 1.2 %**.
 
 ## A junction is not a corner: count transitions, not neighbours
 
@@ -45,7 +45,7 @@ junction. Counting 8-neighbours instead calls every staircase pixel of a diagona
 whose longest is 31 mm. The preview came out dotted and the first hypothesis was that the Z could
 not keep up.
 
-`coudre` then rejoins the chains that continue *straight* through a junction — a cursive crosses
+`souder` then rejoins the chains that continue *straight* through a junction — a cursive crosses
 its own strokes, and the fuseau needs **length** to lift the Z (`longueur_mini_fuseau`), so
 chopping a stroke flattens its swell.
 
@@ -94,6 +94,28 @@ Same trap in the same function: `longueur`, `w_min` and `w_max` were accumulated
 building loop**, i.e. before pruning. A discarded stub could set the announced minimum width on its
 own — the very number the panel uses to judge whether the material can make the stroke. They are now
 recomputed over the final chains.
+
+## Two neighbouring junctions leave two ends nobody pairs
+
+`parcourir` pairs branches **node by node**. Where two junctions touch — the rule at a cursive
+crossing, thinning makes a little bridge between them — each leaves one branch dangling, and the two
+free ends sit one or two pixels apart without ever seeing each other.
+
+That is not merely one gesture too many: the head lifts, transits, plunges and restarts **at the same
+spot**. That half-millimetre is burnt **twice**, plus two stops, and it comes out as a black blob.
+Fourteen such clusters among the fifty gesture ends of "Atelier du Verdier".
+
+`souder` welds them under three conditions, in order: the gap fits within the **local ink width**
+(proportional, so scale-invariant); the straight join lies **entirely inside the ink**; and the second
+gesture continues the first rather than doubling back. The join is filled with its intermediate
+pixels, so "a chain never jumps" still holds on the way out. It replaces `coudre`, which looked only
+2 px around and had no ink guard.
+
+**The ink guard needs a fixture that can fail.** On the ring-and-bar shape §2 used, removing the guard
+changed nothing — every weld stayed inside the drawing anyway, so the check passed under the broken
+code. An **open chevron** does discriminate: two ends continuing straight with background between
+them, i.e. the straight-line-across-the-word disaster in miniature. Without the guard: 1 chain, 3 px
+outside the ink. With it: 2 chains, none.
 
 ## Size is the only lever
 

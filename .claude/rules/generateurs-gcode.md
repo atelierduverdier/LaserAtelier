@@ -244,6 +244,39 @@ then 0.50 again with Christophe's calliper. The focus burn-width table described
 no longer existed. Hidden variable surfaced at the same time and **recorded nowhere**: air assist
 on/off changes the browning around the trace (he sees a brown halo with air, clean without).
 
+## F applies to the VECTOR — that is a burn defect, not just a slow job
+
+`avance_compensee(dxy, dz, feed)` raises the commanded feed by `d3D/dXY` on every engraving block
+whose Z moves, capped so the Z axis stays under `Z_MAX_FEED_MM_MIN`.
+
+In G94, `F` is the feed along the **programmed path**. Where the spindle climbs at its slope limit —
+7.5 mm of Z per mm of trace, i.e. exactly at the start and end of every calligraphy gesture — the
+head advances in XY **7.57× slower** than announced (`sqrt(1 + 7.5²)`), at constant beam. The wood
+receives the energy of 7.57 mm of travel spread over 1 mm of visible trace.
+
+**The project already knew that ratio and used it for the wrong question.** Since v2.54.0 it explains
+job DURATION (2.1× on a spindle portrait); nobody connected it to burning. Christophe, 04/08/2026,
+photo of an engraved "Atelier du Verdier" with seventeen blobs circled: *"je pense qu'il y a trop de
+puissance ou on ne va pas assez vite dans certains endroits"*. Both, and one cause.
+
+Measured on the file he ran — energy per mm of **visible trace**, `S·d3D/(F·dXY)`:
+
+| | before | after |
+|---|---|---|
+| segments above 2× the median | 20.6 % | 0.2 % |
+| segments above 5× the median | 7.5 % | 0 % |
+| worst | 12.4× | 2.1× |
+| job time | 4.6 min | 2.3 min |
+
+Compensating also puts the machine back into the regime the **burn-width table was measured in** —
+it is not a taste setting.
+
+**The same defect lives in other generators**, measured over the workshop's own `.ngc` files
+(fraction of engraving segments at `d3D/dXY ≥ 1.5`): `gravure_photo` 13–15 %, `catalogue` 4.8 %,
+`marquage2` (dégradé) 4.9 %, `spirale_trait_degressif` 2.0 %. Only Calligraphie is wired so far,
+deliberately: correcting the others changes engravings whose power and coverage Christophe tuned by
+eye on wood, so that call is his.
+
 ## Chain ordering (v1.82.0)
 
 `generate_gcode_curved` runs `order_chains_by_proximity(chains)` right after `chain_edges`, so every
