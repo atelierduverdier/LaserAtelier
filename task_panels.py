@@ -13667,13 +13667,17 @@ class TaskPanelTestGrid:
 
         self._recipes = [
             ("nuancier_clair", {
-                "label": "Nuancier — tons clairs (défocus)",
+                "label": "Des TONS pour le nuancier — clairs, au point élargi",
                 "mode": 0, "power_min": 200, "power_max": 600, "power_steps": 4,
                 "feed_min": 1000, "feed_max": 4000, "feed_steps": 4,
                 "filltype": 2, "hatch_spacing": 1.0, "border": True,
                 "note": "16 cases du clair (S200/F4000 ≈ 5 %) au foncé "
                         "(S600/F1000 ≈ 74 %, raccord avec le nuancier mesuré). "
-                        "Point élargi ≈ 1 mm : complète le bas du nuancier."}),
+                        "Point élargi ≈ 1 mm : complète le bas du nuancier.<br>"
+                        "<b>Après la gravure :</b> juge chaque case à l'œil, "
+                        "puis reporte-la avec « + Ajouter ce ton » en ② — "
+                        "la vitesse, le défocus et le pas y sont déjà "
+                        "pré-remplis."}),
             # Les deux objectifs « largeurs » gravent EXACTEMENT les lignes et
             # colonnes de la grille de saisie ② -- listes tirées des mêmes
             # constantes, pour que l'alignement soit structurel et non une
@@ -13691,60 +13695,8 @@ class TaskPanelTestGrid:
             # planche 1 est CADRÉE AUTOMATIQUEMENT à la mesure, lui non.
             # Deux planches pour une mesure, dont la plus chère était la
             # moins bien outillée : c'est de l'empilement, pas un choix.
-            ("largeurs_defocus", {
-                "label": "Largeurs brûlées — grille en défocus",
-                "powers": sorted(_MesuresPlanchesControleur.POWERS),
-                "feeds": list(_MesuresPlanchesControleur.FEEDS_DEFOCUS),
-                # Vitesses LENTES, et c'est tout l'enjeu : en défocus le point
-                # est ~4x plus large qu'au foyer, donc la densité de puissance
-                # chute d'autant et un trait ISOLÉ ne marque plus au-delà de
-                # ~F1000. Une première version visait F1000-4000 (la plage des
-                # tons du nuancier) : 18 cases sur 25 sont sorties vierges sur
-                # hêtre. Les largeurs déjà mesurées de l'atelier le disaient
-                # d'ailleurs -- toutes entre F200 et F800.
-                #
-                # Les paliers viennent maintenant des constantes de ② : la
-                # version d'avant gravait S400/550/700/850/1000 et
-                # F200/650/1100/1550/2000, dont trois puissances et quatre
-                # vitesses n'avaient aucune case de saisie.
-                "mode": 0,
-                # ANGLE 0 : les traits doivent être HORIZONTAUX. La mesure
-                # à la ligne moyenne les colonnes de l'image (profil_trait),
-                # donc un trait en diagonale ne se mesure pas -- et le
-                # panneau était à 45° par défaut, qu'aucun objectif ne
-                # pouvait corriger. Une planche gravée pour être mesurée
-                # doit l'être dans le sens où l'outil sait lire.
-                "filltype": 0, "hatch_spacing": 3.0, "hatch_angle": 0.0,
-                "border": True,
-                "cell_defocus": 15.0, "cell_size": 16.0,
-                "note": "À n'utiliser que pour un défocus AUTRE que 15 ou 36 : "
-                        "à ces deux niveaux-là, la Planche 2 grave la même "
-                        "grille en traits simples et son cadrage de mesure est "
-                        "AUTOMATIQUE. Cet objectif existe parce que le défocus "
-                        "y est libre, pas parce qu'il ferait mieux.\n"
-                        "Traits ISOLÉS et HORIZONTAUX : l'espacement de 3 mm "
-                        "dépasse largement le point élargi (~1,15 mm), donc "
-                        "chaque trait se mesure seul au pied à coulisse.\n"
-                        "Grave-la DEUX FOIS, en ne changeant que l'espacement "
-                        "des hachures : à 3 mm pour mesurer la LARGEUR d'un "
-                        "trait, puis à 1 mm pour juger la NOIRCEUR en aplat. "
-                        "Un aplat ne se juge pas sur des traits espacés, et "
-                        "une largeur ne se mesure pas sur un aplat -- il faut "
-                        "les deux vues du même réglage.\n"
-                        "Vitesses volontairement LENTES : en défocus, un trait "
-                        "isolé cesse de marquer bien avant les vitesses où "
-                        "vivent les tons clairs. Le haut de l'échelle de "
-                        "noirceur restera donc peut-être sans largeur "
-                        "mesurable -- c'est une limite physique, pas un "
-                        "réglage à forcer. Mesure ce qui est lisible.\n"
-                        "Reporte ensuite chaque case dans Nuancier « + Ajouter "
-                        "un ton » avec SES DEUX mesures : c'est le couple "
-                        "noirceur+largeur en défocus qui alimente la photo "
-                        "calibrée et le « ton sur mesure ». Une largeur au "
-                        "foyer, ou une noirceur sans largeur, ne leur sert à "
-                        "rien."}),
             ("noirceur_balayage", {
-                "label": "Noirceur — bande en balayage (photo calibrée)",
+                "label": "Des TONS pour le nuancier — noirceur en aplat (photo)",
                 "mode": 0,
                 # UNE SEULE vitesse, et c'est toute la raison d'être de cet
                 # objectif. La noirceur ne dépend pas que de l'énergie : à
@@ -13795,9 +13747,65 @@ class TaskPanelTestGrid:
                         "Cette calibration ne vaut QUE pour la vitesse, le "
                         "défocus et le pas gravés ici. Changer l'un des "
                         "trois pour la gravure finale la sort de son "
-                        "régime."}),
+                        "régime.<br>"
+                        "<b>Après la gravure :</b> juge chaque aplat à "
+                        "l'œil, puis reporte-le avec « + Ajouter ce ton » "
+                        "en ② — c'est CETTE planche-là qui nourrit la "
+                        "courbe des photos calibrées."}),
+            ("largeurs_defocus", {
+                "label": "Des LARGEURS de trait — à un défocus libre",
+                "powers": sorted(_MesuresPlanchesControleur.POWERS),
+                "feeds": list(_MesuresPlanchesControleur.FEEDS_DEFOCUS),
+                # Vitesses LENTES, et c'est tout l'enjeu : en défocus le point
+                # est ~4x plus large qu'au foyer, donc la densité de puissance
+                # chute d'autant et un trait ISOLÉ ne marque plus au-delà de
+                # ~F1000. Une première version visait F1000-4000 (la plage des
+                # tons du nuancier) : 18 cases sur 25 sont sorties vierges sur
+                # hêtre. Les largeurs déjà mesurées de l'atelier le disaient
+                # d'ailleurs -- toutes entre F200 et F800.
+                #
+                # Les paliers viennent maintenant des constantes de ② : la
+                # version d'avant gravait S400/550/700/850/1000 et
+                # F200/650/1100/1550/2000, dont trois puissances et quatre
+                # vitesses n'avaient aucune case de saisie.
+                "mode": 0,
+                # ANGLE 0 : les traits doivent être HORIZONTAUX. La mesure
+                # à la ligne moyenne les colonnes de l'image (profil_trait),
+                # donc un trait en diagonale ne se mesure pas -- et le
+                # panneau était à 45° par défaut, qu'aucun objectif ne
+                # pouvait corriger. Une planche gravée pour être mesurée
+                # doit l'être dans le sens où l'outil sait lire.
+                "filltype": 0, "hatch_spacing": 3.0, "hatch_angle": 0.0,
+                "border": True,
+                "cell_defocus": 15.0, "cell_size": 16.0,
+                "note": "À n'utiliser que pour un défocus AUTRE que 15 ou 36 : "
+                        "à ces deux niveaux-là, la Planche 2 grave la même "
+                        "grille en traits simples et son cadrage de mesure est "
+                        "AUTOMATIQUE. Cet objectif existe parce que le défocus "
+                        "y est libre, pas parce qu'il ferait mieux.\n"
+                        "Traits ISOLÉS et HORIZONTAUX : l'espacement de 3 mm "
+                        "dépasse largement le point élargi (~1,15 mm), donc "
+                        "chaque trait se mesure seul au pied à coulisse.\n"
+                        "Grave-la DEUX FOIS, en ne changeant que l'espacement "
+                        "des hachures : à 3 mm pour mesurer la LARGEUR d'un "
+                        "trait, puis à 1 mm pour juger la NOIRCEUR en aplat. "
+                        "Un aplat ne se juge pas sur des traits espacés, et "
+                        "une largeur ne se mesure pas sur un aplat -- il faut "
+                        "les deux vues du même réglage.\n"
+                        "Vitesses volontairement LENTES : en défocus, un trait "
+                        "isolé cesse de marquer bien avant les vitesses où "
+                        "vivent les tons clairs. Le haut de l'échelle de "
+                        "noirceur restera donc peut-être sans largeur "
+                        "mesurable -- c'est une limite physique, pas un "
+                        "réglage à forcer. Mesure ce qui est lisible.\n"
+                        "Reporte ensuite chaque case dans Nuancier « + Ajouter "
+                        "un ton » avec SES DEUX mesures : c'est le couple "
+                        "noirceur+largeur en défocus qui alimente la photo "
+                        "calibrée et le « ton sur mesure ». Une largeur au "
+                        "foyer, ou une noirceur sans largeur, ne leur sert à "
+                        "rien."}),
             ("decoupe", {
-                "label": "Découpe — trouver le passage",
+                "label": "Une DÉCOUPE — trouver le réglage qui traverse",
                 "mode": 1, "power_min": 400, "power_max": 1000, "power_steps": 4,
                 "feed_min": 100, "feed_max": 600, "feed_steps": 4,
                 "border": False,
@@ -13815,26 +13823,39 @@ class TaskPanelTestGrid:
             "Remplit d'un coup toute la grille (mode, plages S/F, "
             "remplissage) avec des réglages prêts à graver selon la donnée "
             "que tu veux obtenir. Tu peux ensuite ajuster à la main.")
-        form.addRow("Objectif :", self.combo_recipe)
-
-        # Le renvoi vers les planches de calibration. Sans lui, quelqu'un
-        # qui cherche « les largeurs au foyer » dans cette liste ne trouve
-        # rien et bricole une grille à la main -- alors que la planche 1
-        # grave exactement cette mesure, en dix fois moins de brûlure, et
-        # que son cadrage à la mesure est automatique.
+        # DEUX POINTS DE DÉPART, ET IL FAUT DIRE LEQUEL EST LEQUEL.
+        # Christophe, 04/08/2026, revenant après quelques jours : « il y a
+        # Objectif avec des réglages mais on ne comprend pas trop, en
+        # dessous préréglage matériau, pareil on ne comprend pas ». Deux
+        # menus voisins, d'aspect identique, dont l'un GRISE l'autre sans
+        # que rien ne l'explique. L'un part de ce qu'on veut OBTENIR,
+        # l'autre recharge ce qu'on a SAUVEGARDÉ.
         form.addRow(_WrapLabel(
-            "<i>Pour les <b>largeurs de trait</b>, préfère les <b>planches de "
-            "calibration</b> (Assistant matériau) : la Planche 1 couvre le "
-            "foyer et la Planche 2 les défocus 15 et 36 mm, avec les mêmes "
-            "puissances et vitesses que la saisie ② — et leur cadrage de "
-            "mesure est <b>automatique</b>. Les objectifs ci-dessus servent "
-            "à ce qu'elles ne savent pas faire : un défocus libre, une "
-            "noirceur en aplat, un essai de découpe.</i>"))
+            "Deux façons de partir : par ce que tu veux <b>obtenir</b>, ou "
+            "en rechargeant des réglages que tu as <b>sauvegardés</b>. "
+            "Choisir l'un neutralise l'autre — deux points de départ à la "
+            "fois n'auraient pas de sens."))
+        form.addRow("Je veux obtenir :", self.combo_recipe)
 
+        # LA NOTE DE L'OBJECTIF VIENT JUSTE SOUS LE MENU : c'est là qu'on la
+        # cherche. Elle était sous le renvoi aux planches, donc après un
+        # paragraphe qui parle d'autre chose.
         self.lbl_recipe_note = _WrapLabel("")
         self.lbl_recipe_note.setVisible(False)
         form.addRow(self.lbl_recipe_note)
         self.combo_recipe.currentIndexChanged.connect(self._on_recipe_selected)
+
+        # Le renvoi vers les planches de calibration, APRÈS la liste et sa
+        # note : c'est une mise en garde sur un usage particulier, pas une
+        # introduction. Placée avant, elle accueillait le lecteur par ce que
+        # les objectifs ne savent PAS faire.
+        form.addRow(_WrapLabel(
+            "<i>Pour <b>mesurer des largeurs de trait</b> au foyer ou aux "
+            "défocus 15 et 36, les <b>planches de calibration</b> (Assistant "
+            "matériau) font mieux : mêmes puissances et vitesses que la "
+            "saisie ②, dix fois moins de brûlure, et cadrage de mesure "
+            "<b>automatique</b>. Les objectifs ci-dessus servent à ce "
+            "qu'elles ne savent pas faire.</i>"))
 
         self.combo_preset = QtWidgets.QComboBox()
         self.combo_preset.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
@@ -13843,7 +13864,7 @@ class TaskPanelTestGrid:
             "Recharge un jeu complet de réglages de grille sauvegardé sous\n"
             "un nom (typiquement : un matériau). Survole un nom dans la\n"
             "liste pour voir le résumé de ses réglages avant de choisir.")
-        form.addRow("Préréglage matériau :", self.combo_preset)
+        form.addRow("…ou reprendre mes réglages :", self.combo_preset)
         self.combo_preset.currentIndexChanged.connect(self._on_preset_selected)
 
         self.lbl_preset_summary = _WrapLabel("")

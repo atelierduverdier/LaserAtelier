@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.72.1"
+VERSION = "2.73.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5083,6 +5083,15 @@ _FACTORY_PRESETS = {
 # `action` est TOUJOURS une liste (même à 1 élément) : une entrée à
 # plusieurs actions distinctes s'affiche en lignes numérotées séparées
 # (jamais une énumération aplatie dans une seule phrase/label).
+# LES LIBELLÉS DES OBJECTIFS, AU CARACTÈRE PRÈS. Le parcours les cite en
+# toutes lettres ; recopiés à la main, un renommage du panneau laisse une
+# consigne qui envoie dans le vide -- ce qui vient d'arriver le 04/08/2026.
+# `test_objectifs_grille` §10 le vérifie, d'où ces deux constantes plutôt
+# qu'une chaîne recopiée : le contrôle attrape l'oubli, celles-ci le rendent
+# moins probable.
+_OBJ_TONS = "Des TONS pour le nuancier — noirceur en aplat (photo)"
+_OBJ_LARGEURS = "Des LARGEURS de trait — à un défocus libre"
+
 CALIBRATION_JOURNEY = [
     {
         "n": 1,
@@ -5141,8 +5150,8 @@ CALIBRATION_JOURNEY = [
             "grave la PLANCHE 2 (défocus) et mesure-la pareil : c'est ce "
             "niveau-là qui cale un remplissage large",
             "pour la gravure photo CALIBRÉE seulement : ouvre la Grille de "
-            "test et prends l'Objectif « Noirceur — bande en balayage (photo "
-            "calibrée) ». "
+            "test et prends l'Objectif "
+            "« {} ». ".format(_OBJ_TONS) +
             "Là on ne mesure plus, on JUGE la noirceur de chaque aplat -- "
             "c'est ce couple noirceur + défocus + largeur qui la fait "
             "marcher, avec le « ton sur mesure »",
@@ -5172,9 +5181,9 @@ CALIBRATION_JOURNEY = [
         "mode": "Grille de test puissance / vitesse",
         "but": "ce que les planches ne savent pas faire : un défocus LIBRE, "
                "une noirceur jugée en aplat, un essai de découpe",
-        "action": ["choisis un Objectif -- « Noirceur — bande en balayage » "
-                   "pour la courbe du nuancier, « Largeurs brûlées — grille "
-                   "en défocus » seulement à un défocus autre que 15 ou 36"],
+        "action": ["choisis un Objectif -- « {} » pour la courbe du "
+                   "nuancier, « {} » seulement à un défocus autre que "
+                   "15 ou 36".format(_OBJ_TONS, _OBJ_LARGEURS)],
         "reporter": "« ② Entrer les mesures » ci-dessous -- complément de "
                     "l'étape 3, qui se grave dans l'Assistant matériau",
     },
