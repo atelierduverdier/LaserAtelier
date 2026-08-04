@@ -272,3 +272,57 @@ finally:
 assert _panneau.combo_font.currentIndex() == _avant, (
     "annuler le spécimen a quand même changé la police")
 print("7. le clic applique la police, l'annulation ne touche à rien OK")
+
+
+# --- 8. « VERDIER » : la police de la maison ----------------------------
+# Christophe, 04/08/2026 : « pourrais-tu m'inventer une font rien que pour
+# moi avec tout ce que tu sais sur moi ? ». Elle n'est convertie de rien --
+# chaque lettre est tracée par outils/creer_police_verdier.py -- donc sans
+# licence tierce, redistribuable avec l'atelier.
+_v = core._hershey_module("verdier")
+assert "verdier" in core.HERSHEY_FONTS
+
+# LE ŒUF DANS LE PANIER : œ et Œ manquent aux 216 glyphes de TOUTES les
+# polices d'oskay, et le repli typographique les sauvait en « oe ». Verdier
+# les DESSINE. Le contrôle porte sur les deux bouts : le glyphe existe, ET
+# `deplier_texte` le laisse passer au lieu de le remplacer -- une police
+# peut très bien porter un glyphe que la chaîne strippe avant de tracer.
+for _c in ("œ", "Œ", "æ", "Æ", "ç", "Ç", "ß", "€"):
+    assert _v.GLYPHES.get(_c) and _v.GLYPHES[_c][1], (
+        "Verdier ne trace pas « {} »".format(_c))
+assert core.deplier_texte("cœur", _v, quiet=True) == "cœur", (
+    "le œ de Verdier est remplacé avant d'être tracé : la police le porte "
+    "pour rien", core.deplier_texte("cœur", _v, quiet=True))
+# ET LE CONTRÔLE A CORRIGÉ MA PHRASE. J'allais écrire « la seule à tracer
+# le œ » : Relief SingleLine (423 glyphes) le porte aussi, ce que la doc de
+# l'atelier dit depuis toujours. Elles sont DEUX sur quarante-cinq, et
+# figer ce compte ici oblige à revenir lire cette ligne avant de l'affirmer
+# ailleurs.
+_avec_oe = sorted(c for c in core.HERSHEY_FONTS
+                  if core.deplier_texte("cœur", core._hershey_module(c),
+                                        quiet=True) == "cœur")
+assert _avec_oe == ["relief", "verdier"], (
+    "le compte des polices qui tracent le œ a changé -- la doc l'annonce, "
+    "elle est à corriger avec", _avec_oe)
+
+# Le chapeau de l'atelier est un GLYPHE, pas un dessin à part.
+assert _v.GLYPHES.get("¤") and len(_v.GLYPHES["¤"][1]) >= 3, (
+    "le chapeau a disparu du glyphe ¤")
+
+# Mono-trait STRICT : les polices à fût contourné tournent à 4,7 traits par
+# lettre et gravent chaque branche deux fois. Celle-ci est dessinée, elle
+# n'a aucune excuse pour en approcher.
+_lettres = [c for c in _v.GLYPHES if c.isalpha()]
+_tpl = sum(len(_v.GLYPHES[c][1]) for c in _lettres) / float(len(_lettres))
+assert _tpl < 2.6, ("Verdier grave {:.1f} traits par lettre : quelque chose "
+                    "y est dessiné deux fois".format(_tpl))
+
+# La hauteur de capitale est MESURÉE sur le 'H' -- elle ne peut pas
+# diverger du dessin, puisqu'elle en est extraite.
+_ys = [y for t in _v.GLYPHES["H"][1] for _x, y in t]
+assert abs((max(_ys) - min(_ys)) - _v.CAP_HEIGHT) < 1e-6, (
+    "CAP_HEIGHT ne correspond plus au 'H' réellement dessiné",
+    max(_ys) - min(_ys), _v.CAP_HEIGHT)
+print("8. Verdier : {} glyphes, {:.1f} traits/lettre, œ Œ æ Æ ç ß € tracés, "
+      "chapeau sur ¤, capitale mesurée {:.0f} OK".format(
+          len(_v.GLYPHES), _tpl, _v.CAP_HEIGHT))

@@ -42,7 +42,7 @@ Remplit une face de hachures (parallèles / croisées / défocus) — géométri
 ![Hachures 2D](screenshots/panneaux/02_hachures_2d.png)
 
 ### Texte (trait simple)
-Du texte en police **mono-trait** : une seule passe de plume par branche, pas un contour rempli. 44 polices (EMS 29, Hershey 13, Twin Sans, Relief SingleLine — toutes en OFL ou domaine public), et le bouton « Voir… » les écrit toutes avec votre texte pour choisir en les voyant. Crée un objet fil, à graver ensuite avec Marquage.
+Du texte en police **mono-trait** : une seule passe de plume par branche, pas un contour rempli. 45 polices (EMS 29, Hershey 13, Twin Sans, Relief SingleLine — OFL ou domaine public — plus **Verdier**, dessinée pour l'atelier : chapeau melon sur `¤`, œ et Œ tracés), et le bouton « Voir… » les écrit toutes avec votre texte pour choisir en les voyant. Crée un objet fil, à graver ensuite avec Marquage.
 
 ![Texte (trait simple)](screenshots/panneaux/18_text.png)
 

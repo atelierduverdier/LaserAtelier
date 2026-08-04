@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.76.1"
+VERSION = "2.77.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1787,6 +1787,12 @@ HERSHEY_FONTS = {
     "hersheyserifmeditalic": "Hershey Serif Med Italic -- fût contourné, grave double",
     "relief": "Relief SingleLine",
     "twinsans": "Twin Sans",
+    # La seule qui ne vienne d'aucune fonte tierce : dessinée trait par
+    # trait par outils/creer_police_verdier.py, donc sans licence à
+    # respecter et redistribuable avec l'atelier. Elle porte le chapeau
+    # de la maison en glyphe (¤) et les œ/Œ qui manquent à toutes les
+    # autres.
+    "verdier": "Verdier -- la police de l'atelier (chapeau sur ¤)",
 }
 
 

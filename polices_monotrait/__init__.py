@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Les 44 polices MONO-TRAIT de l'atelier, une par module.
+"""Les 45 polices MONO-TRAIT de l'atelier, une par module.
 
 Ce sont des DONNÉES, pas du code : chaque module y expose `GLYPHES`
 (caractère → (avance, [traits])), `CAP_HEIGHT` et `ADV_DEFAULT`, produits
-par `outils/generer_police_monotrait.py` depuis un SVG mono-trait libre.
+par `outils/generer_police_monotrait.py` depuis un SVG mono-trait libre --
+sauf `hershey_font_verdier.py`, dessinée trait par trait par
+`outils/creer_police_verdier.py` et qui n'est donc convertie de rien.
 Provenances et licences : `licences/POLICES.md`.
 
 POURQUOI UN DOSSIER. Elles étaient à la racine, où elles noyaient les sept

@@ -9,6 +9,9 @@ régénérables par `outils/generer_police_monotrait.py`.
 | Hershey (13 polices) | https://gitlab.com/oskay/svg-fonts | Hershey Fonts — domaine public |
 | Twin Sans | https://gitlab.com/oskay/svg-fonts | SIL Open Font License 1.1 |
 | Relief SingleLine | https://github.com/isdat-type/Relief-SingleLine | SIL Open Font License 1.1 |
+| **Verdier** (1 police) | **dessinée pour l'atelier**, `outils/creer_police_verdier.py` | **LGPL-2.1-or-later, comme l'atelier** |
+
+**Verdier n'est convertie de rien** : chaque lettre y est tracée trait par trait dans le script qui la produit. Elle ne dépend donc d'aucune fonte tierce, ne porte aucune licence à respecter, et se redistribue avec l'atelier. C'est aussi la seule dont on puisse corriger un glyphe sans retoucher un fichier de données.
 
 Conversions SVG : Windell H. Oskay (Evil Mad Scientist). Les EMS sont de
 Sheldon B. Michaels, dérivées de polices Google Fonts. Relief SingleLine est
