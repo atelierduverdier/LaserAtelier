@@ -394,6 +394,14 @@ construction, on light and dark alike. Christophe: *"moins fortes les couleurs, 
 pastel"* — mean distance from the background on a #efefef theme: **43 in v2.72.0, 17 now**. `_colorer_barres` is wrapped end to end and returns silently — no main
 window, a stylesheet the theme refuses, a different Qt: none of it may stop the workbench opening.
 
+**The toolbar NAMES are a contract.** FreeCAD remembers each bar's position *by its name*, so
+renaming one creates a fresh bar with no known position: it lands wherever the default is, and the
+user has to rearrange everything by hand. That happened once, when the single "Atelier Laser" became
+these nine — Christophe: *"cela a cassé toute la mise en page des icônes, elles étaient toutes sur la
+même ligne, j'ai dû les replacer"*. A one-off cost, accepted, and it must stay one-off: §4 freezes the
+nine names. Freezing does not forbid renaming — it forces the decision through a check that explains
+the cost, and a deliberate rename must be **announced** to the user.
+
 **The risk of hand-splitting a list is losing a button**, and nothing would say so — the mode would
 simply be unreachable from the toolbar. `tests/test_barres_outils.py` asserts the union of the bars
 equals the menu minus separators, with no duplicates. It also caught that

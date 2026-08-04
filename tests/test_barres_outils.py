@@ -104,3 +104,39 @@ assert _w._colorer_barres() is None, (
     "la teinte explose quand la barre n'existe pas dans la fenêtre")
 print("3. teinte silencieuse sans fenêtre principale et sur une barre "
       "introuvable OK")
+
+
+# --- 4. LES NOMS SONT UN CONTRAT ---------------------------------------
+# FreeCAD retient la position de chaque barre PAR SON NOM. Renommer une
+# barre, c'est en créer une neuve sans position connue : elle repart à
+# l'endroit par défaut, et l'utilisateur doit tout replacer à la main.
+#
+# C'est arrivé une fois, le 04/08/2026, en remplaçant l'unique « Atelier
+# Laser » par ces neuf-là : « en relançant FreeCAD après tes changements de
+# couleur, cela a cassé toute la mise en page des icônes, elles étaient
+# toutes sur la même ligne, j'ai dû les replacer ». Coût unique et assumé
+# du découpage -- mais une seule fois.
+#
+# Ces noms ne se changent donc pas à la légère. Les figer ici ne les rend
+# pas immuables : cela oblige à passer par ce contrôle, donc à voir la
+# phrase ci-dessus avant de décider. Si un renommage est vraiment voulu,
+# il faut PRÉVENIR : il coûtera un rangement de barres.
+_ATTENDUS = [
+    "Atelier — Découverte",
+    "Atelier — Calibrer le laser",
+    "Atelier — Ajouter un matériau",
+    "Atelier — Dessins",
+    "Atelier — Gravure à plat",
+    "Atelier — Sur surface 3D",
+    "Atelier — Découpe",
+    "Atelier — Assemblage",
+    "Atelier — Référence et réglages",
+]
+assert _noms == _ATTENDUS, (
+    "les noms de barres ont changé : chaque nom modifié repartira à "
+    "l'endroit par défaut chez l'utilisateur, qui devra replacer ses "
+    "barres à la main. Voulu ? alors préviens-le.",
+    [n for n in _noms if n not in _ATTENDUS],
+    [n for n in _ATTENDUS if n not in _noms])
+print("4. les {} noms de barres sont ceux que FreeCAD a mémorisés OK".format(
+    len(_ATTENDUS)))
