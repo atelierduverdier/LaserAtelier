@@ -407,60 +407,88 @@ def coudre(chaines, tol=0.55):
     return _couper_aux_sauts([c for c in ch if c])
 
 
-def taches_sans_trace(encre, sq, chaines, min_px=3):
-    """Les taches d'encre dont AUCUNE chaîne n'est sortie, rendues en un
-    court trait chacune.
+# Échelle du contrôle de couverture. Dessiner quarante mille disques à la
+# résolution du rendu coûtait 25 s par mot -- inacceptable pour un verdict
+# qui se recalcule à la frappe. Un trou qui compte fait 150 px et plus : au
+# tiers, il en fait encore 17, largement de quoi être vu. On paie neuf fois
+# moins de pixels pour la même décision.
+ECHELLE_CONTROLE = 3
 
-    Un point sur un « i », un accent, une virgule : leur squelette fait un
-    ou deux pixels, sous le minimum du traçage, et ils disparaissaient donc
-    en silence. « Atelier » se gravait « Atelıer ». Christophe, 04/08/2026,
-    comparaison avec le rendu de la police à l'appui : « il y a des coupures
-    dans la tienne ».
 
-    On rend chaque tache par un trait COURT mais RÉEL, le long de son plus
-    grand axe et large de son disque inscrit. Pas un point immobile : la
-    règle de la maison est absolue, à l'arrêt le HAL ramène la puissance à
-    zéro et la marque ne se grave pas. Un point est donc un micro-trait,
-    ici comme partout ailleurs dans l'atelier."""
+def couverture(encre, chaines_mm, mm_px, hauteur_mm, echelle=ECHELLE_CONTROLE):
+    """Le masque de ce que les gestes déposeraient réellement, à l'échelle
+    réduite `echelle` (1 = pleine résolution)."""
+    from PIL import Image, ImageDraw
+    np = _numpy()
+    H, W = encre.shape
+    k = float(max(1, int(echelle)))
+    im = Image.new("L", (max(1, int(W / k)), max(1, int(H / k))), 0)
+    d = ImageDraw.Draw(im)
+    for c in chaines_mm:
+        for (x0, y0, w0), (x1, y1, w1) in zip(c, c[1:]):
+            X0, Y0 = x0 / mm_px / k, (hauteur_mm - y0) / mm_px / k
+            X1, Y1 = x1 / mm_px / k, (hauteur_mm - y1) / mm_px / k
+            d.line([X0, Y0, X1, Y1], fill=255,
+                   width=max(1, int(round(0.5 * (w0 + w1) / mm_px / k))))
+            r = 0.5 * max(w0, w1) / mm_px / k
+            d.ellipse([X1 - r, Y1 - r, X1 + r, Y1 + r], fill=255)
+        x, y, w = c[0]
+        X, Y, r = x / mm_px / k, (hauteur_mm - y) / mm_px / k, 0.5 * w / mm_px / k
+        d.ellipse([X - r, Y - r, X + r, Y + r], fill=255)
+    return np.array(im) > 127
+
+
+def encre_oubliee(encre, couvert, mini_px=6, echelle=ECHELLE_CONTROLE):
+    """Les régions d'encre qu'AUCUN geste ne couvre, rendues chacune par un
+    court trait le long de son grand axe.
+
+    Deux manques que le squelette ne sait pas donner, et qui se voient tous
+    les deux comme des « coupures dans les lettres » :
+
+    * les TACHES DÉTACHÉES -- point d'un i, accent, ponctuation : leur
+      squelette fait un ou deux pixels, sous le minimum du traçage, donc
+      aucune chaîne n'en sort ;
+    * les POINTES : l'axe médian s'arrête à une demi-largeur de l'extrémité
+      d'un trait effilé, puisque le plus grand disque inscrit ne peut pas
+      aller plus loin. Prolonger les bouts LIBRES ne suffit pas -- sur une
+      cursive, la plupart des terminaisons s'accrochent à une jonction et
+      n'ont donc pas de bout libre du tout (mesuré : 18 bouts libres pour
+      158 chaînes sur « La Graziela »).
+
+    Plutôt que de deviner la topologie, on regarde CE QUI RESTE : l'encre
+    non couverte. C'est la même façon de juger que le balayage qui a tranché
+    la question de la largeur -- on compare au dessin, pas au raisonnement.
+    """
     np = _numpy()
     from scipy import ndimage
-    vus = np.zeros_like(sq)
-    for ch in chaines:
-        for y, x in ch:
-            vus[y, x] = True
-    lab, n = ndimage.label(encre)
-    if not n:
+    k = max(1, int(echelle))
+    petit = encre[::k, ::k]
+    h, w = min(petit.shape[0], couvert.shape[0]), min(petit.shape[1], couvert.shape[1])
+    manque = petit[:h, :w] & ~couvert[:h, :w]
+    if not manque.any():
         return []
-    # Quelles étiquettes portent déjà du squelette tracé ?
-    servies = set(np.unique(lab[vus])) - {0}
+    lab, n = ndimage.label(manque)
     dist = ndimage.distance_transform_edt(encre)
     out = []
     for i in range(1, n + 1):
-        if i in servies:
-            continue
         ys, xs = np.nonzero(lab == i)
-        if len(ys) < 4:
-            continue                      # poussière de rendu, pas une marque
-        larg = 2.0 * dist[ys, xs].max()    # disque inscrit de la tache
+        if len(ys) < mini_px:
+            continue                       # frange d'un pixel : sans objet
+        ys, xs = ys * k, xs * k            # retour à la pleine résolution
+        larg = 2.0 * dist[ys, xs].max()
         if larg <= 1.0:
             continue
         cy, cx = float(ys.mean()), float(xs.mean())
-        # Le grand axe de la tache, par l'inertie : un point rond donne une
-        # direction quelconque, ce qui convient, et une virgule allongée
-        # donne la sienne, ce qui vaut mieux.
         dy, dx = ys - cy, xs - cx
         cov = np.array([[float((dy * dy).mean()), float((dy * dx).mean())],
                         [float((dy * dx).mean()), float((dx * dx).mean())]])
         vals, vecs = np.linalg.eigh(cov)
-        v = vecs[:, int(np.argmax(vals))]
-        # Au moins aussi long que large : en deçà, le filtre des gestes
-        # trop courts le reprendrait -- et un point d'i doit être gravé.
-        demi = max(float(np.sqrt(max(vals[int(np.argmax(vals))], 0.0))),
-                   0.6 * larg)
-        a = (cy - v[0] * demi, cx - v[1] * demi)
-        b = (cy + v[0] * demi, cx + v[1] * demi)
-        out.append(([(int(round(a[0])), int(round(a[1]))),
-                     (int(round(b[0])), int(round(b[1])))], larg))
+        k = int(np.argmax(vals))
+        v = vecs[:, k]
+        demi = max(float(np.sqrt(max(vals[k], 0.0))), 0.6 * larg)
+        out.append(([(int(round(cy - v[0] * demi)), int(round(cx - v[1] * demi))),
+                     (int(round(cy + v[0] * demi)), int(round(cx + v[1] * demi)))],
+                    larg))
     return out
 
 
@@ -534,6 +562,7 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
     fenetre = max(3, int(round(lissage_mm / max(pas_arc_mm, 1e-6))))
     chaines, w_min, w_max, longueur = [], float("inf"), 0.0, 0.0
     for ch in brutes:
+        ch_orig = ch
         # Repère CNC : Y vers le haut, alors que la ligne 0 de l'image est
         # en haut. Sans ce retournement le texte sortirait en miroir.
         pts = [(x * mm_px, (H - 1 - y) * mm_px) for y, x in ch]
@@ -544,7 +573,7 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
         # BARBE OU TRAIT ? Un trait isolé se garde (point d'i, accent) ; un
         # appendice ne se jette que s'il tient dans l'épaisseur de ce sur
         # quoi il est greffé.
-        libres = _bouts_libres(sq, ch)
+        libres = _bouts_libres(sq, ch_orig)
         if libres >= 2:
             if lg < MIN_TRAIT_ISOLE_MM:
                 continue
@@ -567,10 +596,11 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
         w_min = min(w_min, min(l2))
         w_max = max(w_max, max(l2))
         longueur += lg
-    # Les taches qu'aucune chaîne n'a servies : points d'i, accents,
-    # ponctuation. Elles n'ont pas de squelette exploitable, elles ont
-    # quand même de l'encre.
-    for pts_px, larg_px_tache in taches_sans_trace(b, sq, brutes):
+    # CE QUI RESTE : l'encre qu'aucun geste ne couvre -- points d'i,
+    # accents, et surtout les pointes que l'axe médian n'atteint pas.
+    hauteur_totale = (H - 1) * mm_px
+    couvert = couverture(b, chaines, mm_px, hauteur_totale)
+    for pts_px, larg_px_tache in encre_oubliee(b, couvert):
         pts = [(x * mm_px, (H - 1 - y) * mm_px) for y, x in pts_px]
         w = larg_px_tache * mm_px
         p2, l2, lg = _reechantillonner(pts, [w, w], pas_arc_mm)

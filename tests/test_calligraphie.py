@@ -280,5 +280,18 @@ for _lmm in (200.0, 120.0, 60.0, 35.0):
     assert _s2 == _t2, (
         "à {:.0f} mm de large, {} taches d'encre sur {} ne sont plus gravées : "
         "le critère d'élagage dépend de la taille".format(_lmm, _t2 - _s2, _t2))
-print("8. « {} » : {} taches d'encre, toutes servies de 35 à 200 mm ; aucun "
-      "geste immobile ni redondant OK".format(_TXT8, _total))
+# LA GRAVURE NE DOIT PAS ÊTRE PLUS MORCELÉE QUE LA LETTRE. C'est la mesure
+# de la « coupure » telle qu'on la voit : si le tracé se casse au milieu d'un
+# geste, le résultat compte plus de morceaux que la police. Sur « La Graziela
+# Script Demo », c'était 11 contre 7 -- l'axe médian s'arrête à une
+# demi-largeur des pointes, et une liaison fine s'y perdait entièrement.
+_couv8 = cal.couverture(_encre8, _ch8, _inf8["mm_px"],
+                        (_encre8.shape[0] - 1) * _inf8["mm_px"], echelle=1)
+_, _n_police = _ndi.label(_encre8)
+_, _n_grave = _ndi.label(_couv8)
+assert _n_grave <= _n_police + 1, (
+    "la gravure est plus morcelée que la lettre : le tracé se coupe",
+    _n_grave, _n_police)
+print("8. « {} » : {} taches d'encre servies de 35 à 200 mm ; gravure en {} "
+      "morceaux pour {} dans la police ; aucun geste immobile ni redondant OK"
+      .format(_TXT8, _total, _n_grave, _n_police))
