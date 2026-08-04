@@ -52,10 +52,38 @@ EM_PX = 600
 # toucher au geste (un plein de calligraphie s'étale sur 5 à 30 mm).
 LISSAGE_MM = 1.0
 
-# Sous cette longueur, une chaîne est un artefact d'amincissement (une barbe
-# sur un empattement), pas un trait. La graver coûte deux mouvements de tête
-# pour une marque invisible.
-MIN_CHAINE_MM = 0.8
+# Élagage des BARBES de l'amincissement. Une barbe est un appendice à
+# extrémité libre, greffé sur un trait, et si court qu'il tient dans
+# l'épaisseur de ce trait : le graver ne dépose pas un point d'encre de plus,
+# puisque le disque du trait porteur couvre déjà tout son parcours. On la
+# mesure donc EN MULTIPLE DE LA LARGEUR LOCALE, pas en millimètres absolus.
+#
+# Le seuil absolu d'avant (0,8 mm) jetait tout ce qui était court, y compris
+# ce qui n'était pas une barbe : sur « La Graziela Script Demo », 89 chaînes
+# sur 158 -- dont LES DEUX POINTS DES « i », qui sont des taches d'encre à
+# part entière. Christophe, 04/08/2026, comparaison à l'appui : « il y a des
+# coupures dans la tienne ».
+BARBE_MAX_LARGEURS = 1.0
+
+# Un trait ISOLÉ (ses deux bouts libres, aucune jonction) n'est jamais une
+# barbe : c'est un point d'i, un accent, une ponctuation, une virgule de
+# liaison. On le garde quelle que soit sa longueur -- mais on refuse le
+# résidu d'un pixel, qui ne dessine rien.
+MIN_TRAIT_ISOLE_MM = 0.15
+
+# UN GESTE PLUS COURT QUE LA MOITIÉ DE SA PROPRE LARGEUR N'EST PAS UN TRAIT.
+# Le disque du trait dans lequel il se trouve a déjà couvert tout son
+# parcours : le graver ne dépose rien de plus, et coûte un relevage, un
+# transit et une plongée. Mesuré le 04/08/2026 sur « Atelier du Verdier » à
+# 200 mm : les élaguer retire 62 gestes sur La Graziela et 158 sur
+# Blacksword, pour 0,50 et 0,33 point de couverture -- du trajet à vide
+# contre rien.
+#
+# C'est aussi ce qui interdit le geste de longueur NULLE, dont il y avait
+# 19 : un G1 immobile faisceau allumé ne grave RIEN (le HAL ramène la
+# puissance à zéro à l'arrêt), donc il aurait coûté deux mouvements pour
+# une marque inexistante.
+GESTE_MINI_EN_LARGEURS = 0.5
 
 # Pas d'échantillonnage du trait le long du chemin, en mm.
 PAS_ARC_MM = 0.4
@@ -379,6 +407,63 @@ def coudre(chaines, tol=0.55):
     return _couper_aux_sauts([c for c in ch if c])
 
 
+def taches_sans_trace(encre, sq, chaines, min_px=3):
+    """Les taches d'encre dont AUCUNE chaîne n'est sortie, rendues en un
+    court trait chacune.
+
+    Un point sur un « i », un accent, une virgule : leur squelette fait un
+    ou deux pixels, sous le minimum du traçage, et ils disparaissaient donc
+    en silence. « Atelier » se gravait « Atelıer ». Christophe, 04/08/2026,
+    comparaison avec le rendu de la police à l'appui : « il y a des coupures
+    dans la tienne ».
+
+    On rend chaque tache par un trait COURT mais RÉEL, le long de son plus
+    grand axe et large de son disque inscrit. Pas un point immobile : la
+    règle de la maison est absolue, à l'arrêt le HAL ramène la puissance à
+    zéro et la marque ne se grave pas. Un point est donc un micro-trait,
+    ici comme partout ailleurs dans l'atelier."""
+    np = _numpy()
+    from scipy import ndimage
+    vus = np.zeros_like(sq)
+    for ch in chaines:
+        for y, x in ch:
+            vus[y, x] = True
+    lab, n = ndimage.label(encre)
+    if not n:
+        return []
+    # Quelles étiquettes portent déjà du squelette tracé ?
+    servies = set(np.unique(lab[vus])) - {0}
+    dist = ndimage.distance_transform_edt(encre)
+    out = []
+    for i in range(1, n + 1):
+        if i in servies:
+            continue
+        ys, xs = np.nonzero(lab == i)
+        if len(ys) < 4:
+            continue                      # poussière de rendu, pas une marque
+        larg = 2.0 * dist[ys, xs].max()    # disque inscrit de la tache
+        if larg <= 1.0:
+            continue
+        cy, cx = float(ys.mean()), float(xs.mean())
+        # Le grand axe de la tache, par l'inertie : un point rond donne une
+        # direction quelconque, ce qui convient, et une virgule allongée
+        # donne la sienne, ce qui vaut mieux.
+        dy, dx = ys - cy, xs - cx
+        cov = np.array([[float((dy * dy).mean()), float((dy * dx).mean())],
+                        [float((dy * dx).mean()), float((dx * dx).mean())]])
+        vals, vecs = np.linalg.eigh(cov)
+        v = vecs[:, int(np.argmax(vals))]
+        # Au moins aussi long que large : en deçà, le filtre des gestes
+        # trop courts le reprendrait -- et un point d'i doit être gravé.
+        demi = max(float(np.sqrt(max(vals[int(np.argmax(vals))], 0.0))),
+                   0.6 * larg)
+        a = (cy - v[0] * demi, cx - v[1] * demi)
+        b = (cy + v[0] * demi, cx + v[1] * demi)
+        out.append(([(int(round(a[0])), int(round(a[1]))),
+                     (int(round(b[0])), int(round(b[1])))], larg))
+    return out
+
+
 def _reechantillonner(pts, largeurs, pas):
     """Un point tous les `pas` mm le long de la chaîne, largeur interpolée."""
     np = _numpy()
@@ -401,9 +486,22 @@ def _reechantillonner(pts, largeurs, pas):
 # D -- POINT D'ENTRÉE
 # =======================================================================
 
+def _bouts_libres(sq, chaine):
+    """Combien des deux bouts de cette chaîne sont des extrémités LIBRES.
+
+    2 = trait isolé (rien d'autre ne s'y raccroche) ; 1 = appendice greffé
+    sur un trait, donc candidat au statut de barbe ; 0 = morceau tendu entre
+    deux jonctions, jamais une barbe."""
+    n = 0
+    for bout in (chaine[0], chaine[-1]):
+        if len(_voisins(sq, *bout)) <= 1:
+            n += 1
+    return n
+
+
 def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
                          hauteur_mm=None, em_px=EM_PX, lissage_mm=LISSAGE_MM,
-                         min_chaine_mm=MIN_CHAINE_MM, pas_arc_mm=PAS_ARC_MM):
+                         min_chaine_mm=None, pas_arc_mm=PAS_ARC_MM):
     """Le texte, prêt à graver : des gestes en millimètres, largeur comprise.
 
     Renvoie `(chaines, infos)`. Une chaîne est une liste de triplets
@@ -441,7 +539,25 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
         pts = [(x * mm_px, (H - 1 - y) * mm_px) for y, x in ch]
         lar = [larg_px[y, x] * mm_px for y, x in ch]
         p2, l2, lg = _reechantillonner(pts, lar, pas_arc_mm)
-        if len(p2) < 2 or lg < min_chaine_mm:
+        if len(p2) < 2:
+            continue
+        # BARBE OU TRAIT ? Un trait isolé se garde (point d'i, accent) ; un
+        # appendice ne se jette que s'il tient dans l'épaisseur de ce sur
+        # quoi il est greffé.
+        libres = _bouts_libres(sq, ch)
+        if libres >= 2:
+            if lg < MIN_TRAIT_ISOLE_MM:
+                continue
+        elif libres == 1:
+            epaisseur = max(lar) if lar else 0.0
+            seuil = max(BARBE_MAX_LARGEURS * epaisseur,
+                        min_chaine_mm or 0.0)
+            if lg < seuil:
+                continue
+        # Le zéro absolu d'abord : une chaîne de largeur nulle échapperait
+        # à la règle proportionnelle (0 < 0.5 x 0 est faux) et sortirait un
+        # G1 immobile, qui ne grave rien.
+        if lg <= 1e-9 or lg < GESTE_MINI_EN_LARGEURS * (max(l2) if l2 else 0.0):
             continue
         if len(l2) >= 5:
             l2 = list(ndimage.uniform_filter1d(
@@ -451,6 +567,26 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
         w_min = min(w_min, min(l2))
         w_max = max(w_max, max(l2))
         longueur += lg
+    # Les taches qu'aucune chaîne n'a servies : points d'i, accents,
+    # ponctuation. Elles n'ont pas de squelette exploitable, elles ont
+    # quand même de l'encre.
+    for pts_px, larg_px_tache in taches_sans_trace(b, sq, brutes):
+        pts = [(x * mm_px, (H - 1 - y) * mm_px) for y, x in pts_px]
+        w = larg_px_tache * mm_px
+        p2, l2, lg = _reechantillonner(pts, [w, w], pas_arc_mm)
+        if len(p2) < 2:
+            p2, l2 = pts, [w, w]
+            lg = math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1])
+        if lg <= 1e-9:
+            # Tache trop petite pour porter un axe : la graver reviendrait à
+            # un G1 immobile, qui ne marque rien et coûte deux mouvements.
+            continue
+        chaines.append([(float(x), float(y), float(ww))
+                        for (x, y), ww in zip(p2, l2)])
+        w_min = min(w_min, w)
+        w_max = max(w_max, w)
+        longueur += lg
+
     if not chaines:
         raise ErreurCalligraphie(
             "Aucun trait assez long à cette taille -- agrandis le texte.")

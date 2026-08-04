@@ -217,3 +217,68 @@ assert len(_restes) == 1, ("les lignes de l'ancien verdict sont restées "
                            "affichées", _restes)
 print("7. verdict en {} lignes, et un verdict court n'en laisse qu'une OK"
       .format(len(_visibles)))
+
+
+# --- 8. Rien d'encre ne se perd, rien d'immobile ne se grave ------------
+# Christophe, 04/08/2026, comparant le rendu de « La Graziela Script Demo »
+# au mien : « il y a des coupures dans la tienne ». Deux causes.
+#
+# a) Le filtre d'élagage jetait sur la LONGUEUR ABSOLUE (0,8 mm) : sur cette
+#    police, 89 chaînes sur 158, dont des liaisons entières. Une barbe
+#    d'amincissement se reconnaît à ce qu'elle tient dans l'ÉPAISSEUR du
+#    trait qui la porte, pas à ce qu'elle est courte.
+# b) Un point d'i, un accent, une ponctuation sont des taches dont le
+#    squelette fait un ou deux pixels : sous le minimum du traçage, ils ne
+#    produisaient AUCUNE chaîne et disparaissaient sans un mot.
+#
+# Le contrôle porte donc sur l'ENCRE : chaque tache d'encre séparée doit
+# recevoir au moins un geste.
+from scipy import ndimage as _ndi                    # noqa: E402
+
+def _taches_servies(encre, chaines, mm_px, hauteur_mm):
+    im = Image.new("L", (encre.shape[1], encre.shape[0]), 0)
+    d = ImageDraw.Draw(im)
+    for c in chaines:
+        for x, y, w in c:
+            X, Y = x / mm_px, (hauteur_mm - y) / mm_px
+            r = 0.5 * w / mm_px
+            d.ellipse([X - r, Y - r, X + r, Y + r], fill=255)
+    s = np.array(im) > 127
+    lab, n = _ndi.label(encre)
+    return len(set(np.unique(lab[s])) - {0}), n
+
+
+# Un « i » et un « é » : deux taches détachées que rien ne relie au reste.
+_TXT8 = "il a été"
+_encre8 = cal.rendre_texte(_chemin, _TXT8)
+_ch8, _inf8 = cal.chaines_calligraphie(_chemin, _TXT8, largeur_mm=120.0)
+_servies, _total = _taches_servies(_encre8, _ch8, _inf8["mm_px"],
+                                   _inf8["hauteur_mm"])
+assert _total >= 3, ("le texte d'essai n'a pas de tache détachée : il ne "
+                     "peut rien prouver", _total)
+assert _servies == _total, (
+    "des taches d'encre ne reçoivent aucun geste : un point d'i, un accent "
+    "ou une ponctuation serait gravé manquant", _servies, _total)
+
+# Et aucun geste immobile : à l'arrêt le HAL ramène la puissance à zéro,
+# donc un G1 de longueur nulle ne marque rien et coûte deux mouvements.
+for _c in _ch8:
+    _lg = sum(math.hypot(_c[i+1][0]-_c[i][0], _c[i+1][1]-_c[i][1])
+              for i in range(len(_c)-1))
+    assert _lg > 1e-9, "un geste de longueur nulle : il ne gravera rien"
+    assert _lg >= 0.5 * max(p[2] for p in _c) - 1e-9, (
+        "un geste plus court que la moitié de sa largeur : son encre est "
+        "déjà déposée par le trait qui le porte", _lg)
+# LA MÊME CHOSE EN PLUS PETIT ne doit pas perdre d'encre. C'est la signature
+# d'un seuil ABSOLU : réduire le texte réduit toutes les longueurs, donc un
+# critère en millimètres finit par manger des traits entiers. Le critère
+# proportionnel (une barbe tient dans l'épaisseur de son porteur) est
+# insensible à l'échelle -- c'est tout l'intérêt.
+for _lmm in (200.0, 120.0, 60.0, 35.0):
+    _c2, _i2 = cal.chaines_calligraphie(_chemin, _TXT8, largeur_mm=_lmm)
+    _s2, _t2 = _taches_servies(_encre8, _c2, _i2["mm_px"], _i2["hauteur_mm"])
+    assert _s2 == _t2, (
+        "à {:.0f} mm de large, {} taches d'encre sur {} ne sont plus gravées : "
+        "le critère d'élagage dépend de la taille".format(_lmm, _t2 - _s2, _t2))
+print("8. « {} » : {} taches d'encre, toutes servies de 35 à 200 mm ; aucun "
+      "geste immobile ni redondant OK".format(_TXT8, _total))
