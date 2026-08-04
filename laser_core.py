@@ -5347,8 +5347,9 @@ def niveaux_defocus_mesures(material=None):
 # nuancier de l'atelier en garde la trace : S195 -> 0, S235 -> 0, S275 -> 2,
 # donc rien avant ~S300.
 #
-# Le 04/08/2026 la même bande est sortie du sapin avec SEPT cases vierges :
-# une planche entière gravée pour trois tons. Et les planches de Christophe
+# Le 04/08/2026 la même bande est sortie du sapin sans RIEN d'exploitable
+# en dessous de ~S700 -- six ou sept cases sur dix, donc une planche entière
+# gravée pour trois ou quatre tons. Et les planches de Christophe
 # le disaient AVANT la gravure. La grille de saisie offre les mêmes cases
 # aux deux matériaux, et sur sapin les cases du coin le moins énergique sont
 # restées vides faute de quoi que ce soit à mesurer :

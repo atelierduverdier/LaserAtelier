@@ -54,7 +54,8 @@ Test-grid panel's own "+ Ajouter ce ton" block — pre-filling beats warning.
 `noirceur_balayage` engraved the same recipe for every material: S200→S1000 at F2000, defocus 15,
 pitch 0.80. On beech that already wasted **3 cells of 10** — the workshop's own nuancier records it:
 S195 → 0, S235 → 0, S275 → 2, so nothing marks below ~S300 in that regime. On spruce, 2026-08-04,
-**7 of 10 came out blank**: a whole plank burned for three tones.
+**nothing usable below ~S700** — six or seven cells of ten, so a whole plank burned for three
+or four tones, the strongest of them a scorched blob.
 
 **His boards said so before the burn.** The measurement grid offers the same cells to every
 material, and a cell left empty means there was nothing to measure. On spruce every empty cell sits

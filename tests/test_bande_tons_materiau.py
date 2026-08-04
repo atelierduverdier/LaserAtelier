@@ -10,8 +10,9 @@ résultats des traits faits dans les planches 1 2 2b ? »
 Oui. L'objectif gravait les MÊMES nombres pour tous les matériaux -- S200 →
 S1000 à F2000, défocus 15 -- et ces nombres sont du hêtre. Sur hêtre ils
 gaspillaient déjà trois cases sur dix (le nuancier de l'atelier en garde la
-trace : S195 → 0, S235 → 0, S275 → 2). Sur sapin, sept cases sur dix sont
-sorties vierges : une planche entière gravée pour trois tons.
+trace : S195 → 0, S235 → 0, S275 → 2). Sur sapin, rien n'est exploitable en
+dessous de ~S700 -- six ou sept cases sur dix, donc une planche entière
+gravée pour trois ou quatre tons, dont le plus fort est un pâté.
 
 LES CONTRÔLES PORTENT SUR DES MATÉRIAUX FABRIQUÉS ICI, pas sur le hêtre et
 le sapin de l'atelier. La règle de la maison : un contrôle ne doit pas
