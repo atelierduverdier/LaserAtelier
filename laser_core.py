@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.74.0"
+VERSION = "2.75.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5336,6 +5336,213 @@ def niveaux_defocus_mesures(material=None):
     return sorted({round(float(p.get("z_offset", 0) or 0), 3)
                    for p in (load_burn_widths(mat).get("defocus") or [])
                    if float(p.get("z_offset", 0) or 0) > 0})
+
+
+# ==========================================================================
+# CE QUE LE MATÉRIAU A RÉELLEMENT MONTRÉ (planches 1 / 2 / 2b + tons jugés)
+# ==========================================================================
+# La bande de tons du nuancier gravait les MÊMES nombres pour tous les
+# matériaux : S200 -> S1000 à F2000, défocus 15, pas 0,80. Des nombres de
+# HÊTRE, et qui sur le hêtre gaspillaient déjà trois cases sur dix -- le
+# nuancier de l'atelier en garde la trace : S195 -> 0, S235 -> 0, S275 -> 2,
+# donc rien avant ~S300.
+#
+# Le 04/08/2026 la même bande est sortie du sapin avec SEPT cases vierges :
+# une planche entière gravée pour trois tons. Et les planches de Christophe
+# le disaient AVANT la gravure. La grille de saisie offre les mêmes cases
+# aux deux matériaux, et sur sapin les cases du coin le moins énergique sont
+# restées vides faute de quoi que ce soit à mesurer :
+#
+#   au foyer     S200 s'arrête après F400   (hêtre tient jusqu'à F3000, 0,03 mm)
+#   au foyer     S400 et S600 s'arrêtent avant F3000 (hêtre : mesurés)
+#   défocus 15   S200 s'arrête après F400   (F600 et F800 vides)
+#
+# Ces fonctions rendent ce constat interrogeable, pour graver la bande DANS
+# le régime où le matériau répond -- au lieu de le découvrir sur la planche.
+#
+# ATTENTION, une limite connue et NON corrigée ici : `_bilinear_burn` BORNE
+# en vitesse. Le sapin n'ayant aucune mesure au-delà de F800 en défocus 15,
+# `burn_width_defocus_scaled` répond pour F1200 et F2000 la largeur de F800,
+# au centième près -- 0,84 mm à S200/F2000, soit 105 % du pas de 0,80,
+# « aplat parfaitement couvert », sur une case que le bois a laissée nue.
+# Le modèle ne dit pas « je ne sais pas », il dit un nombre. Corriger ce
+# bornage déplacerait des gravures réglées à l'oeil sur du bois ; on lui
+# oppose donc ici une question SÉPARÉE -- « ce régime a-t-il seulement été
+# mesuré ? » -- dont les appelants qui en ont besoin peuvent se servir.
+
+
+def _points_mesures(material, defocus=0.0):
+    """Les points de largeur mesurés pour ce matériau à ce niveau de
+    défocus (0 = au foyer). Liste vide si le matériau est inconnu."""
+    mat = _burn_width_material(material)
+    if not mat:
+        return []
+    table = load_burn_widths(mat)
+    if not defocus or defocus <= 1e-9:
+        return list(table.get("focus") or [])
+    return [p for p in (table.get("defocus") or [])
+            if abs(_snap_defocus_level(p.get("z_offset", 0.0) or 0.0)
+                   - float(defocus)) <= SNAP_DEFOCUS_TOLERANCE_MM]
+
+
+def vitesse_maxi_mesuree(material, defocus=0.0):
+    """La vitesse la plus RAPIDE à laquelle ce matériau a été VU marquer à
+    ce défocus, ou None si rien n'y a jamais été observé.
+
+    Ce n'est PAS la vitesse maximale utilisable : c'est la borne au-delà de
+    laquelle l'atelier n'a plus aucune observation. La distinction compte,
+    parce que le modèle de largeur, lui, continue de répondre un nombre.
+
+    LES DEUX SOURCES COMPTENT, et c'est ce qui referme la boucle. Un ton
+    jugé noir à F2000 prouve que le régime marque, même sans largeur au pied
+    à coulisse -- et une largeur en défocus ne se mesure qu'aux vitesses
+    lentes des planches (F800 au plus). Sans les tons, une bande de repérage
+    rapportée en ② n'aurait rien changé au prochain objectif, qui aurait
+    continué de rabattre la vitesse à F800 pour l'éternité."""
+    feeds = [float(p.get("feed", 0) or 0) for p in _points_mesures(material, defocus)
+             if float(p.get("width", 0) or 0) > 0 and float(p.get("feed", 0) or 0) > 0]
+    feeds += [float(t.get("feed", 0) or 0) for t in load_shades(material)
+              if float(t.get("darkness", 0) or 0) > 0
+              and float(t.get("feed", 0) or 0) > 0
+              and abs(float(t.get("z_offset", 0) or 0)
+                      - float(defocus)) <= SNAP_DEFOCUS_TOLERANCE_MM]
+    return max(feeds) if feeds else None
+
+
+def puissance_mini_qui_marque(material, feed, defocus=0.0):
+    """La plus BASSE puissance dont on SAIT qu'elle laisse une trace à cette
+    vitesse et ce défocus. None si rien ne le dit.
+
+    Un plancher tiré de l'observation, pas un seuil physique : une puissance
+    plus faible marque peut-être, simplement personne ne l'a vu. C'est
+    exactement ce qu'il faut pour graver une bande sans case vierge.
+
+    DEUX SOURCES, et les tons d'abord. Une noirceur jugée à 0 est une mesure
+    -- « à cette puissance le bois est resté intact » -- que la table des
+    largeurs ne peut pas porter : on n'y saisit pas la largeur d'un trait
+    absent, on laisse la case vide, et une case vide ne se distingue pas
+    d'une case jamais mesurée. Le nuancier du hêtre dit ainsi S195 -> 0,
+    S235 -> 0, S275 -> 2 : le plancher est à 275."""
+    tons = [t for t in load_shades(material)
+            if abs(float(t.get("feed", 0) or 0) - float(feed)) <= 1e-6
+            and abs(float(t.get("z_offset", 0) or 0)
+                    - float(defocus)) <= SNAP_DEFOCUS_TOLERANCE_MM]
+    marques = [float(t.get("power", 0) or 0) for t in tons
+               if float(t.get("darkness", 0) or 0) > 0]
+    if marques:
+        return min(marques)
+    # Pas de ton à ce régime : on retombe sur les largeurs mesurées, où une
+    # case remplie signifie « il y avait un trait à mesurer ».
+    largeurs = [float(p.get("power", 0) or 0)
+                for p in _points_mesures(material, defocus)
+                if abs(float(p.get("feed", 0) or 0) - float(feed)) <= 1e-6
+                and float(p.get("width", 0) or 0) > 0]
+    return min(largeurs) if largeurs else None
+
+
+def ordre_melange(n):
+    """Indices de 0..n-1 réordonnés pour qu'une rampe croissante ne soit
+    JAMAIS gravée dans l'ordre.
+
+    Rangées par puissance croissante, les cases d'une bande de tons se
+    jugent les unes par rapport aux autres et l'oeil reconstruit une
+    progression régulière sans qu'on s'en aperçoive : une première série
+    ainsi jugée est sortie en progressions arithmétiques exactes, avec 11 %
+    de paires inversées par rapport à l'ordre des énergies.
+
+    L'ordre était une LISTE ÉCRITE À LA MAIN de dix nombres, donc muette sur
+    sa règle et impossible à suivre si le nombre de cases changeait -- ce
+    qu'il fait maintenant que la bande s'adapte au matériau. La règle :
+    apparier i et i+n/2 (deux cases voisines sont toujours séparées d'une
+    demi-échelle), en passant d'abord les i pairs puis les impairs.
+
+    LA GARANTIE « jamais deux rangs voisins côte à côte » ne tient qu'à
+    partir de n=8, et c'est assumé : entre deux paires d'un même bloc
+    l'écart vaut n/2-2, donc 1 seulement pour n=7. La bande en grave dix,
+    la garantie est donc vérifiée là où elle sert ; une série plus courte
+    reste mélangée, simplement moins bien. L'élargir coûterait de ne plus
+    reproduire la série de dix réellement gravée depuis juillet -- un prix
+    bien plus élevé que le cas qui ne se présente pas."""
+    n = int(n)
+    if n <= 2:
+        return list(range(max(n, 0)))
+    h = n // 2
+    ordre = []
+    for i in list(range(0, h, 2)) + list(range(1, h, 2)):
+        ordre.append(i)
+        if i + h < n:
+            ordre.append(i + h)
+    ordre.extend(i for i in range(n) if i not in ordre)
+    return ordre
+
+
+def puissances_bande_tons(p_min, p_max, n):
+    """n puissances réparties de p_min à p_max, dans l'ordre MÉLANGÉ."""
+    n = int(n)
+    if n <= 0:
+        return []
+    if n == 1:
+        return [float(p_max)]
+    pas = (float(p_max) - float(p_min)) / (n - 1)
+    rampe = [round(float(p_min) + k * pas) for k in range(n)]
+    return [float(rampe[i]) for i in ordre_melange(n)]
+
+
+def regime_bande_tons(material, feed, defocus=15.0, n=10, p_max=None):
+    """Le régime à graver pour obtenir n tons UTILISABLES sur ce matériau.
+
+    Renvoie `(vitesse, puissances, explication)`. `explication` est None
+    quand les valeurs demandées passent telles quelles ; sinon c'est la
+    phrase à afficher, qui dit ce qui a été changé ET sur quelle mesure.
+
+    Deux corrections, dans cet ordre :
+
+    1. LA VITESSE, si elle sort de ce que le matériau a montré. Graver à une
+       vitesse jamais observée, c'est parier -- et le sapin a perdu le pari
+       sur sept cases. On retombe sur la plus rapide qui ait laissé une
+       trace mesurable.
+    2. LE PLANCHER DE PUISSANCE, pour que la case la plus claire marque
+       encore. C'est là que se gaspillaient trois cases sur le hêtre et sept
+       sur le sapin.
+
+    Sans aucune mesure, on ne change RIEN et on le dit : la première planche
+    d'un matériau neuf est un repérage, ses cases vierges sont sa mesure."""
+    p_max = float(p_max if p_max is not None else S_MAX)
+    feed = float(feed)
+    defocus = float(defocus)
+    defaut = puissances_bande_tons(200.0, p_max, n)
+
+    v_maxi = vitesse_maxi_mesuree(material, defocus)
+    if v_maxi is None:
+        return (feed, defaut,
+                "Aucune mesure de « {} » à défocus {:.0f} : la bande est "
+                "gravée telle quelle. Prends-la comme un REPÉRAGE -- les "
+                "cases qui sortiront vierges sont, elles aussi, une mesure. "
+                "Reporte-les en ② avec une noirceur de 0, et le prochain "
+                "objectif partira du bon plancher."
+                .format(material or "ce matériau", defocus))
+
+    dires = []
+    if feed > v_maxi + 1e-6:
+        dires.append(
+            "vitesse ramenée de F{:.0f} à F{:.0f} : « {} » n'a jamais été vu "
+            "marquer au-delà à défocus {:.0f}".format(
+                feed, v_maxi, material, defocus))
+        feed = v_maxi
+
+    plancher = puissance_mini_qui_marque(material, feed, defocus)
+    if plancher is None or plancher <= 200.0 + 1e-6:
+        plancher = 200.0
+    else:
+        dires.append(
+            "puissances calées de S{:.0f} à S{:.0f} : en dessous de S{:.0f}, "
+            "rien n'a marqué à F{:.0f}".format(
+                plancher, p_max, plancher, feed))
+
+    if not dires:
+        return (feed, defaut, None)
+    return (feed, puissances_bande_tons(plancher, p_max, n),
+            "D'après TES planches : " + " ; ".join(dires) + ".")
 
 
 def _niveaux_exploitables(levels):

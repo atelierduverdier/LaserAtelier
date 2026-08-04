@@ -49,6 +49,49 @@ there (a first series judged that way came back as exact arithmetic progressions
 inverted against the real energy order). Selecting the objective pre-fills feed/defocus/width in the
 Test-grid panel's own "+ Ajouter ce ton" block — pre-filling beats warning.
 
+### The tone band's numbers were BEECH numbers (v2.75.0)
+
+`noirceur_balayage` engraved the same recipe for every material: S200→S1000 at F2000, defocus 15,
+pitch 0.80. On beech that already wasted **3 cells of 10** — the workshop's own nuancier records it:
+S195 → 0, S235 → 0, S275 → 2, so nothing marks below ~S300 in that regime. On spruce, 2026-08-04,
+**7 of 10 came out blank**: a whole plank burned for three tones.
+
+**His boards said so before the burn.** The measurement grid offers the same cells to every
+material, and a cell left empty means there was nothing to measure. On spruce every empty cell sits
+in the least-energetic corner — at focus S200 stops after F400 (beech runs to F3000, at 0.03 mm),
+S400/S600 stop before F3000; at defocus 15 S200 stops after F400. Beech's same grid is full.
+
+`regime_bande_tons(material, feed, defocus, n)` → `(feed, powers, explanation)` reads that and
+fixes two things, in order: the **feed**, pulled back to `vitesse_maxi_mesuree` when the request
+lies outside anything observed, then the **power floor** (`puissance_mini_qui_marque`) so the
+lightest cell still marks. The panel shows the explanation above the objective's note.
+
+Three points that make it work rather than merely look right:
+
+- **A judged darkness of 0 is a measurement the width table cannot hold.** You don't enter the width
+  of an absent trace — you leave the cell empty, and an empty cell is indistinguishable from an
+  unmeasured one. So tones are consulted **first**, and only `darkness > 0` counts as evidence of a
+  mark.
+- **A judged tone also re-opens the FEED**, not just the floor. A defocused width is only measurable
+  at the boards' slow feeds (F800 at most), so without this a range-finder board reported in ②
+  would change nothing and the objective would clamp to F800 forever.
+- **On a never-measured material nothing is recalibrated, and the panel says so** — that first board
+  is a range-finder, and its blank cells are its measurement.
+
+`ordre_melange(n)` now carries the shuffle rule (pair `i` with `i+n/2`, evens then odds) instead of
+a hand-written list of ten numbers, and **reproduces that list exactly** — `puissances_bande_tons`
+is asserted against it. The "no two adjacent ranks side by side" guarantee only holds from n=8
+(within a block the gap is `n/2-2`); the band engraves ten, and the docstring says so rather than
+pretending otherwise.
+
+**Known and deliberately NOT fixed here**: `_bilinear_burn` **clamps in feed**. Spruce has no
+defocus-15 measurement past F800, so `burn_width_defocus_scaled` answers the F800 width for F1200
+and F2000 alike — to the centime — i.e. 0.84 mm at S200/F2000, *105 % of the 0.80 pitch, "a fully
+covered flat"*, on a cell the wood left bare. The model does not say "I don't know", it says a
+number. Un-clamping it would move engravings whose power and coverage Christophe tuned by eye on
+wood, so the fix here is a **separate question** — "has this regime been observed at all?" — that
+callers who need it can ask.
+
 The Grille de test's `largeurs_defocus` objective (v1.87.0) exists to produce the missing pairing —
 measured width AND judged darkness, at the same defocus. A width measured at FOCUS cannot feed this
 curve at all (the `z_offset > 0` filter rejects it), which is why Planche 1 — the focus-widths board

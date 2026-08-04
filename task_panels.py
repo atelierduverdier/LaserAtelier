@@ -13724,16 +13724,22 @@ class TaskPanelTestGrid:
                 # aucune correction de formule ne pouvait la sauver.
                 "feeds": [2000.0],
                 # Puissances réparties de 200 à 1000... puis DÉLIBÉRÉMENT
-                # mélangées. Alignées par ordre croissant, les cases se
-                # jugent les unes par rapport aux autres et l'oeil
-                # reconstruit une progression régulière sans qu'on s'en
-                # aperçoive : une première série ainsi jugée est sortie en
-                # progressions arithmétiques exactes, avec 11 % de paires
-                # inversées par rapport à l'ordre des énergies. Chaque case
-                # porte sa puissance gravée sous elle, la lecture reste
-                # directe.
-                "powers": [200.0, 644.0, 378.0, 822.0, 556.0,
-                           1000.0, 289.0, 733.0, 467.0, 911.0],
+                # mélangées (cf. core.ordre_melange, qui porte la règle --
+                # ici c'était une liste écrite à la main, muette sur sa
+                # raison et figée à dix cases). Alignées par ordre
+                # croissant, les cases se jugent les unes par rapport aux
+                # autres et l'oeil reconstruit une progression régulière
+                # sans qu'on s'en aperçoive : une première série ainsi jugée
+                # est sortie en progressions arithmétiques exactes, avec
+                # 11 % de paires inversées par rapport à l'ordre des
+                # énergies. Chaque case porte sa puissance gravée sous elle,
+                # la lecture reste directe.
+                "powers": core.puissances_bande_tons(200.0, core.S_MAX, 10),
+                # CES DEUX NOMBRES-LÀ SONT DU HÊTRE, et l'objectif les
+                # recale sur le matériau choisi en ② (cf.
+                # core.regime_bande_tons). Sur hêtre ils gaspillaient déjà
+                # trois cases sur dix ; sur sapin, sept.
+                "tons_materiau": True,
                 "filltype": 0, "hatch_spacing": 0.80, "cell_size": 16.0,
                 "cell_defocus": 15.0, "border": True,
                 # Pré-remplit « + Ajouter ce ton » avec la vitesse, le
@@ -13763,7 +13769,13 @@ class TaskPanelTestGrid:
                         "Cette calibration ne vaut QUE pour la vitesse, le "
                         "défocus et le pas gravés ici. Changer l'un des "
                         "trois pour la gravure finale la sort de son "
-                        "régime.<br>"
+                        "régime.\n"
+                        "La vitesse et le PLANCHER de puissance sont calés "
+                        "sur le matériau choisi en ②, d'après tes planches "
+                        "1/2/2b et tes tons déjà jugés : l'atelier ne grave "
+                        "pas une case dont tes propres mesures disent "
+                        "qu'elle sortira vierge. Change de matériau et la "
+                        "bande se recale.<br>"
                         "<b>Après la gravure :</b> juge chaque aplat à "
                         "l'œil, puis reporte-le avec « + Ajouter ce ton » "
                         "en ② — c'est CETTE planche-là qui nourrit la "
@@ -14694,7 +14706,8 @@ class TaskPanelTestGrid:
             self._appliquer_paliers(None, None)
             return
         self.combo_mode.setCurrentIndex(r.get("mode", 0))
-        self._appliquer_paliers(r.get("powers"), r.get("feeds"))
+        powers, feeds, dire_materiau = self._paliers_du_materiau(r)
+        self._appliquer_paliers(powers, feeds)
         if "power_min" in r:
             self.spn_power_min.setValue(r["power_min"])
             self.spn_power_max.setValue(r["power_max"])
@@ -14728,7 +14741,13 @@ class TaskPanelTestGrid:
         self.spn_zwork.setValue(core.Z_WORK_MM)
         self.spn_cell_defocus.setValue(r.get("cell_defocus", 0.0))
         self.chk_border.setChecked(r.get("border", True))
-        self.lbl_recipe_note.setText("\U0001f4a1 " + r["note"])
+        # L'ADAPTATION AU MATÉRIAU EN TÊTE, pas en bas de note : c'est la
+        # seule ligne qui décrit CETTE gravure-ci plutôt que l'objectif en
+        # général, et c'est celle qu'on doit lire avant d'appuyer.
+        note = r["note"]
+        if dire_materiau:
+            note = "<b>{}</b>\n{}".format(dire_materiau, note)
+        self.lbl_recipe_note.setText("\U0001f4a1 " + note)
         self.lbl_recipe_note.setVisible(True)
         # Objectif jugé à l'œil : on prépare la saisie du ton avec ce qui
         # vient d'être gravé. Surtout la LARGEUR, qui vaut ici le PAS de
@@ -14743,6 +14762,39 @@ class TaskPanelTestGrid:
                 "label": "balayage F{:.0f} pas {:.2f}".format(
                     self.spn_feed_min.value(), self.spn_hatch_spacing.value()),
             })
+
+    def _paliers_du_materiau(self, r):
+        """(puissances, vitesses, explication) de cet objectif, RECALÉS sur
+        le matériau choisi en ②.
+
+        La bande de tons gravait les mêmes nombres pour tout le monde --
+        S200→S1000 à F2000, des nombres de hêtre. Sur hêtre ils gaspillaient
+        déjà trois cases sur dix (nuancier de l'atelier : S195 → 0, S235 →
+        0, S275 → 2) ; sur sapin, le 04/08/2026, sept sur dix sont sorties
+        vierges. Christophe : « peut-être que pour graver une grille il faut
+        se baser sur les résultats des traits faits dans les planches 1 2
+        2b ». Oui -- et ses planches le disaient AVANT la gravure.
+
+        Le matériau se lit par `getattr` : cette section-ci (①) se construit
+        AVANT ②, et la restauration de session peut rejouer un objectif
+        pendant que le champ n'existe pas encore."""
+        powers, feeds = r.get("powers"), r.get("feeds")
+        if not r.get("tons_materiau") or not feeds:
+            return powers, feeds, None
+        combo = getattr(self, "edt_measure_mat", None)
+        materiau = (combo.currentText().strip() if combo else "")
+        feed, puissances, dire = core.regime_bande_tons(
+            materiau, feeds[0], r.get("cell_defocus", 0.0),
+            n=len(powers or []) or 10)
+        return puissances, [feed], dire
+
+    def _reappliquer_objectif(self):
+        """Rejoue l'objectif courant : le matériau vient de changer, donc
+        les paliers qu'il en tire aussi. Sans ça la bande resterait calée
+        sur le matériau précédent, en affichant le nom du nouveau."""
+        idx = self.combo_recipe.currentIndex()
+        if idx > 0:
+            self._on_recipe_selected(idx)
 
     def _appliquer_paliers(self, powers, feeds):
         """Fixe (ou libère) les paliers imposés par un objectif.
@@ -14838,11 +14890,17 @@ class TaskPanelTestGrid:
             form, lambda: self.edt_measure_mat.currentText(),
             titre="Noirceur jugée à l'œil (nuancier)",
             on_added=self._maj_liste_materiaux)
+        # Le matériau gouverne AUSSI les paliers de l'objectif ① (cf.
+        # _paliers_du_materiau) : le changer doit recaler la bande, pas
+        # seulement recharger la saisie du ton.
         self.edt_measure_mat.currentIndexChanged.connect(
-            lambda _i: self._ton_rapide["reload"]())
+            lambda _i: (self._ton_rapide["reload"](),
+                        self._reappliquer_objectif()))
         self.edt_measure_mat.lineEdit().editingFinished.connect(
-            lambda: self._ton_rapide["reload"]())
+            lambda: (self._ton_rapide["reload"](),
+                     self._reappliquer_objectif()))
         self._ton_rapide["reload"]()
+        self._reappliquer_objectif()
 
     def _on_lire_noirceur(self):
         """Ouvre la lecture de noirceur. La fenêtre se débrouille seule :
