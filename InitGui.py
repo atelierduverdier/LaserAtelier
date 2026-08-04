@@ -143,12 +143,19 @@ class LaserAtelierWorkbench(Workbench):
         for nom, cmds in self._barres:
             self.appendToolbar(nom, cmds)
 
-    # Teintes des barres, en DEGRÉS de teinte (roue chromatique). Ce ne sont
-    # pas des couleurs en dur : elles sont mélangées à la couleur de fond du
-    # THÈME COURANT, si bien que le clair et le sombre s'accommodent tous
-    # deux, et qu'un changement de thème ne laisse pas des pavés criards.
+    # Teintes des barres, en DEGRÉS sur la roue chromatique. Ce ne sont pas
+    # des couleurs en dur : on TEINTE LE FOND DU THÈME COURANT sans toucher
+    # à sa clarté -- même valeur, saturation à peine relevée. Pastel par
+    # construction, sur un thème clair comme sur un sombre.
+    #
+    # Mélanger vers une couleur fixe, comme le faisait la v2.72.0, ne peut
+    # pas tenir les deux : un pastel clair reste plus CLAIR qu'un fond
+    # sombre, donc voyant, et le baisser jusqu'à s'y fondre le rend gris.
+    # Christophe, 04/08/2026 : « moins fortes les couleurs, beaucoup plus
+    # pastel ». Mesuré sur un fond clair (#efefef), écart moyen au fond :
+    # 43 en v2.72.0, 17 ici -- 40 % de l'ancien.
     _TEINTES = (28, 205, 190, 265, 35, 150, 0, 300, 220)
-    _MELANGE = 0.18            # part de couleur ajoutée au fond du thème
+    _SATURATION = 16           # points de saturation ajoutés au fond
 
     def _colorer_barres(self):
         """Un fond légèrement teinté par barre. Jamais bloquant.
@@ -173,11 +180,9 @@ class LaserAtelierWorkbench(Workbench):
                         break
                 if barre is None:
                     continue
-                c = QtGui.QColor.fromHsv(teinte, 200, 200)
-                m = QtGui.QColor(
-                    int(fond.red() * (1 - self._MELANGE) + c.red() * self._MELANGE),
-                    int(fond.green() * (1 - self._MELANGE) + c.green() * self._MELANGE),
-                    int(fond.blue() * (1 - self._MELANGE) + c.blue() * self._MELANGE))
+                _h, s, v, alpha = fond.getHsv()
+                m = QtGui.QColor.fromHsv(
+                    teinte, min(255, s + self._SATURATION), v, alpha)
                 barre.setStyleSheet(
                     "QToolBar {{ background: {}; border-radius: 3px; }}"
                     .format(m.name()))

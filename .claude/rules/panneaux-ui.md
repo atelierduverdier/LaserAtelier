@@ -386,9 +386,12 @@ chaque section dans la barre des icônes"*. Separators inside one toolbar are ne
 carries a NAME (View > Toolbars, and the handle tooltip), moves and hides on its own. That is the only
 grouping FreeCAD offers natively, and it survives every theme.
 
-The tint is a **reinforcement, never the information**. It is not hardcoded: each bar's hue is blended
-at 18 % into the *current theme's* window colour, so light and dark both work and a theme change
-cannot leave garish blocks. `_colorer_barres` is wrapped end to end and returns silently — no main
+The tint is a **reinforcement, never the information**. It is not hardcoded, and it does **not blend
+toward a colour** — that was v2.72.0 and it could not serve both themes: a light pastel stays lighter
+than a dark background, so it shouts, and dulling it until it fits turns it grey. Instead the theme's
+own window colour is **re-hued at the same lightness**, saturation raised by 16 points. Pastel by
+construction, on light and dark alike. Christophe: *"moins fortes les couleurs, beaucoup plus
+pastel"* — mean distance from the background on a #efefef theme: **43 in v2.72.0, 17 now**. `_colorer_barres` is wrapped end to end and returns silently — no main
 window, a stylesheet the theme refuses, a different Qt: none of it may stop the workbench opening.
 
 **The risk of hand-splitting a list is losing a button**, and nothing would say so — the mode would
