@@ -304,15 +304,30 @@ def tracer(sq, min_px=3):
         y0, x0 = int(y0), int(x0)
         if not reste[y0, x0]:
             continue
-        ch, cur = [(y0, x0)], (y0, x0)
+        # MARCHER DES DEUX CÔTÉS. Le germe est pris dans l'ordre de balayage
+        # de l'image, donc presque jamais à un bout : ne partir que dans un
+        # sens coupait en deux tout ce que cette branche ramasse -- et elle
+        # ramasse la MOITIÉ du squelette (2 235 px sur 4 709 pour
+        # « Atelier »), puisque toute boucle fermée est sans nœud.
+        #
+        # Chaque coupure de trop est DEUX terminaisons de plus, et une
+        # terminaison au milieu d'un plein se grave en pâté : la tête se
+        # lève à pleine largeur. Christophe, 04/08/2026, dix-sept pâtés
+        # entourés en rouge sur sa gravure -- 23 % des extrémités tombaient
+        # là où le trait fait plus de 0,5 mm.
         reste[y0, x0] = False
-        while True:
-            suite = [n for n in _voisins(sq, *cur) if reste[n]]
-            if not suite:
-                break
-            cur = suite[0]
-            reste[cur] = False
-            ch.append(cur)
+        moities = []
+        for _ in (0, 1):
+            bout, cur = [], (y0, x0)
+            while True:
+                suite = [n for n in _voisins(sq, *cur) if reste[n]]
+                if not suite:
+                    break
+                cur = suite[0]
+                reste[cur] = False
+                bout.append(cur)
+            moities.append(bout)
+        ch = moities[1][::-1] + [(y0, x0)] + moities[0]
         if len(ch) >= min_px:
             # NE REFERMER QUE SI ON EST VRAIMENT REVENU AU DÉPART. La marche
             # gloutonne peut mourir dans une impasse à l'autre bout du mot ;
