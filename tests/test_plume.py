@@ -73,9 +73,19 @@ print("2. texte ×4 → pleins ×{:.1f}, contraste inchangé ({:.1f}:1) OK".form
 # Un contrôle qui ne regarderait que la présence de largeurs passerait sur
 # une police plate.
 _ch, _inf = core.chaines_plume("verdier", "Atelier du Verdier", largeur_mm=120.0)
-assert _inf["rapport"] > 2.0, (
-    "le trait ne module presque pas : ce sont les pleins et déliés qui "
-    "manquaient, pas un champ de plus", _inf["rapport"])
+# LE SEUIL VIENT DU DÉFAUT QU'ON RÉPARE. Livrée à 6 % / 5:1, la plume
+# rendait 3,1:1 -- et Christophe, l'aperçu sous les yeux : « c'est une
+# police un peu plus épaisse quoi ». Il avait raison. Ses propres polices
+# calligraphiques demandent 26:1 et 31:1 ; en dessous de 4 on n'est pas
+# dans le même métier, et un contrôle à 2 aurait laissé passer exactement
+# ce qu'il a rejeté.
+assert _inf["rapport"] > 4.0, (
+    "le trait ne module pas assez pour qu'on parle de pleins et déliés : "
+    "c'est une police un peu plus épaisse, pas une plume", _inf["rapport"])
+assert _inf["largeur_trait_max"] / (_inf["hauteur_mm"] or 1) > 0.10, (
+    "le plein fait moins de 10 % de la hauteur : une plume est GRASSE, "
+    "c'est ce qui la distingue d'un trait épaissi",
+    _inf["largeur_trait_max"], _inf["hauteur_mm"])
 # ET LA MODULATION EST DANS LA LETTRE, pas seulement entre les lettres.
 # Le contrôle porte sur la STRUCTURE plutôt que sur un rapport global : le
 # « A » de Verdier est fait de deux gestes -- le chevron, puis la barre --
@@ -124,7 +134,7 @@ _p.spn_largeur.setValue(120.0)
 _res = _p._chaines()
 assert _res and _res[1].get("plume"), (
     "le panneau n'est pas passé par la plume alors que la case est cochée")
-assert _res[1]["rapport"] > 2.0
+assert _res[1]["rapport"] > 4.0
 # Décochée, il revient au fichier .otf -- et sans fichier, il ne rend rien
 # plutôt que de rendre la plume en douce.
 _p.chk_plume.setChecked(False)

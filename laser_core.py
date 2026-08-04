@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.78.0"
+VERSION = "2.78.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1958,8 +1958,20 @@ def _mono_line_width(line, hf, scale, char_spacing):
 # l'anglaise et la barre revient. Au-delà de 45 le contraste s'inverse :
 # fûts fins, barres épaisses, et ça se voit tout de suite.
 PLUME_ANGLE_DEFAUT = 25.0        # inclinaison du bec, degrés
-PLUME_EPAISSEUR = 0.06           # plein maxi, en fraction de la capitale
-PLUME_CONTRASTE = 5.0            # rapport plein / délié
+# 16 % DE LA CAPITALE POUR LE PLEIN, ET 16:1 DE CONTRASTE, et ces deux-là
+# ont été livrés faux. La première version donnait 6 % et 5:1 : Christophe,
+# l'aperçu sous les yeux, « c'est une police un peu plus épaisse quoi ». Il
+# avait raison -- 0,23 à 0,72 mm sur un texte de 120 mm, c'est un trait fin
+# qui varie un peu, pas une plume. Ses propres polices calligraphiques
+# donnent 26:1 (Blacksword) et 31:1 (Aston Script) : c'est CET ordre de
+# grandeur qu'on cherche.
+#
+# 16/16 vient de quatre rendus du même texte regardés côte à côte, après
+# passage par `preparer_calligraphie` -- donc ce que la MACHINE rend, pas
+# ce que la plume demande. À 22 % les pleins commencent à s'empâter et les
+# contreformes se ferment ; à 11 % on hésite encore.
+PLUME_EPAISSEUR = 0.16           # plein maxi, en fraction de la capitale
+PLUME_CONTRASTE = 16.0           # rapport plein / délié demandé
 PLUME_LISSAGE = 3                # points de moyenne glissante sur la largeur
 
 

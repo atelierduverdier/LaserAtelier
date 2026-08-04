@@ -11154,17 +11154,56 @@ class TaskPanelCalligraphie:
             "fines (contraste « romain ») -- mais la barre du A disparaît\n"
             "presque. Vers 25-35° on retrouve l'anglaise, et la barre\n"
             "revient. Au-delà de 45° le contraste s'inverse.")
+        # L'ÉPAISSEUR DU BEC, et elle manquait. Livré avec le seul angle,
+        # le mode donnait « une police un peu plus épaisse » -- le réglage
+        # qui décide s'il y a des pleins ou pas n'était pas à l'écran.
+        self.spn_plume_epais = QtWidgets.QDoubleSpinBox()
+        self.spn_plume_epais.setRange(2.0, 30.0)
+        self.spn_plume_epais.setDecimals(0)
+        self.spn_plume_epais.setSuffix(" %")
+        self.spn_plume_epais.setValue(core.PLUME_EPAISSEUR * 100.0)
+        self.spn_plume_epais.setToolTip(
+            "Largeur du PLEIN, en pourcentage de la hauteur de capitale.\n"
+            "C'est le réglage qui fait la différence entre une plume et un\n"
+            "trait un peu plus épais.\n"
+            "\n"
+            "6 % : à peine plus gras qu'un mono-trait.\n"
+            "16 % : une vraie plume (défaut).\n"
+            "22 % et au-delà : les pleins s'empâtent, les contreformes\n"
+            "se ferment.")
+        self.spn_plume_contraste = QtWidgets.QDoubleSpinBox()
+        self.spn_plume_contraste.setRange(1.0, 40.0)
+        self.spn_plume_contraste.setDecimals(0)
+        self.spn_plume_contraste.setPrefix("1:")
+        self.spn_plume_contraste.setValue(core.PLUME_CONTRASTE)
+        self.spn_plume_contraste.setToolTip(
+            "Rapport entre le plein et le délié DEMANDÉ. Le rapport\n"
+            "réellement gravé est plus faible -- aucun trait n'est\n"
+            "exactement parallèle au bec, et le laser ne descend pas sous\n"
+            "son point au foyer. Le verdict dit ce qui reste.\n"
+            "\n"
+            "Pour comparaison, les polices calligraphiques de l'atelier\n"
+            "demandent 26:1 (Blacksword) et 31:1 (Aston Script).")
         _l_plume = QtWidgets.QHBoxLayout()
         _l_plume.setContentsMargins(0, 0, 0, 0)
         _l_plume.addWidget(self.combo_plume_police, 1)
         _l_plume.addWidget(QtWidgets.QLabel("bec :"))
         _l_plume.addWidget(self.spn_plume_angle)
         form.addRow("Police mono-trait :", _l_plume)
+        _l_plume2 = QtWidgets.QHBoxLayout()
+        _l_plume2.setContentsMargins(0, 0, 0, 0)
+        _l_plume2.addWidget(QtWidgets.QLabel("plein :"))
+        _l_plume2.addWidget(self.spn_plume_epais)
+        _l_plume2.addWidget(QtWidgets.QLabel("contraste :"))
+        _l_plume2.addWidget(self.spn_plume_contraste)
+        _l_plume2.addStretch(1)
+        form.addRow("Taille de la plume :", _l_plume2)
 
         def _maj_plume():
             actif = self.chk_plume.isChecked()
-            self.combo_plume_police.setEnabled(actif)
-            self.spn_plume_angle.setEnabled(actif)
+            for w in (self.combo_plume_police, self.spn_plume_angle,
+                      self.spn_plume_epais, self.spn_plume_contraste):
+                w.setEnabled(actif)
             self.combo_police.setEnabled(not actif)
             self.edt_police.setEnabled(not actif)
             self._maj_verdict()
@@ -11176,7 +11215,9 @@ class TaskPanelCalligraphie:
 
         self.chk_plume.toggled.connect(lambda _c: _maj_plume())
         self.combo_plume_police.currentIndexChanged.connect(lambda _i: _maj_plume())
-        self.spn_plume_angle.valueChanged.connect(lambda _v: _maj_plume())
+        for _w in (self.spn_plume_angle, self.spn_plume_epais,
+                   self.spn_plume_contraste):
+            _w.valueChanged.connect(lambda _v: _maj_plume())
         self._maj_plume = _maj_plume
 
         self.edt_texte = QtWidgets.QLineEdit("Atelier du Verdier")
@@ -11366,7 +11407,9 @@ class TaskPanelCalligraphie:
         cle = (self.combo_plume_police.currentData() if plume
                else self.edt_police.text().strip(),
                self.edt_texte.text(), round(self.spn_largeur.value(), 3),
-               plume, round(self.spn_plume_angle.value(), 1))
+               plume, round(self.spn_plume_angle.value(), 1),
+               round(self.spn_plume_epais.value(), 1),
+               round(self.spn_plume_contraste.value(), 1))
         if self._cache[0] == cle:
             return self._cache[1]
         if not cle[0] or not cle[1]:
@@ -11377,7 +11420,9 @@ class TaskPanelCalligraphie:
             # suit -- verdict, aperçu, pose du tracé, G-code -- ne sait pas
             # d'où ils viennent, et c'est ce qui rend l'ajout si court.
             res = core.chaines_plume(cle[0], cle[1], largeur_mm=cle[2],
-                                     angle_deg=cle[4])
+                                     angle_deg=cle[4],
+                                     epaisseur=cle[5] / 100.0,
+                                     contraste=cle[6])
         else:
             res = cal.chaines_calligraphie(cle[0], cle[1], largeur_mm=cle[2])
         self._cache = (cle, res)
