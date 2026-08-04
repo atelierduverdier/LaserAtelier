@@ -17,6 +17,7 @@ que de polices :
 import importlib
 import math
 import os
+import sys
 
 from harness import preparer
 
@@ -36,11 +37,56 @@ _manquants = []
 for _cle in core.HERSHEY_FONTS:
     _m = core._hershey_module(_cle)
     if _cle not in ("sans", "script") and not os.path.isfile(
-            os.path.join(RACINE, "hershey_font_{}.py".format(_cle))):
+            os.path.join(RACINE, core.POLICES_PAQUET,
+                         "hershey_font_{}.py".format(_cle))):
         _manquants.append(_cle)
 assert not _manquants, ("clés du registre sans module", _manquants)
 print("1. {} polices au registre, toutes chargeables OK".format(
     len(core.HERSHEY_FONTS)))
+
+
+# --- 1 bis. LES POLICES SONT DANS LEUR DOSSIER, ET LES DEUX CHEMINS
+#            D'IMPORT MARCHENT ------------------------------------------
+# Christophe, 04/08/2026 : « j'ai vu que dans le dépôt toutes les
+# hershey_font étaient à la racine, il n'y a pas moyen de les mettre dans un
+# dossier ? ». Elles sont désormais dans `polices_monotrait/`. Ce n'est pas
+# que du rangement : FreeCAD met CHAQUE dossier de `Mod/` sur `sys.path`,
+# donc un fichier à la racine d'un workbench occupe un nom GLOBAL, partagé
+# avec tous les ateliers installés. Quarante-quatre noms exposés sont
+# devenus un seul.
+_m = core._hershey_module("relief")
+assert _m.__name__.startswith(core.POLICES_PAQUET + "."), _m.__name__
+assert os.path.basename(os.path.dirname(_m.__file__)) == core.POLICES_PAQUET
+# ET C'EST LE CHEMIN NORMAL QUI A SERVI, pas le repli. Le nom du module ne
+# les distingue pas -- le repli donne exactement le même -- alors qu'un
+# `sys.modules` les sépare nettement : `import_module` y inscrit le paquet
+# ET le sous-module, `exec_module` sur un spec de fichier n'y inscrit rien.
+# Sans ce contrôle-ci, casser l'import par paquet passait inaperçu : le
+# repli rattrapait tout et la suite restait verte (vérifié en le cassant).
+assert core.POLICES_PAQUET in sys.modules, (
+    "le paquet des polices n'a jamais été importé : c'est le repli par "
+    "chemin qui sert, et le chemin normal est cassé sans le dire")
+assert sys.modules.get(_m.__name__) is _m, (
+    "la police ne vient pas de sys.modules : elle a été chargée par le "
+    "repli", _m.__name__)
+
+# Le repli par chemin, éprouvé POUR LUI-MÊME : il n'entre en jeu que si
+# `sys.path` ne porte pas le dossier du workbench, donc jamais ici. Livré
+# sans contrôle, il resterait faux jusqu'au jour où il faudrait qu'il
+# marche -- et ce jour-là, TOUTES les polices tomberaient d'un coup, au
+# redémarrage, loin du changement qui l'aurait causé. Il l'était : écrit
+# avec `_WORKBENCH_DIR`, que le harnais détourne vers une copie jetable, il
+# cherchait les polices dans /tmp.
+_repli = core._charger_police_par_chemin("hershey_font_relief")
+assert len(_repli.GLYPHES) == len(_m.GLYPHES) > 0, (
+    "le repli par chemin ne rend pas la même police", len(_repli.GLYPHES))
+assert _repli.CAP_HEIGHT == _m.CAP_HEIGHT
+
+# Et la clé inconnue retombe toujours sur la police par défaut.
+assert core._hershey_module("police-qui-n-existe-pas").GLYPHES, (
+    "une clé inconnue ne retombe plus sur la police par défaut")
+print("1 bis. importées depuis {}/, repli par chemin éprouvé, clé inconnue "
+      "repliée OK".format(core.POLICES_PAQUET))
 
 # --- 2. La hauteur de capitale est MESURÉE, pas crue ---------------------
 # Le piège : les SVG d'oskay annoncent cap-height="500" et dessinent leurs

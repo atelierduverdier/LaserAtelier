@@ -1,6 +1,6 @@
 # Polices mono-trait embarquées
 
-Les modules `hershey_font*.py` sont des DONNÉES dérivées de polices libres,
+Les modules `polices_monotrait/hershey_font*.py` sont des DONNÉES dérivées de polices libres,
 régénérables par `outils/generer_police_monotrait.py`.
 
 | Famille | Source | Licence |

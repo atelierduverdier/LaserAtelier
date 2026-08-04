@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Convertit une police SVG mono-trait en module `hershey_font_<clé>.py`.
+"""Convertit une police SVG mono-trait en module
+`polices_monotrait/hershey_font_<clé>.py`.
 
     python3 outils/generer_police_monotrait.py source.svg cle "Nom affiché"
 
@@ -193,7 +194,8 @@ def main():
     tpl = traits_par_lettre(glyphes)
     vides = [c for c, (a, t) in glyphes.items() if not t and c != " "]
     dest = os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), "hershey_font_{}.py".format(cle))
+        os.path.abspath(__file__))), "polices_monotrait",
+        "hershey_font_{}.py".format(cle))
     ecrire_module(dest, glyphes, cap, adv, nom_affiche, src, licence)
     print("{:34} {:4} gl. | cap {:4.0f} | {:4.1f} traits/lettre{} | {} vides {}"
           .format(nom_affiche, len(glyphes), cap, tpl,

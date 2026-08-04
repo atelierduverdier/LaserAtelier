@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.76.0"
+VERSION = "2.76.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1714,12 +1714,14 @@ def order_chains_by_proximity(chains, sens_libre=True):
 # ==========================================================================
 # Un vrai « trait simple » pour graver du texte : chaque lettre est dessinée
 # d'un seul trait par branche (comme un traceur à plume), pas en contour
-# rempli. Les glyphes vivent dans hershey_font.py (données Hershey, domaine
+# rempli. Les glyphes vivent dans polices_monotrait/ (hershey_font.py :
+# données Hershey, domaine
 # public). On produit des arêtes Part que l'utilisateur grave ensuite avec
 # le mode Marquage (styles, suivi de surface, préréglages, job combiné).
 
 # Polices mono-trait disponibles (clé interne -> libellé affiché). Chacune
-# vit dans son propre module hershey_font[_clé].py (même structure : GLYPHES/
+# vit dans son propre module polices_monotrait/hershey_font[_clé].py (même
+# structure : GLYPHES/
 # CAP_HEIGHT/ADV_DEFAULT), généré depuis la police SVG Hershey correspondante
 # -- voir hershey_font.py pour la provenance. "sans" est le défaut historique ;
 # n'ajouter ici que des polices réellement MONO-TRAIT (un seul passage de
@@ -1788,6 +1790,42 @@ HERSHEY_FONTS = {
 }
 
 
+# Le paquet où vivent les 44 modules de données. Elles étaient à la racine,
+# où elles noyaient les sept modules du workbench -- et surtout, FreeCAD met
+# CHAQUE dossier de `Mod/` sur `sys.path` : un fichier à la racine d'un
+# workbench occupe donc un nom GLOBAL, partagé avec tous les ateliers
+# installés. Quarante-quatre noms exposés sont devenus un seul.
+POLICES_PAQUET = "polices_monotrait"
+
+
+def _charger_police_par_chemin(fichier):
+    """La même police, chargée par son CHEMIN plutôt que par `sys.path`.
+
+    Filet de sécurité, et il a une raison précise : l'import par paquet
+    suppose que le dossier du workbench est sur `sys.path`. C'est le cas
+    dans FreeCAD et dans le harnais des tests, mais un atelier chargé
+    autrement (script, autre hôte) perdrait TOUTES les polices d'un coup,
+    silencieusement -- au redémarrage, c'est-à-dire loin du changement qui
+    l'aurait causé. Six lignes valent mieux que ce diagnostic-là.
+
+    L'ancrage est le dossier de CE fichier, jamais `_WORKBENCH_DIR` : une
+    police est du CODE, elle vit à côté des modules, alors que
+    `_WORKBENCH_DIR` désigne le dossier de DONNÉES et que le harnais des
+    tests le détourne vers une copie jetable. Écrit avec lui, le repli
+    cherchait les polices dans `/tmp/laseratelier-tests-…` -- il n'aurait
+    jamais servi le jour où il aurait fallu."""
+    import importlib.util
+    ici = os.path.dirname(os.path.abspath(__file__))
+    chemin = os.path.join(ici, POLICES_PAQUET, fichier + ".py")
+    spec = importlib.util.spec_from_file_location(
+        POLICES_PAQUET + "." + fichier, chemin)
+    if spec is None or spec.loader is None:
+        raise ImportError(chemin)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _hershey_module(font):
     """Module de données (GLYPHES/CAP_HEIGHT/ADV_DEFAULT) pour la police
     mono-trait `font` (clé de HERSHEY_FONTS). Repli silencieux sur la
@@ -1795,13 +1833,17 @@ def _hershey_module(font):
     si la police par défaut elle-même est introuvable, l'exception remonte
     (les appelants savent déjà l'afficher proprement)."""
     import importlib
-    nom = "hershey_font_" + font if font and font != "sans" else "hershey_font"
+    fichier = ("hershey_font_" + font if font and font != "sans"
+               else "hershey_font")
     try:
-        return importlib.import_module(nom)
+        return importlib.import_module(POLICES_PAQUET + "." + fichier)
     except Exception:
-        if font != "sans":
-            return _hershey_module("sans")
-        raise
+        try:
+            return _charger_police_par_chemin(fichier)
+        except Exception:
+            if font != "sans":
+                return _hershey_module("sans")
+            raise
 
 
 # Ce que devient un caractère que la police ne sait pas tracer.
@@ -1887,7 +1929,8 @@ def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,
         hf = _hershey_module(font)
     except Exception:
         FreeCAD.Console.PrintError(
-            "Police mono-trait indisponible (hershey_font.py manquant).\n")
+            "Police mono-trait indisponible (dossier polices_monotrait/ "
+            "manquant).\n")
         return []
     scale = float(height) / float(hf.CAP_HEIGHT)
     line_pitch = line_spacing * height

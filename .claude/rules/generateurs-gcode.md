@@ -465,7 +465,7 @@ the `.` special case) for a new glyph.
 
 **Single-line (monoline) fonts** — genuinely single-stroke vector fonts for engraving text as "stick"
 letters (one stroke per branch, like a pen plotter). Registry `HERSHEY_FONTS` maps a key → display
-label, each a sibling data module `hershey_font[_clé].py` (`GLYPHES[char] = (adv, [strokes])` in font
+label, each a data module `polices_monotrait/hershey_font[_clé].py` (`GLYPHES[char] = (adv, [strokes])` in font
 units, baseline y=0, `CAP_HEIGHT`). **44 fonts since v2.60.0**, from oskay/svg-fonts (EMS in SIL OFL,
 Hershey in the public domain) and Relief SingleLine (SIL OFL, designed for CNC). `_hershey_module`
 imports **lazily**, so 2.6 MB on disk costs nothing until one is picked — don't "preload for speed".
