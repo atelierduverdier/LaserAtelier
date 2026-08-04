@@ -186,6 +186,26 @@ would have to invent one (they're nearly all black), skewing `darkness_fluence_c
 calibrated photo engraving and "ton sur mesure"; it would also add ~50 rows to a beech nuancier of 83
 the user already finds unreadable. Reading both tables live also makes the sync free.
 
+### Ranged by real use (v2.74.0)
+
+Christophe, with the panel in front of him: *"réglage, cela me donne une liste interminable que je ne
+regarde jamais [...] ce dont je me sers le plus souvent c'est sur mesure — largeur et sur mesure
+noirceur [...] j'utilise le plus souvent cliquer le ton sur la photo"*. The block led with what he
+never opens and buried what he uses daily.
+
+Order is now: **material → the clickable photo**, then the measured-tone list and the pastilles in a
+**folded** section ("…ou piocher dans la liste des tons mesurés"). Nothing is removed — a rare path
+just stops occupying the top. Marquage's **"Ton sur mesure"** gets its own open section.
+
+**That last point is not cosmetic**: rows added after a folded `_section` belong to it. Without the
+new section the two most-used fields would have been swallowed by the fold — the trap this file
+already records three times. §4 of `test_nuancier_picker.py` freezes it, and the sabotage confirms it.
+
+**The two photo buttons were merged, not pruned.** He called them a duplicate and they nearly are —
+same image — but clicking a tone also needs the board's layout fiche, and without one only "Voir"
+worked. Deleting it would have made the photo unreachable for those materials. The single button is
+enabled as soon as a photo exists and, lacking a fiche, simply shows it and says why clicking is off.
+
 `_PastilleReglage` / `_choisir_reglage_visuel(parent, combo_shade, material, critere)` — the visual
 face of the picker: one clickable disc per setting, tinted from its MEASURED darkness with the same
 `255 - d*255` convention the halftone preview uses. Two rules hold it together:

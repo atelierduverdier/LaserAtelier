@@ -6657,6 +6657,19 @@ def _make_shade_picker(form, on_apply):
         "photo. En changer ne modifie aucun réglage.")
     form.addRow("Matériau :", combo_mat)
 
+    # CE QUI SERT LE PLUS, EN PREMIER. Christophe, 04/08/2026 :
+    # « ce dont je me sers le plus souvent c'est sur mesure -- largeur et
+    # sur mesure noirceur [...] j'utilise le plus souvent cliquer le ton sur
+    # la photo ; réglage, cela me donne une liste interminable que je ne
+    # regarde jamais ». La liste des tons mesurés et les pastilles ne
+    # disparaissent pas -- elles descendent dans une section repliée, parce
+    # qu'un chemin rare n'a pas à occuper le haut du panneau.
+    btn_clic = QtWidgets.QPushButton("Voir la planche, cliquer un ton…")
+    _btn_icon(btn_clic, "nuancier.svg")
+    form.addRow(btn_clic)
+
+    _section(form, "…ou piocher dans la liste des tons mesurés",
+             "sect_preset.svg", ouvert=False)
     combo_critere = QtWidgets.QComboBox()
     for cle, libelle in core.CRITERES_CLASSEMENT:
         combo_critere.addItem(libelle, cle)
@@ -6691,15 +6704,7 @@ def _make_shade_picker(form, on_apply):
         "noirceur mesurée, plutôt qu'en lignes de texte : on compare des\n"
         "nuances à l'oeil, pas des nombres. Cliquer une pastille applique\n"
         "son réglage, comme la liste.")
-    btn_photo = QtWidgets.QPushButton("Voir la photo du nuancier")
-    ligne_btn = QtWidgets.QHBoxLayout()
-    ligne_btn.addWidget(btn_visuel)
-    ligne_btn.addWidget(btn_photo)
-    form.addRow(ligne_btn)
-
-    btn_clic = QtWidgets.QPushButton("Cliquer un ton sur la photo…")
-    _btn_icon(btn_clic, "nuancier.svg")
-    form.addRow(btn_clic)
+    form.addRow(btn_visuel)
 
     def _reload_shades():
         combo_shade.blockSignals(True)
@@ -6725,24 +6730,22 @@ def _make_shade_picker(form, on_apply):
                          if combo_shade.itemData(i))
         btn_visuel.setEnabled(n_reglages > 0)
         n = len(core.result_photos("nuancier:" + m)) if m else 0
-        btn_photo.setEnabled(n > 0)
-        if n == 1:
-            tip = ("1 photo de la planche gravée pour ce matériau -- voir "
-                   "le rendu réel avant d'appliquer un ton.")
-        elif n > 1:
-            tip = ("{} photos de la planche gravée pour ce matériau -- "
-                   "clique pour choisir laquelle voir.".format(n))
-        else:
-            tip = ("Aucune photo enregistrée pour ce matériau (mode "
-                   "Nuancier, section Photo du résultat).")
-        btn_photo.setToolTip(tip)
-        # Le clic sur photo exige la photo ET la fiche de disposition de
-        # la planche (écrite à sa création depuis la v2.45) : sans fiche,
-        # aucun moyen de savoir quel rond porte quel ton.
+        # UN SEUL BOUTON POUR LA PHOTO. Il y en avait deux -- « Voir la photo
+        # du nuancier » et « Cliquer un ton sur la photo… » -- qui ouvrent la
+        # MÊME image. Christophe, 04/08/2026 : « je trouve que cela fait
+        # doublon ». Ils ne l'étaient pourtant pas tout à fait : le clic
+        # exige en plus la FICHE de disposition de la planche (écrite à sa
+        # création depuis la v2.45), sans quoi rien ne dit quel rond porte
+        # quel ton -- et sans fiche, seul « Voir » marchait encore.
+        #
+        # D'où la fusion plutôt qu'une suppression : le bouton s'active dès
+        # qu'une photo existe, et sans fiche il se contente de la MONTRER en
+        # disant pourquoi on ne peut pas cliquer. Supprimer le second aurait
+        # rendu la photo invisible pour ces matériaux-là.
         fiches = [f for f in (core.load_fiches_nuancier_planche(m) if m else [])
                   if f and f.get("cases")]
-        btn_clic.setEnabled(n > 0 and bool(fiches))
-        if btn_clic.isEnabled():
+        btn_clic.setEnabled(n > 0)
+        if n > 0 and fiches:
             btn_clic.setToolTip(
                 "La planche photographiée, cliquable : cliquez un rond, son\n"
                 "ton s'applique au panneau. Au premier usage, cliquez d'abord\n"
@@ -6753,12 +6756,17 @@ def _make_shade_picker(form, on_apply):
                 "simplement pas exploitable ici.".format(len(fiches)))
         elif n > 0:
             btn_clic.setToolTip(
-                "Photo présente, mais pas de fiche de disposition : elle\n"
-                "s'écrit à la CRÉATION de la planche nuancier (v2.45+).\n"
-                "Recréez la planche depuis « Graver ce nuancier » pour\n"
-                "activer ce bouton sur sa prochaine photo.")
+                "{} photo(s) de la planche gravée : le bouton la MONTRE, "
+                "pour\njuger le rendu réel avant de choisir un ton.\n"
+                "\n"
+                "Cliquer un ton dessus demanderait en plus la fiche de\n"
+                "disposition de la planche, qui s'écrit à sa CRÉATION\n"
+                "(v2.45+). Recrée la planche depuis « Graver ce nuancier »\n"
+                "pour l'obtenir.".format(n))
         else:
-            btn_clic.setToolTip(tip)
+            btn_clic.setToolTip(
+                "Aucune photo enregistrée pour ce matériau (mode Nuancier,\n"
+                "section « Photo du résultat »).")
 
     def _reload():
         combo_mat.blockSignals(True)
@@ -6796,7 +6804,9 @@ def _make_shade_picker(form, on_apply):
             combo_shade.setCurrentIndex(idx)
     btn_visuel.clicked.connect(_on_visuel)
 
-    def _on_photo():
+    def _montrer_photo():
+        """Ouvre la photo de la planche, sans rien appliquer. Repli du
+        bouton unique quand la fiche de disposition manque."""
         m = combo_mat.currentData()
         photos = core.result_photos("nuancier:" + m) if m else []
         if not photos:
@@ -6813,12 +6823,11 @@ def _make_shade_picker(form, on_apply):
         # Plusieurs photos pour ce matériau (ex. plusieurs défocus) : un
         # menu plutôt qu'ouvrir la première au hasard, avec la description
         # de chacune (cf. _make_photo_section) pour savoir laquelle choisir.
-        menu = QtWidgets.QMenu(btn_photo)
+        menu = QtWidgets.QMenu(btn_clic)
         for i, p in enumerate(photos):
             menu.addAction(p["description"] or "Photo {}".format(i + 1),
                            lambda _checked=False, p=p: _show(p))
-        menu.exec(btn_photo.mapToGlobal(QtCore.QPoint(0, btn_photo.height())))
-    btn_photo.clicked.connect(_on_photo)
+        menu.exec(btn_clic.mapToGlobal(QtCore.QPoint(0, btn_clic.height())))
 
     def _appliquer_ton(ton, exact):
         # Un ton encore présent se sélectionne DANS le combo (retour visuel
@@ -6866,7 +6875,14 @@ def _make_shade_picker(form, on_apply):
                   enumerate(core.load_fiches_nuancier_planche(m))
                   if f and f.get("cases")]
         photos = core.result_photos("nuancier:" + m)
-        if not fiches or not photos:
+        if not photos:
+            return
+        if not fiches:
+            # SANS FICHE, ON MONTRE. C'est l'ancien « Voir la photo du
+            # nuancier », replié dans ce bouton-ci : rien ne dit quel rond
+            # porte quel ton, mais la photo reste la meilleure façon de
+            # juger un rendu avant de choisir.
+            _montrer_photo()
             return
 
         def _ouvrir(p):
@@ -15069,6 +15085,13 @@ class TaskPanelCurved:
             self._update_duration_preview()
 
         self._shade_picker = _make_shade_picker(form, _apply_shade)
+
+        # SA PROPRE SECTION, ET OUVERTE. Ces deux champs sont ce dont
+        # Christophe se sert le plus (04/08/2026) ; ils traînaient à la
+        # suite du nuancier, sans titre. Et depuis que la liste des tons
+        # mesurés est repliée, des rangées ajoutées ici sans section
+        # tomberaient DANS ce repli -- le piège déjà payé trois fois.
+        _section(form, "Ton sur mesure", "sect_preset.svg", ouvert=True)
 
         # --- Ton sur mesure : largeur + noirceur choisies, vitesse calculée
         # par interpolation ENTRE les tons mesurés du nuancier (courbe
