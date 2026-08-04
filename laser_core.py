@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.77.1"
+VERSION = "2.78.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1919,6 +1919,164 @@ def _mono_line_width(line, hf, scale, char_spacing):
         g = hf.GLYPHES.get(ch)
         x += (g[0] if g else hf.ADV_DEFAULT) * scale + char_spacing
     return x - char_spacing if line else 0.0
+
+
+# ==========================================================================
+# LA PLUME : des pleins et déliés sur une police MONO-TRAIT
+# ==========================================================================
+# Christophe, 04/08/2026, capture de l'aperçu à l'appui : « les pleins et
+# les déliés, je vois pas où ils sont ». Ils n'y étaient pas, et je lui
+# avais dit le contraire. Une police mono-trait EST un squelette : elle ne
+# porte aucune épaisseur, et le mode Calligraphie ne fait que l'EXTRAIRE
+# d'une police à contour rempli. Sur un squelette, il n'y a plus rien à
+# extraire.
+#
+# Mais il reste une information, et elle est exacte : la DIRECTION de chaque
+# trait. C'est le modèle de la plume à bec large, celui de l'anglaise et de
+# la gothique -- le bec a une largeur et une inclinaison fixes, et ce que
+# le trait dépose est la projection du bec perpendiculairement au
+# déplacement :
+#
+#     largeur = mini + (maxi - mini) * |sin(angle du trait - angle du bec)|
+#
+# Un fût vertical sous un bec à 30 degres sort ÉPAIS ; une barre
+# horizontale sort FINE. C'est la définition même des pleins et déliés.
+#
+# CE MODÈLE EST MEILLEUR ICI QUE CELUI DE LA CALLIGRAPHIE, pour une raison
+# précise : là-bas la direction est estimée sur un squelette TRAMÉ, et se
+# trompe assez souvent de 45 degres pour qu'on ait passé la semaine à
+# rattraper ses déviations aux croisements (10 % de la largeur à 90 degres,
+# 30 % à 20). Ici la direction est LUE dans le dessin de la police -- elle
+# est juste par construction.
+#
+# Et elle vaut pour les QUARANTE-CINQ polices mono-trait, pas seulement
+# pour « Verdier ».
+# 25 degrés, choisi en REGARDANT quatre rendus du même texte. À 0 les fûts
+# sont épais et les barres fines (contraste romain) -- mais la barre du « A »
+# tombe au minimum et disparaît presque, ce qui est ce qu'une vraie plume
+# plate fait aussi, et ce dont on ne veut pas ici. Vers 25-35 on retrouve
+# l'anglaise et la barre revient. Au-delà de 45 le contraste s'inverse :
+# fûts fins, barres épaisses, et ça se voit tout de suite.
+PLUME_ANGLE_DEFAUT = 25.0        # inclinaison du bec, degrés
+PLUME_EPAISSEUR = 0.06           # plein maxi, en fraction de la capitale
+PLUME_CONTRASTE = 5.0            # rapport plein / délié
+PLUME_LISSAGE = 3                # points de moyenne glissante sur la largeur
+
+
+def largeur_plume(p, q, angle_deg, mini, maxi):
+    """Largeur déposée par un bec incliné de `angle_deg` allant de p à q."""
+    dx, dy = q[0] - p[0], q[1] - p[1]
+    if abs(dx) < 1e-12 and abs(dy) < 1e-12:
+        return maxi
+    ecart = math.atan2(dy, dx) - math.radians(angle_deg)
+    return mini + (maxi - mini) * abs(math.sin(ecart))
+
+
+def _largeurs_du_trait(pts, angle_deg, mini, maxi, lissage=PLUME_LISSAGE):
+    """Une largeur par POINT, lissée.
+
+    Sans lissage, un polygone d'arc change de direction à chaque segment et
+    la largeur saute d'un point à l'autre -- sur une ronde le fuseau Z
+    hoquette, ce qui s'entend avant de se voir. La moyenne glissante ne
+    change rien aux fûts droits (tous leurs segments ont la même
+    direction) et lisse exactement là où il faut, dans les courbes."""
+    if len(pts) < 2:
+        return [maxi] * len(pts)
+    par_segment = [largeur_plume(pts[i], pts[i + 1], angle_deg, mini, maxi)
+                   for i in range(len(pts) - 1)]
+    # une largeur par point : moyenne des segments qui s'y touchent
+    brut = [par_segment[0]]
+    for i in range(1, len(pts) - 1):
+        brut.append(0.5 * (par_segment[i - 1] + par_segment[i]))
+    brut.append(par_segment[-1])
+    if lissage < 2 or len(brut) < lissage:
+        return brut
+    demi = lissage // 2
+    return [sum(brut[max(0, i - demi):i + demi + 1])
+            / len(brut[max(0, i - demi):i + demi + 1])
+            for i in range(len(brut))]
+
+
+def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
+                  angle_deg=PLUME_ANGLE_DEFAUT, epaisseur=PLUME_EPAISSEUR,
+                  contraste=PLUME_CONTRASTE, char_spacing=0.0,
+                  line_spacing=1.6):
+    """Un texte mono-trait, avec des pleins et déliés de plume.
+
+    Renvoie `(chaines, infos)` -- EXACTEMENT la forme que rend
+    `calligraphie.chaines_calligraphie` : des triplets `(x_mm, y_mm,
+    largeur_mm)` et le même dictionnaire d'infos. C'est ce qui rend
+    l'ajout si court : le verdict, l'aperçu, la pose du tracé et le
+    générateur du fuseau ne savent pas d'où viennent les gestes.
+
+    La taille se donne par `largeur_mm` OU `hauteur_mm` (hauteur de
+    CAPITALE), comme partout ailleurs.
+
+    LA LARGEUR DU BEC SUIT LA TAILLE DU TEXTE (`epaisseur`, en fraction de
+    la hauteur de capitale) plutôt que d'être donnée en mm. Une plume ne
+    grossit pas avec la lettre dans la vraie vie, mais une POLICE si -- et
+    c'est le comportement qu'attend tout ce qui est en aval : le verdict
+    juge déjà si le matériau sait rendre les pleins demandés, et il ne
+    peut le faire que si la demande varie avec la taille."""
+    hf = _hershey_module(font)
+    texte = deplier_texte(texte, hf, quiet=True)
+
+    # 1. Le tracé en unités police, pour mesurer avant de mettre à l'échelle.
+    brut, x, y0 = [], 0.0, 0.0
+    lignes = texte.replace("\r\n", "\n").split("\n")
+    for li, ligne in enumerate(lignes):
+        y0 = -li * hf.CAP_HEIGHT * float(line_spacing)
+        x = 0.0
+        for ch in ligne:
+            g = hf.GLYPHES.get(ch)
+            if g:
+                for trait in g[1]:
+                    if len(trait) >= 2:
+                        brut.append([(x + px, y0 + py) for px, py in trait])
+            x += (g[0] if g else hf.ADV_DEFAULT) + char_spacing
+    if not brut:
+        raise ValueError("Rien à graver : aucun glyphe traçable dans ce texte.")
+
+    xs = [p[0] for t in brut for p in t]
+    ys = [p[1] for t in brut for p in t]
+    larg_u, haut_u = max(xs) - min(xs), max(ys) - min(ys)
+
+    # 2. L'échelle : par la largeur demandée, ou par la hauteur de capitale.
+    if largeur_mm and largeur_mm > 0:
+        ech = float(largeur_mm) / max(larg_u, 1e-9)
+    elif hauteur_mm and hauteur_mm > 0:
+        ech = float(hauteur_mm) / float(hf.CAP_HEIGHT)
+    else:
+        raise ValueError("Donne une largeur ou une hauteur de texte en mm.")
+
+    # 3. Le bec, dimensionné sur la hauteur de capitale RÉELLE.
+    cap_mm = hf.CAP_HEIGHT * ech
+    maxi = max(float(epaisseur) * cap_mm, 1e-3)
+    mini = maxi / max(float(contraste), 1.0)
+
+    dx, dy = -min(xs), -min(ys)
+    chaines, ws = [], []
+    for t in brut:
+        pts = [((p[0] + dx) * ech, (p[1] + dy) * ech) for p in t]
+        lg = _largeurs_du_trait(pts, angle_deg, mini, maxi)
+        ws.extend(lg)
+        chaines.append([(p[0], p[1], w) for p, w in zip(pts, lg)])
+
+    longueur = sum(math.hypot(c[i + 1][0] - c[i][0], c[i + 1][1] - c[i][1])
+                   for c in chaines for i in range(len(c) - 1))
+    infos = {
+        "largeur_mm": larg_u * ech,
+        "hauteur_mm": haut_u * ech,
+        "mm_px": ech,
+        "largeur_trait_min": min(ws),
+        "largeur_trait_max": max(ws),
+        "rapport": max(ws) / max(min(ws), 1e-9),
+        "n_chaines": len(chaines),
+        "longueur_mm": longueur,
+        "plume": True,
+        "angle_plume": float(angle_deg),
+    }
+    return chaines, infos
 
 
 def single_line_text_to_edges(text, height=10.0, char_spacing=0.0,

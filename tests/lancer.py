@@ -20,6 +20,7 @@ une config globale modifiée ne contamine pas les suivants, et le rapport
 reste lisible.
 """
 import glob
+import shutil
 import os
 import subprocess
 import sys
@@ -39,6 +40,30 @@ def python_freecad():
     return None, None
 
 
+def _purger_pyc():
+    """Efface les __pycache__ du dépôt avant de lancer quoi que ce soit.
+
+    UN SABOTAGE PEUT PASSER POUR VERT À CAUSE D'UN .pyc PÉRIMÉ, et ce
+    protocole-là est ce sur quoi tout le dossier repose. Python invalide un
+    bytecode sur la MTIME EN SECONDES et la TAILLE du source : une
+    modification de même longueur, annulée dans la même seconde -- ce que
+    fait exactement un aller-retour `cp` de sabotage -- laisse les deux
+    inchangés, et le module chargé reste l'ancien.
+
+    Reproduit délibérément le 04/08/2026 en remplaçant `math.sin` par
+    `math.cos` (même nombre d'octets) : le fichier revenu sain continuait
+    d'échouer, `inspect.getsource` montrait pourtant le bon code. Dans
+    l'autre sens, un sabotage aurait tourné contre du bytecode sain et
+    l'aurait déclaré inoffensif.
+
+    Trois lignes valent mieux que ce diagnostic-là, une seconde fois."""
+    for dossier, sous, _f in os.walk(RACINE):
+        for d in list(sous):
+            if d == "__pycache__":
+                shutil.rmtree(os.path.join(dossier, d), ignore_errors=True)
+                sous.remove(d)
+
+
 def main(filtres):
     exe, lib = python_freecad()
     if exe is None:
@@ -47,6 +72,7 @@ def main(filtres):
               "ces tests (les modules FreeCAD/Part y vivent).")
         return 2
     print("interpréteur : {}\n".format(exe))
+    _purger_pyc()
 
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(

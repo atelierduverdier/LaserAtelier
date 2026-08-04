@@ -165,6 +165,26 @@ nothing.)
 A suite that reddens one run in four for no reason teaches you to ignore red, which is worse than
 no suite at all.
 
+## A stale `.pyc` can make a SABOTAGE look green (2026-08-04)
+
+Python invalidates bytecode on the source's **mtime in whole seconds** and its **size**. A sabotage
+that changes neither — `math.sin` → `math.cos` is byte-for-byte the same length — and is reverted
+by `cp` **within the same second** leaves both unchanged, so the interpreter keeps running the
+**cached** module. `inspect.getsource` still shows the correct source, which makes the diagnosis
+maddening.
+
+Reproduced deliberately: after that exact edit-and-revert, a healthy `laser_core.py` kept failing
+`test_plume` §1 with the sabotaged result. The dangerous direction is the mirror image — a real
+sabotage running against healthy cached bytecode, reported as harmless. **The whole protocol of
+this repo rests on sabotages actually reddening.**
+
+`tests/lancer.py` now purges every `__pycache__` under the repo before the first test
+(`_purger_pyc`). When sabotaging by hand, outside the runner, purge it yourself:
+
+```bash
+find . -name __pycache__ -type d -exec rm -rf {} +
+```
+
 ## Two rules for new tests here
 
 1. **Test the property over the family, not the case that was reported.** A test written for the one

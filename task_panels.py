@@ -11117,6 +11117,68 @@ class TaskPanelCalligraphie:
         form.addRow("Police installée :", ligne_police)
         form.addRow("Fichier :", ligne)
 
+        # LA PLUME SUR UNE POLICE MONO-TRAIT.
+        #
+        # Christophe, 04/08/2026, capture de l'aperçu à l'appui : « les
+        # pleins et les déliés, je vois pas où ils sont ». Ils n'y étaient
+        # pas : une police mono-trait EST un squelette, elle ne porte
+        # aucune épaisseur, et ce mode ne fait qu'EXTRAIRE celle d'une
+        # police à contour rempli.
+        #
+        # Il reste pourtant une information, et elle est EXACTE : la
+        # direction de chaque trait, lue dans le dessin de la police. Un
+        # bec de plume incliné en tire des pleins et des déliés (cf.
+        # core.chaines_plume), et sans les déviations aux croisements que
+        # coûte un squelette tramé. Ça vaut pour les 45 polices, pas
+        # seulement pour « Verdier ».
+        self.chk_plume = QtWidgets.QCheckBox(
+            "Police MONO-TRAIT, pleins et déliés simulés à la plume")
+        self.chk_plume.setToolTip(
+            "Au lieu d'extraire les pleins d'une police calligraphique,\n"
+            "on les CALCULE : un bec de plume large et incliné dépose un\n"
+            "trait épais quand il avance en travers, fin quand il avance\n"
+            "dans son axe.\n"
+            "\n"
+            "Coché, le fichier .otf/.ttf ci-dessus est ignoré.")
+        form.addRow(self.chk_plume)
+        self.combo_plume_police = QtWidgets.QComboBox()
+        for _cle, _lib in core.HERSHEY_FONTS.items():
+            self.combo_plume_police.addItem(_lib, _cle)
+        self.spn_plume_angle = QtWidgets.QDoubleSpinBox()
+        self.spn_plume_angle.setRange(0.0, 90.0)
+        self.spn_plume_angle.setDecimals(0)
+        self.spn_plume_angle.setSuffix(" °")
+        self.spn_plume_angle.setValue(core.PLUME_ANGLE_DEFAUT)
+        self.spn_plume_angle.setToolTip(
+            "Inclinaison du bec. À 0° les fûts sont épais et les barres\n"
+            "fines (contraste « romain ») -- mais la barre du A disparaît\n"
+            "presque. Vers 25-35° on retrouve l'anglaise, et la barre\n"
+            "revient. Au-delà de 45° le contraste s'inverse.")
+        _l_plume = QtWidgets.QHBoxLayout()
+        _l_plume.setContentsMargins(0, 0, 0, 0)
+        _l_plume.addWidget(self.combo_plume_police, 1)
+        _l_plume.addWidget(QtWidgets.QLabel("bec :"))
+        _l_plume.addWidget(self.spn_plume_angle)
+        form.addRow("Police mono-trait :", _l_plume)
+
+        def _maj_plume():
+            actif = self.chk_plume.isChecked()
+            self.combo_plume_police.setEnabled(actif)
+            self.spn_plume_angle.setEnabled(actif)
+            self.combo_police.setEnabled(not actif)
+            self.edt_police.setEnabled(not actif)
+            self._maj_verdict()
+            # `getattr` : ce panneau n'a pas toujours eu d'aperçu, et le
+            # câbler en dur ferait tomber la case au premier clic.
+            rafraichir = getattr(self, "_demander_apercu", None)
+            if callable(rafraichir):
+                rafraichir()
+
+        self.chk_plume.toggled.connect(lambda _c: _maj_plume())
+        self.combo_plume_police.currentIndexChanged.connect(lambda _i: _maj_plume())
+        self.spn_plume_angle.valueChanged.connect(lambda _v: _maj_plume())
+        self._maj_plume = _maj_plume
+
         self.edt_texte = QtWidgets.QLineEdit("Atelier du Verdier")
         self.edt_texte.setToolTip("Le texte à graver (une ligne).")
         form.addRow("Texte :", self.edt_texte)
@@ -11300,13 +11362,24 @@ class TaskPanelCalligraphie:
         """Les gestes, mis en cache : l'extraction coûte ~1 s et le verdict
         se recalcule à chaque frappe."""
         import calligraphie as cal
-        cle = (self.edt_police.text().strip(), self.edt_texte.text(),
-               round(self.spn_largeur.value(), 3))
+        plume = self.chk_plume.isChecked()
+        cle = (self.combo_plume_police.currentData() if plume
+               else self.edt_police.text().strip(),
+               self.edt_texte.text(), round(self.spn_largeur.value(), 3),
+               plume, round(self.spn_plume_angle.value(), 1))
         if self._cache[0] == cle:
             return self._cache[1]
         if not cle[0] or not cle[1]:
             return None
-        res = cal.chaines_calligraphie(cle[0], cle[1], largeur_mm=cle[2])
+        if plume:
+            # La plume rend la MÊME forme que l'extraction : des triplets
+            # (x, y, largeur) et le même dictionnaire d'infos. Tout ce qui
+            # suit -- verdict, aperçu, pose du tracé, G-code -- ne sait pas
+            # d'où ils viennent, et c'est ce qui rend l'ajout si court.
+            res = core.chaines_plume(cle[0], cle[1], largeur_mm=cle[2],
+                                     angle_deg=cle[4])
+        else:
+            res = cal.chaines_calligraphie(cle[0], cle[1], largeur_mm=cle[2])
         self._cache = (cle, res)
         return res
 
