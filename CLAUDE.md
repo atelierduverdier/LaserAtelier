@@ -18,7 +18,8 @@ git clone <repo> ~/.local/share/FreeCAD/<version>/Mod/LaserAtelier   # e.g. v1-1
 ```
 
 No build system, no linter, no CI. FreeCAD loads the `.py` files at startup; a **restart**
-picks up changes. Version at time of writing: **2.32.0** (`VERSION` in `laser_core.py`).
+picks up changes. The version is `VERSION` in `laser_core.py` — read it there rather than
+trusting a number written here; this line went **44 releases** out of date before anyone looked.
 
 ## Non-negotiables
 
@@ -110,13 +111,13 @@ Seven modules, cleanly layered — keep the layering:
 
 | Module | Lines | Role |
 |---|---|---|
-| `laser_core.py` | ~10 200 | ALL geometry + G-code logic. **No Qt.** Generators, defocus model, fonts, persistence, `_USER_SETTINGS`. The layer you unit-test headless. |
-| `task_panels.py` | ~14 200 | One `TaskPanel*` per mode (PySide6). Pure UI: builds the form, reads widgets, calls `core.*`. No geometry math. |
+| `laser_core.py` | ~13 000 | ALL geometry + G-code logic. **No Qt.** Generators, defocus model, fonts, persistence, `_USER_SETTINGS`. The layer you unit-test headless. |
+| `task_panels.py` | ~18 600 | One `TaskPanel*` per mode (PySide6). Pure UI: builds the form, reads widgets, calls `core.*`. No geometry math. |
 | `laser_jobs.py` | ~300 | Tree "Job" objects — bookmarks, not a second source of truth. |
-| `svg_import.py` | ~750 | Standalone SVG→geometry parser, no Draft/DXF detour. |
-| `calligraphie.py` | ~400 | Standalone OTF/TTF → skeleton + local stroke width (numpy/scipy/PIL). No FreeCAD, no Qt. Feeds the Z spindle. |
-| `commands.py` | ~460 | One `*Command` per mode + `register_commands()`. |
-| `InitGui.py` | ~110 | The `Workbench` class: toolbar/menu order, lazy imports. |
+| `svg_import.py` | ~730 | Standalone SVG→geometry parser, no Draft/DXF detour. |
+| `calligraphie.py` | ~1 400 | Standalone OTF/TTF → skeleton + local stroke width (numpy/scipy/PIL). No FreeCAD, no Qt. Feeds the Z spindle. |
+| `commands.py` | ~530 | One `*Command` per mode + `register_commands()`. |
+| `InitGui.py` | ~240 | The `Workbench` class: toolbar/menu order, lazy imports. |
 
 `laser_core.py` is organised into banner-commented sections, one per mode. Keep that shape.
 

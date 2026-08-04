@@ -2,7 +2,23 @@
 
 > 📖 Pour la **documentation complète en images** (présentation, installation, flux de travail, calibration, FAQ…), voir [`index.html`](index.html) — la page web de l'atelier, prête pour GitHub Pages. Cette galerie-ci ne rassemble que les captures brutes de chaque panneau.
 
-Captures d'écran de chaque mode (panneau complet, largeur réelle du panneau des tâches). Générées automatiquement depuis FreeCAD — pour les régénérer après une évolution de l'interface : instancier chaque `TaskPanel*` et capturer `panel.form.widget()` (le contenu entier du `QScrollArea`, sans avoir à faire défiler).
+Captures d'écran de chaque mode (panneau complet, largeur réelle du panneau des tâches).
+
+Pour les régénérer après une évolution de l'interface, **sans toucher à la session FreeCAD ouverte** :
+
+```bash
+FONTCONFIG_PATH=/etc/fonts FONTCONFIG_FILE=/etc/fonts/fonts.conf \
+PYTHONPATH=/tmp/.mount_FreeCAxxxx/usr/lib:tests:. \
+/tmp/.mount_FreeCAxxxx/usr/bin/python outils/capturer_panneau.py \
+    docs/screenshots/panneaux/22_texte_contour.png TaskPanelTexteContour 453
+```
+
+Le script instancie le panneau en mode *offscreen*, capture `panel.form.widget()` (le contenu
+entier du `QScrollArea`, sans avoir à faire défiler) et rogne le vide en bas. **Les deux variables
+`FONTCONFIG_*` sont indispensables** — sans elles Qt ne trouve aucune fonte système, retombe sur
+une chasse fixe et les ①②③ des sections sortent en « 0 » : la capture reste lisible mais ne
+ressemble plus aux autres. Largeurs de la maison : **453** px ici, **430** px pour
+`docs/manuel_img/` (le manuel).
 
 ## Découverte
 
@@ -34,6 +50,11 @@ Du texte en police **mono-trait** : une seule passe de plume par branche, pas un
 Un texte gravé dans une **vraie police calligraphique** (`.otf`/`.ttf` lue sur votre disque) en un seul passage : on extrait le squelette de la lettre et sa largeur locale, et la largeur devient une **hauteur Z** — la tête se lève pour élargir le trait dans les pleins, redescend pour les déliés. Le verdict dit si les pleins demandés tiennent dans ce que le matériau sait donner, et propose la taille qui les ferait tenir.
 
 ![Calligraphie (pleins et déliés)](screenshots/panneaux/21_calligraphie.png)
+
+### Texte gravé (contour)
+Le pendant du précédent pour les polices **classiques**. Une calligraphie est le dessin d'une plume — son axe médian *est* le geste ; une police classique n'a pas de plume, son **contour est son dessin**, et en extraire un axe réduirait les empattements à de petites barres. Ce mode trace donc le pourtour exact du glyphe, pris sur les vraies courbes de la police, à graver ensuite avec **Marquage** (lettres creuses) ou **Gravure remplie** (lettres pleines) — les contreformes se creusent toutes seules.
+
+![Texte gravé (contour)](screenshots/panneaux/22_texte_contour.png)
 
 ### Gravure remplie (noir)
 Texte/forme en noir plein : remplissage défocus rentré du bord + contour net, styles de trait, compensation puissance/défocus.

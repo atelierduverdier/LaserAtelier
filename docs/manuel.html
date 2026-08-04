@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.76.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.76.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -369,17 +369,30 @@
 <section class="chap" id="c-interface">
   <h2 class="titre"><span class="ttl">L'interface</span><span class="sub">La barre d'outils et le menu « Atelier Laser », bouton par bouton.</span></h2>
 
-  <p class="lead">Une fois LaserAtelier choisi dans le sélecteur d'ateliers, tout tient dans une barre d'outils et un menu du même nom. Voici à quoi ils ressemblent et ce que fait chaque bouton.</p>
+  <p class="lead">Une fois LaserAtelier choisi dans le sélecteur d'ateliers, tout tient dans neuf barres d'outils nommées et un menu unique. Voici à quoi ils ressemblent et ce que fait chaque bouton.</p>
 
-  <p>Dès que vous sélectionnez l'atelier <strong>LaserAtelier</strong>, deux choses apparaissent : une <strong>barre d'outils</strong> « Atelier Laser » en haut de FreeCAD, et un <strong>menu</strong> du même nom. Les deux contiennent exactement les mêmes commandes, dans le même ordre, séparées par thème.</p>
+  <p>Dès que vous sélectionnez l'atelier <strong>LaserAtelier</strong>, deux choses apparaissent : un jeu de <strong>barres d'outils</strong> en haut de FreeCAD, et un <strong>menu</strong> « Atelier Laser ». Les deux contiennent exactement les mêmes commandes, dans le même ordre, séparées par thème.</p>
+
+  <h3>Neuf barres nommées, plutôt qu'une seule</h3>
+  <p>Jusqu'à la v2.72, tout tenait dans une barre unique où les groupes n'étaient marqués que par de fins séparateurs — invisibles en pratique. L'atelier déclare désormais <strong>neuf barres distinctes</strong>, chacune portant son nom : <em>Découverte</em>, <em>Calibrer le laser</em>, <em>Ajouter un matériau</em>, <em>Dessins</em>, <em>Gravure à plat</em>, <em>Sur surface 3D</em>, <em>Découpe</em>, <em>Assemblage</em>, <em>Référence et réglages</em>. Une barre nommée se <strong>déplace</strong>, se <strong>masque</strong> et se <strong>replie</strong> séparément — c'est le seul découpage que FreeCAD sait faire nativement. Chacune reçoit en plus un fond légèrement teinté, un renfort visuel qui ne porte jamais l'information à lui seul : le nom reste la référence.</p>
+  <p><b>À savoir une fois :</b> FreeCAD mémorise la position d'une barre <b>par son nom</b>. Le passage d'une barre à neuf a donc remis les icônes à l'endroit par défaut, une fois, et il a fallu les replacer à la main. Ces noms ne bougeront plus sans prévenir.</p>
 
   <h3>La barre d'outils</h3>
-  <p>De gauche à droite, les boutons suivent le fil du travail : d'abord la découverte, puis la gravure à plat, la surface 3D, la découpe, l'assemblage, ensuite la calibration, et enfin les réglages tout au bout.</p>
+  <p>De gauche à droite, les boutons suivent le fil du travail : d'abord la découverte, puis la calibration du laser et l'ajout d'un matériau, ensuite les dessins, la gravure à plat, la surface 3D, la découpe, l'assemblage, et enfin la référence et les réglages.</p>
   <div class="toolbar">
     <img src="../resources/icons/guide.svg" alt="Guide rapide"><span class="tb-sep"></span>
+    <img src="../resources/icons/defocus.svg" alt="Calibration défocus">
+    <img src="../resources/icons/offset_test.svg" alt="Offsets X/Y"><span class="tb-sep"></span>
+    <img src="../resources/icons/assistant.svg" alt="Assistant matériau">
+    <img src="../resources/icons/testgrid.svg" alt="Grille de test">
+    <img src="../resources/icons/powerramp.svg" alt="Rampe">
+    <img src="../resources/icons/nuancier.svg" alt="Nuancier">
+    <img src="../resources/icons/kerf.svg" alt="Kerf"><span class="tb-sep"></span>
     <img src="../resources/icons/import_svg.svg" alt="Importer un dessin SVG"><span class="tb-sep"></span>
     <img src="../resources/icons/hatch.svg" alt="Hachures 2D">
     <img src="../resources/icons/text.svg" alt="Texte">
+    <img src="../resources/icons/calligraphie.svg" alt="Calligraphie">
+    <img src="../resources/icons/texte_contour.svg" alt="Texte gravé (contour)">
     <img src="../resources/icons/filled.svg" alt="Gravure remplie">
     <img src="../resources/icons/halftone.svg" alt="Gravure photo"><span class="tb-sep"></span>
     <img src="../resources/icons/project.svg" alt="Projeter sur 3D">
@@ -388,17 +401,10 @@
     <img src="../resources/icons/flat.svg" alt="Découpe plate"><span class="tb-sep"></span>
     <img src="../resources/icons/combined.svg" alt="Job combiné">
     <img src="../resources/icons/combined_from_jobs.svg" alt="Jobs vers combiné"><span class="tb-sep"></span>
-    <img src="../resources/icons/defocus.svg" alt="Calibration défocus">
-    <img src="../resources/icons/offset_test.svg" alt="Offsets X/Y"><span class="tb-sep"></span>
-    <img src="../resources/icons/assistant.svg" alt="Assistant matériau">
-    <img src="../resources/icons/testgrid.svg" alt="Grille de test">
-    <img src="../resources/icons/powerramp.svg" alt="Rampe">
-    <img src="../resources/icons/nuancier.svg" alt="Nuancier">
-    <img src="../resources/icons/kerf.svg" alt="Kerf"><span class="tb-sep"></span>
-    <img src="../resources/icons/catalogue.svg" alt="Catalogue"><span class="tb-sep"></span>
+    <img src="../resources/icons/catalogue.svg" alt="Catalogue">
     <img src="../resources/icons/settings.svg" alt="Préférences">
   </div>
-  <p class="cap">La barre « Atelier Laser » telle qu'elle apparaît en haut de FreeCAD (icônes à taille réelle). Chaque intervalle correspond à un groupe.</p>
+  <p class="cap">Les commandes dans leur ordre réel (icônes à taille réelle). Chaque intervalle correspond à une barre nommée ; les deux dernières familles partagent la barre « Référence et réglages ».</p>
 
   <h3>Le menu</h3>
   <div class="ui-wrap">
@@ -406,10 +412,21 @@
       <div class="menu-title">Atelier Laser</div>
       <div class="mi"><img src="../resources/icons/guide.svg" alt="">Guide rapide</div>
       <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/defocus.svg" alt="">Bande de calibration défocus</div>
+      <div class="mi"><img src="../resources/icons/offset_test.svg" alt="">Test des offsets X/Y du laser</div>
+      <div class="msep"></div>
+      <div class="mi"><img src="../resources/icons/assistant.svg" alt="">Assistant matériau</div>
+      <div class="mi"><img src="../resources/icons/testgrid.svg" alt="">Grille de test puissance/vitesse</div>
+      <div class="mi"><img src="../resources/icons/powerramp.svg" alt="">Test rampe puissance/vitesse (lignes)</div>
+      <div class="mi"><img src="../resources/icons/nuancier.svg" alt="">Nuancier matériau</div>
+      <div class="mi"><img src="../resources/icons/kerf.svg" alt="">Motif de calibration kerf</div>
+      <div class="msep"></div>
       <div class="mi"><img src="../resources/icons/import_svg.svg" alt="">Importer un dessin SVG</div>
       <div class="msep"></div>
       <div class="mi"><img src="../resources/icons/hatch.svg" alt="">Hachures 2D (géométrie)</div>
       <div class="mi"><img src="../resources/icons/text.svg" alt="">Texte (trait simple)</div>
+      <div class="mi"><img src="../resources/icons/calligraphie.svg" alt="">Calligraphie (pleins et déliés)</div>
+      <div class="mi"><img src="../resources/icons/texte_contour.svg" alt="">Texte gravé (contour)</div>
       <div class="mi"><img src="../resources/icons/filled.svg" alt="">Gravure remplie (noir)</div>
       <div class="mi"><img src="../resources/icons/halftone.svg" alt="">Gravure photo (trame de points)</div>
       <div class="msep"></div>
@@ -421,15 +438,6 @@
       <div class="msep"></div>
       <div class="mi"><img src="../resources/icons/combined.svg" alt="">Job combiné (plusieurs opérations)</div>
       <div class="mi"><img src="../resources/icons/combined_from_jobs.svg" alt="">Jobs sélectionnés → job combiné</div>
-      <div class="msep"></div>
-      <div class="mi"><img src="../resources/icons/defocus.svg" alt="">Bande de calibration défocus</div>
-      <div class="mi"><img src="../resources/icons/offset_test.svg" alt="">Test des offsets X/Y du laser</div>
-      <div class="msep"></div>
-      <div class="mi"><img src="../resources/icons/assistant.svg" alt="">Assistant matériau</div>
-      <div class="mi"><img src="../resources/icons/testgrid.svg" alt="">Grille de test puissance/vitesse</div>
-      <div class="mi"><img src="../resources/icons/powerramp.svg" alt="">Test rampe puissance/vitesse (lignes)</div>
-      <div class="mi"><img src="../resources/icons/nuancier.svg" alt="">Nuancier matériau</div>
-      <div class="mi"><img src="../resources/icons/kerf.svg" alt="">Motif de calibration kerf</div>
       <div class="msep"></div>
       <div class="mi"><img src="../resources/icons/catalogue.svg" alt="">Catalogue (planche d'exemples)</div>
       <div class="msep"></div>
@@ -458,8 +466,10 @@
     <div class="fam">Graver &amp; marquer à plat</div>
     <div class="row"><img src="../resources/icons/hatch.svg" alt=""><div><span class="nm">Hachures 2D</span> — <span class="ds">prépare un remplissage par hachures (objet), à graver ensuite. Aucun G-code ici.</span></div></div>
     <div class="row"><img src="../resources/icons/text.svg" alt=""><div><span class="nm">Texte (trait simple)</span> — <span class="ds">écrit un texte « bâton » monotrait, prêt à graver.</span></div></div>
+    <div class="row"><img src="../resources/icons/calligraphie.svg" alt=""><div><span class="nm">Calligraphie (pleins et déliés)</span> — <span class="ds">grave une vraie police calligraphique en un passage : la largeur du trait est portée par la hauteur Z.</span></div></div>
+    <div class="row"><img src="../resources/icons/texte_contour.svg" alt=""><div><span class="nm">Texte gravé (contour)</span> — <span class="ds">trace le pourtour exact des lettres d'une police classique, empattements compris. À graver ensuite avec Marquage ou Gravure remplie.</span></div></div>
     <div class="row"><img src="../resources/icons/filled.svg" alt=""><div><span class="nm">Gravure remplie</span> — <span class="ds">noircit une surface fermée (défocus calibré + contour repassé).</span></div></div>
-    <div class="row"><img src="../resources/icons/halftone.svg" alt=""><div><span class="nm">Gravure photo</span> — <span class="ds">reproduit une image en niveaux de gris (huit tramages).</span></div></div>
+    <div class="row"><img src="../resources/icons/halftone.svg" alt=""><div><span class="nm">Gravure photo</span> — <span class="ds">reproduit une image en niveaux de gris (sept tramages).</span></div></div>
 
     <div class="fam">Sur surface 3D</div>
     <div class="row"><img src="../resources/icons/project.svg" alt=""><div><span class="nm">Projeter sur surface 3D</span> — <span class="ds">colle un motif 2D sur une surface courbe (préparation).</span></div></div>
@@ -712,6 +722,7 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/texte_contour.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/textecontour.png" alt="Panneau Texte gravé (contour)">
     <h4>Texte gravé (contour)</h4>
     <p class="quoi">Tracer le POURTOUR exact des lettres d'une police, empattements compris.</p>
     <p>Le pendant du mode Calligraphie, et le choix entre les deux tient à la police. Une calligraphie est le dessin d'une <b>plume</b>&nbsp;: son axe médian EST le geste, et Calligraphie le restitue avec ses pleins et déliés par la hauteur&nbsp;Z. Une police <b>classique</b> n'a pas de plume — son contour est son dessin, et en extraire un axe donne une armature filiforme où les empattements se réduisent à de petites barres au pied des fûts.</p>
@@ -722,6 +733,7 @@
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/calligraphie.svg" alt=""><div class="body">
+    <img class="shot" src="manuel_img/calligraphie.png" alt="Panneau Calligraphie">
     <h4>Calligraphie (pleins et déliés)</h4>
     <p class="quoi">Graver un texte dans une vraie police calligraphique, en un seul passage.</p>
     <p>Une police calligraphique est un <b>contour rempli</b>&nbsp;: la graver au trait perdrait ce qui en fait la calligraphie, l'alternance des pleins et des déliés. Ce mode en extrait le <b>squelette</b> — la ligne que la plume a parcourue — et la <b>largeur locale</b>, puis confie la largeur au fuseau&nbsp;Z. La tête se lève pour élargir le point dans les pleins et redescend pour les déliés. Rien n'est rempli ni repassé&nbsp;: un plein est un endroit où la tête était <em>haute</em>.</p>
