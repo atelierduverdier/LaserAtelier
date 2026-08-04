@@ -569,6 +569,25 @@ Two rules make this preview trustworthy, both worth preserving:
   WHOLE render switches to `_tone_burn` and the note says so — same rule for every tramage, whether
   or not the flatness would have been visible.
 
+### The combined-job preview painted the THEORETICAL tone (v2.71.1)
+
+`_strokes_from_operation` called `_tone_burn` in all five of its branches, while every single-mode
+preview goes through `_teinte_gravure` (measured first, theory as fallback). The material already
+travelled that far — it was only ever used for the **width**.
+
+**What hid it for months**: on dark settings the two formulas agree within a few points (beech
+S900/F200 defocus 15: 94 % measured vs 100 % predicted; MDF S1000/F800: 96 vs 100). The gap only
+exists in the **lights**, and there it is enormous — **MDF S400/F2000: 5 % measured against 93 %
+predicted, eighty-eight points**. A preview that lies on half the scale looks right. Christophe:
+*"c'est pas du tout un ton clair mais bien noir que l'on voit"*.
+
+A test for this must first **prove it has a discriminating case**: on a dark setting any code passes.
+`test_apercu_combine.py` §1 searches the workshop's own nuancier for a light setting where measured
+and theoretical differ by more than 30 points, and refuses to run if it finds none.
+
+The gradient branches got the same treatment: a width gradient is also a **darkness** gradient, since
+the nuancier is measured per defocus level.
+
 ### `_bilinear_burn`'s hole-filling must weigh both axes (v2.2.3)
 
 Shared by widths and darkness. On a cell with no measurement it falls back to the nearest neighbour,

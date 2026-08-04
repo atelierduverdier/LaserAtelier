@@ -4397,13 +4397,22 @@ def _strokes_from_operation(op):
     # sur le point optique, plus large que la brûlure réelle.
     mat = op.get("materiau")
     half = core.calibrated_half_angle()
+    # LA TEINTE SE LIT DANS LE NUANCIER MESURÉ D'ABORD. Cette fonction
+    # appelait `_tone_burn` -- le modèle THÉORIQUE -- dans ses cinq branches,
+    # alors que les aperçus des modes simples passent tous par
+    # `_teinte_gravure` (mesuré d'abord, théorie en repli). Or le modèle
+    # surestime énormément les tons CLAIRS : sur MDF à S400/F2000, 5 % de
+    # noirceur mesurée contre ~55 % prédite. Christophe, 04/08/2026 :
+    # « c'est pas du tout un ton clair mais bien noir que l'on voit ».
+    # Le matériau voyageait déjà jusqu'ici -- il ne servait qu'à la LARGEUR.
+    cache_teinte = {}
     strokes = []
     if typ == "filled":
         defocus = p.get("defocus", 0.0)
         spot_fill = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half)
         fp, ff = p.get("fill_power", 0.0), p.get("fill_feed", 1.0)
         fw = core.burn_width_defocus_scaled(fp, ff, defocus, mat) or spot_fill
-        ft = _tone_burn(fp, ff, fw)
+        ft = _teinte_gravure(mat, fp, ff, fw, defocus, cache_teinte)
         for e in (p.get("fill_edges") or []):
             pts = _discretize_edge(e)
             if pts:
@@ -4413,7 +4422,7 @@ def _strokes_from_operation(op):
             spot_c = core.spot_diameter_at_defocus(coff, core.SPOT_FOCUS_MM, half)
             cp, cf = p.get("contour_power", 0.0), p.get("contour_feed", 1.0)
             cw = core.burn_width_defocus_scaled(cp, cf, coff, mat) or spot_c
-            ct = _tone_burn(cp, cf, cw)
+            ct = _teinte_gravure(mat, cp, cf, cw, coff, cache_teinte)
             for e in p["contour_edges"]:
                 pts = _discretize_edge(e)
                 if pts:
@@ -4435,7 +4444,14 @@ def _strokes_from_operation(op):
                     or core.SPOT_FOCUS_MM)
 
         w = _wid(defocus)
-        t = _tone_burn(pw, fd, w)
+        t = _teinte_gravure(mat, pw, fd, w, defocus, cache_teinte)
+
+        def _ton(dz, ww):
+            """La teinte À CETTE HAUTEUR : un dégradé de largeur est aussi
+            un dégradé de noirceur, le nuancier étant mesuré par niveau de
+            défocus."""
+            return _teinte_gravure(mat, pw, fd, ww, max(0.0, dz),
+                                   cache_teinte)
         if style in ("tirets", "pointille", "vague", "degrade"):
             chains = core.chain_edges(edges)
             if style == "tirets":
@@ -4453,9 +4469,10 @@ def _strokes_from_operation(op):
                 for ch in chains:
                     s = core.wave_resample(ch, spar.get("wave_period", 5.0), amp)
                     for (pa, dza), (pb, dzb) in zip(s, s[1:]):
-                        ww = _wid((dza + dzb) / 2.0)
+                        dzm = (dza + dzb) / 2.0
+                        ww = _wid(dzm)
                         strokes.append(([(pa.x, pa.y), (pb.x, pb.y)], ww,
-                                        _tone_burn(pw, fd, ww)))
+                                        _ton(dzm, ww)))
             else:                                   # degrade : largeur le long d'une direction
                 ang = math.radians(spar.get("deg_angle", 0.0))
                 ux, uy = math.cos(ang), math.sin(ang)
@@ -4468,9 +4485,10 @@ def _strokes_from_operation(op):
                 for ch in chains:
                     for qa, qb in zip(ch, ch[1:]):
                         frac = ((qa.x * ux + qa.y * uy) - pmin) / span
-                        ww = _wid(z0 + (z1 - z0) * frac)
+                        dzm = z0 + (z1 - z0) * frac
+                        ww = _wid(dzm)
                         strokes.append(([(qa.x, qa.y), (qb.x, qb.y)], ww,
-                                        _tone_burn(pw, fd, ww)))
+                                        _ton(dzm, ww)))
         else:                                       # plein / défocus (point élargi)
             for e in edges:
                 pts = _discretize_edge(e)
