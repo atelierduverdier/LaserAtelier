@@ -255,3 +255,59 @@ assert tp.CHAPEAU_GLYPHE not in core.deplier_texte(
     "le chapeau passe sur une police qui ne le dessine pas")
 print("8. chapeau inséré au bouton dans les deux panneaux, gravé en Verdier, "
       "écarté ailleurs OK")
+
+
+# --- 9. DEUX INSTRUMENTS, ET ILS NE FONT PAS LA MÊME CHOSE --------------
+# Christophe, la plume appliquée à une CURSIVE : « c'est une bonne idée
+# mais c'est à améliorer le résultat je trouve ». Le modèle était juste --
+# pour une italique. Un bec plat met des pleins dans les REMONTÉES, là où
+# aucune main n'en met : on n'appuie pas en poussant une pointe vers le
+# haut, elle accroche.
+_MI, _MA = 0.20, 1.00
+_desc = ((0, 0), (0, -1))          # trait qui DESCEND (y vers le haut)
+_mont = ((0, 0), (0, 1))           # le même, qui REMONTE
+
+# Bec plat : les deux sont identiques, la direction seule compte.
+assert abs(core.largeur_plume(_desc[0], _desc[1], 0.0, _MI, _MA, core.PLUME_BEC)
+           - core.largeur_plume(_mont[0], _mont[1], 0.0, _MI, _MA,
+                                core.PLUME_BEC)) < 1e-9, (
+    "avec un bec plat, monter et descendre doivent donner la MÊME largeur")
+
+# Plume pointue : la descente est pleine, la remontée reste filiforme.
+_p_desc = core.largeur_plume(_desc[0], _desc[1], 0.0, _MI, _MA, core.PLUME_POINTUE)
+_p_mont = core.largeur_plume(_mont[0], _mont[1], 0.0, _MI, _MA, core.PLUME_POINTUE)
+assert _p_desc > 0.9 * _MA, ("la descente n'est pas un plein", _p_desc)
+assert abs(_p_mont - _MI) < 1e-9, (
+    "la remontée n'est pas un délié : c'est exactement le défaut signalé "
+    "sur la cursive", _p_mont)
+print("9. bec plat : monter = descendre ; pointue : descente {:.2f}, "
+      "remontée {:.2f} mm OK".format(_p_desc, _p_mont))
+
+
+# --- 10. LE LISSAGE PORTE SUR UNE DISTANCE, PAS SUR DES POINTS ----------
+# Le lissage portait sur TROIS POINTS. Or une polyligne de police n'a pas
+# de pas régulier : un fût droit fait deux points sur 10 mm, une ronde en
+# fait vingt. Trois points ne lissaient donc rien sur les droites et
+# beaucoup dans les courbes -- d'où les bosses, très visibles sur une
+# cursive qui n'est que courbes.
+#
+# Le contrôle : deux échantillonnages du MÊME arc doivent donner le même
+# profil de largeur. Avec un lissage en points, le plus fin sortait plus
+# lisse que l'autre.
+import math as _m                                            # noqa: E402
+
+
+def _arc(n):
+    return [(30.0 * _m.cos(_m.radians(180.0 * i / n)),
+             30.0 * _m.sin(_m.radians(180.0 * i / n))) for i in range(n + 1)]
+
+
+_gros = core._largeurs_du_trait(_arc(12), 25.0, 0.2, 1.6)
+_fin = core._largeurs_du_trait(_arc(48), 25.0, 0.2, 1.6)
+# on compare aux mêmes abscisses (un point sur quatre du fin)
+_ecart = max(abs(_gros[i] - _fin[4 * i]) for i in range(len(_gros)))
+assert _ecart < 0.10, (
+    "le profil de largeur dépend de la FINESSE d'échantillonnage : le "
+    "lissage compte des points au lieu de mesurer une distance", _ecart)
+print("10. même arc échantillonné 12 ou 48 fois : profils à {:.3f} mm près OK"
+      .format(_ecart))

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.79.1"
+VERSION = "2.80.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1975,44 +1975,102 @@ PLUME_CONTRASTE = 16.0           # rapport plein / délié demandé
 PLUME_LISSAGE = 3                # points de moyenne glissante sur la largeur
 
 
-def largeur_plume(p, q, angle_deg, mini, maxi):
-    """Largeur déposée par un bec incliné de `angle_deg` allant de p à q."""
+# DEUX PLUMES, ET ELLES NE FONT PAS LA MÊME CHOSE. Christophe, la plume
+# appliquée à une police CURSIVE : « c'est une bonne idée mais c'est à
+# améliorer le résultat je trouve ». Le modèle était juste -- pour une
+# italique. Sur une cursive il se trompe d'instrument :
+#
+#   BEC PLAT (italique, gothique, onciale) -- une lame d'une largeur fixe,
+#   tenue à un angle fixe. L'épaisseur ne dépend QUE de la direction : le
+#   trait qui traverse la lame est plein, celui qui court dans son axe est
+#   délié. Un trait qui MONTE est aussi épais que le même qui descend.
+#
+#   PLUME POINTUE (anglaise, ronde, toutes les cursives) -- une pointe
+#   souple qui s'écarte SOUS LA PRESSION. Et on n'appuie qu'en DESCENDANT :
+#   pousser une pointe vers le haut l'accroche dans le papier. D'où la
+#   règle que tout calligraphe apprend d'abord -- « on n'appuie jamais en
+#   montant » -- et le rendu si reconnaissable de l'anglaise : pleins sur
+#   les descentes, déliés filiformes partout ailleurs.
+#
+# La police qu'il essayait est une cursive. Le bec plat lui mettait des
+# pleins dans les remontées, là où une main n'en met jamais : ça se voit
+# tout de suite sans qu'on sache dire pourquoi.
+PLUME_BEC = "bec"                # lame plate : la direction seule décide
+PLUME_POINTUE = "pointue"        # pointe souple : on n'appuie qu'en descendant
+PLUME_MODELES = ((PLUME_BEC, "Bec plat (italique, gothique)"),
+                 (PLUME_POINTUE, "Plume pointue (cursive, anglaise)"))
+
+
+def largeur_plume(p, q, angle_deg, mini, maxi, modele=PLUME_BEC):
+    """Largeur déposée par la plume allant de p à q.
+
+    `modele` : PLUME_BEC (lame plate, la direction seule) ou PLUME_POINTUE
+    (pointe souple : plein sur la descente, délié sur la remontée)."""
     dx, dy = q[0] - p[0], q[1] - p[1]
     if abs(dx) < 1e-12 and abs(dy) < 1e-12:
         return maxi
-    ecart = math.atan2(dy, dx) - math.radians(angle_deg)
-    return mini + (maxi - mini) * abs(math.sin(ecart))
+    theta = math.atan2(dy, dx)
+    plein = abs(math.sin(theta - math.radians(angle_deg)))
+    if modele == PLUME_POINTUE:
+        # On n'appuie qu'en DESCENDANT. La transition est douce et non
+        # abrupte : une main relâche et reprend la pression, elle ne
+        # bascule pas. `descente` vaut 1 à l'aplomb, 0 à l'horizontale,
+        # 0 sur toute la remontée.
+        descente = max(0.0, -math.sin(theta))
+        plein *= descente ** 0.55
+    return mini + (maxi - mini) * plein
 
 
-def _largeurs_du_trait(pts, angle_deg, mini, maxi, lissage=PLUME_LISSAGE):
-    """Une largeur par POINT, lissée.
+def _largeurs_du_trait(pts, angle_deg, mini, maxi, modele=PLUME_BEC,
+                      lissage_mm=None):
+    """Une largeur par POINT, lissée sur une DISTANCE et non sur un nombre
+    de points.
 
-    Sans lissage, un polygone d'arc change de direction à chaque segment et
-    la largeur saute d'un point à l'autre -- sur une ronde le fuseau Z
-    hoquette, ce qui s'entend avant de se voir. La moyenne glissante ne
-    change rien aux fûts droits (tous leurs segments ont la même
-    direction) et lisse exactement là où il faut, dans les courbes."""
+    C'est la correction qui enlève les bosses. Le lissage portait sur trois
+    POINTS : or les polylignes d'une police n'ont pas un pas régulier -- un
+    fût droit fait deux points sur 10 mm, une ronde en fait vingt sur la
+    même longueur. Trois points ne lissaient donc rien du tout sur les
+    droites et beaucoup dans les courbes, et la largeur changeait par
+    marches là où la lettre tournait. Sur une cursive, qui n'est que
+    courbes et raccords, ça se voyait partout.
+
+    Une plume physique impose la même chose : le bec a une largeur, il ne
+    peut pas changer d'épaisseur plus vite que sa propre taille. On lisse
+    donc sur `lissage_mm` de tracé -- par défaut le plein lui-même."""
     if len(pts) < 2:
         return [maxi] * len(pts)
-    par_segment = [largeur_plume(pts[i], pts[i + 1], angle_deg, mini, maxi)
+    par_segment = [largeur_plume(pts[i], pts[i + 1], angle_deg, mini, maxi,
+                                 modele)
                    for i in range(len(pts) - 1)]
-    # une largeur par point : moyenne des segments qui s'y touchent
     brut = [par_segment[0]]
     for i in range(1, len(pts) - 1):
         brut.append(0.5 * (par_segment[i - 1] + par_segment[i]))
     brut.append(par_segment[-1])
-    if lissage < 2 or len(brut) < lissage:
+
+    fenetre = float(lissage_mm if lissage_mm is not None else maxi)
+    if fenetre <= 0 or len(brut) < 3:
         return brut
-    demi = lissage // 2
-    return [sum(brut[max(0, i - demi):i + demi + 1])
-            / len(brut[max(0, i - demi):i + demi + 1])
-            for i in range(len(brut))]
+    # abscisse curviligne de chaque point
+    absc = [0.0]
+    for i in range(len(pts) - 1):
+        absc.append(absc[-1] + math.hypot(pts[i + 1][0] - pts[i][0],
+                                          pts[i + 1][1] - pts[i][1]))
+    demi = fenetre / 2.0
+    lisse, j0 = [], 0
+    for i, si in enumerate(absc):
+        while absc[j0] < si - demi:
+            j0 += 1
+        j1 = i
+        while j1 + 1 < len(absc) and absc[j1 + 1] <= si + demi:
+            j1 += 1
+        lisse.append(sum(brut[j0:j1 + 1]) / float(j1 - j0 + 1))
+    return lisse
 
 
 def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
                   angle_deg=PLUME_ANGLE_DEFAUT, epaisseur=PLUME_EPAISSEUR,
-                  contraste=PLUME_CONTRASTE, char_spacing=0.0,
-                  line_spacing=1.6):
+                  contraste=PLUME_CONTRASTE, modele=PLUME_BEC,
+                  char_spacing=0.0, line_spacing=1.6):
     """Un texte mono-trait, avec des pleins et déliés de plume.
 
     Renvoie `(chaines, infos)` -- EXACTEMENT la forme que rend
@@ -2070,7 +2128,7 @@ def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
     chaines, ws = [], []
     for t in brut:
         pts = [((p[0] + dx) * ech, (p[1] + dy) * ech) for p in t]
-        lg = _largeurs_du_trait(pts, angle_deg, mini, maxi)
+        lg = _largeurs_du_trait(pts, angle_deg, mini, maxi, modele)
         ws.extend(lg)
         chaines.append([(p[0], p[1], w) for p, w in zip(pts, lg)])
 
@@ -2087,6 +2145,7 @@ def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
         "longueur_mm": longueur,
         "plume": True,
         "angle_plume": float(angle_deg),
+        "modele_plume": modele,
     }
     return chaines, infos
 

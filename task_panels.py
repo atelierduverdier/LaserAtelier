@@ -11208,6 +11208,26 @@ class TaskPanelCalligraphie:
         _l_plume2.addStretch(1)
         form.addRow("Taille de la plume :", _l_plume2)
 
+        # DEUX INSTRUMENTS, et le second manquait. Christophe, la plume
+        # appliquée à une CURSIVE : « c'est une bonne idée mais c'est à
+        # améliorer le résultat je trouve ». Un bec plat met des pleins
+        # dans les remontées, là où aucune main n'en met.
+        self.combo_plume_modele = QtWidgets.QComboBox()
+        for _c, _lib in core.PLUME_MODELES:
+            self.combo_plume_modele.addItem(_lib, _c)
+        self.combo_plume_modele.setToolTip(
+            "BEC PLAT -- une lame de largeur fixe, tenue à un angle fixe.\n"
+            "L'épaisseur ne dépend que de la DIRECTION : un trait qui monte\n"
+            "est aussi plein que le même qui descend. C'est l'italique, la\n"
+            "gothique, l'onciale.\n"
+            "\n"
+            "PLUME POINTUE -- une pointe souple qui s'écarte sous la\n"
+            "PRESSION, et on n'appuie qu'en DESCENDANT : pousser une pointe\n"
+            "vers le haut l'accroche dans le papier. Pleins sur les\n"
+            "descentes, déliés filiformes partout ailleurs. C'est l'anglaise\n"
+            "et toutes les cursives -- prends-la avec une police cursive.")
+        form.addRow("Instrument :", self.combo_plume_modele)
+
         # LE SCHÉMA VIVANT. Une infobulle décrit une règle ; celui-ci
         # montre le réglage COURANT, et bouge à chaque molette.
         self.lbl_schema_plume = QtWidgets.QLabel()
@@ -11217,7 +11237,8 @@ class TaskPanelCalligraphie:
         def _maj_plume():
             actif = self.chk_plume.isChecked()
             for w in (self.combo_plume_police, self.spn_plume_angle,
-                      self.spn_plume_epais, self.spn_plume_contraste):
+                      self.spn_plume_epais, self.spn_plume_contraste,
+                      self.combo_plume_modele):
                 w.setEnabled(actif)
             self.combo_police.setEnabled(not actif)
             self.edt_police.setEnabled(not actif)
@@ -11226,7 +11247,8 @@ class TaskPanelCalligraphie:
                 self.lbl_schema_plume.setPixmap(QtGui.QPixmap.fromImage(
                     _schema_plume(self.spn_plume_angle.value(),
                                   self.spn_plume_epais.value(),
-                                  self.spn_plume_contraste.value())))
+                                  self.spn_plume_contraste.value(),
+                                  self.combo_plume_modele.currentData())))
             self._maj_verdict()
             # `getattr` : ce panneau n'a pas toujours eu d'aperçu, et le
             # câbler en dur ferait tomber la case au premier clic.
@@ -11235,7 +11257,8 @@ class TaskPanelCalligraphie:
                 rafraichir()
 
         self.chk_plume.toggled.connect(lambda _c: _maj_plume())
-        self.combo_plume_police.currentIndexChanged.connect(lambda _i: _maj_plume())
+        for _c in (self.combo_plume_police, self.combo_plume_modele):
+            _c.currentIndexChanged.connect(lambda _i: _maj_plume())
         for _w in (self.spn_plume_angle, self.spn_plume_epais,
                    self.spn_plume_contraste):
             _w.valueChanged.connect(lambda _v: _maj_plume())
@@ -11435,7 +11458,8 @@ class TaskPanelCalligraphie:
                self.edt_texte.text(), round(self.spn_largeur.value(), 3),
                plume, round(self.spn_plume_angle.value(), 1),
                round(self.spn_plume_epais.value(), 1),
-               round(self.spn_plume_contraste.value(), 1))
+               round(self.spn_plume_contraste.value(), 1),
+               self.combo_plume_modele.currentData())
         if self._cache[0] == cle:
             return self._cache[1]
         if not cle[0] or not cle[1]:
@@ -11448,7 +11472,7 @@ class TaskPanelCalligraphie:
             res = core.chaines_plume(cle[0], cle[1], largeur_mm=cle[2],
                                      angle_deg=cle[4],
                                      epaisseur=cle[5] / 100.0,
-                                     contraste=cle[6])
+                                     contraste=cle[6], modele=cle[7])
         else:
             res = cal.chaines_calligraphie(cle[0], cle[1], largeur_mm=cle[2])
         self._cache = (cle, res)
@@ -11718,7 +11742,8 @@ def _bouton_chapeau(champ):
     return b
 
 
-def _schema_plume(angle_deg, epaisseur_pct, contraste, larg=330, haut=132):
+def _schema_plume(angle_deg, epaisseur_pct, contraste, modele=None,
+                  larg=330, haut=132):
     """Le schéma de la plume, redessiné à CHAQUE réglage.
 
     Christophe : « je ne comprends pas comment fonctionne le bec et le
@@ -11744,6 +11769,7 @@ def _schema_plume(angle_deg, epaisseur_pct, contraste, larg=330, haut=132):
     maxi = max(3.0, 0.34 * float(epaisseur_pct))       # px, à l'échelle du schéma
     mini = maxi / max(float(contraste), 1.0)
     a = math.radians(float(angle_deg))
+    modele = modele or core.PLUME_BEC
     L = 38.0
 
     # 1. Cinq traits en éventail, du plus vertical au plus couché.
@@ -11755,7 +11781,10 @@ def _schema_plume(angle_deg, epaisseur_pct, contraste, larg=330, haut=132):
         ox = 0 + k * 68.0
         x0, y0 = cx + ox - L * math.cos(t) / 2, cy + L * math.sin(t) / 2
         x1, y1 = cx + ox + L * math.cos(t) / 2, cy - L * math.sin(t) / 2
-        w = mini + (maxi - mini) * abs(math.sin(t - a))
+        # Les quatre traits sont parcourus VERS LE BAS -- c'est ce qu'une
+        # main fait, et avec une plume pointue c'est ce qui decide tout.
+        w = core.largeur_plume((0.0, 0.0), (math.cos(t), math.sin(t)),
+                               angle_deg, mini, maxi, modele)
         dx, dy = x1 - x0, y1 - y0
         n = math.hypot(dx, dy) or 1.0
         nx, ny = -dy / n * w / 2, dx / n * w / 2
@@ -11777,13 +11806,16 @@ def _schema_plume(angle_deg, epaisseur_pct, contraste, larg=330, haut=132):
     p.setPen(orange)
     f = QtGui.QFont(); f.setPointSizeF(8.0); f.setBold(True); p.setFont(f)
     p.drawText(QtCore.QRectF(0, 4, larg, 16), QtCore.Qt.AlignHCenter,
-               "bec à {:.0f}°  ·  plein {:.0f} %  ·  contraste 1:{:.0f}"
-               .format(angle_deg, epaisseur_pct, contraste))
+               "{} {:.0f}°  ·  plein {:.0f} %  ·  contraste 1:{:.0f}"
+               .format("bec à" if modele == core.PLUME_BEC else "pointe à",
+                       angle_deg, epaisseur_pct, contraste))
     p.setPen(gris)
     f.setBold(False); f.setPointSizeF(7.5); p.setFont(f)
     # La légende tient DANS l'image : mesurée, pas espérée. La première
     # version débordait des deux côtés et se lisait « rait EN TRAVERS… ».
-    legende = "en travers du bec = plein · dans son axe = délié"
+    legende = ("en travers du bec = plein · dans son axe = délié"
+               if modele == core.PLUME_BEC else
+               "on n'appuie qu'en DESCENDANT · les remontées restent fines")
     while (QtGui.QFontMetrics(f).horizontalAdvance(legende) > larg - 12
            and f.pointSizeF() > 5.5):
         f.setPointSizeF(f.pointSizeF() - 0.5)
