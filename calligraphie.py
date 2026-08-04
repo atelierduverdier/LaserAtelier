@@ -370,6 +370,178 @@ def _couper_aux_sauts(chaines, saut_max=3.0, min_px=3):
     return out
 
 
+# ==========================================================================
+# LE SQUELETTE COMME GRAPHE : un geste par trait, pas un par morceau
+# ==========================================================================
+# Quatre approches ont échoué avant celle-ci, toutes pour la même raison :
+# on optimisait un parcours sur une structure qu'on n'avait pas comptée.
+# D'où deux INVARIANTS vérifiés avant tout usage, et non après :
+#   1. couverture -- chaque pixel du squelette est dans exactement une arête ;
+#   2. continuité -- deux points consécutifs d'une arête sont voisins.
+#
+# Ce qui ne marche PAS, et qui semble pourtant naturel : retirer les pixels
+# de jonction et laisser les composantes connexes séparer les arêtes. Un
+# squelette est 8-connexe, donc les deux pixels de part et d'autre d'un nœud
+# restent voisins EN DIAGONALE : rien n'est séparé, et les « arêtes »
+# obtenues sont des paquets qu'aucun ordre ne range -- sauts jusqu'à 222 px
+# (mesuré le 04/08/2026). Il faut passer par le graphe des PIXELS.
+ORTHO = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+DIAG = [(-1, 1), (1, 1), (1, -1), (-1, -1)]
+
+
+def adjacence(sq):
+    np = _numpy()
+    """pixel -> voisins, DIAGONALES REDONDANTES ÔTÉES.
+
+    Si A et B se touchent en diagonale mais partagent un voisin orthogonal
+    dans le squelette, le chemin A-C-B existe déjà : garder A-B en plus
+    donne un triangle, donc un pixel de degré 3 là où le trait est droit --
+    une fausse jonction, et une miette de plus à chaque escalier."""
+    H, W = sq.shape
+    adj = {}
+    pix = [(int(y), int(x)) for y, x in zip(*np.nonzero(sq))]
+    ens = set(pix)
+    for p in pix:
+        y, x = p
+        v = []
+        for dy, dx in ORTHO:
+            q = (y + dy, x + dx)
+            if q in ens:
+                v.append(q)
+        for dy, dx in DIAG:
+            q = (y + dy, x + dx)
+            if q not in ens:
+                continue
+            # un voisin orthogonal commun rendrait cette diagonale inutile
+            if (y + dy, x) in ens or (y, x + dx) in ens:
+                continue
+            v.append(q)
+        adj[p] = v
+    return adj
+
+
+def construire(sq):
+    """(aretes, cycles, rapport). Une arête = liste de pixels, bout à bout."""
+    np = _numpy()
+    adj = adjacence(sq)
+    noeuds = {p for p, v in adj.items() if len(v) != 2}
+    aretes, vus = [], set()
+    for n in noeuds:
+        for v in adj[n]:
+            if (n, v) in vus:
+                continue
+            chem, prec, cur = [n], n, v
+            while True:
+                vus.add((prec, cur))
+                vus.add((cur, prec))
+                chem.append(cur)
+                if cur in noeuds:
+                    break
+                suite = [w for w in adj[cur] if w != prec]
+                if not suite:
+                    break
+                prec, cur = cur, suite[0]
+            aretes.append(chem)
+    # cycles purs : que des pixels de degré 2, aucun nœud pour les amorcer
+    restants = set(adj) - {p for a in aretes for p in a}
+    cycles = []
+    while restants:
+        depart = next(iter(restants))
+        cyc, cur, prec = [depart], depart, None
+        restants.discard(depart)
+        while True:
+            suite = [w for w in adj[cur] if w != prec and w in restants]
+            if not suite:
+                break
+            prec, cur = cur, suite[0]
+            restants.discard(cur)
+            cyc.append(cur)
+        if len(cyc) >= 3:
+            cyc.append(cyc[0])          # un cycle se referme
+            cycles.append(cyc)
+    # --- LES DEUX INVARIANTS ---
+    couverts = {p for a in aretes for p in a} | {p for c in cycles for p in c}
+    tous = set(adj)
+    saut_max = 0.0
+    for a in aretes + cycles:
+        for p, q in zip(a, a[1:]):
+            saut_max = max(saut_max, math.hypot(q[0] - p[0], q[1] - p[1]))
+    rapport = {
+        "squelette": len(tous), "couverts": len(couverts & tous),
+        "manquants": len(tous - couverts), "saut_max": saut_max,
+        "noeuds": len(noeuds), "aretes": len(aretes), "cycles": len(cycles),
+    }
+    return aretes, cycles, rapport
+
+
+def _direction(chem, depuis_debut, n=8):
+    seg = chem[:n + 1] if depuis_debut else chem[-(n + 1):][::-1]
+    if len(seg) < 2:
+        return (0.0, 0.0)
+    dy, dx = seg[0][0] - seg[-1][0], seg[0][1] - seg[-1][1]
+    m = math.hypot(dx, dy) or 1.0
+    return (dy / m, dx / m)
+
+
+def parcourir(aretes, cycles):
+    """Les arêtes enchaînées en GESTES, en traversant les jonctions tout droit.
+
+    À chaque nœud, les bouts d'arête sont appariés deux à deux par continuité
+    de direction : celui qui repart le plus droit prolonge le geste. Le
+    nombre de gestes n'est alors plus décidé par l'ordre de balayage mais par
+    le graphe lui-même -- c'est ce qu'on cherchait."""
+    bouts = {}
+    for i, a in enumerate(aretes):
+        bouts.setdefault(a[0], []).append((i, 0))
+        bouts.setdefault(a[-1], []).append((i, 1))
+    paire = {}
+    for _pt, lst in bouts.items():
+        libres = list(lst)
+        while len(libres) >= 2:
+            best = None
+            for p in range(len(libres)):
+                for q in range(p + 1, len(libres)):
+                    dp = _direction(aretes[libres[p][0]], libres[p][1] == 0)
+                    dq = _direction(aretes[libres[q][0]], libres[q][1] == 0)
+                    sc = -(dp[0] * dq[0] + dp[1] * dq[1])
+                    if best is None or sc > best[0]:
+                        best = (sc, p, q)
+            if best is None:
+                break
+            _s, p, q = best
+            paire[libres[p]] = libres[q]
+            paire[libres[q]] = libres[p]
+            for k in sorted((p, q), reverse=True):
+                libres.pop(k)
+
+    faits, gestes = set(), []
+
+    def marcher(i, sens):
+        g = []
+        while i not in faits:
+            faits.add(i)
+            a = aretes[i] if sens == 0 else aretes[i][::-1]
+            g.extend(a if not g else a[1:])
+            nxt = paire.get((i, 1 - sens))
+            if nxt is None or nxt[0] in faits:
+                break
+            i, sens = nxt
+        return g
+
+    for i in range(len(aretes)):
+        for b in (0, 1):
+            if i not in faits and (i, b) not in paire:
+                g = marcher(i, b)
+                if len(g) >= 2:
+                    gestes.append(g)
+    for i in range(len(aretes)):
+        if i not in faits:
+            g = marcher(i, 0)
+            if len(g) >= 2:
+                gestes.append(g)
+    return gestes + [list(c) for c in cycles]
+
+
 def _direction(ch, depuis_debut, n=6):
     """Direction du bout d'une chaîne, moyennée sur n pixels (le pixel seul
     est trop bruité pour dire où le trait allait)."""
@@ -590,7 +762,13 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
     if not sq.any():
         raise ErreurCalligraphie("Rien à graver : le texte rendu est vide.")
 
-    brutes = coudre(tracer(sq, min_px=3))
+    # Le graphe, pas le ramassage : 136 gestes -> 48 sur « Atelier du
+    # Verdier » en Swirly Canalope, 151 -> 29 en La Graziela, 239 -> 68 en
+    # Blacksword, à couverture 100 % et sans un seul saut. Chaque geste en
+    # moins, c'est deux terminaisons franches en moins -- et une terminaison
+    # au milieu d'un plein se grave en pâté.
+    _ar, _cy, _rap = construire(sq)
+    brutes = parcourir(_ar, _cy)
     fenetre = max(3, int(round(lissage_mm / max(pas_arc_mm, 1e-6))))
     chaines, w_min, w_max, longueur = [], float("inf"), 0.0, 0.0
     for ch in brutes:

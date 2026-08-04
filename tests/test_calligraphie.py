@@ -367,3 +367,53 @@ try:
               len(_obj.Shape.Edges), min(_xs), min(_ys)))
 finally:
     FreeCAD.closeDocument("EssaiCalligraphie")
+
+
+# --- 10. Le graphe du squelette : couverture ET continuité -------------
+# Quatre approches ont échoué avant celle-ci, TOUTES pour la même raison :
+# on optimisait un parcours sur une structure qu'on n'avait pas comptée.
+# Les deux invariants ci-dessous sont la porte d'entrée -- ils se vérifient
+# AVANT tout usage, jamais après.
+#
+#   1. COUVERTURE : chaque pixel du squelette est dans exactement une arête.
+#      L'approche « retirer les nœuds et laisser les composantes connexes
+#      séparer les arêtes » échoue ici : un squelette est 8-connexe, donc
+#      les deux pixels de part et d'autre d'un nœud restent voisins EN
+#      DIAGONALE et rien n'est séparé.
+#   2. CONTINUITÉ : deux points consécutifs se touchent. Un seul saut
+#      devient un trait gravé en travers du dessin.
+_formes = []
+_img10 = Image.new("L", (500, 400), 0)
+_d10 = ImageDraw.Draw(_img10)
+_d10.ellipse([40, 40, 300, 300], outline=255, width=14)      # une boucle
+_d10.line([170, 40, 170, 380], fill=255, width=12)           # qui la traverse
+_d10.line([60, 210, 460, 210], fill=255, width=10)           # et une barre
+_d10.arc([250, 150, 470, 370], 0, 300, fill=255, width=11)
+_formes.append(("croisements", np.array(_img10) > 127))
+_formes.append(("lettre réelle", cal.rendre_texte(_chemin, "Atelier")))
+
+for _nom10, _forme in _formes:
+    _sq10 = cal.amincir(_forme)
+    _ar10, _cy10, _rap = cal.construire(_sq10)
+    assert _rap["manquants"] == 0, (
+        _nom10, "des pixels du squelette n'appartiennent à aucune arête",
+        _rap["manquants"], _rap["squelette"])
+    assert _rap["saut_max"] <= 1.5, (
+        _nom10, "une arête saute : ce serait un trait gravé en travers",
+        _rap["saut_max"])
+    _g10 = cal.parcourir(_ar10, _cy10)
+    _vus10 = {p for c in _g10 for p in c}
+    _tous10 = {(int(y), int(x)) for y, x in zip(*np.nonzero(_sq10))}
+    assert not (_tous10 - _vus10), (
+        _nom10, "le parcours perd des pixels que le graphe avait",
+        len(_tous10 - _vus10))
+    for _c in _g10:
+        for _p, _q in zip(_c, _c[1:]):
+            assert math.hypot(_q[0]-_p[0], _q[1]-_p[1]) <= 1.5, (
+                _nom10, "le parcours a introduit un saut")
+    # Le parcours doit ENCHAÎNER : sinon il ne sert à rien d'avoir un graphe.
+    assert len(_g10) < len(_ar10), (
+        _nom10, "autant de gestes que d'arêtes : rien n'a été enchaîné",
+        len(_g10), len(_ar10))
+    print("10. {:14s} : {} arêtes -> {} gestes ; couverture entière, aucun "
+          "saut OK".format(_nom10, len(_ar10), len(_g10)))
