@@ -10603,8 +10603,30 @@ class TaskPanelCalligraphie:
         self.combo_mat.currentIndexChanged.connect(self._maj_verdict)
 
         _section(form, "③ Verdict et aperçu", "sect_preview.svg", ouvert=True)
-        self.lbl_verdict = _WrapLabel("")
-        form.addRow(self.lbl_verdict)
+        # UNE LIGNE PAR CONSTAT, pas un pavé. La règle de la maison est
+        # explicite -- « jamais une énumération dans UN SEUL _WrapLabel,
+        # utiliser une étiquette par élément » -- et ce verdict en aligne
+        # jusqu'à huit : dimensions, contraste demandé, plage du fuseau,
+        # dépassements, pente Z, fidélité, avertissements du matériau. En un
+        # seul paragraphe, c'est le cas précis où le repli et la hauteur de
+        # rangée se disputent, et le cas où l'oeil ne trouve plus rien.
+        # Christophe, 03/08/2026, capture à l'appui : « je vois déjà un
+        # chevauchement des cellules ».
+        #
+        # Un VIVIER d'étiquettes créées une fois pour toutes, remplies puis
+        # masquées : en créer et en détruire à chaque frappe rejouerait la
+        # mise en page instable déjà rencontrée ce soir sur les grilles.
+        self._lignes_verdict = []
+        boite = QtWidgets.QWidget()
+        vb = QtWidgets.QVBoxLayout(boite)
+        vb.setContentsMargins(0, 0, 0, 0)
+        vb.setSpacing(4)
+        for _ in range(10):
+            lg = _WrapLabel("")
+            lg.hide()
+            vb.addWidget(lg)
+            self._lignes_verdict.append(lg)
+        form.addRow(boite)
         self.btn_apercu = QtWidgets.QPushButton("Aperçu du tracé gravé")
         # `_preview_row` efface le libellé (boutons-icônes) : l'infobulle
         # doit donc NOMMER l'action, sinon un bouton sans texte ne se
@@ -10681,12 +10703,10 @@ class TaskPanelCalligraphie:
         try:
             res = self._chaines()
         except Exception as exc:
-            self.lbl_verdict.setText(
-                "<b style='color:#b00'>{}</b>".format(exc))
+            self._dire_verdict(["<b style='color:#b00'>{}</b>".format(exc)])
             return
         if res is None:
-            self.lbl_verdict.setText(
-                "Choisis une police et tape un texte.")
+            self._dire_verdict(["Choisis une police et tape un texte."])
             return
         chaines, inf = res
         mat = self.combo_mat.currentData()
@@ -10702,14 +10722,14 @@ class TaskPanelCalligraphie:
             msgs.append("<b style='color:#b00'>Aucun matériau mesuré</b> : "
                         "grave et mesure la Planche 2 (Assistant matériau), "
                         "sans quoi rien ne peut piloter la hauteur.")
-            self.lbl_verdict.setText(" ".join(msgs))
+            self._dire_verdict(msgs)
             return
         prep = core.preparer_calligraphie(
             chaines, feed, mat, power_max=self.spn_power.value())
         if prep is None:
             msgs.append("<b style='color:#b00'>Pas de fuseau pour « {} » "
                         "à F{:.0f}</b>.".format(mat, feed))
-            self.lbl_verdict.setText(" ".join(msgs))
+            self._dire_verdict(msgs)
             return
         _gestes, d = prep
         msgs.append("Le fuseau de {} à F{:.0f} va de {:.2f} à {:.2f} mm, "
@@ -10739,7 +10759,27 @@ class TaskPanelCalligraphie:
                         d["ecart_median"], d["ecart_95"]))
         for a in d["avert"]:
             msgs.append("<i>{}</i>.".format(a))
-        self.lbl_verdict.setText(" ".join(msgs))
+        self._dire_verdict(msgs)
+
+    def _dire_verdict(self, messages):
+        """Une étiquette par constat ; les inutilisées disparaissent."""
+        for i, lg in enumerate(self._lignes_verdict):
+            if i < len(messages):
+                lg.setText(messages[i])
+                lg.show()
+            else:
+                lg.setText("")
+                lg.hide()
+        if len(messages) > len(self._lignes_verdict):
+            # Le vivier est plein : le reste va dans la dernière plutôt
+            # que d'être perdu en silence.
+            self._lignes_verdict[-1].setText(
+                " ".join(messages[len(self._lignes_verdict) - 1:]))
+
+    def texte_verdict(self):
+        """Le verdict entier, pour qui veut le lire d'un bloc (tests)."""
+        return " ".join(lg.text() for lg in self._lignes_verdict
+                        if not lg.isHidden() and lg.text())
 
     # -- aperçu ---------------------------------------------------------
     def _on_apercu(self):

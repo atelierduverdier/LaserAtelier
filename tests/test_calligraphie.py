@@ -182,10 +182,10 @@ for _i in range(_p.combo_mat.count()):
 _p.spn_feed.setValue(200.0)
 _p.spn_largeur.setValue(90.0)
 _p._maj_verdict()
-_petit = h.texte(_p.lbl_verdict) if hasattr(h, "texte") else _p.lbl_verdict.text()
+_petit = _p.texte_verdict()
 _p.spn_largeur.setValue(600.0)
 _p._maj_verdict()
-_grand = _p.lbl_verdict.text()
+_grand = _p.texte_verdict()
 assert "plus large" in _grand, ("aucune alerte à 600 mm", _grand[:200])
 _conseil = re.search(r"Descends vers (\d+) mm", _grand)
 assert _conseil, ("l'alerte ne propose aucune taille", _grand[:200])
@@ -193,3 +193,27 @@ assert 10 < int(_conseil.group(1)) < 600, (
     "taille conseillée absurde", _conseil.group(1))
 print("6. à 600 mm le verdict alerte et conseille {} mm OK".format(
     _conseil.group(1)))
+
+# --- 7. Le verdict tient en LIGNES, pas en pavé ------------------------
+# La règle de la maison : jamais une énumération dans un seul _WrapLabel.
+# Ce verdict en aligne jusqu'à huit constats ; en un seul paragraphe, la
+# hauteur de rangée et le repli se disputent -- « je vois déjà un
+# chevauchement des cellules » (03/08/2026, capture à l'appui) -- et l'oeil
+# ne trouve plus rien. Chaque constat a donc son étiquette.
+_visibles = [lg for lg in _p._lignes_verdict if not lg.isHidden()]
+assert len(_visibles) >= 4, (
+    "le verdict tient en une ou deux étiquettes : il est resté un pavé",
+    len(_visibles))
+for _lg in _visibles:
+    assert _lg.text().strip(), "une étiquette visible est vide"
+    # Un constat, c'est une phrase -- pas huit collées.
+    assert len(_lg.text()) < 400, ("un constat trop long : le pavé est "
+                                   "revenu", _lg.text()[:120])
+# Et un verdict COURT ne doit pas laisser traîner les lignes du précédent.
+_p.edt_texte.setText("")
+_p._maj_verdict()
+_restes = [lg.text() for lg in _p._lignes_verdict if not lg.isHidden()]
+assert len(_restes) == 1, ("les lignes de l'ancien verdict sont restées "
+                           "affichées", _restes)
+print("7. verdict en {} lignes, et un verdict court n'en laisse qu'une OK"
+      .format(len(_visibles)))
