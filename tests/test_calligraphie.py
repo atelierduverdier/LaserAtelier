@@ -716,3 +716,74 @@ print("13. X de deux barres : {} arêtes -> {} traits, tous deux droits "
       "barre du H préservée ({:.2f}x le squelette) OK"
       .format(len(_ar13), len(_vrais), min(_lg13(c) for c in _vrais), _diag13,
               _ratio13))
+
+
+# --- 14. LE TRAIT QUI CONTINUE, MÊME S'IL TOURNE AU CROISEMENT ---------
+# Christophe, 04/08/2026, flèche orange sur la gravure du « A » : « la ligne
+# en 1 seul trait c'est la ligne qui commence du haut et va vers le bas
+# droit, et non pas la barre du milieu ». Son carré rouge tombait sur le
+# nœud à 0,0 mm près.
+#
+# La cause est la PORTÉE de lecture de la direction, qui valait 6 pixels. Le
+# plein du A tourne dans le disque de la jonction -- le trait y est épais,
+# donc le nœud est loin du bord -- si bien que six pixels le lisaient comme
+# presque horizontal (+0,37 ; -0,93) alors qu'il descend (+0,84 ; -0,55).
+# L'appariement mariait donc la grande boucle à la petite entrée de gauche
+# et laissait le plein pendant.
+#
+# LA FIGURE DOIT AVOIR UN COUDE AU NŒUD. Quatre fixtures lisses (arc courbé,
+# V épais, coude serré) ont été essayées et jetées : elles donnaient la même
+# réponse aux deux portées, donc elles ne prouvaient rien. Ce qui trompe une
+# portée courte n'est pas la courbure, c'est le changement de direction
+# JUSTE au nœud.
+#
+#   A monte, en partant vers la gauche puis en remontant franchement ;
+#   B descend, c'est la VRAIE suite de A, mais coudée au nœud ;
+#   C part à droite, presque colinéaire au DÉPART de A.
+#
+# À 6 px, A « pointe » vers C, donc B se marie à C : le trait est coupé.
+def _fig14(ep, ep_c, pa, pb, pc):
+    im = Image.new("L", (520, 520), 0)
+    d = ImageDraw.Draw(im)
+    d.line(pa, fill=255, width=ep, joint="curve")
+    d.line(pb, fill=255, width=ep, joint="curve")
+    d.line(pc, fill=255, width=ep_c, joint="curve")
+    return np.array(im) > 127
+
+_A14 = [(235, 150), (240, 240), (250, 250)]
+_B14 = [(250, 250), (252, 262), (285, 430)]
+_C14 = [(250, 250), (300, 254), (430, 262)]
+_b14 = _fig14(30, 22, _A14, _B14, _C14)
+_larg14 = cal.largeur_locale(_b14)
+_ar14, _cy14, _ = cal.construire(cal.amincir(_b14))
+_ar14 = cal.fusionner_jonctions(_ar14, _larg14)
+_g14 = cal.parcourir(_ar14, _cy14, _larg14)
+
+def _touche14(c, xy, tol=30.0):
+    return any(math.hypot(p[1] - xy[0], p[0] - xy[1]) < tol for p in c)
+
+_juste = [c for c in _g14
+          if _touche14(c, (235, 150)) and _touche14(c, (285, 430))]
+assert _juste, (
+    "le trait qui monte et celui qui descend ne font pas UN geste : le "
+    "croisement a marié la mauvaise branche, et le trait sort coupé en son "
+    "milieu -- c'est le « A » que Christophe a fléché en orange")
+assert not any(_touche14(c, (430, 262)) and _touche14(c, (285, 430))
+               for c in _g14), (
+    "la branche latérale a capturé la descente")
+
+# La portée doit être PROPORTIONNELLE à l'encre, et bornée des deux côtés.
+_epais = np.zeros((10, 10)); _epais[5, 5] = 40.0
+_fin = np.zeros((10, 10)); _fin[5, 5] = 4.0
+assert cal._portee((5, 5), _epais) > cal._portee((5, 5), _fin), (
+    "la portée ne suit pas l'épaisseur du trait : une valeur en pixels "
+    "absolus convient à une police et pas à la suivante (mesuré : 30 px "
+    "améliorent trois polices et dégradent Blacksword)")
+assert cal._portee((5, 5), None) == cal.PORTEE_MINI
+_enorme = np.zeros((10, 10)); _enorme[5, 5] = 10000.0
+assert cal._portee((5, 5), _enorme) == cal.PORTEE_MAXI, (
+    "la portée n'est pas bornée : sur un trait très épais elle lirait la "
+    "direction sur toute la lettre")
+print("14. coude au croisement : le trait qui monte et celui qui descend font "
+      "UN geste ({} gestes en tout) ; portée {} à {} px selon l'encre OK"
+      .format(len(_g14), cal._portee((5, 5), _fin), cal._portee((5, 5), _epais)))

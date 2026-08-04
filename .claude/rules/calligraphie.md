@@ -121,6 +121,42 @@ gesture length against skeleton length: **1.00× with the threshold** (stable fr
 **1.21× without**. Note the X sits at 1.40× at every threshold — both strokes must cross the centre —
 so it is the H, not the X, that discriminates here.
 
+## The direction baseline decides which stroke is one gesture
+
+At a junction, what pairs branch to branch is their **direction** — so the baseline over which that
+direction is read decides which strokes the hand is deemed to have made in one go. It was fixed at
+6 pixels.
+
+The "A" of La Graziela broke on it. Its downstroke **turns inside the junction disc** — the stroke is
+thick there, so the node sits far from the edge — and six pixels read it as nearly horizontal
+(+0.37, −0.93) when it actually descends (+0.84, −0.55). The pairing therefore married the big bottom
+loop to the small left entry curl and left the downstroke dangling. Christophe drew an orange arrow
+over the engraving: *"la ligne en 1 seul trait c'est la ligne qui commence du haut et va vers le bas
+droit, et non pas la barre du milieu"*, and his red square landed on the node **to within 0.0 mm**.
+
+**A fixed pixel baseline is the wrong unit.** Measured over four fonts, 30 px improves La Graziela,
+Swirly and Byliner and **degrades Blacksword** (median pairing score 0.81 → 0.72, bad marriages
+35 → 48) — its strokes are thicker and shorter, so the baseline spans real corners. Proportional to
+the local ink radius, all four gain together (`DIRECTION_EN_LARGEURS = 1.5`, clamped to
+`PORTEE_MINI/MAXI`):
+
+| | 6 px fixed | ∝ ink width |
+|---|---|---|
+| La Graziela | 0.89 — 8 bad | **0.93 — 4** |
+| Swirly Canalope | 0.78 — 12 | **0.95 — 13** |
+| Blacksword | 0.81 — 35 | **0.89 — 28** |
+| Byliner | 0.81 — 7 | **0.93 — 2** |
+
+The A's downstroke and its loop are now one 44 mm gesture.
+
+**The fixture must have a KINK at the node.** Four smooth ones were built and thrown away (curved
+arc, thick open V, tight elbow): they gave the same answer at both baselines, so they proved nothing.
+What fools a short baseline is not curvature, it is a change of direction *right at* the node. §14
+therefore draws three branches — one going up but leaving the node leftwards before turning, its true
+continuation going down, and a side branch nearly collinear with the first one's *departure*. At 6 px
+the pairing marries the descent to the side branch; proportionally, it marries the two halves of the
+stroke.
+
 ## Two neighbouring junctions leave two ends nobody pairs
 
 `parcourir` pairs branches **node by node**. Where two junctions touch — the rule at a cursive

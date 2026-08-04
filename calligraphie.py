@@ -133,6 +133,28 @@ SOUDURE_EN_LARGEURS = 1.0
 # morceau de lettre et doit le rester.
 FUSION_EN_LARGEURS = 1.0
 
+# PORTÉE de lecture de la direction d'une branche, en multiple du RAYON de
+# l'encre. C'est elle qui décide quelle branche épouse quelle autre à un
+# croisement, donc quel trait la main est censée avoir fait d'un seul geste.
+#
+# Elle était fixée à 6 pixels. Sur le « A » de La Graziela, six pixels lisent
+# le plein qui descend du sommet comme presque HORIZONTAL (+0,37 ; -0,93) --
+# il tourne là -- si bien que la boucle du bas se mariait à la petite entrée
+# de gauche et que le plein restait pendant. Christophe, 04/08/2026, flèche
+# orange sur la gravure : « la ligne en 1 seul trait c'est la ligne qui
+# commence du haut et va vers le bas droit, et non pas la barre du milieu ».
+# Son carré rouge tombait sur le nœud à 0,0 mm près.
+#
+# Une portée FIXE en pixels ne convient pas : mesuré sur quatre polices,
+# 30 px améliorent La Graziela, Swirly et Byliner et DÉGRADENT Blacksword
+# (0,81 -> 0,72 de score médian, 35 mauvais mariages -> 48), dont les traits
+# sont plus épais et plus courts -- la base y enjambe de vrais angles. En
+# multiple de la largeur locale, les quatre gagnent ensemble. Score médian du
+# mariage, 6 px fixes -> k = 1,5 : Graziela 0,89 -> 0,93 ; Swirly 0,78 ->
+# 0,95 ; Blacksword 0,81 -> 0,89 ; Byliner 0,81 -> 0,93.
+DIRECTION_EN_LARGEURS = 1.5
+PORTEE_MINI, PORTEE_MAXI = 6, 80
+
 _V8 = [(-1, 0), (-1, 1), (0, 1), (1, 1),
        (1, 0), (1, -1), (0, -1), (-1, -1)]     # P2..P9, sens horaire
 
@@ -586,6 +608,18 @@ def _direction(ch, depuis_debut, n=6):
     return (dy / m, dx / m)
 
 
+def _portee(bout, larg_px, k=DIRECTION_EN_LARGEURS):
+    """Sur combien de pixels lire la direction, à ce bout de branche.
+
+    Proportionnelle au RAYON de l'encre : c'est l'échelle du dessin de la
+    lettre. Une portée en pixels absolus convient à une police et pas à la
+    suivante (cf. DIRECTION_EN_LARGEURS)."""
+    if larg_px is None:
+        return PORTEE_MINI
+    n = int(round(k * 0.5 * float(larg_px[bout[0], bout[1]])))
+    return max(PORTEE_MINI, min(PORTEE_MAXI, n))
+
+
 def _pixels_entre(p, q):
     """Les pixels du segment droit ouvert ]p, q[, un par pas d'un pixel.
 
@@ -596,7 +630,7 @@ def _pixels_entre(p, q):
              int(round(p[1] + (q[1] - p[1]) * t / n))) for t in range(1, n)]
 
 
-def parcourir(aretes, cycles):
+def parcourir(aretes, cycles, larg_px=None):
     """Les arêtes enchaînées en GESTES, en traversant les jonctions tout droit.
 
     À chaque nœud, les bouts d'arête sont appariés deux à deux par continuité
@@ -614,8 +648,12 @@ def parcourir(aretes, cycles):
             best = None
             for p in range(len(libres)):
                 for q in range(p + 1, len(libres)):
-                    dp = _direction(aretes[libres[p][0]], libres[p][1] == 0)
-                    dq = _direction(aretes[libres[q][0]], libres[q][1] == 0)
+                    ap = aretes[libres[p][0]]
+                    aq = aretes[libres[q][0]]
+                    dp = _direction(ap, libres[p][1] == 0,
+                                    _portee(_pt, larg_px))
+                    dq = _direction(aq, libres[q][1] == 0,
+                                    _portee(_pt, larg_px))
                     sc = -(dp[0] * dq[0] + dp[1] * dq[1])
                     if best is None or sc > best[0]:
                         best = (sc, p, q)
@@ -705,7 +743,7 @@ def souder(gestes, encre, larg_px, k_largeurs=SOUDURE_EN_LARGEURS,
                 continue
             for bi in (0, 1):
                 pi = ch[i][-1] if bi else ch[i][0]
-                di = _direction(ch[i], bi == 0)
+                di = _direction(ch[i], bi == 0, _portee(pi, larg_px))
                 for j in range(i + 1, len(ch)):
                     if ch[j] is None:
                         continue
@@ -714,7 +752,7 @@ def souder(gestes, encre, larg_px, k_largeurs=SOUDURE_EN_LARGEURS,
                         d = math.hypot(pi[0] - pj[0], pi[1] - pj[1])
                         if d > k_largeurs * larg_px[pi[0], pi[1]]:
                             continue
-                        dj = _direction(ch[j], bj == 0)
+                        dj = _direction(ch[j], bj == 0, _portee(pj, larg_px))
                         s = -(di[0] * dj[0] + di[1] * dj[1])
                         if s < cos_mini or not dans_encre(pi, pj):
                             continue
@@ -979,7 +1017,7 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
     # croisement, sans quoi il coupe un trait en son milieu. La soudure
     # rattrape ensuite ce qui reste pendant.
     _ar = fusionner_jonctions(_ar, larg_px)
-    brutes = souder(parcourir(_ar, _cy), b > 0, larg_px)
+    brutes = souder(parcourir(_ar, _cy, larg_px), b > 0, larg_px)
     fenetre = max(3, int(round(lissage_mm / max(pas_arc_mm, 1e-6))))
     chaines, w_min, w_max, longueur = [], float("inf"), 0.0, 0.0
     for ch in brutes:
