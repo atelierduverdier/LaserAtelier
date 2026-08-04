@@ -218,3 +218,40 @@ _deborde = sum(1 for _y in range(_s25.height())
 assert _deborde == 0, ("le schéma déborde de son image sur {} pixels : la "
                        "légende est coupée".format(_deborde))
 print("7. le schéma suit l'angle ET l'épaisseur, et tient dans son cadre OK")
+
+
+# --- 8. LE CHAPEAU S'INSÈRE D'UN BOUTON ---------------------------------
+# Christophe : « c'est quelle touche le chapeau, CTRL + ? ». Aucune -- c'est
+# AltGr + $. Mais si la question se pose, la réponse est mauvaise : un
+# caractère qu'il faut chercher n'est pas disponible, il l'est en théorie.
+assert core.HERSHEY_FONTS.get("verdier")
+assert tp.CHAPEAU_GLYPHE == "¤"
+_verd = core._hershey_module("verdier")
+assert _verd.GLYPHES.get(tp.CHAPEAU_GLYPHE), "le bouton insérerait un glyphe vide"
+
+# Les DEUX panneaux qui écrivent du texte l'ont, et il pose vraiment le
+# caractère -- sur un QLineEdit comme sur un QTextEdit, dont les méthodes
+# d'insertion ne portent pas le même nom.
+_pt = tp.TaskPanelText()
+_pt.txt.setPlainText("Atelier ")
+_pt.btn_chapeau.click()
+assert tp.CHAPEAU_GLYPHE in _pt.txt.toPlainText(), (
+    "le bouton du mode Texte n'insère rien", _pt.txt.toPlainText())
+
+_pc = tp.TaskPanelCalligraphie()
+_pc.edt_texte.setText("Atelier ")
+_pc.edt_texte.setCursorPosition(len(_pc.edt_texte.text()))
+_pc.btn_chapeau.click()
+assert tp.CHAPEAU_GLYPHE in _pc.edt_texte.text(), (
+    "le bouton du mode Calligraphie n'insère rien", _pc.edt_texte.text())
+
+# Et le chapeau se GRAVE : le glyphe traverse deplier_texte, qui remplace
+# tout ce que la police ne sait pas tracer. Sur une police qui ne l'a pas,
+# il doit disparaître plutôt que sortir en carré.
+assert core.deplier_texte(tp.CHAPEAU_GLYPHE, _verd, quiet=True) == tp.CHAPEAU_GLYPHE
+_sans = core._hershey_module("sans")
+assert tp.CHAPEAU_GLYPHE not in core.deplier_texte(
+    tp.CHAPEAU_GLYPHE, _sans, quiet=True), (
+    "le chapeau passe sur une police qui ne le dessine pas")
+print("8. chapeau inséré au bouton dans les deux panneaux, gravé en Verdier, "
+      "écarté ailleurs OK")

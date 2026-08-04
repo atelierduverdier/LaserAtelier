@@ -7440,7 +7440,16 @@ class TaskPanelText:
         self.txt.setMaximumHeight(90)
         self.txt.setPlainText("Atelier")
         self.txt.cursorPositionChanged.connect(self._sync_boutons_align)
-        form.addRow(self.txt)
+        _l_txt = QtWidgets.QHBoxLayout()
+        _l_txt.setContentsMargins(0, 0, 0, 0)
+        _l_txt.addWidget(self.txt, 1)
+        self.btn_chapeau = _bouton_chapeau(self.txt)
+        _col = QtWidgets.QVBoxLayout()
+        _col.setContentsMargins(0, 0, 0, 0)
+        _col.addWidget(self.btn_chapeau)
+        _col.addStretch(1)
+        _l_txt.addLayout(_col)
+        form.addRow(_l_txt)
 
         self.lbl_info = _WrapLabel("")
         form.addRow(self.lbl_info)
@@ -11234,7 +11243,12 @@ class TaskPanelCalligraphie:
 
         self.edt_texte = QtWidgets.QLineEdit("Atelier du Verdier")
         self.edt_texte.setToolTip("Le texte à graver (une ligne).")
-        form.addRow("Texte :", self.edt_texte)
+        _l_txt = QtWidgets.QHBoxLayout()
+        _l_txt.setContentsMargins(0, 0, 0, 0)
+        _l_txt.addWidget(self.edt_texte, 1)
+        self.btn_chapeau = _bouton_chapeau(self.edt_texte)
+        _l_txt.addWidget(self.btn_chapeau)
+        form.addRow("Texte :", _l_txt)
 
         self.spn_largeur = QtWidgets.QDoubleSpinBox()
         self.spn_largeur.setRange(5.0, 2000.0)
@@ -11666,6 +11680,42 @@ class TaskPanelCalligraphie:
 
     def reject(self):
         return True
+
+
+CHAPEAU_GLYPHE = "\u00a4"          # ¤ -- le chapeau melon dans la police Verdier
+
+
+def _bouton_chapeau(champ):
+    """Bouton qui insère le chapeau de l'atelier dans un champ texte.
+
+    Christophe : « c'est quelle touche le chapeau, CTRL + ? ». Aucune :
+    c'est AltGr + $ sur un clavier français. Si la question se pose, la
+    réponse est mauvaise -- un caractère qu'il faut chercher n'est pas
+    disponible, il est disponible EN THÉORIE. Le bouton l'insère au
+    curseur, et l'infobulle donne quand même la touche pour ceux qui
+    tapent vite.
+
+    Marche sur un QLineEdit comme sur un QTextEdit : les deux ont `insert`
+    / `insertPlainText`, mais pas sous le même nom -- d'où le test plutôt
+    qu'un `isinstance` qui aurait oublié le troisième cas le jour venu."""
+    b = QtWidgets.QPushButton(CHAPEAU_GLYPHE)
+    b.setToolTip(
+        "Insère le chapeau melon de l'Atelier du Verdier, la signature de\n"
+        "la maison. Il n'existe que dans la police « Verdier ».\n"
+        "\n"
+        "Au clavier : AltGr + $ (la touche « $ £ ¤ »).")
+    b.setMaximumWidth(38)
+
+    def _poser():
+        for nom in ("insertPlainText", "insert"):
+            f = getattr(champ, nom, None)
+            if callable(f):
+                f(CHAPEAU_GLYPHE)
+                champ.setFocus()
+                return
+
+    b.clicked.connect(_poser)
+    return b
 
 
 def _schema_plume(angle_deg, epaisseur_pct, contraste, larg=330, haut=132):
