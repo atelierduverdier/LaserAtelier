@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.63.1</span><br>
+      <span class="ver">Version 2.64.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.63.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.64.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -717,7 +717,8 @@
     <p>Une police calligraphique est un <b>contour rempli</b>&nbsp;: la graver au trait perdrait ce qui en fait la calligraphie, l'alternance des pleins et des déliés. Ce mode en extrait le <b>squelette</b> — la ligne que la plume a parcourue — et la <b>largeur locale</b>, puis confie la largeur au fuseau&nbsp;Z. La tête se lève pour élargir le point dans les pleins et redescend pour les déliés. Rien n'est rempli ni repassé&nbsp;: un plein est un endroit où la tête était <em>haute</em>.</p>
     <p><b>La taille est le seul levier.</b> La largeur du trait vient du dessin de la police mise à l'échelle, et le plafond est la plus large brûlure <em>mesurée</em> du matériau&nbsp;: aucune puissance n'élargit un trait au-delà. Passé une certaine taille les pleins sont donc tronqués — le verdict le dit, et donne la largeur qui tiendrait. Sur le hêtre de l'atelier à F200 (0,18 à 3,43&nbsp;mm), une écriture anglaise à fort contraste plafonne vers 130&nbsp;mm de large&nbsp;; à 200&nbsp;mm, 39&nbsp;% du tracé est hors de portée.</p>
     <p><b>Les polices ne sont pas fournies.</b> Les calligraphies du commerce sont presque toutes en licence «&nbsp;usage personnel&nbsp;»&nbsp;: le mode lit le fichier <code>.otf</code>/<code>.ttf</code> sur votre disque et ne le copie nulle part. Graver pour soi ne pose pas de question&nbsp;; revendre en demanderait une licence commerciale.</p>
-    <p class="meta"><b>Réglages clés :</b> police · texte · largeur en mm · matériau · avance · puissance maxi. <b>Sortie :</b> fichier G-code</p>
+    <p><b>On place le texte parce qu'on le VOIT (v2.64.0).</b> «&nbsp;Poser le tracé dans le document&nbsp;» crée le TRAJET en fil dans l'arbre&nbsp;: on le déplace sur sa pièce comme n'importe quel objet (Placement, Draft Déplacer), et la génération suit ce placement. Le fil ne porte pas les largeurs — elles n'existent qu'à la gravure, par la hauteur&nbsp;Z&nbsp;; ce qu'on place, c'est un trajet. Le Z du placement est ignoré, et le dit&nbsp;: dans ce mode la hauteur EST la largeur du trait.</p>
+    <p class="meta"><b>Réglages clés :</b> police · texte · largeur en mm · matériau · avance · puissance maxi. <b>Sortie :</b> objet fil + fichier G-code</p>
   </div></div>
 
   <div class="mode"><img class="ic" src="../resources/icons/text.svg" alt=""><div class="body">
@@ -725,7 +726,7 @@
     <h4>Texte (trait simple)</h4>
     <p class="quoi">Écrire un texte « bâton », un seul trait par branche.</p>
     <p>Une police monotrait (façon table traçante) idéale quand le remplissage n'a pas de sens — les lettres à trou notamment. Crée un fil dans l'arbre, à graver ensuite avec le Marquage.</p>
-    <p><b>44 polices (v2.60.0).</b> Hershey d'origine, plus les fontes CNC d'Evil Mad Scientist, Relief SingleLine et Cutlings. Le bouton <b>«&nbsp;Voir…&nbsp;»</b> à côté de la liste (v2.63.1) les écrit <em>toutes</em>, avec votre propre texte, tracées par leurs vrais traits&nbsp;: un nom comme «&nbsp;EMS Osmotron&nbsp;» ne se choisit pas autrement qu'en le voyant. Neuf d'entre elles sont signalées «&nbsp;fût contourné&nbsp;»&nbsp;: elles gravent chaque branche <em>deux fois</em> — deux fois le temps, et un trait plus large que voulu.</p>
+    <p><b>44 polices (v2.60.0).</b> Hershey d'origine, plus les fontes CNC d'Evil Mad Scientist, Relief SingleLine et Cutlings. Le bouton <b>«&nbsp;Voir…&nbsp;»</b> à côté de la liste (v2.64.0) les écrit <em>toutes</em>, avec votre propre texte, tracées par leurs vrais traits&nbsp;: un nom comme «&nbsp;EMS Osmotron&nbsp;» ne se choisit pas autrement qu'en le voyant. Neuf d'entre elles sont signalées «&nbsp;fût contourné&nbsp;»&nbsp;: elles gravent chaque branche <em>deux fois</em> — deux fois le temps, et un trait plus large que voulu.</p>
     <p>Les caractères qu'une police ne connaît pas sont <b>repliés</b> plutôt que perdus&nbsp;: «&nbsp;cœur&nbsp;» devient «&nbsp;coeur&nbsp;» sur celles qui n'ont pas la ligature, et ce qui reste introuvable est <em>nommé</em> dans la console.</p>
     <p class="meta"><b>Réglages clés :</b> texte · police (spécimen visuel) · hauteur · espacements · alignement. <b>Sortie :</b> objet fil</p>
   </div></div>
@@ -1194,7 +1195,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.63.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.64.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

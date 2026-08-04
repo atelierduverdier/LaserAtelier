@@ -10,7 +10,7 @@ sert pour le bout de chaîne qui a besoin d'un vrai fichier.
 import math
 import sys
 
-from harness import preparer
+from harness import preparer, sans_dialogues
 
 h = preparer()
 core = h.core
@@ -295,3 +295,75 @@ assert _n_grave <= _n_police + 1, (
 print("8. « {} » : {} taches d'encre servies de 35 à 200 mm ; gravure en {} "
       "morceaux pour {} dans la police ; aucun geste immobile ni redondant OK"
       .format(_TXT8, _total, _n_grave, _n_police))
+
+
+# --- 9. On place le texte parce qu'on le VOIT -------------------------
+# Christophe, 04/08/2026 : « imagine, je crée une pièce sous FreeCAD, je veux
+# positionner mon texte à un endroit précis ; si je ne le vois pas, je ne
+# peux pas le placer ». Le mode écrivait le G-code directement, au prétexte
+# qu'une largeur variable ne se range pas dans un fil. Vrai, et hors sujet :
+# ce qu'on place est un TRAJET, et un trajet est un fil. La largeur suit à la
+# gravure.
+#
+# Le contrôle porte sur la chaîne ENTIÈRE : poser l'objet, le déplacer comme
+# le ferait la souris, et vérifier que le G-code atterrit là où l'objet est
+# — pas là où il a été créé.
+import FreeCAD                                        # noqa: E402
+
+# `sans_dialogues()` AVANT tout clic : `_on_creer_objet` annonce le tracé
+# posé par une boîte de message, et hors écran une boîte attend un clic qui
+# ne viendra jamais -- le test gèle SANS AUCUNE SORTIE, ce qui ressemble à
+# une boucle infinie dans le code testé. C'est écrit noir sur blanc dans les
+# règles du dépôt, je suis tombé dedans, et la « correction » que j'ai crue
+# faite n'avait rien remplacé : le script l'annonçait sans l'avoir vérifié.
+# D'où l'assertion sur chaque ancre, désormais.
+_dits = sans_dialogues()
+_doc = FreeCAD.newDocument("EssaiCalligraphie")
+try:
+    _p9 = tp.TaskPanelCalligraphie()
+    _p9.edt_police.setText(_chemin)
+    _p9.edt_texte.setText(_TXT)
+    for _i in range(_p9.combo_mat.count()):
+        if _p9.combo_mat.itemData(_i) == _MAT:
+            _p9.combo_mat.setCurrentIndex(_i)
+    _p9.spn_largeur.setValue(80.0)
+    _p9._on_creer_objet()
+    _obj = _p9._objet
+    assert _obj is not None, "aucun objet posé dans le document"
+    assert _obj.Shape.Edges, "l'objet posé n'a aucune arête : rien à voir"
+    _fiche = core.fiche_objet_calligraphie(_obj)
+    assert _fiche.get("texte") == _TXT, (
+        "l'objet ne dit pas de quel texte il vient", _fiche)
+
+    # On le déplace ET on le tourne, comme à la souris.
+    _obj.Placement = FreeCAD.Placement(
+        FreeCAD.Vector(120.0, 45.0, 0.0),
+        FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), 15.0))
+    _doc.recompute()
+
+    _ecrit = {}
+    _vrai_w = tp._write_gcode_with_dialog
+    try:
+        tp._write_gcode_with_dialog = (
+            lambda w, g, d, **k: _ecrit.setdefault("g", g) or "/tmp/x.ngc")
+        _p9._generer(cadre=False)
+    finally:
+        tp._write_gcode_with_dialog = _vrai_w
+    assert _ecrit.get("g"), "aucun G-code produit"
+    _xs = [float(m.group(1))
+           for m in re.finditer(r"^G1 X(-?\d+\.\d+)", _ecrit["g"], re.M)]
+    _ys = [float(m.group(1)) for m in
+           re.finditer(r"^G1 X-?\d+\.\d+ Y(-?\d+\.\d+)", _ecrit["g"], re.M)]
+    assert _xs and _ys, "le G-code ne contient aucun mouvement gravé"
+    _bb = _obj.Shape.BoundBox
+    assert abs(min(_xs) - _bb.XMin) < 2.0 and abs(min(_ys) - _bb.YMin) < 2.0, (
+        "le G-code ne suit pas le placement de l'objet : le texte serait "
+        "gravé ailleurs que là où on l'a posé",
+        (min(_xs), min(_ys)), (_bb.XMin, _bb.YMin))
+    assert min(_xs) > 100.0, (
+        "le G-code est resté à l'origine : le placement est ignoré", min(_xs))
+    print("9. tracé posé ({} arêtes), déplacé de (120, 45) et tourné de 15° : "
+          "le G-code atterrit en ({:.0f}, {:.0f}) comme l'objet OK".format(
+              len(_obj.Shape.Edges), min(_xs), min(_ys)))
+finally:
+    FreeCAD.closeDocument("EssaiCalligraphie")

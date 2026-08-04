@@ -52,6 +52,16 @@ EM_PX = 600
 # toucher au geste (un plein de calligraphie s'étale sur 5 à 30 mm).
 LISSAGE_MM = 1.0
 
+# Fenêtre de l'OUVERTURE morphologique du profil de largeur, en mm de
+# trajet. Elle rabote les renflements plus COURTS qu'elle -- typiquement la
+# bosse d'un croisement, où le disque inscrit tient toute la jonction -- en
+# laissant intact le galbe d'un plein, qui s'étale sur des millimètres.
+# Réglée sur mesure le 04/08/2026 : à 2,8 mm, le saut de largeur médian d'un
+# point au suivant tombe de 0,45 à 0,30 mm sur « Swirly Canalope » et de
+# 0,34 à 0,23 sur Blacksword, pour un point de couverture. Plus large
+# lisserait davantage mais amaigrirait les pleins.
+OUVERTURE_MM = 2.8
+
 # Élagage des BARBES de l'amincissement. Une barbe est un appendice à
 # extrémité libre, greffé sur un trait, et si court qu'il tient dans
 # l'épaisseur de ce trait : le graver ne dépose pas un point d'encre de plus,
@@ -483,9 +493,16 @@ def encre_oubliee(encre, couvert, mini_px=6, echelle=ECHELLE_CONTROLE):
         cov = np.array([[float((dy * dy).mean()), float((dy * dx).mean())],
                         [float((dy * dx).mean()), float((dx * dx).mean())]])
         vals, vecs = np.linalg.eigh(cov)
-        k = int(np.argmax(vals))
-        v = vecs[:, k]
-        demi = max(float(np.sqrt(max(vals[k], 0.0))), 0.6 * larg)
+        # PAS `k` : c'est le facteur de réduction, utilisé juste au-dessus
+        # pour revenir en pleine résolution. L'écraser avec un indice de
+        # valeur propre faisait lire toutes les régions SUIVANTES aux
+        # mauvaises coordonnées (multipliées par 0 ou 1 au lieu de 3), donc
+        # hors de l'encre, donc rejetées : sur « Swirly Canalope », les deux
+        # points des « i » -- 3347 px chacun, dûment détectés comme non
+        # gravés -- disparaissaient à cette ligne-là.
+        j = int(np.argmax(vals))
+        v = vecs[:, j]
+        demi = max(float(np.sqrt(max(vals[j], 0.0))), 0.6 * larg)
         out.append(([(int(round(cy - v[0] * demi)), int(round(cx - v[1] * demi))),
                      (int(round(cy + v[0] * demi)), int(round(cx + v[1] * demi)))],
                     larg))
@@ -586,11 +603,31 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
         # Le zéro absolu d'abord : une chaîne de largeur nulle échapperait
         # à la règle proportionnelle (0 < 0.5 x 0 est faux) et sortirait un
         # G1 immobile, qui ne grave rien.
-        if lg <= 1e-9 or lg < GESTE_MINI_EN_LARGEURS * (max(l2) if l2 else 0.0):
+        # Un point d'i est PLUS COURT QUE LARGE par définition : la règle
+        # du geste mini ne vaut que pour ce qui est greffé sur un trait,
+        # dont l'encre est déjà déposée par le porteur. Un trait isolé n'a
+        # pas de porteur.
+        if lg <= 1e-9 or (libres < 2 and
+                          lg < GESTE_MINI_EN_LARGEURS * (max(l2) if l2 else 0.0)):
             continue
         if len(l2) >= 5:
-            l2 = list(ndimage.uniform_filter1d(
-                np.array(l2), size=fenetre, mode="nearest"))
+            # OUVERTURE d'abord, moyenne ensuite. Le disque inscrit ENFLE à
+            # un croisement -- il y tient toute la jonction, pas le trait --
+            # et la largeur y bondissait de 0,63 mm d'un point au suivant,
+            # 0,4 mm plus loin. À la gravure cela fait des renflements le
+            # long du trait ; Christophe, 04/08/2026 : « les traits ont
+            # l'apparence de petits boudins ».
+            #
+            # Une ouverture (érosion puis dilatation) supprime les pics plus
+            # ÉTROITS que sa fenêtre en laissant le galbe intact : c'est
+            # exactement la distinction voulue entre une bosse de jonction,
+            # brève, et un plein de calligraphie, qui s'étale sur des
+            # millimètres. La moyenne qui suit ne fait plus qu'adoucir.
+            arr = np.array(l2)
+            ouv = max(3, int(round(OUVERTURE_MM / max(pas_arc_mm, 1e-6))))
+            arr = ndimage.grey_opening(arr, size=ouv, mode="nearest")
+            l2 = list(ndimage.uniform_filter1d(arr, size=fenetre,
+                                               mode="nearest"))
         chaines.append([(float(x), float(y), float(w))
                         for (x, y), w in zip(p2, l2)])
         w_min = min(w_min, min(l2))

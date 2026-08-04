@@ -10484,6 +10484,7 @@ class TaskPanelCalligraphie:
 
     def __init__(self):
         self._cache = (None, None)        # (clé des réglages, (chaînes, infos))
+        self._objet = None                # le tracé posé dans le document
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldsStayAtSizeHint)
@@ -10639,6 +10640,21 @@ class TaskPanelCalligraphie:
         self.btn_apercu.clicked.connect(self._on_apercu)
         _preview_row(form, [(self.btn_apercu, "sect_photo.svg")])
 
+        self.btn_objet = QtWidgets.QPushButton(
+            "Poser le tracé dans le document (pour le placer)")
+        self.btn_objet.setToolTip(
+            "Crée le TRAJET dans l'arbre, en fil, pour que tu puisses le\n"
+            "voir et le déplacer sur ta pièce (Placement, Draft Déplacer…).\n"
+            "\n"
+            "La génération du G-code suit ensuite ce placement : c'est lui\n"
+            "qui décide où le texte atterrit sur le bois. Sans cet objet, le\n"
+            "texte est gravé coin bas-gauche en X0 Y0.\n"
+            "\n"
+            "Le fil ne porte PAS les largeurs -- elles n'existent qu'à la\n"
+            "gravure, par la hauteur Z. Ce que tu places, c'est le trajet.")
+        self.btn_objet.clicked.connect(self._on_creer_objet)
+        form.addRow(self.btn_objet)
+
         self.btn_cadre = QtWidgets.QPushButton(
             "Générer l'aperçu cadrage (fichier séparé)")
         self.btn_cadre.clicked.connect(lambda: self._generer(cadre=True))
@@ -10782,6 +10798,70 @@ class TaskPanelCalligraphie:
                         if not lg.isHidden() and lg.text())
 
     # -- aperçu ---------------------------------------------------------
+    def _on_creer_objet(self):
+        """Pose le trajet dans le document pour qu'il soit placé à la main."""
+        try:
+            res = self._chaines()
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self.form, "Calligraphie", str(exc))
+            return
+        if res is None:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Calligraphie",
+                "Choisis une police et tape un texte.")
+            return
+        chaines, _inf = res
+        obj, err = core.creer_objet_calligraphie(
+            chaines, self.edt_texte.text(),
+            os.path.basename(self.edt_police.text().strip()),
+            self.spn_largeur.value(), obj=self._objet_vivant())
+        if err:
+            QtWidgets.QMessageBox.warning(self.form, "Calligraphie", err)
+            return
+        self._objet = obj
+        try:
+            Gui.Selection.clearSelection()
+            Gui.Selection.addSelection(obj)
+            Gui.SendMsgToActiveView("ViewFit")
+        except Exception:
+            pass
+        QtWidgets.QMessageBox.information(
+            self.form, "Calligraphie",
+            "Tracé posé dans l'arbre : « {} ».\n\n"
+            "Déplace-le où tu veux sur ta pièce (Placement, ou Draft "
+            "Déplacer). « Générer et sauvegarder le G-code… » suivra ce "
+            "placement.\n\nLe fil ne montre pas les largeurs : elles se "
+            "font à la gravure, par la hauteur Z.".format(obj.Label))
+
+    def _objet_vivant(self):
+        """L'objet déjà posé s'il existe encore, sinon None. Un objet
+        supprimé par l'utilisateur laisse un pointeur C++ mort : y toucher
+        ferait tomber FreeCAD."""
+        obj = getattr(self, "_objet", None)
+        if obj is None:
+            return None
+        try:
+            _ = obj.Name
+            doc = FreeCAD.ActiveDocument
+            return obj if doc is not None and obj in doc.Objects else None
+        except Exception:
+            return None
+
+    def _placement_courant(self):
+        """Le placement à appliquer aux gestes : celui de l'objet posé, ou
+        celui d'un objet de calligraphie sélectionné dans l'arbre."""
+        obj = self._objet_vivant()
+        if obj is None:
+            try:
+                sel = Gui.Selection.getSelection()
+            except Exception:
+                sel = []
+            for o in sel:
+                if core.fiche_objet_calligraphie(o):
+                    obj = o
+                    break
+        return (obj, obj.Placement) if obj is not None else (None, None)
+
     def _on_apercu(self):
         try:
             res = self._chaines()
@@ -10818,6 +10898,16 @@ class TaskPanelCalligraphie:
                 "la Planche 2 dans l'Assistant matériau.")
             return
         chaines, _inf = res
+        # LE PLACEMENT DE L'OBJET DÉCIDE OÙ ÇA GRAVE. Sans objet posé, le
+        # texte reste coin bas-gauche en X0 Y0 -- le comportement d'avant.
+        obj, plc = self._placement_courant()
+        if plc is not None:
+            chaines = core.placer_chaines(chaines, plc)
+            if abs(plc.Base.z) > 1e-6:
+                FreeCAD.Console.PrintWarning(
+                    "Calligraphie : le Z du placement ({:.2f} mm) est ignoré "
+                    "-- dans ce mode la hauteur EST la largeur du trait.\n"
+                    .format(plc.Base.z))
         g = core.generate_gcode_calligraphie(
             chaines, self.spn_z.value(), self.spn_feed.value(), mat,
             power_max=self.spn_power.value(), frame_only=cadre,

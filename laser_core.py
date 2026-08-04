@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.63.1"
+VERSION = "2.64.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -12457,6 +12457,79 @@ def _interp_croissant(xs, ys, x):
         return ys[lo]
     t = (x - xs[lo]) / (xs[hi] - xs[lo])
     return ys[lo] + t * (ys[hi] - ys[lo])
+
+
+PROP_CALLIGRAPHIE = "LaserAtelierCalligraphie"
+
+
+def creer_objet_calligraphie(chaines, texte, police, largeur_mm, obj=None):
+    """Pose le tracé dans le document, pour qu'on puisse LE VOIR ET LE
+    PLACER. Renvoie (objet, erreur).
+
+    Christophe, 04/08/2026 : « imagine, je crée une pièce sous FreeCAD, je
+    veux positionner mon texte à un endroit précis ; si je ne le vois pas,
+    je ne peux pas le placer ». Le mode écrivait le G-code directement, au
+    prétexte qu'une largeur variable ne se range pas dans un fil -- vrai,
+    mais hors sujet : ce qu'on place, c'est un TRAJET, et un trajet est un
+    fil. La largeur suit à la génération.
+
+    L'objet porte donc le SQUELETTE (un fil par geste, sans les largeurs) et
+    une fiche JSON disant de quel texte il vient. À la génération, on lui
+    demande son `Placement` : c'est lui qui décide où le G-code atterrit."""
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        return None, "Ouvre (ou crée) un document d'abord."
+    aretes = []
+    for ch in chaines:
+        for (x0, y0, _w0), (x1, y1, _w1) in zip(ch, ch[1:]):
+            if math.hypot(x1 - x0, y1 - y0) > 1e-7:
+                aretes.append(Part.LineSegment(FreeCAD.Vector(x0, y0, 0.0),
+                                               FreeCAD.Vector(x1, y1, 0.0))
+                              .toShape())
+    if not aretes:
+        return None, "Rien à poser : le tracé est vide."
+    if obj is None:
+        obj = doc.addObject("Part::Feature", "Calligraphie")
+    obj.Shape = Part.Compound(aretes)
+    obj.Label = "Calligraphie « {} »".format((texte or "").strip()[:24])
+    fiche = {"texte": texte, "police": police, "largeur_mm": float(largeur_mm)}
+    if not hasattr(obj, PROP_CALLIGRAPHIE):
+        obj.addProperty("App::PropertyString", PROP_CALLIGRAPHIE,
+                        "LaserAtelier",
+                        "Texte et police dont ce tracé est issu")
+    setattr(obj, PROP_CALLIGRAPHIE, json.dumps(fiche, ensure_ascii=False))
+    if getattr(obj, "ViewObject", None) is not None:
+        obj.ViewObject.LineColor = (0.18, 0.12, 0.07)
+        obj.ViewObject.LineWidth = 2.0
+    doc.recompute()
+    return obj, None
+
+
+def fiche_objet_calligraphie(obj):
+    """La fiche JSON posée par `creer_objet_calligraphie`, ou {}."""
+    try:
+        return json.loads(getattr(obj, PROP_CALLIGRAPHIE, "") or "{}") or {}
+    except Exception:
+        return {}
+
+
+def placer_chaines(chaines, placement):
+    """Applique le placement d'un objet FreeCAD aux gestes.
+
+    On garde X et Y et la rotation ; le Z du placement est IGNORÉ et c'est
+    volontaire : dans ce mode la hauteur est la LARGEUR DU TRAIT, pilotée
+    par la table du matériau. La confondre avec la position de la pièce
+    ferait graver un fuseau qui n'a rien à voir avec le dessin."""
+    if placement is None:
+        return chaines
+    out = []
+    for ch in chaines:
+        neuf = []
+        for x, y, w in ch:
+            v = placement.multVec(FreeCAD.Vector(float(x), float(y), 0.0))
+            neuf.append((v.x, v.y, w))
+        out.append(neuf)
+    return out
 
 
 def generate_gcode_calligraphie(chaines, z_work, feed, material,
