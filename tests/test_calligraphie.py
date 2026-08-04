@@ -878,3 +878,36 @@ print("15. sens de la main : {}/{} gestes du G-code ÉMIS vont vers le bas (ou "
       "vers la droite s'ils sont horizontaux) ; l'ordonnancement retourne "
       "encore librement hors calligraphie OK".format(
           len(_gestes15), len(_gestes15)))
+
+
+# --- 16. ON ÉCRIT DE GAUCHE À DROITE -----------------------------------
+# Christophe, 04/08/2026 : « pour l'écriture, on écrit de gauche à droite,
+# je veux que tu respectes cela ». C'est l'ORDRE des gestes, là où §15
+# portait sur le sens de chacun.
+#
+# Et ce n'est pas un compromis : une fois le sens imposé, l'ordonnancement
+# par proximité n'a plus le droit de retourner une chaîne pour se rapprocher,
+# si bien qu'un simple tri fait mieux. Mesuré sur « Atelier du Verdier » :
+# 203 mm de trajet à vide par proximité contre 155 de gauche à droite, et
+# 16 retours en arrière contre 0.
+_g16 = core.generate_gcode_calligraphie(_MULTI, 0.0, 200, _MAT, power_max=900,
+                                        police=_nom)
+_gestes16, _cur16 = [], []
+for _l in _g16.split("\n"):
+    if _l.startswith("G1 X"):
+        _cur16.append((float(re.search(r"X(-?[\d.]+)", _l).group(1)),
+                       float(re.search(r"Y(-?[\d.]+)", _l).group(1))))
+    elif _l.startswith("G0") and _cur16:
+        _gestes16.append(_cur16)
+        _cur16 = []
+if _cur16:
+    _gestes16.append(_cur16)
+assert len(_gestes16) >= 4, ("il faut plusieurs gestes pour juger d'un ORDRE",
+                             len(_gestes16))
+_retours = [(a[0][0], b[0][0]) for a, b in zip(_gestes16, _gestes16[1:])
+            if b[0][0] < a[0][0] - 1e-6]
+assert not _retours, (
+    "{} geste(s) repartent VERS LA GAUCHE du précédent : on n'écrit pas comme "
+    "ça".format(len(_retours)), _retours[:3])
+print("16. ordre d'écriture : {} gestes du G-code ÉMIS, aucun ne repart vers "
+      "la gauche du précédent OK".format(len(_gestes16)))

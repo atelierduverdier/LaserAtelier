@@ -155,6 +155,30 @@ FUSION_EN_LARGEURS = 1.0
 DIRECTION_EN_LARGEURS = 1.5
 PORTEE_MINI, PORTEE_MAXI = 6, 80
 
+# ESSAYÉ ET REJETÉ le 04/08/2026 : LISSER LE TRAJET AUX CROISEMENTS.
+#
+# L'axe médian de deux traits qui se croisent n'est pas deux droites : près
+# du croisement le plus grand disque inscrit enfle et son centre est tiré
+# vers l'intersection, donc le squelette dévie. Mesuré sur deux barres dont
+# on connaît les axes vrais : 10 % de la largeur à 90°, 20 % à 30°, 30 % à
+# 20° -- et une italique cursive n'est faite que de croisements rasants.
+# Christophe, 04/08/2026, trois zones surlignées : « parfois le trait ne va
+# pas bien droit dans la trajectoire, il est un peu dévié par un croisement
+# [...] je pense encore que c'est à cause de la font choisie ».
+#
+# Il avait raison. Un filtre moyenneur sur TOUT le trajet rabote de vraies
+# courbes : couverture 97,6 -> 92,4 % sur Swirly, 98,6 -> 93,2 sur
+# Blacksword. Restreint au voisinage des nœuds en fondu, il semblait gratuit
+# -- et la mesure qui le disait ne passait PAS par la vraie chaîne (elle
+# sautait l'ouverture des largeurs). Sur le vrai pipeline, à 2 largeurs de
+# fenêtre : Blacksword 30 gestes -> 38, Swirly 95,0 -> 94,3 % de couverture.
+# Huit relevages, transits et plongées de plus pour redresser deux dixièmes
+# de millimètre.
+#
+# LA DÉVIATION EST UNE PROPRIÉTÉ DE L'AXE MÉDIAN DE CETTE LETTRE, pas un
+# défaut du code. Elle se réduit en choisissant une police dont les traits
+# se croisent moins à plat, jamais en filtrant après coup.
+
 _V8 = [(-1, 0), (-1, 1), (0, 1), (1, 1),
        (1, 0), (1, -1), (0, -1), (-1, -1)]     # P2..P9, sens horaire
 

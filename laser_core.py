@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.67.0"
+VERSION = "2.67.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -12605,6 +12605,25 @@ def sens_de_la_main(geste):
     return geste if bon else geste[::-1]
 
 
+def ordre_ecriture(gestes):
+    """Les gestes dans l'ordre où une main les ferait : de GAUCHE À DROITE.
+
+    Christophe, 04/08/2026 : « pour l'écriture, on écrit de gauche à droite,
+    je veux que tu respectes cela ».
+
+    On trie sur le X de DÉPART, pas sur le bord gauche du geste : ce qui
+    compte est l'endroit où la plume se pose, et `sens_de_la_main` a déjà mis
+    chaque geste dans le bon sens. Le bord gauche donne 3 retours en arrière
+    là où le départ n'en laisse aucun.
+
+    Et ce n'est PAS un compromis. Une fois le sens imposé, l'ordonnancement
+    par proximité n'a plus le droit de retourner une chaîne pour se rapprocher,
+    si bien qu'il fait moins bien qu'un simple tri : mesuré sur « Atelier du
+    Verdier », 203 mm de trajet à vide contre **155** de gauche à droite, et
+    16 retours en arrière contre 0. On y gagne des deux côtés."""
+    return sorted(gestes, key=lambda g: g[0].x if g else 0.0)
+
+
 def generate_gcode_calligraphie(chaines, z_work, feed, material,
                                 power_max=None, largeur_max=None,
                                 pre_gcode="", post_gcode="",
@@ -12628,8 +12647,7 @@ def generate_gcode_calligraphie(chaines, z_work, feed, material,
                 "grave la Planche 2 (Assistant matériau).\n".format(material))
         return None
     gestes, diag = prep
-    gestes = [sens_de_la_main(g) for g in gestes]
-    gestes = order_chains_by_proximity(gestes, sens_libre=False)
+    gestes = ordre_ecriture([sens_de_la_main(g) for g in gestes])
 
     z_safe = z_work + diag["z_max"] + TRAVEL_CLEARANCE_MM
     trace = sum(math.hypot(b.x - a.x, b.y - a.y)

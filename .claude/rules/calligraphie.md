@@ -180,6 +180,30 @@ code. An **open chevron** does discriminate: two ends continuing straight with b
 them, i.e. the straight-line-across-the-word disaster in miniature. Without the guard: 1 chain, 3 px
 outside the ink. With it: 2 chains, none.
 
+## The medial axis DEVIATES at a crossing — and the cure costs more
+
+Two strokes crossing do not give two straight axes: near the crossing the largest inscribed disc
+swells and its centre is pulled toward the intersection, so the skeleton bends. Measured on two bars
+whose true axes are known by construction: **10 % of the stroke width at 90°, 20 % at 30°, 30 % at
+20°** — and a cursive italic is made of nothing but shallow crossings. Christophe highlighted three
+such spots: *"le trait ne va pas bien droit [...] il est un peu dévié par un croisement [...] je
+pense encore que c'est à cause de la font choisie"*.
+
+He was right. A moving-average filter over the **whole** path does straighten it, and shaves real
+curves doing so: coverage 97.6 → 92.4 % on Swirly, 98.6 → 93.2 on Blacksword.
+
+Restricting it to the **neighbourhood of the nodes**, with a fade, looked free — and **the
+measurement that said so did not go through the real chain**: it skipped the width opening, so every
+number was inflated and not comparable. On the real pipeline at 2 widths of window: **Blacksword
+30 gestures → 38**, Swirly 95.0 → 94.3 % coverage. Eight extra lifts, transits and plunges to
+straighten two tenths of a millimetre.
+
+**Rule this earns:** a sweep run on a shortened pipeline is not a measurement of the pipeline. Reuse
+the entry point, or state plainly which stages you skipped.
+
+The deviation is a property of that letter's medial axis, not a defect. It shrinks by picking a font
+whose strokes cross less flatly, never by filtering afterwards.
+
 ## Size is the only lever
 
 The stroke width comes from the glyph scaled to the requested size, and the ceiling is the
