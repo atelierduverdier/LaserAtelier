@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.77.0"
+VERSION = "2.77.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1743,6 +1743,19 @@ def order_chains_by_proximity(chains, sens_libre=True):
 # Sans1, soit 4,7 traits par lettre contre 2,4. Elles sont proposées parce
 # que Christophe les a demandées, mais le libellé le dit.
 HERSHEY_FONTS = {
+    # EN TÊTE, et pas par vanité : la liste en compte quarante-cinq, et
+    # celle-ci était la quarante-cinquième -- tout en bas, invisible.
+    # Christophe a déjà signalé le défaut sur les polices de calligraphie
+    # (« j'ai une liste interminable ») ; le refaire ici serait n'avoir
+    # rien appris. Le rang ne casse aucun réglage enregistré : `_widget_get`
+    # sauvegarde la CLÉ d'une combo, jamais son rang, précisément pour que
+    # la liste puisse être réorganisée.
+    #
+    # La seule qui ne vienne d'aucune fonte tierce : dessinée trait par
+    # trait par outils/creer_police_verdier.py, donc sans licence à
+    # respecter et redistribuable avec l'atelier. Elle porte le chapeau de
+    # la maison en glyphe (¤) et les œ/Œ que seule Relief SingleLine avait.
+    "verdier": "Verdier -- la police de l'atelier (chapeau sur ¤)",
     "sans": "Hershey Sans (bâton, défaut)",
     "script": "Hershey Script (cursive)",
     "emsallure": "EMS Allure",
@@ -1787,12 +1800,6 @@ HERSHEY_FONTS = {
     "hersheyserifmeditalic": "Hershey Serif Med Italic -- fût contourné, grave double",
     "relief": "Relief SingleLine",
     "twinsans": "Twin Sans",
-    # La seule qui ne vienne d'aucune fonte tierce : dessinée trait par
-    # trait par outils/creer_police_verdier.py, donc sans licence à
-    # respecter et redistribuable avec l'atelier. Elle porte le chapeau
-    # de la maison en glyphe (¤) et les œ/Œ qui manquent à toutes les
-    # autres.
-    "verdier": "Verdier -- la police de l'atelier (chapeau sur ¤)",
 }
 
 

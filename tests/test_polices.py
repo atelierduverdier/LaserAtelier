@@ -326,3 +326,17 @@ assert abs((max(_ys) - min(_ys)) - _v.CAP_HEIGHT) < 1e-6, (
 print("8. Verdier : {} glyphes, {:.1f} traits/lettre, œ Œ æ Æ ç ß € tracés, "
       "chapeau sur ¤, capitale mesurée {:.0f} OK".format(
           len(_v.GLYPHES), _tpl, _v.CAP_HEIGHT))
+
+
+# --- 9. ELLE EST TROUVABLE ----------------------------------------------
+# Christophe, aussitôt livrée : « et dans l'atelier je la trouve où ? ».
+# Elle était 45e sur 45, tout en bas d'une liste déroulante -- exactement
+# le défaut qu'il avait déjà signalé sur les polices de calligraphie
+# (« j'ai une liste interminable »). Une police qu'on ne trouve pas n'a
+# pas été livrée.
+assert list(core.HERSHEY_FONTS)[0] == "verdier", (
+    "Verdier n'ouvre plus la liste : elle redevient introuvable au milieu "
+    "de quarante-cinq entrées", list(core.HERSHEY_FONTS)[:3])
+# Et le rang ne doit RIEN casser : la config garde la clé, pas le rang.
+assert core.HERSHEY_FONTS["sans"], "la police par défaut a disparu du registre"
+print("9. Verdier ouvre la liste des {} polices OK".format(len(core.HERSHEY_FONTS)))
