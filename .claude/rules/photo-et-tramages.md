@@ -4,9 +4,9 @@ paths:
   - "task_panels.py"
 ---
 
-# Photo engraving: the 7 tramages, the nuancier curve, the preview
+# Photo engraving: the 8 tramages, the nuancier curve, the preview
 
-## The 7 tramages
+## The 8 tramages
 
 | # | Name | How grey is produced |
 |---|---|---|
@@ -17,6 +17,7 @@ paths:
 | 4 | Gros points Z | dot DIAMETER, via per-dot Z (Z moves *between* dots) |
 | 5 | Similigravure | AM 45° screen — dot AREA, no calibration |
 | 6 | Lignes gravées | line WIDTH, from the measured kerf table, no calibration |
+| 7 | Spirale | same swelling line, wound from centre to edge — no U-turn at all |
 
 Shared serpentine emitter `_emit_raster_rows` (modes 2, 3, 5, 6). Gamma lives in the panel
 (`spn_gamma`, applied in `_build_rows`). `generate_gcode_photo_sampler` is the comparison strip.

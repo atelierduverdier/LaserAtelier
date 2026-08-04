@@ -153,7 +153,7 @@ the measured numbers and the traps, not summaries:
 | Rule | Loads when you touch | Covers |
 |---|---|---|
 | `generateurs-gcode.md` | `laser_core.py` | G-code contract, 3 dialects, sanitizer, G64, micro-strokes, chain ordering, stepped ramps, defocus & burn-width model, vector fonts |
-| `photo-et-tramages.md` | `laser_core.py`, `task_panels.py` | The 7 tramages, nuancier curve, "darkness ≠ energy alone", similigravure, swelling lines, photo preview |
+| `photo-et-tramages.md` | `laser_core.py`, `task_panels.py` | The 8 tramages, nuancier curve, "darkness ≠ energy alone", similigravure, swelling lines, photo preview |
 | `panneaux-ui.md` | `task_panels.py`, `laser_jobs.py` | Shared UI helpers, the ①②③ convention, combined jobs, presets, shade picker, per-object settings, face-building perf |
 | `persistance-et-profils.md` | `laser_core.py` | Config JSON schema, `_USER_SETTINGS`, per-laser profiles and per-laser DATA, result photos, export/import |
 | `tests-headless.md` | `tests/**` | Harness, stubs, the throwaway-config rule, what `test_panneaux.py` covers |
