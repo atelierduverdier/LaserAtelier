@@ -377,3 +377,22 @@ effect is a trap, and the trap is invisible — the OK button looks like every o
 
 Note what must survive `accept()`: the combined job's operation list. Closing must lose nothing, or
 the round trip "delete, go add another, come back" cannot work.
+
+## The toolbar is NINE named toolbars (v2.72.0)
+
+Christophe: *"pour plus de visibilité il serait bien de mettre un fond de couleur différent pour
+chaque section dans la barre des icônes"*. Separators inside one toolbar are nearly invisible.
+`appendToolbar` can be called repeatedly, so the workbench posts **one toolbar per theme**: each
+carries a NAME (View > Toolbars, and the handle tooltip), moves and hides on its own. That is the only
+grouping FreeCAD offers natively, and it survives every theme.
+
+The tint is a **reinforcement, never the information**. It is not hardcoded: each bar's hue is blended
+at 18 % into the *current theme's* window colour, so light and dark both work and a theme change
+cannot leave garish blocks. `_colorer_barres` is wrapped end to end and returns silently — no main
+window, a stylesheet the theme refuses, a different Qt: none of it may stop the workbench opening.
+
+**The risk of hand-splitting a list is losing a button**, and nothing would say so — the mode would
+simply be unreachable from the toolbar. `tests/test_barres_outils.py` asserts the union of the bars
+equals the menu minus separators, with no duplicates. It also caught that
+`test_accueil_debutant`'s "toolbar and menu post the same list" no longer holds: that check was right
+for one toolbar and had to become a set comparison, not be deleted.

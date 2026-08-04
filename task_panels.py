@@ -9320,6 +9320,29 @@ def _dire_verdict(lignes, messages):
         lignes[-1].setText(" ".join(messages[len(lignes) - 1:]))
 
 
+def _police_de_fiche(fiche):
+    """Le chemin de la police d'une fiche, ou None.
+
+    Les objets posés AVANT la v2.72.0 ne portent que le nom de fichier :
+    on le retrouve alors parmi les polices installées. Sans cela, rouvrir
+    le mode sur un ancien tracé laisse le champ police vide, et le panneau
+    a l'air de ne rien avoir repris."""
+    chemin = (fiche.get("chemin_police") or "").strip()
+    if chemin and os.path.isfile(chemin):
+        return chemin
+    nom = os.path.basename((fiche.get("police") or "").strip())
+    if not nom:
+        return None
+    try:
+        import calligraphie as cal
+        for n, c in cal.polices_disponibles():
+            if n == nom:
+                return c
+    except Exception:
+        pass
+    return None
+
+
 def _objet_a_reprendre(lecteur_fiche):
     """L'objet sélectionné dans l'arbre dont `lecteur_fiche` sait lire la
     fiche, ou None. Renvoie `(objet, fiche)`.
@@ -9485,8 +9508,9 @@ class TaskPanelTexteContour:
         if obj is None:
             return
         self._objet = obj
-        if fiche.get("police"):
-            self.edt_police.setText(fiche["police"])
+        chemin = _police_de_fiche(fiche)
+        if chemin:
+            self.edt_police.setText(chemin)
         if fiche.get("texte"):
             self.edt_texte.setText(fiche["texte"])
         if fiche.get("largeur_mm"):
@@ -9607,8 +9631,10 @@ class TaskPanelTexteContour:
             repris, _f = _objet_a_reprendre(core.fiche_objet_contours_texte)
             self._objet = repris
         obj, err = core.creer_objet_contours_texte(
-            contours, self.edt_texte.text(), self.edt_police.text().strip(),
-            self.spn_largeur.value(), obj=repris)
+            contours, self.edt_texte.text(),
+            os.path.basename(self.edt_police.text().strip()),
+            self.spn_largeur.value(), obj=repris,
+            chemin_police=self.edt_police.text().strip())
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Texte gravé", err)
             return False
@@ -11354,10 +11380,14 @@ class TaskPanelCalligraphie:
                 "Choisis une police et tape un texte.")
             return
         chaines, _inf = res
+        if self._objet_vivant() is None:
+            # Rien n'oblige à sélectionner AVANT d'ouvrir le mode.
+            self._objet, _f = _objet_a_reprendre(core.fiche_objet_calligraphie)
         obj, err = core.creer_objet_calligraphie(
             chaines, self.edt_texte.text(),
             os.path.basename(self.edt_police.text().strip()),
-            self.spn_largeur.value(), obj=self._objet_vivant())
+            self.spn_largeur.value(), obj=self._objet_vivant(),
+            chemin_police=self.edt_police.text().strip())
         if err:
             QtWidgets.QMessageBox.warning(self.form, "Calligraphie", err)
             return
@@ -11386,6 +11416,9 @@ class TaskPanelCalligraphie:
         if obj is None:
             return
         self._objet = obj
+        chemin = _police_de_fiche(fiche)
+        if chemin:
+            self.edt_police.setText(chemin)
         if fiche.get("texte"):
             self.edt_texte.setText(fiche["texte"])
         if fiche.get("largeur_mm"):

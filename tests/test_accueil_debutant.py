@@ -53,9 +53,14 @@ class _FauxWB(_ig.LaserAtelierWorkbench):
 
     def __init__(self):
         self.pose = {}
+        self.barres = []
 
     def appendToolbar(self, nom, liste):
-        self.pose["barre"] = list(liste)
+        # Depuis la v2.72.0 la barre est DÉCOUPÉE en barres nommées, une par
+        # thème : il y a donc plusieurs appels, et l'ordre d'apprentissage
+        # se lit sur leur CONCATÉNATION.
+        self.barres.append((nom, list(liste)))
+        self.pose["barre"] = [c for _n, l in self.barres for c in l]
 
     def appendMenu(self, nom, liste):
         self.pose["menu"] = list(liste)
@@ -63,9 +68,17 @@ class _FauxWB(_ig.LaserAtelierWorkbench):
 
 _wb = _FauxWB()
 _wb.Initialize()
-_menu = _wb.pose["barre"]
-assert _wb.pose["menu"] == _menu, (
-    "la barre et le menu ne postent plus la même liste")
+_menu = _wb.pose["menu"]
+# LE MÊME CONTENU DES DEUX CÔTÉS, séparateurs mis à part. L'égalité stricte
+# valait quand la barre était unique ; le découpage en barres nommées la
+# rend fausse sans rien casser, et c'est l'ensemble qui doit correspondre.
+# Le détail du découpage (rien de perdu, rien en double) a son propre
+# fichier : tests/test_barres_outils.py.
+assert (set(c for c in _menu if c != "Separator")
+        == set(_wb.pose["barre"])), (
+    "la barre et le menu n'exposent plus les mêmes commandes",
+    sorted(set(c for c in _menu if c != "Separator")
+           ^ set(_wb.pose["barre"])))
 # Aucune commande perdue en route : c'est la faute qui ne se verrait pas.
 assert _menu[0] == "LaserAtelier_Guide", _menu[:2]
 # Toute icone de la barre doit correspondre a une commande ENREGISTREE.

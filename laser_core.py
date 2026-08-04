@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.71.1"
+VERSION = "2.72.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -12508,7 +12508,7 @@ def _interp_croissant(xs, ys, x):
 PROP_CALLIGRAPHIE = "LaserAtelierCalligraphie"
 
 
-def creer_objet_calligraphie(chaines, texte, police, largeur_mm, obj=None):
+def creer_objet_calligraphie(chaines, texte, police, largeur_mm, obj=None, chemin_police=None):
     """Pose le tracé dans le document, pour qu'on puisse LE VOIR ET LE
     PLACER. Renvoie (objet, erreur).
 
@@ -12547,7 +12547,15 @@ def creer_objet_calligraphie(chaines, texte, police, largeur_mm, obj=None):
     if _plc is not None:
         obj.Placement = _plc
     obj.Label = "Calligraphie « {} »".format((texte or "").strip()[:24])
-    fiche = {"texte": texte, "police": police, "largeur_mm": float(largeur_mm)}
+    # LE CHEMIN, PAS SEULEMENT LE NOM. `police` reste le nom de fichier
+    # -- c'est lui qui va dans l'en-tête du G-code, où un chemin absolu
+    # n'apprendrait rien. Mais rouvrir le mode pour MODIFIER un texte déjà
+    # posé demande de retrouver la police, et un nom de fichier ne suffit
+    # pas : Christophe, 04/08/2026, « peut-on faire en sorte que je puisse
+    # modifier aussi le texte calligraphie une fois posé dans le document ? ».
+    fiche = {"texte": texte, "police": police,
+             "chemin_police": str(chemin_police or ""),
+             "largeur_mm": float(largeur_mm)}
     if not hasattr(obj, PROP_CALLIGRAPHIE):
         obj.addProperty("App::PropertyString", PROP_CALLIGRAPHIE,
                         "LaserAtelier",
@@ -12563,7 +12571,7 @@ def creer_objet_calligraphie(chaines, texte, police, largeur_mm, obj=None):
 PROP_CONTOURS_TEXTE = "LaserAtelierTexteContour"
 
 
-def creer_objet_contours_texte(contours, texte, police, largeur_mm, obj=None):
+def creer_objet_contours_texte(contours, texte, police, largeur_mm, obj=None, chemin_police=None):
     """Pose les CONTOURS des lettres dans le document. Renvoie (objet, erreur).
 
     L'AUTRE FAÇON DE GRAVER UNE POLICE. Le mode Calligraphie extrait l'axe
@@ -12604,7 +12612,15 @@ def creer_objet_contours_texte(contours, texte, police, largeur_mm, obj=None):
     if _plc is not None:
         obj.Placement = _plc
     obj.Label = "Texte gravé « {} »".format((texte or "").strip()[:24])
-    fiche = {"texte": texte, "police": police, "largeur_mm": float(largeur_mm)}
+    # LE CHEMIN, PAS SEULEMENT LE NOM. `police` reste le nom de fichier
+    # -- c'est lui qui va dans l'en-tête du G-code, où un chemin absolu
+    # n'apprendrait rien. Mais rouvrir le mode pour MODIFIER un texte déjà
+    # posé demande de retrouver la police, et un nom de fichier ne suffit
+    # pas : Christophe, 04/08/2026, « peut-on faire en sorte que je puisse
+    # modifier aussi le texte calligraphie une fois posé dans le document ? ».
+    fiche = {"texte": texte, "police": police,
+             "chemin_police": str(chemin_police or ""),
+             "largeur_mm": float(largeur_mm)}
     if not hasattr(obj, PROP_CONTOURS_TEXTE):
         obj.addProperty("App::PropertyString", PROP_CONTOURS_TEXTE,
                         "LaserAtelier",
