@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.69.0"
+VERSION = "2.70.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -12534,9 +12534,18 @@ def creer_objet_calligraphie(chaines, texte, police, largeur_mm, obj=None):
                               .toShape())
     if not aretes:
         return None, "Rien à poser : le tracé est vide."
+    # RÉASSIGNER `Shape` REMET LE PLACEMENT À ZÉRO. Sur un `Part::Feature`,
+    # le placement EST celui de la forme : lui en donner une neuve, bâtie à
+    # l'origine, renvoie l'objet en (0, 0) sans rotation et sans un mot.
+    # Vérifié : un objet posé en (100, 50) tourné de 30° y retourne dès
+    # qu'on le reconstruit. C'est exactement ce que fait un changement de
+    # taille ou de texte -- donc on garde le placement et on le remet.
+    _plc = obj.Placement if obj is not None else None
     if obj is None:
         obj = doc.addObject("Part::Feature", "Calligraphie")
     obj.Shape = Part.Compound(aretes)
+    if _plc is not None:
+        obj.Placement = _plc
     obj.Label = "Calligraphie « {} »".format((texte or "").strip()[:24])
     fiche = {"texte": texte, "police": police, "largeur_mm": float(largeur_mm)}
     if not hasattr(obj, PROP_CALLIGRAPHIE):
@@ -12582,9 +12591,18 @@ def creer_objet_contours_texte(contours, texte, police, largeur_mm, obj=None):
                               .toShape())
     if not aretes:
         return None, "Rien à poser : les contours sont vides."
+    # RÉASSIGNER `Shape` REMET LE PLACEMENT À ZÉRO. Sur un `Part::Feature`,
+    # le placement EST celui de la forme : lui en donner une neuve, bâtie à
+    # l'origine, renvoie l'objet en (0, 0) sans rotation et sans un mot.
+    # Vérifié : un objet posé en (100, 50) tourné de 30° y retourne dès
+    # qu'on le reconstruit. C'est exactement ce que fait un changement de
+    # taille ou de texte -- donc on garde le placement et on le remet.
+    _plc = obj.Placement if obj is not None else None
     if obj is None:
         obj = doc.addObject("Part::Feature", "TexteContour")
     obj.Shape = Part.Compound(aretes)
+    if _plc is not None:
+        obj.Placement = _plc
     obj.Label = "Texte gravé « {} »".format((texte or "").strip()[:24])
     fiche = {"texte": texte, "police": police, "largeur_mm": float(largeur_mm)}
     if not hasattr(obj, PROP_CONTOURS_TEXTE):

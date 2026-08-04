@@ -255,6 +255,26 @@ Three things worth keeping:
   nothing when you engrave the outline, and ranking on it would push serifs to the bottom — the very
   faces this mode exists for.
 
+## Reassigning `Shape` WIPES the placement
+
+There is no scale on a `Part::Feature`, and FreeCAD's `Placement` carries only position and rotation
+— so resizing an engraved text means **rebuilding** its geometry. Christophe: *"et si je veux
+redimensionner après coup ?"*.
+
+Rebuilding hit a defect that had been there since the Calligraphie mode shipped: **on a
+`Part::Feature` the placement IS the shape's placement**, so assigning a fresh shape built at the
+origin sends the object back to (0, 0) with no rotation, silently. Measured on a throwaway document:
+an object placed at (100, 50) rotated 30° returns to the origin the moment it is rebuilt. Both
+creators now save the placement and restore it.
+
+The panels adopt the **selected** object (`_objet_a_reprendre`), fill themselves from its fiche, say
+so in the verdict, and rebuild it in place — otherwise reopening the mode to change the size posted a
+*second* object at the origin while the first stayed put.
+
+**Measuring the new size on `Shape.BoundBox` is wrong** and cost a red run: that bounding box is the
+*placed* shape's, so a 30° rotation reads 139 mm for 150 engraved. Copy the shape, clear its
+placement, then measure.
+
 ## Size is the only lever
 
 The stroke width comes from the glyph scaled to the requested size, and the ceiling is the

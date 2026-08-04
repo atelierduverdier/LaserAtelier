@@ -185,3 +185,80 @@ try:
                                   _bb.YLength))
 finally:
     FreeCAD.closeDocument("EssaiTexteContour")
+
+
+# --- 8. REDIMENSIONNER APRÈS COUP, SANS PERDRE LA PLACE ----------------
+# Christophe, 04/08/2026 : « et si je veux redimensionner après coup ? ».
+#
+# Un `Part::Feature` n'a pas d'échelle, et le `Placement` de FreeCAD ne
+# porte que position et rotation : la seule façon honnête de changer la
+# taille est de REFAIRE la géométrie. Deux pièges, et le second existait
+# déjà dans le mode Calligraphie sans que personne l'ait vu.
+#
+#   a) refaire sans reprendre l'objet pose un SECOND tracé à l'origine ;
+#   b) RÉASSIGNER `Shape` REMET LE PLACEMENT À ZÉRO -- sur un Part::Feature
+#      le placement EST celui de la forme. Vérifié à part : un objet posé
+#      en (100, 50) tourné de 30° y retourne dès qu'on le reconstruit, sans
+#      un mot. C'est exactement ce que fait un changement de taille.
+_doc8 = FreeCAD.newDocument("EssaiRedim")
+try:
+    _p8 = tp.TaskPanelTexteContour()
+    _p8.edt_police.setText(_chemin)
+    _p8.edt_texte.setText("Ateo")
+    _p8.spn_largeur.setValue(60.0)
+    _p8._maj_verdict()
+    assert _p8.accept() is True
+    _o8 = [o for o in _doc8.Objects if core.fiche_objet_contours_texte(o)][0]
+    _o8.Placement = FreeCAD.Placement(
+        FreeCAD.Vector(100.0, 50.0, 0.0),
+        FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), 30.0))
+    _doc8.recompute()
+    _avant = len([o for o in _doc8.Objects if core.fiche_objet_contours_texte(o)])
+
+    # Le panneau REPREND l'objet sélectionné et se remplit avec sa fiche.
+    # Le harnais bouchonne `Selection` (pas de vue 3D headless) : on pilote
+    # donc `getSelection`, qui est ce que le panneau lit réellement.
+    _vrai_sel = tp.Gui.Selection.getSelection
+    tp.Gui.Selection.getSelection = lambda *a, **k: [_o8]
+    _p9 = tp.TaskPanelTexteContour()
+    assert _p9.edt_texte.text() == "Ateo", (
+        "le panneau n'a pas repris le texte de l'objet sélectionné",
+        _p9.edt_texte.text())
+    assert abs(_p9.spn_largeur.value() - 60.0) < 1e-6, (
+        "le panneau n'a pas repris la largeur", _p9.spn_largeur.value())
+    assert any("repris" in _l for _l in _p9.texte_verdict()), (
+        "le panneau ne DIT pas qu'il reprend un objet existant",
+        _p9.texte_verdict())
+
+    # On redimensionne, et rien ne doit bouger d'autre.
+    _p9.spn_largeur.setValue(150.0)
+    _p9._maj_verdict()
+    assert _p9.accept() is True
+    _objs8 = [o for o in _doc8.Objects if core.fiche_objet_contours_texte(o)]
+    assert len(_objs8) == _avant, (
+        "un SECOND objet a été posé au lieu de reconstruire le premier",
+        _avant, len(_objs8))
+    _o9 = _objs8[0]
+    # LA TAILLE SE MESURE SUR LA GÉOMÉTRIE, PAS SUR LA FORME PLACÉE :
+    # `Shape.BoundBox` inclut le placement, donc une rotation de 30° la
+    # fausse (139 mm lus pour 150 gravés). On remet la copie à l'origine.
+    _nue = _o9.Shape.copy()
+    _nue.Placement = FreeCAD.Placement()
+    assert abs(_nue.BoundBox.XLength - 150.0) < 0.5, (
+        "la nouvelle taille n'a pas été appliquée", _nue.BoundBox.XLength)
+    assert _o9.Placement.Base.distanceToPoint(
+        FreeCAD.Vector(100.0, 50.0, 0.0)) < 1e-6, (
+        "l'objet est retourné à l'origine : réassigner Shape a effacé le "
+        "placement", _o9.Placement.Base)
+    assert abs(math.degrees(_o9.Placement.Rotation.Angle) - 30.0) < 1e-6, (
+        "la rotation a été perdue à la reconstruction",
+        math.degrees(_o9.Placement.Rotation.Angle))
+    print("8. redimensionné 60 -> 150 mm : 1 seul objet, {:.0f} x {:.0f} mm, "
+          "toujours en (100, 50) tourné de 30° OK".format(
+              _nue.BoundBox.XLength, _nue.BoundBox.YLength))
+finally:
+    try:
+        tp.Gui.Selection.getSelection = _vrai_sel
+    except NameError:
+        pass
+    FreeCAD.closeDocument("EssaiRedim")

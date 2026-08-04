@@ -9302,6 +9302,30 @@ def _dire_verdict(lignes, messages):
         lignes[-1].setText(" ".join(messages[len(lignes) - 1:]))
 
 
+def _objet_a_reprendre(lecteur_fiche):
+    """L'objet sélectionné dans l'arbre dont `lecteur_fiche` sait lire la
+    fiche, ou None. Renvoie `(objet, fiche)`.
+
+    REDIMENSIONNER APRÈS COUP. Christophe, 04/08/2026 : « et si je veux
+    redimensionner après coup ? ». Un `Part::Feature` n'a pas d'échelle et
+    le `Placement` de FreeCAD ne porte que position et rotation : la seule
+    façon honnête de changer la taille est de REFAIRE la géométrie. Encore
+    faut-il refaire LE MÊME objet, à sa place -- sans quoi on en accumule
+    un second à l'origine.
+
+    Le panneau reprend donc l'objet sélectionné, se remplit avec sa fiche,
+    et le reconstruit sur OK."""
+    try:
+        sel = Gui.Selection.getSelection()
+    except Exception:
+        return None, {}
+    for o in sel:
+        fiche = lecteur_fiche(o)
+        if fiche:
+            return o, fiche
+    return None, {}
+
+
 class TaskPanelTexteContour:
     """Le CONTOUR des lettres, pour les polices que le squelette dessert.
 
@@ -9406,6 +9430,7 @@ class TaskPanelTexteContour:
         }
         self._peupler_polices()
         _restore_last_values("texte_contour", self._last_fields)
+        self._reprendre_selection()
         self._maj_verdict()
         self.form = _scrollable(inner)
         self.form.setWindowTitle("Texte gravé (contour)")
@@ -9428,6 +9453,34 @@ class TaskPanelTexteContour:
         for nom, chemin in systeme:
             self.combo_police.addItem(nom, chemin)
         self.combo_police.blockSignals(False)
+
+    def _reprendre_selection(self):
+        """Reprend l'objet sélectionné : ses réglages remplissent le panneau,
+        et OK le reconstruira EN PLACE plutôt que d'en poser un second."""
+        self._objet = None
+        obj, fiche = _objet_a_reprendre(core.fiche_objet_contours_texte)
+        if obj is None:
+            return
+        self._objet = obj
+        if fiche.get("police"):
+            self.edt_police.setText(fiche["police"])
+        if fiche.get("texte"):
+            self.edt_texte.setText(fiche["texte"])
+        if fiche.get("largeur_mm"):
+            self.spn_largeur.setValue(float(fiche["largeur_mm"]))
+
+    def _objet_vivant(self):
+        """L'objet repris s'il existe encore. Un objet supprimé laisse un
+        pointeur C++ mort : y toucher ferait tomber FreeCAD."""
+        obj = getattr(self, "_objet", None)
+        if obj is None:
+            return None
+        try:
+            _ = obj.Name
+            doc = FreeCAD.ActiveDocument
+            return obj if doc is not None and obj in doc.Objects else None
+        except Exception:
+            return None
 
     def _on_police_choisie(self, _i):
         chemin = self.combo_police.currentData()
@@ -9481,7 +9534,14 @@ class TaskPanelTexteContour:
         if res and res[0] == "erreur":
             return ["<b>Impossible :</b> {}".format(res[1])]
         contours, infos = res
-        lignes = [
+        lignes = []
+        repris = self._objet_vivant()
+        if repris is not None:
+            lignes.append(
+                "Objet repris : « {} ». <b>OK le reconstruira à cette "
+                "taille, au même endroit</b> -- son placement est "
+                "conservé.".format(repris.Label))
+        lignes += [
             "Texte de <b>{:.0f} x {:.0f} mm</b>, {} contours fermés, "
             "{:.0f} mm de tracé.".format(
                 infos["largeur_mm"], infos["hauteur_mm"],
@@ -9511,9 +9571,10 @@ class TaskPanelTexteContour:
                 self.form, "Texte gravé", res[1])
             return False
         contours, infos = res
+        repris = self._objet_vivant()
         obj, err = core.creer_objet_contours_texte(
             contours, self.edt_texte.text(), self.edt_police.text().strip(),
-            self.spn_largeur.value())
+            self.spn_largeur.value(), obj=repris)
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Texte gravé", err)
             return False
@@ -11110,6 +11171,7 @@ class TaskPanelCalligraphie:
         }
         self._peupler_polices()
         _restore_last_values("calligraphie", self._last_fields)
+        self._reprendre_selection()
         self._maj_verdict()
         self.form = _scrollable(inner)
 
@@ -11279,6 +11341,21 @@ class TaskPanelCalligraphie:
             "Déplacer). « Générer et sauvegarder le G-code… » suivra ce "
             "placement.\n\nLe fil ne montre pas les largeurs : elles se "
             "font à la gravure, par la hauteur Z.".format(obj.Label))
+
+    def _reprendre_selection(self):
+        """Reprend le tracé sélectionné : ses réglages remplissent le
+        panneau, et « Poser le tracé » le reconstruira EN PLACE.
+
+        Sans cela, rouvrir le mode pour changer la taille posait un SECOND
+        tracé à l'origine, l'ancien restant où il était."""
+        obj, fiche = _objet_a_reprendre(core.fiche_objet_calligraphie)
+        if obj is None:
+            return
+        self._objet = obj
+        if fiche.get("texte"):
+            self.edt_texte.setText(fiche["texte"])
+        if fiche.get("largeur_mm"):
+            self.spn_largeur.setValue(float(fiche["largeur_mm"]))
 
     def _objet_vivant(self):
         """L'objet déjà posé s'il existe encore, sinon None. Un objet
