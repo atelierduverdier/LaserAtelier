@@ -227,6 +227,34 @@ percentile formula on its own synthetic shapes — and a sabotage that replaced 
 `mean/mean` passed untouched. Splitting rendering from measuring lets the test call the very function
 the panel calls. Same trap as the Grille de test's button, in a different costume.
 
+## Two ways to engrave a font, and the font decides which
+
+`contours_texte` is the **other** mode (v2.69.0, `Texte gravé`): it traces the glyph's **outline**
+instead of its medial axis, and hands closed contours to the document for Marquage (hollow letters)
+or Gravure remplie (solid ones). No hatching is rewritten — the neighbouring mode does it better.
+
+**It is not a precision problem.** Measured, a DejaVu Serif put through the skeleton covers 97.5 % of
+the letter and overflows *less* than La Graziela. What fails is the premise. A calligraphic face is
+the record of a **pen**: its medial axis *is* the gesture, and nothing is lost. A classic face has no
+pen — its outline **is** the design, and reducing it to an axis throws away the serifs and the
+modulation. Christophe: *"ça fonctionne bien pour certaines fonts calligraphie mais pour les fonts
+classiques ça ne fonctionne pas bien"*.
+
+Three things worth keeping:
+
+* **The real Bézier curves, not a traced raster.** `fontTools` is available in FreeCAD's interpreter
+  and reads the font's own outlines; retracing a rendered bitmap would add a pixel staircase where
+  the font gives exact curves. `BasePen` decomposes TrueType's implied-point `qCurveTo` for free, so
+  only three segment cases remain. Flattening reuses `svg_import`'s De Casteljau rather than a third
+  copy in this repo.
+* **The flatness is in MILLIMETRES OF ENGRAVING**, and the scale is only known once the bounding box
+  is measured — hence two passes, a coarse one to size the box and the real one after. Flattening
+  before the scale is known gives a tolerance that depends on the font and the size: 0.02 mm on one,
+  2 mm on the next. §4 catches it by engraving the same text 20× larger and demanding more points.
+* **The specimen must NOT rank by contrast here** (`classer_par_contraste=False`). Contrast decides
+  nothing when you engrave the outline, and ranking on it would push serifs to the bottom — the very
+  faces this mode exists for.
+
 ## Size is the only lever
 
 The stroke width comes from the glyph scaled to the requested size, and the ceiling is the

@@ -120,6 +120,25 @@ class TextCommand:
         _show(task_panels.TaskPanelText())
 
 
+class TexteContourCommand:
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("texte_contour.svg"),
+            "MenuText": "Texte gravé (contour)",
+            "ToolTip": "Trace le POURTOUR exact des lettres d'une police "
+                       ".otf/.ttf -- empattements et modulation gardés -- "
+                       "comme objet fil, à graver ensuite avec Marquage "
+                       "(creux) ou Gravure remplie (plein). Le pendant de "
+                       "Calligraphie pour les polices classiques",
+        }
+
+    def IsActive(self):
+        return FreeCAD.ActiveDocument is not None
+
+    def Activated(self):
+        _show(task_panels.TaskPanelTexteContour())
+
+
 class CatalogueCommand:
     def GetResources(self):
         return {
@@ -488,6 +507,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Hatch", HatchCommand())
     Gui.addCommand("LaserAtelier_Text", TextCommand())
     Gui.addCommand("LaserAtelier_Calligraphie", CalligraphieCommand())
+    Gui.addCommand("LaserAtelier_TexteContour", TexteContourCommand())
     Gui.addCommand("LaserAtelier_FilledEngraving", FilledEngravingCommand())
     Gui.addCommand("LaserAtelier_Halftone", HalftoneCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())

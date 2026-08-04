@@ -6147,7 +6147,8 @@ def _apercu_police_reelle(chemin, texte, largeur_px, hauteur_px=44):
                       QtCore.Qt.SmoothTransformation)
 
 
-def _choisir_police_calligraphie(parent, combo_police, texte_exemple):
+def _choisir_police_calligraphie(parent, combo_police, texte_exemple,
+                                 classer_par_contraste=True):
     """Le spécimen des polices du disque, CLASSÉES PAR CONTRASTE.
 
     Christophe, 04/08/2026 : « j'ai une liste interminable et j'utilise un
@@ -6165,6 +6166,12 @@ def _choisir_police_calligraphie(parent, combo_police, texte_exemple):
       est marquée comme telle plutôt que cachée -- c'est un avertissement,
       pas un interdit, et une italique serif à 2,0x se grave très bien.
 
+    `classer_par_contraste=False` pour le mode CONTOUR : là, le contraste
+    ne veut rien dire -- on grave le pourtour du glyphe, pas son axe -- et
+    classer dessus reléguerait en bas de liste les serif, qui sont
+    précisément les polices que ce mode-là sert. On trie alors par nom, et
+    on ne calcule rien (pas de squelette : c'est instantané).
+
     Comme les deux autres sélecteurs visuels de ce fichier : la liste est
     bâtie À PARTIR DU COMBO, et on renvoie un INDEX que le combo rejoue."""
     import calligraphie as cal
@@ -6174,13 +6181,18 @@ def _choisir_police_calligraphie(parent, combo_police, texte_exemple):
     dlg.setWindowTitle("Choisir une police calligraphique")
     dlg.resize(940, 660)
     lay = QtWidgets.QVBoxLayout(dlg)
-    lay.addWidget(_WrapLabel(
-        "Classées par CONTRASTE plein/délié -- le rapport entre le trait le "
-        "plus large et le plus fin, mesuré sur la police elle-même."))
-    lay.addWidget(_WrapLabel(
-        "C'est ce contraste que la hauteur Z reproduit : sous {:.1f}x, la "
-        "tête ne bouge presque plus et la gravure sort au trait constant."
-        .format(cal.CONTRASTE_MINI)))
+    if classer_par_contraste:
+        lay.addWidget(_WrapLabel(
+            "Classées par CONTRASTE plein/délié -- le rapport entre le trait "
+            "le plus large et le plus fin, mesuré sur la police elle-même."))
+        lay.addWidget(_WrapLabel(
+            "C'est ce contraste que la hauteur Z reproduit : sous {:.1f}x, la "
+            "tête ne bouge presque plus et la gravure sort au trait constant."
+            .format(cal.CONTRASTE_MINI)))
+    else:
+        lay.addWidget(_WrapLabel(
+            "Chaque police écrite avec ton texte. Ici on grave le POURTOUR "
+            "du glyphe : toutes conviennent, y compris les classiques."))
 
     barre = QtWidgets.QHBoxLayout()
     filtre = QtWidgets.QLineEdit()
@@ -6212,20 +6224,25 @@ def _choisir_police_calligraphie(parent, combo_police, texte_exemple):
             entrees.append((i, combo_police.itemText(i), chemin))
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
-            for i, _lib, chemin in entrees:
-                if i not in mesures:
-                    try:
-                        mesures[i] = cal.contraste_police(chemin)
-                    except Exception:
-                        mesures[i] = None
-            entrees.sort(key=lambda e: -(mesures.get(e[0]) or 0.0))
+            if classer_par_contraste:
+                for i, _lib, chemin in entrees:
+                    if i not in mesures:
+                        try:
+                            mesures[i] = cal.contraste_police(chemin)
+                        except Exception:
+                            mesures[i] = None
+                entrees.sort(key=lambda e: -(mesures.get(e[0]) or 0.0))
+            else:
+                entrees.sort(key=lambda e: e[1].lower())
             for i, libelle, chemin in entrees:
-                c = mesures.get(i)
+                c = mesures.get(i) if classer_par_contraste else False
                 ligne = QtWidgets.QWidget()
                 vb = QtWidgets.QVBoxLayout(ligne)
                 vb.setContentsMargins(8, 5, 8, 7)
                 vb.setSpacing(1)
-                if c is None:
+                if c is False:
+                    txt, couleur = libelle, "#2f3540"
+                elif c is None:
                     txt, couleur = "{}  --  illisible".format(libelle), "#a03028"
                 elif c < cal.CONTRASTE_MINI:
                     txt = "{}  --  contraste {:.2f}x (trop peu : trait presque " \
@@ -6258,10 +6275,13 @@ def _choisir_police_calligraphie(parent, combo_police, texte_exemple):
                     liste.setCurrentItem(it)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
-        bonnes = sum(1 for i, _l, _c in entrees
-                     if (mesures.get(i) or 0.0) >= cal.CONTRASTE_MINI)
-        etat.setText("{} polices, dont {} au-dessus de {:.1f}x".format(
-            len(entrees), bonnes, cal.CONTRASTE_MINI))
+        if classer_par_contraste:
+            bonnes = sum(1 for i, _l, _c in entrees
+                         if (mesures.get(i) or 0.0) >= cal.CONTRASTE_MINI)
+            etat.setText("{} polices, dont {} au-dessus de {:.1f}x".format(
+                len(entrees), bonnes, cal.CONTRASTE_MINI))
+        else:
+            etat.setText("{} polices".format(len(entrees)))
 
     def _filtrer(txt):
         t = (txt or "").strip().lower()
@@ -9261,6 +9281,254 @@ class TaskPanelProject:
 # ==========================================================================
 # MODE : IMPORT SVG (géométrie directe, sans détour DXF)
 # ==========================================================================
+def _dire_verdict(lignes, messages):
+    """Une étiquette par constat ; les inutilisées disparaissent.
+
+    LA RÈGLE DE LA MAISON : jamais une énumération dans un seul `_WrapLabel`.
+    En un seul paragraphe, la hauteur de rangée et le repli se disputent --
+    « je vois déjà un chevauchement des cellules », capture à l'appui -- et
+    l'oeil ne trouve plus rien. Deux panneaux s'en servent, d'où le helper
+    partagé plutôt qu'une seconde copie."""
+    for i, lg in enumerate(lignes):
+        if i < len(messages):
+            lg.setText(messages[i])
+            lg.show()
+        else:
+            lg.setText("")
+            lg.hide()
+    if len(messages) > len(lignes):
+        # Le vivier est plein : le reste va dans la dernière plutôt que
+        # d'être perdu en silence.
+        lignes[-1].setText(" ".join(messages[len(lignes) - 1:]))
+
+
+class TaskPanelTexteContour:
+    """Le CONTOUR des lettres, pour les polices que le squelette dessert.
+
+    Christophe, 04/08/2026 : « ça fonctionne bien pour certaines fonts
+    calligraphie mais pour les fonts classiques ça ne fonctionne pas bien,
+    on peut y mettre une sorte de 2 modes de rendu ? ».
+
+    Il a raison, et ce n'est pas une affaire de précision : mesuré, un
+    DejaVu Serif passé au squelette couvre 97,5 % de la lettre et déborde
+    MOINS que La Graziela. C'est le principe qui ne convient pas. Sur une
+    calligraphie, le contour est la trace d'une plume et l'axe médian
+    retrouve le geste ; sur une police classique, le contour EST le dessin,
+    et le réduire à un axe jette les empattements et la modulation -- ce qui
+    fait cette police.
+
+    Ce panneau ne grave pas : il POSE les contours dans le document, comme
+    le mode Texte pose ses fils. Marquage les grave au trait, Gravure
+    remplie les noircit. Aucune hachure n'est réécrite ici."""
+
+    def __init__(self):
+        inner = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(inner)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
+        _panel_header(form, "texte_contour.svg", "Texte gravé (contour)")
+        _intro(form,
+               "Trace le POURTOUR exact des lettres d'une police .otf/.ttf : "
+               "empattements, modulation, contreformes -- tout est gardé.",
+               "C'est le pendant du mode Calligraphie, et le choix entre les "
+               "deux tient à la police. Une calligraphie est le dessin d'une "
+               "PLUME : son axe médian est le geste, et Calligraphie le "
+               "restitue avec ses pleins et déliés par la hauteur Z. Une "
+               "police classique n'a pas de plume -- son contour EST son "
+               "dessin, et en extraire un axe donne une armature filiforme "
+               "où les empattements se réduisent à de petites barres. Ici on "
+               "prend les vraies courbes de la police (pas un contour "
+               "retracé sur une image), aplaties à 0,02 mm.")
+
+        _section(form, "Mode d'emploi", "sect_guide.svg")
+        _bullet_list(form, [
+            "<b>1.</b> Choisis la <b>police</b> et tape ton <b>texte</b>.",
+            "<b>2.</b> Donne la <b>largeur</b> voulue, en millimètres.",
+            "<b>3.</b> Clique <b>OK</b>&nbsp;: les contours sont posés dans "
+            "le document, placeables comme n'importe quel objet.",
+            "<b>4.</b> Enchaîne avec <b>Marquage de motif</b> pour des "
+            "lettres CREUSES (un trait fin qui suit le pourtour), ou avec "
+            "<b>Gravure remplie</b> pour des lettres PLEINES.",
+        ])
+
+        _section(form, "① Police et texte", "sect_labels.svg", ouvert=True)
+        self.combo_police = QtWidgets.QComboBox()
+        self.combo_police.setToolTip(
+            "Polices trouvées dans tes dossiers de polices.\n"
+            "Ici, toutes conviennent : on grave le pourtour du glyphe.")
+        self.combo_police.currentIndexChanged.connect(self._on_police_choisie)
+        btn_voir = QtWidgets.QPushButton("Voir les polices…")
+        btn_voir.setToolTip("Spécimen : chaque police écrite avec ton texte.")
+        btn_voir.clicked.connect(self._on_voir_polices)
+        ligne_police = QtWidgets.QHBoxLayout()
+        ligne_police.setContentsMargins(0, 0, 0, 0)
+        ligne_police.addWidget(self.combo_police, 1)
+        ligne_police.addWidget(btn_voir)
+        self.edt_police = QtWidgets.QLineEdit()
+        self.edt_police.setToolTip("Chemin du fichier .otf / .ttf.")
+        btn_parcourir = QtWidgets.QPushButton("Parcourir…")
+        btn_parcourir.clicked.connect(self._on_parcourir)
+        ligne_fic = QtWidgets.QHBoxLayout()
+        ligne_fic.setContentsMargins(0, 0, 0, 0)
+        ligne_fic.addWidget(self.edt_police, 1)
+        ligne_fic.addWidget(btn_parcourir)
+        form.addRow("Police :", ligne_police)
+        form.addRow("Fichier :", ligne_fic)
+
+        self.edt_texte = QtWidgets.QLineEdit("Atelier du Verdier")
+        self.edt_texte.setToolTip("Le texte à graver. Une seule ligne.")
+        form.addRow("Texte :", self.edt_texte)
+
+        self.spn_largeur = QtWidgets.QDoubleSpinBox()
+        self.spn_largeur.setRange(1.0, 2000.0)
+        self.spn_largeur.setDecimals(1)
+        self.spn_largeur.setSuffix(" mm")
+        self.spn_largeur.setValue(120.0)
+        self.spn_largeur.setToolTip(
+            "Largeur totale du texte. La hauteur suit : les proportions de "
+            "la police ne sont pas négociables.")
+        form.addRow("Largeur du texte :", self.spn_largeur)
+
+        _section(form, "Ce que ça donnera", "sect_preview.svg", ouvert=True)
+        self._lignes_verdict = []
+        for _ in range(6):
+            lg = _WrapLabel("")
+            lg.hide()
+            form.addRow(lg)
+            self._lignes_verdict.append(lg)
+
+        for w in (self.edt_texte, self.edt_police):
+            w.textChanged.connect(self._maj_verdict)
+        self.spn_largeur.valueChanged.connect(self._maj_verdict)
+
+        self._last_fields = {
+            "police": self.edt_police, "texte": self.edt_texte,
+            "largeur": self.spn_largeur,
+        }
+        self._peupler_polices()
+        _restore_last_values("texte_contour", self._last_fields)
+        self._maj_verdict()
+        self.form = _scrollable(inner)
+        self.form.setWindowTitle("Texte gravé (contour)")
+        self.form.setWindowIcon(_icon("texte_contour.svg"))
+
+    # -- police ---------------------------------------------------------
+    def _peupler_polices(self):
+        import calligraphie as cal
+        self.combo_police.blockSignals(True)
+        self.combo_police.clear()
+        self.combo_police.addItem("-- Choisir --", None)
+        perso, systeme = [], []
+        for nom, chemin in cal.polices_disponibles():
+            (systeme if str(chemin).startswith("/usr/share/fonts")
+             else perso).append((nom, chemin))
+        for nom, chemin in perso:
+            self.combo_police.addItem(nom, chemin)
+        if perso and systeme:
+            self.combo_police.insertSeparator(self.combo_police.count())
+        for nom, chemin in systeme:
+            self.combo_police.addItem(nom, chemin)
+        self.combo_police.blockSignals(False)
+
+    def _on_police_choisie(self, _i):
+        chemin = self.combo_police.currentData()
+        if chemin:
+            self.edt_police.setText(chemin)
+            self._maj_verdict()
+
+    def _on_voir_polices(self):
+        # PAS de classement par contraste ici : ce mode grave le pourtour,
+        # donc le contraste ne dit rien -- et trier dessus reléguerait les
+        # serif, qui sont justement les polices que ce mode sert.
+        i = _choisir_police_calligraphie(
+            self.form, self.combo_police, self.edt_texte.text(),
+            classer_par_contraste=False)
+        if i is not None and i != self.combo_police.currentIndex():
+            self.combo_police.setCurrentIndex(i)
+
+    def _on_parcourir(self):
+        chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
+            self.form, "Choisir une police", os.path.expanduser("~"),
+            "Polices (*.otf *.ttf);;Tous les fichiers (*)")
+        if chemin:
+            self.edt_police.setText(chemin)
+            self._maj_verdict()
+
+    # -- verdict --------------------------------------------------------
+    def _contours(self):
+        """Les contours, mis en cache : le verdict se recalcule à la frappe."""
+        import calligraphie as cal
+        cle = (self.edt_police.text().strip(), self.edt_texte.text(),
+               round(self.spn_largeur.value(), 3))
+        if getattr(self, "_cache", (None, None))[0] == cle:
+            return self._cache[1]
+        if not cle[0] or not cle[1].strip():
+            self._cache = (cle, None)
+            return None
+        try:
+            res = cal.contours_texte(cle[0], cle[1], largeur_mm=cle[2])
+        except cal.ErreurCalligraphie as exc:
+            res = ("erreur", str(exc))
+        except Exception as exc:                     # police exotique
+            res = ("erreur", "{}".format(exc))
+        self._cache = (cle, res)
+        return res
+
+    def texte_verdict(self):
+        """Les constats, un par ligne. Jamais une énumération en un pavé."""
+        res = self._contours()
+        if res is None:
+            return ["Choisis une police et tape un texte."]
+        if res and res[0] == "erreur":
+            return ["<b>Impossible :</b> {}".format(res[1])]
+        contours, infos = res
+        lignes = [
+            "Texte de <b>{:.0f} x {:.0f} mm</b>, {} contours fermés, "
+            "{:.0f} mm de tracé.".format(
+                infos["largeur_mm"], infos["hauteur_mm"],
+                infos["n_contours"], infos["longueur_mm"]),
+            "Les contreformes -- le trou d'un « o », d'un « e » -- sont des "
+            "contours à part : <b>Gravure remplie</b> les creuse toute seule.",
+        ]
+        if infos["manquants"]:
+            lignes.append(
+                "<b>Absents de cette police :</b> « {} » -- ces caractères "
+                "ne seront pas gravés.".format(infos["manquants"]))
+        return lignes
+
+    def _maj_verdict(self, *_a):
+        _dire_verdict(self._lignes_verdict, self.texte_verdict())
+
+    # -- OK -------------------------------------------------------------
+    def accept(self):
+        res = self._contours()
+        if res is None:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Texte gravé",
+                "Choisis d'abord une police et tape un texte.")
+            return False
+        if res and res[0] == "erreur":
+            QtWidgets.QMessageBox.critical(
+                self.form, "Texte gravé", res[1])
+            return False
+        contours, infos = res
+        obj, err = core.creer_objet_contours_texte(
+            contours, self.edt_texte.text(), self.edt_police.text().strip(),
+            self.spn_largeur.value())
+        if err:
+            QtWidgets.QMessageBox.critical(self.form, "Texte gravé", err)
+            return False
+        _save_last_values("texte_contour", self._last_fields)
+        FreeCAD.Console.PrintMessage(
+            "Texte gravé : {} contours posés ({:.0f} mm de tracé). "
+            "Enchaîne avec Marquage (lettres creuses) ou Gravure remplie "
+            "(lettres pleines).\n".format(
+                infos["n_contours"], infos["longueur_mm"]))
+        return True
+
+    def reject(self):
+        return True
+
+
 class TaskPanelImportSVG:
     """Panneau minimal : choisir un .svg, OK importe. Un Part::Feature par
     élément <path> d'origine (sélectionnable individuellement ensuite),
@@ -10968,19 +11236,8 @@ class TaskPanelCalligraphie:
         self._dire_verdict(msgs)
 
     def _dire_verdict(self, messages):
-        """Une étiquette par constat ; les inutilisées disparaissent."""
-        for i, lg in enumerate(self._lignes_verdict):
-            if i < len(messages):
-                lg.setText(messages[i])
-                lg.show()
-            else:
-                lg.setText("")
-                lg.hide()
-        if len(messages) > len(self._lignes_verdict):
-            # Le vivier est plein : le reste va dans la dernière plutôt
-            # que d'être perdu en silence.
-            self._lignes_verdict[-1].setText(
-                " ".join(messages[len(self._lignes_verdict) - 1:]))
+        """Une étiquette par constat (cf. le helper partagé)."""
+        _dire_verdict(self._lignes_verdict, messages)
 
     def texte_verdict(self):
         """Le verdict entier, pour qui veut le lire d'un bloc (tests)."""

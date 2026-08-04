@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.68.0"
+VERSION = "2.69.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -12549,6 +12549,62 @@ def creer_objet_calligraphie(chaines, texte, police, largeur_mm, obj=None):
         obj.ViewObject.LineWidth = 2.0
     doc.recompute()
     return obj, None
+
+
+PROP_CONTOURS_TEXTE = "LaserAtelierTexteContour"
+
+
+def creer_objet_contours_texte(contours, texte, police, largeur_mm, obj=None):
+    """Pose les CONTOURS des lettres dans le document. Renvoie (objet, erreur).
+
+    L'AUTRE FAÇON DE GRAVER UNE POLICE. Le mode Calligraphie extrait l'axe
+    médian, ce qui est juste quand le contour est la trace d'une plume. Sur
+    une police classique, le contour EST le dessin -- empattements,
+    modulation, forme des panses -- et le réduire à un axe jette exactement
+    ce qui fait cette police. Christophe, 04/08/2026 : « ça fonctionne bien
+    pour certaines fonts calligraphie mais pour les fonts classiques ça ne
+    fonctionne pas bien ».
+
+    L'objet est un compound d'arêtes FERMÉES, exactement la forme que le
+    reste de l'atelier sait déjà consommer (cf. l'import SVG et le texte
+    mono-trait) : Marquage le grave au trait, Gravure remplie le noircit.
+    Aucune hachure n'est réécrite ici -- c'est le mode d'à côté qui la fait,
+    et il la fait mieux."""
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        return None, "Ouvre (ou crée) un document d'abord."
+    aretes = []
+    for c in contours:
+        for (x0, y0), (x1, y1) in zip(c, c[1:]):
+            if math.hypot(x1 - x0, y1 - y0) > 1e-7:
+                aretes.append(Part.LineSegment(FreeCAD.Vector(x0, y0, 0.0),
+                                               FreeCAD.Vector(x1, y1, 0.0))
+                              .toShape())
+    if not aretes:
+        return None, "Rien à poser : les contours sont vides."
+    if obj is None:
+        obj = doc.addObject("Part::Feature", "TexteContour")
+    obj.Shape = Part.Compound(aretes)
+    obj.Label = "Texte gravé « {} »".format((texte or "").strip()[:24])
+    fiche = {"texte": texte, "police": police, "largeur_mm": float(largeur_mm)}
+    if not hasattr(obj, PROP_CONTOURS_TEXTE):
+        obj.addProperty("App::PropertyString", PROP_CONTOURS_TEXTE,
+                        "LaserAtelier",
+                        "Texte et police dont ces contours sont issus")
+    setattr(obj, PROP_CONTOURS_TEXTE, json.dumps(fiche, ensure_ascii=False))
+    if getattr(obj, "ViewObject", None) is not None:
+        obj.ViewObject.LineColor = (0.18, 0.12, 0.07)
+        obj.ViewObject.LineWidth = 2.0
+    doc.recompute()
+    return obj, None
+
+
+def fiche_objet_contours_texte(obj):
+    """La fiche JSON posée par `creer_objet_contours_texte`, ou {}."""
+    try:
+        return json.loads(getattr(obj, PROP_CONTOURS_TEXTE, "") or "{}") or {}
+    except Exception:
+        return {}
 
 
 def fiche_objet_calligraphie(obj):

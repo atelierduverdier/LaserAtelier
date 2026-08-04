@@ -274,7 +274,7 @@
   <div class="wrap hero-grid">
     <div>
       <div class="badges">
-        <span class="badge">Version <b>2.68.0</b></span>
+        <span class="badge">Version <b>2.69.0</b></span>
         <span class="badge">Workbench <b>FreeCAD 1.1</b></span>
         <span class="badge">Cible <b>LinuxCNC · GRBL · grblHAL</b></span>
         <span class="badge">Testé sur <b>PrintNC</b> + <b>LT-80W-AA-PRO</b></span>
@@ -442,6 +442,22 @@
             <li>Régler espacement, angle et <b>retrait du bord</b> («&nbsp;Auto (½ point)&nbsp;») pour que la brûlure ne déborde pas.</li>
             <li><b>OK</b> crée l'objet <code>Hachures</code>&nbsp;— c'est de la géométrie, <b>pas de G-code</b>.</li>
             <li>Enchaîner&nbsp;: <b>Marquage</b> pour graver, ou <b>Projection</b> sur une surface 3D.</li>
+          </ol>
+        </details>
+      </div>
+    </div>
+    <div class="mode">
+      <div class="body">
+        <div class="head"><span class="mi"><img src="assets/texte_contour.svg" alt=""></span><h4>Texte gravé (contour)</h4></div>
+        <p>Le pendant du mode Calligraphie pour les polices <b>classiques</b>. Une calligraphie est le dessin d'une plume — son axe médian <i>est</i> le geste. Une police classique n'a pas de plume&nbsp;: son <b>contour est son dessin</b>, et en extraire un axe réduit les empattements à de petites barres. Ce mode trace donc le <b>pourtour exact</b> du glyphe, pris sur les vraies courbes de la police et aplati à 0,02&nbsp;mm.</p>
+        <div class="when"><b>Quand&nbsp;?</b> Un texte dans une serif, une italique, une grotesque — tout ce qui n'a pas été dessiné à la plume.</div>
+        <details class="howto">
+          <summary>Mode d'emploi</summary>
+          <ol>
+            <li>Choisir la <b>police</b> — le spécimen les écrit toutes avec ton texte — et taper le <b>texte</b>.</li>
+            <li>Donner la <b>largeur</b> voulue en mm&nbsp;; la hauteur suit.</li>
+            <li><b>OK</b> pose les contours dans le document, placeables comme n'importe quel objet.</li>
+            <li>Enchaîner avec <b>Marquage de motif</b> (lettres creuses) ou <b>Gravure remplie</b> (lettres pleines) — les contreformes se creusent toutes seules.</li>
           </ol>
         </details>
       </div>

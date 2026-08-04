@@ -196,6 +196,155 @@ def _numpy():
 # A -- RENDU DE LA POLICE EN IMAGE
 # =======================================================================
 
+# Flèche maximale de l'aplatissement des courbes de la police, en mm de
+# gravure. 0,02 mm est la valeur retenue pour l'import SVG (v1.78.1) : très
+# au-dessous de la plus fine brûlure mesurée (0,18 mm sur le hêtre), donc
+# invisible sur la pièce, et sans faire exploser le nombre de segments.
+FLECHE_CONTOUR_MM = 0.02
+
+
+def contours_texte(chemin_police, texte, largeur_mm=None, hauteur_mm=None,
+                   fleche_mm=FLECHE_CONTOUR_MM):
+    """Le CONTOUR des lettres, en millimètres. Renvoie `(contours, infos)`.
+
+    L'AUTRE FAÇON DE GRAVER UNE POLICE, et elle vaut pour celles que le
+    squelette dessert. Sur une calligraphie, le contour est la trace d'une
+    plume : l'axe médian retrouve le geste et ne perd rien. Sur une police
+    CLASSIQUE, le contour EST le dessin -- les empattements, la modulation,
+    la forme des panses -- et le réduire à un axe jette précisément ce qui
+    fait cette police. Christophe, 04/08/2026, capture d'un DejaVu Serif
+    passé au squelette : « ça fonctionne bien pour certaines fonts
+    calligraphie mais pour les fonts classiques ça ne fonctionne pas bien ».
+    Mesuré : la couverture était pourtant de 97,5 % et le débordement plus
+    faible que sur La Graziela -- ce n'est pas une affaire de précision.
+
+    ON PREND LES VRAIS CONTOURS, pas ceux de l'image. `fontTools` lit les
+    courbes de la police elle-même ; les retracer sur un rendu tramé
+    ajouterait un escalier de pixels là où la police donne des Béziers
+    exactes. L'aplatissement réutilise celui de l'import SVG plutôt qu'une
+    troisième copie de De Casteljau dans ce dépôt.
+
+    Chaque contour est une liste fermée de `(x, y)` en mm, dans le repère
+    CNC (Y vers le haut, origine en bas à gauche du texte). Les contreformes
+    -- le trou d'un « o », d'un « e » -- sont des contours à part entière :
+    c'est à l'appelant d'en faire des faces s'il veut remplir."""
+    from fontTools.ttLib import TTFont
+    from fontTools.pens.basePen import BasePen
+    import svg_import
+
+    if not (texte or "").strip():
+        raise ErreurCalligraphie("Aucun texte à graver.")
+    try:
+        police = TTFont(chemin_police, fontNumber=0)
+        jeu = police.getGlyphSet()
+        table = police.getBestCmap()
+        upem = float(police["head"].unitsPerEm or 1000)
+    except Exception as exc:
+        raise ErreurCalligraphie(
+            "Police illisible ({}) : {}".format(
+                os.path.basename(chemin_police), exc))
+
+    class _Plume(BasePen):
+        """Aplatit tout ce que la police envoie en polygones fermés.
+
+        `BasePen` fait déjà le travail ingrat : il décompose les `qCurveTo`
+        TrueType à points implicites en quadratiques simples, si bien qu'on
+        n'a que trois cas à traiter au lieu de la grammaire entière."""
+
+        def __init__(self, glyphes):
+            BasePen.__init__(self, glyphes)
+            self.contours = []
+            self._cur = []
+
+        def _moveTo(self, pt):
+            self._vider()
+            self._cur = [pt]
+
+        def _lineTo(self, pt):
+            self._cur.append(pt)
+
+        def _curveToOne(self, p1, p2, p3):
+            self._cur.extend(svg_import.flatten_cubic_bezier(
+                self._cur[-1], p1, p2, p3, tol=self._tol))
+
+        def _qCurveToOne(self, p1, p2):
+            self._cur.extend(svg_import.flatten_quadratic_bezier(
+                self._cur[-1], p1, p2, tol=self._tol))
+
+        def _closePath(self):
+            self._vider()
+
+        def _vider(self):
+            if len(self._cur) >= 3:
+                if self._cur[0] != self._cur[-1]:
+                    self._cur.append(self._cur[0])
+                self.contours.append(self._cur)
+            self._cur = []
+
+    # On dessine d'abord en unités de police, puis on met à l'échelle : la
+    # flèche demandée est en MILLIMÈTRES DE GRAVURE, donc elle ne se connaît
+    # qu'une fois l'échelle connue -- et l'échelle dépend de la boîte, qui
+    # dépend du dessin. Deux passes, la première à flèche généreuse pour
+    # mesurer la boîte, la seconde à la flèche voulue.
+    def _dessiner(tol_unites):
+        plume = _Plume(jeu)
+        plume._tol = tol_unites
+        x = 0.0
+        sortis = []
+        manquants = []
+        for car in texte:
+            nom = table.get(ord(car))
+            if nom is None:
+                if not car.isspace():
+                    manquants.append(car)
+                x += upem * 0.3
+                continue
+            plume.contours = []
+            plume._cur = []
+            try:
+                jeu[nom].draw(plume)
+            except Exception:
+                plume._vider()
+            for c in plume.contours:
+                sortis.append([(px + x, py) for px, py in c])
+            x += float(jeu[nom].width)
+        return sortis, manquants
+
+    bruts, manquants = _dessiner(upem * 0.002)
+    if not bruts:
+        raise ErreurCalligraphie(
+            "Aucun contour : la police ne fournit rien pour ce texte.")
+    xs = [p[0] for c in bruts for p in c]
+    ys = [p[1] for c in bruts for p in c]
+    larg_u = max(xs) - min(xs)
+    haut_u = max(ys) - min(ys)
+    if largeur_mm and largeur_mm > 0:
+        ech = float(largeur_mm) / max(larg_u, 1e-9)
+    elif hauteur_mm and hauteur_mm > 0:
+        ech = float(hauteur_mm) / max(haut_u, 1e-9)
+    else:
+        raise ErreurCalligraphie(
+            "Donne une largeur ou une hauteur de texte en mm.")
+
+    contours_u, _m = _dessiner(float(fleche_mm) / max(ech, 1e-12))
+    xs = [p[0] for c in contours_u for p in c]
+    ys = [p[1] for c in contours_u for p in c]
+    x0, y0 = min(xs), min(ys)
+    contours = [[((px - x0) * ech, (py - y0) * ech) for px, py in c]
+                for c in contours_u]
+    longueur = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                   for c in contours for a, b in zip(c, c[1:]))
+    infos = {
+        "largeur_mm": (max(xs) - min(xs)) * ech,
+        "hauteur_mm": (max(ys) - min(ys)) * ech,
+        "n_contours": len(contours),
+        "longueur_mm": longueur,
+        "n_points": sum(len(c) for c in contours),
+        "manquants": "".join(sorted(set(manquants))),
+    }
+    return contours, infos
+
+
 def polices_disponibles(dossiers=None):
     """Fichiers .otf/.ttf trouvés, pour peupler un sélecteur.
 

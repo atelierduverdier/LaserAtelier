@@ -77,6 +77,7 @@ class LaserAtelierWorkbench(Workbench):
             "LaserAtelier_Hatch",
             "LaserAtelier_Text",
             "LaserAtelier_Calligraphie",
+            "LaserAtelier_TexteContour",
             "LaserAtelier_FilledEngraving",
             "LaserAtelier_Halftone",
             "Separator",
