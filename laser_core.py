@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.66.2"
+VERSION = "2.67.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1605,7 +1605,7 @@ def chain_edges(edges, distance=DISCRETIZE_DISTANCE, tolerance=CHAIN_TOLERANCE):
     return chains
 
 
-def order_chains_by_proximity(chains):
+def order_chains_by_proximity(chains, sens_libre=True):
     """Réordonne des chaînes (chacune une liste de points, typiquement la
     sortie de chain_edges) par PLUS PROCHE VOISIN GLOUTON : à chaque étape,
     part de la fin de la chaîne précédente et choisit la chaîne restante
@@ -1614,6 +1614,13 @@ def order_chains_by_proximity(chains):
     l'être -- sans effet sur le rendu pour tous les styles de trait
     existants (le style "degrade" calcule son décalage depuis la position
     de chaque point, pas depuis l'ordre de parcours).
+
+    `sens_libre=False` interdit l'inversion : le geste est alors gravé dans
+    le sens où on l'a reçu. La calligraphie s'en sert, parce que le SENS du
+    trait y est le geste lui-même -- Christophe, 04/08/2026, flèche orange
+    sur la gravure : « c'est le sens de la ligne en un seul trait ». Ça coûte
+    du transit à vide (81 mm sur « Atelier du Verdier », soit moins d'une
+    seconde à G0 pour 469 mm de tracé), et ça ne s'impose qu'à lui.
 
     Distance en XY seulement (le Z suit le relief séparément pendant le
     transit, cf. la boucle de generate_gcode_curved -- même convention).
@@ -1682,6 +1689,8 @@ def order_chains_by_proximity(chains):
                     for (idx, bout) in grille.get((ix, iy), ()):
                         if prise[idx]:
                             continue
+                        if bout and not sens_libre:
+                            continue      # le sens du geste est imposé
                         p = remaining[idx][0] if bout == 0 else remaining[idx][-1]
                         d = math.hypot(p.x - cur.x, p.y - cur.y)
                         if best_dist is None or d < best_dist:
@@ -12569,6 +12578,33 @@ def placer_chaines(chaines, placement):
     return out
 
 
+def sens_de_la_main(geste):
+    """Le geste, retourné s'il le faut pour aller dans le sens de la main.
+
+    UN PLEIN SE TIRE VERS LE BAS. C'est la mécanique même de l'écriture à la
+    plume : on appuie en descendant, on allège en remontant. Une liaison,
+    elle, se tire de GAUCHE À DROITE, comme on écrit. La règle suit donc
+    l'orientation du geste : vertical -> vers le bas ; horizontal -> vers la
+    droite.
+
+    Christophe, 04/08/2026, flèche orange tracée sur la gravure du « A » :
+    « c'est le sens de la ligne en un seul trait ». Le tracé était déjà bon,
+    c'est le SENS de parcours qui ne l'était pas -- et il ne l'était pas par
+    accident : `order_chains_by_proximity` retourne librement une chaîne pour
+    raccourcir les transits, si bien que le sens calculé plus haut n'était
+    jamais celui gravé. Mesuré sur « Atelier du Verdier » : 9 gestes sur 20
+    descendaient ; avec la règle et l'ordonnancement à sens imposé, 20 sur 20.
+
+    Ce que ça coûte : 122 -> 203 mm de trajet à vide, soit moins d'une seconde
+    à G0 sur un job de 2,3 minutes. Le sens du geste vaut mieux que ça."""
+    if len(geste) < 2:
+        return geste
+    dy = geste[-1].y - geste[0].y
+    dx = geste[-1].x - geste[0].x
+    bon = (dy < 0.0) if abs(dy) >= abs(dx) else (dx > 0.0)
+    return geste if bon else geste[::-1]
+
+
 def generate_gcode_calligraphie(chaines, z_work, feed, material,
                                 power_max=None, largeur_max=None,
                                 pre_gcode="", post_gcode="",
@@ -12592,7 +12628,8 @@ def generate_gcode_calligraphie(chaines, z_work, feed, material,
                 "grave la Planche 2 (Assistant matériau).\n".format(material))
         return None
     gestes, diag = prep
-    gestes = order_chains_by_proximity(gestes)
+    gestes = [sens_de_la_main(g) for g in gestes]
+    gestes = order_chains_by_proximity(gestes, sens_libre=False)
 
     z_safe = z_work + diag["z_max"] + TRAVEL_CLEARANCE_MM
     trace = sum(math.hypot(b.x - a.x, b.y - a.y)

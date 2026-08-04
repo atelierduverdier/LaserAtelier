@@ -279,6 +279,19 @@ eye on wood, so that call is his.
 
 ## Chain ordering (v1.82.0)
 
+**`sens_libre=False` (v2.67.0) forbids the reversal.** Ordering picks, for each chain, whichever
+direction shortens the jump — harmless for every mode where a stroke has no intrinsic direction, and
+destructive for calligraphy, where the direction of the stroke *is* the gesture. Whatever
+`calligraphie.py` computed upstream was therefore never what got engraved. `sens_de_la_main` orients
+each gesture first (down if it is mostly vertical — a pen presses on the downstroke; right otherwise
+— you write left to right), then the ordering runs with reversal disabled. On "Atelier du Verdier":
+9 gestures out of 20 descended, now 20 out of 20, for 122 → 203 mm of empty travel — under one second
+at G0 on a 2.3-minute job.
+
+Verify this **on the emitted G-code**, never on the function: the whole defect lived *between* the
+two, in the ordering. And give the fixture more than one gesture — the single tapered stroke of §4
+reports "1 out of 1" and proves nothing.
+
 `generate_gcode_curved` runs `order_chains_by_proximity(chains)` right after `chain_edges`, so every
 mode built on it (Marquage AND the fill/contour bodies of Gravure remplie) visits disjoint chains
 nearest-first, reversing a chain when that end is closer. `generate_hatch_edges`' line-by-line zigzag

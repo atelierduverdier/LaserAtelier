@@ -787,3 +787,94 @@ assert cal._portee((5, 5), _enorme) == cal.PORTEE_MAXI, (
 print("14. coude au croisement : le trait qui monte et celui qui descend font "
       "UN geste ({} gestes en tout) ; portée {} à {} px selon l'encre OK"
       .format(len(_g14), cal._portee((5, 5), _fin), cal._portee((5, 5), _epais)))
+
+
+# --- 15. LE SENS DU GESTE EST LE GESTE ---------------------------------
+# Christophe, 04/08/2026, flèche orange tracée sur la gravure du « A » :
+# « regarde la flèche orange, c'est le sens de la ligne en un seul trait ».
+# Le tracé était juste depuis la v2.66.2 ; c'est le SENS de parcours qui ne
+# l'était pas, et il ne l'était pas par accident : `order_chains_by_proximity`
+# retourne librement une chaîne pour raccourcir les transits, si bien que le
+# sens calculé en amont n'était JAMAIS celui gravé.
+#
+# La règle est celle de la plume : un plein se tire vers le BAS (on appuie en
+# descendant), une liaison se tire vers la DROITE (on écrit de gauche à
+# droite). Mesuré sur « Atelier du Verdier » : 9 gestes sur 20 descendaient,
+# 20 sur 20 après. Coût : 122 -> 203 mm de trajet à vide, moins d'une seconde
+# à G0 sur un job de 2,3 minutes.
+
+def _sens_main(p0, p1):
+    dy, dx = p1[1] - p0[1], p1[0] - p0[0]
+    return (dy < 0.0) if abs(dy) >= abs(dx) else (dx > 0.0)
+
+# (a) La fonction, sur des cas dont on connaît la réponse.
+class _P15(object):
+    def __init__(self, x, y):
+        self.x, self.y, self.w, self.dz, self.s = float(x), float(y), 1.0, 0.0, 0.0
+
+_montant = [_P15(10, 0), _P15(11, 20)]          # vertical, vers le HAUT
+assert core.sens_de_la_main(_montant)[0].y > core.sens_de_la_main(_montant)[-1].y, (
+    "un geste vertical doit être gravé vers le BAS")
+_gauche = [_P15(30, 5), _P15(0, 6)]             # horizontal, vers la GAUCHE
+assert core.sens_de_la_main(_gauche)[0].x < core.sens_de_la_main(_gauche)[-1].x, (
+    "un geste horizontal doit être gravé vers la DROITE")
+_deja = [_P15(0, 20), _P15(1, 0)]               # déjà descendant
+assert core.sens_de_la_main(_deja)[0].y == 20.0, (
+    "un geste déjà dans le bon sens ne doit pas être retourné")
+
+# (b) L'ordonnancement doit pouvoir SE TAIRE sur le sens.
+_a15 = [_P15(0, 0), _P15(10, 0)]
+_b15 = [_P15(30, 0), _P15(20, 0)]     # son bout le plus proche de _a15 est le DERNIER
+_libre = core.order_chains_by_proximity([_a15, _b15])
+_fige = core.order_chains_by_proximity([_a15, _b15], sens_libre=False)
+assert _libre[1][0].x == 20.0, (
+    "par défaut l'ordonnancement doit encore retourner une chaîne pour "
+    "raccourcir le transit -- tous les autres modes en dépendent")
+assert _fige[1][0].x == 30.0, (
+    "sens_libre=False n'a pas empêché l'inversion : le sens du geste serait "
+    "détruit en aval de tout ce qu'on calcule")
+
+# (c) SUR LE G-CODE ÉMIS, pas sur la fonction. C'est le seul endroit où la
+#     question se pose vraiment : entre les deux il y a l'ordonnancement,
+#     et c'est LUI qui cassait le sens.
+#
+#     La figure doit porter PLUSIEURS gestes, dont certains à contresens :
+#     le trait fuselé de §4 n'en a qu'un, et « 1 sur 1 » ne prouve rien.
+#     Trois montants (donc à retourner), un descendant déjà bon, un
+#     horizontal vers la gauche (à retourner aussi) -- et ils sont placés
+#     de façon que l'ordonnancement ait vraiment intérêt à en inverser.
+def _fuseau15(x0, y0, x1, y1, n=40):
+    return [(x0 + (x1 - x0) * i / float(n), y0 + (y1 - y0) * i / float(n),
+             0.20 + 2.5 * math.sin(math.pi * i / float(n)))
+            for i in range(n + 1)]
+
+_MULTI = [
+    _fuseau15(0.0, 0.0, 2.0, 30.0),        # monte : à retourner
+    _fuseau15(40.0, 30.0, 42.0, 0.0),      # descend : déjà bon
+    _fuseau15(10.0, 2.0, 12.0, 32.0),      # monte : à retourner
+    _fuseau15(60.0, 10.0, 20.0, 12.0),     # horizontal vers la gauche
+    _fuseau15(25.0, 34.0, 27.0, 4.0),      # descend : déjà bon
+]
+_g15 = core.generate_gcode_calligraphie(_MULTI, 0.0, 200, _MAT, power_max=900,
+                                        police=_nom)
+_gestes15, _cur15 = [], []
+for _l in _g15.split("\n"):
+    if _l.startswith("G1 X"):
+        _cur15.append((float(re.search(r"X(-?[\d.]+)", _l).group(1)),
+                       float(re.search(r"Y(-?[\d.]+)", _l).group(1))))
+    elif _l.startswith("G0") and _cur15:
+        _gestes15.append(_cur15)
+        _cur15 = []
+if _cur15:
+    _gestes15.append(_cur15)
+assert _gestes15, "aucun geste lu dans le G-code"
+_faux = [g for g in _gestes15 if not _sens_main(g[0], g[-1])]
+assert not _faux, (
+    "{} geste(s) sur {} gravés à contresens de la main".format(
+        len(_faux), len(_gestes15)),
+    [(round(g[0][0]), round(g[0][1]), round(g[-1][0]), round(g[-1][1]))
+     for g in _faux[:3]])
+print("15. sens de la main : {}/{} gestes du G-code ÉMIS vont vers le bas (ou "
+      "vers la droite s'ils sont horizontaux) ; l'ordonnancement retourne "
+      "encore librement hors calligraphie OK".format(
+          len(_gestes15), len(_gestes15)))
