@@ -98,6 +98,18 @@ GESTE_MINI_EN_LARGEURS = 0.5
 # Pas d'échantillonnage du trait le long du chemin, en mm.
 PAS_ARC_MM = 0.4
 
+# Part MINIMALE d'encre neuve pour qu'un geste vaille d'être gravé. Un geste
+# dont le disque tombe entièrement dans ce qu'un autre a déjà brûlé ne dépose
+# rien : il coûte un relevage, un transit, une plongée, et laisse DEUX
+# terminaisons franches de plus au milieu d'un plein.
+#
+# Le seuil ne se choisit pas au goût, il se lit dans la mesure. Sur « Atelier
+# du Verdier », l'apport de chaque geste se répartit en deux tas séparés par
+# un fossé : d'un côté 0 %, de l'autre 10 % et plus. Jeter à 2 %, à 5 % ou à
+# 10 % retire EXACTEMENT le même lot sur trois polices sur quatre -- La
+# Graziela, Swirly Canalope, Byliner. 5 % tombe au milieu du plateau.
+APPORT_MINI = 0.05
+
 _V8 = [(-1, 0), (-1, 1), (0, 1), (1, 1),
        (1, 0), (1, -1), (0, -1), (-1, -1)]     # P2..P9, sens horaire
 
@@ -636,21 +648,24 @@ def couverture(encre, chaines_mm, mm_px, hauteur_mm, echelle=ECHELLE_CONTROLE):
 
 
 def encre_oubliee(encre, couvert, mini_px=6, echelle=ECHELLE_CONTROLE):
-    """Les régions d'encre qu'AUCUN geste ne couvre, rendues chacune par un
+    """Les régions d'`encre` qu'AUCUN geste ne couvre, rendues chacune par un
     court trait le long de son grand axe.
 
-    Deux manques que le squelette ne sait pas donner, et qui se voient tous
-    les deux comme des « coupures dans les lettres » :
+    L'appelant choisit l'encre qu'il soumet, et c'est là que se joue tout le
+    sens de cette fonction. Elle a d'abord servi l'encre ENTIÈRE, pour
+    réparer les « coupures dans les lettres » : l'axe médian s'arrête à une
+    demi-largeur de l'extrémité d'un trait effilé, le plus grand disque
+    inscrit ne pouvant pas aller plus loin. Le parcours de graphe (v2.65.0) a
+    supprimé ces coupures à leur source, et servir toute l'encre s'est mis à
+    coûter bien plus qu'il ne rapportait : sur « Atelier du Verdier », 24
+    comblements sur 27 tombaient DANS une lettre déjà tracée, en petits
+    traits épars le long des jonctions. Christophe, 04/08/2026, capture
+    surlignée à l'appui : « ces petits tracés ne vont pas [...] il faut juste
+    le squelette de la lettre et bien sûr les points sur les i et accents ».
 
-    * les TACHES DÉTACHÉES -- point d'un i, accent, ponctuation : leur
-      squelette fait un ou deux pixels, sous le minimum du traçage, donc
-      aucune chaîne n'en sort ;
-    * les POINTES : l'axe médian s'arrête à une demi-largeur de l'extrémité
-      d'un trait effilé, puisque le plus grand disque inscrit ne peut pas
-      aller plus loin. Prolonger les bouts LIBRES ne suffit pas -- sur une
-      cursive, la plupart des terminaisons s'accrochent à une jonction et
-      n'ont donc pas de bout libre du tout (mesuré : 18 bouts libres pour
-      158 chaînes sur « La Graziela »).
+    On ne lui soumet donc plus que les TACHES DÉTACHÉES -- point d'un i,
+    accent, ponctuation, virgule : une composante d'encre que le squelette ne
+    touche nulle part, donc dont aucune chaîne ne peut sortir.
 
     Plutôt que de deviner la topologie, on regarde CE QUI RESTE : l'encre
     non couverte. C'est la même façon de juger que le balayage qui a tranché
@@ -694,6 +709,79 @@ def encre_oubliee(encre, couvert, mini_px=6, echelle=ECHELLE_CONTROLE):
                      (int(round(cy + v[0] * demi)), int(round(cx + v[1] * demi)))],
                     larg))
     return out
+
+
+def gestes_utiles(encre, chaines_mm, mm_px, hauteur_mm,
+                  apport_mini=APPORT_MINI, echelle=ECHELLE_CONTROLE):
+    """Les gestes qui déposent de l'encre qu'aucun autre ne dépose déjà.
+
+    On les passe du plus long au plus court -- le trait de la lettre d'abord,
+    le résidu ensuite -- en cumulant ce qui est brûlé. Un geste dont moins de
+    `apport_mini` de l'empreinte est neuve ne grave rien de plus.
+
+    Ce sont les petits ponts que l'amincissement laisse entre deux jonctions
+    voisines, longs de 0,04 à 0,5 mm : sur Blacksword ils font 30 des 66
+    gestes. Renvoie la liste filtrée DANS SON ORDRE D'ORIGINE."""
+    np = _numpy()
+    from PIL import Image
+    if not chaines_mm:
+        return []
+    vide = couverture(encre, [], mm_px, hauteur_mm, echelle=echelle)
+    petit = Image.fromarray((np.asarray(encre) > 0).astype(np.uint8) * 255)
+    enc = np.array(petit.resize((vide.shape[1], vide.shape[0]))) > 127
+    cumul = np.zeros_like(vide)
+    gardes = set()
+    ordre = sorted(range(len(chaines_mm)),
+                   key=lambda i: -_longueur_chaine(chaines_mm[i]))
+    for i in ordre:
+        propre = couverture(encre, [chaines_mm[i]], mm_px, hauteur_mm,
+                            echelle=echelle) & enc
+        total = int(propre.sum())
+        if total and float((propre & ~cumul).sum()) / total < apport_mini:
+            continue
+        gardes.add(i)
+        cumul |= propre
+    return [c for i, c in enumerate(chaines_mm) if i in gardes]
+
+
+def _longueur_chaine(chaine):
+    """Longueur parcourue, en mm, d'une chaîne de triplets (x, y, largeur)."""
+    return sum(math.hypot(b[0] - a[0], b[1] - a[1])
+               for a, b in zip(chaine, chaine[1:]))
+
+
+def taches_sans_geste(encre, couvert, echelle=ECHELLE_CONTROLE):
+    """Les composantes d'encre qu'AUCUN geste ne touche, même en partie.
+
+    C'est la définition exacte de ce qu'un tracé de squelette n'a pas su
+    servir : un point d'i, un accent, une virgule de ponctuation. Tout le
+    reste de l'encre appartient à une lettre que les gestes parcourent déjà,
+    et n'a donc rien à recevoir en plus.
+
+    Le critère est la COUVERTURE, pas la présence d'un squelette. Une tache
+    détachée porte bel et bien un squelette -- un ou deux pixels -- mais trop
+    court pour donner une arête qui survive au parcours : sur « Swirly
+    Canalope » les deux points des « i » font 3347 px chacun et le squelette
+    les touche, alors qu'aucun geste n'en sort. Juger sur le squelette les
+    aurait déclarés servis et laissés nus.
+
+    Renvoie un masque booléen de la taille de `encre`."""
+    np = _numpy()
+    from scipy import ndimage
+    lab, n = ndimage.label(encre > 0, np.ones((3, 3), dtype=bool))
+    if n == 0:
+        return np.zeros(encre.shape, dtype=bool)
+    k = max(1, int(echelle))
+    ys, xs = np.nonzero(couvert)
+    servies = np.zeros(n + 1, dtype=bool)
+    if len(ys):
+        # `couvert` est à l'échelle réduite : chaque pixel couvert désigne un
+        # bloc k x k de l'encre, dont il suffit de lire le coin.
+        yy = np.clip(ys * k, 0, encre.shape[0] - 1)
+        xx = np.clip(xs * k, 0, encre.shape[1] - 1)
+        servies[lab[yy, xx]] = True
+    servies[0] = True                       # le fond n'est pas une tache
+    return (lab > 0) & ~servies[lab]
 
 
 def _reechantillonner(pts, largeurs, pas):
@@ -823,14 +911,17 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
                                                mode="nearest"))
         chaines.append([(float(x), float(y), float(w))
                         for (x, y), w in zip(p2, l2)])
-        w_min = min(w_min, min(l2))
-        w_max = max(w_max, max(l2))
-        longueur += lg
-    # CE QUI RESTE : l'encre qu'aucun geste ne couvre -- points d'i,
-    # accents, et surtout les pointes que l'axe médian n'atteint pas.
+    # LES TACHES DÉTACHÉES, et rien d'autre : point d'i, accent, ponctuation.
+    # Une composante d'encre qu'aucun geste ne touche ne peut rien recevoir
+    # d'autre ; tout le reste appartient à une lettre déjà parcourue. Servir
+    # l'encre entière, comme on le faisait avant le parcours de graphe,
+    # semait de petits traits épars le long des jonctions -- 24 sur 27
+    # comblements sur « La Graziela ».
     hauteur_totale = (H - 1) * mm_px
+    chaines = gestes_utiles(b, chaines, mm_px, hauteur_totale)
     couvert = couverture(b, chaines, mm_px, hauteur_totale)
-    for pts_px, larg_px_tache in encre_oubliee(b, couvert):
+    for pts_px, larg_px_tache in encre_oubliee(taches_sans_geste(b, couvert),
+                                               couvert):
         pts = [(x * mm_px, (H - 1 - y) * mm_px) for y, x in pts_px]
         w = larg_px_tache * mm_px
         p2, l2, lg = _reechantillonner(pts, [w, w], pas_arc_mm)
@@ -843,13 +934,20 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
             continue
         chaines.append([(float(x), float(y), float(ww))
                         for (x, y), ww in zip(p2, l2)])
-        w_min = min(w_min, w)
-        w_max = max(w_max, w)
-        longueur += lg
 
     if not chaines:
         raise ErreurCalligraphie(
             "Aucun trait assez long à cette taille -- agrandis le texte.")
+    # LES CHIFFRES SE LISENT SUR CE QUI SERA GRAVÉ, pas sur ce qui a été
+    # envisagé. Les cumuler au fil de la boucle comptait aussi les gestes
+    # qu'`gestes_utiles` jette ensuite : la longueur annoncée gonflait, et
+    # surtout un moignon jeté pouvait fixer à lui seul la largeur MINIMALE,
+    # celle sur laquelle le panneau juge si le matériau sait faire le trait.
+    for c in chaines:
+        for _x, _y, w in c:
+            w_min = min(w_min, w)
+            w_max = max(w_max, w)
+        longueur += _longueur_chaine(c)
     infos = {
         "largeur_mm": W * mm_px,
         "hauteur_mm": H * mm_px,

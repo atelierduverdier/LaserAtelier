@@ -417,3 +417,99 @@ for _nom10, _forme in _formes:
         len(_g10), len(_ar10))
     print("10. {:14s} : {} arêtes -> {} gestes ; couverture entière, aucun "
           "saut OK".format(_nom10, len(_ar10), len(_g10)))
+
+
+# --- 11. On grave le squelette, pas les miettes -------------------------
+# Christophe, 04/08/2026, capture surlignée en jaune à l'appui : « ton rendu
+# est fidèle et c'est vraiment vraiment mieux, ce qui me gêne c'est que ça
+# essaye encore de suivre certains petits tracés, afin de rester fidèle, mais
+# ces petits tracés ne vont pas [...] il faut juste le squelette de la lettre
+# et bien sûr les points sur les i et accents ».
+#
+# Mesuré sur « Atelier du Verdier » à 120 mm : 27 des 55 gestes étaient des
+# COMBLEMENTS d'encre non couverte, et 24 d'entre eux tombaient dans une
+# lettre déjà tracée. Ils réparaient les « coupures » d'avant le parcours de
+# graphe ; celui-ci les a supprimées à leur source, et il ne restait que le
+# coût -- des traits épars le long des jonctions.
+#
+# Deux règles, chacune jugée sur l'ENCRE et non sur une longueur :
+#   a) `taches_sans_geste` : on ne comble QUE ce qu'aucun geste ne touche.
+#   b) `gestes_utiles` : un geste dont l'empreinte est déjà brûlée par un
+#      autre ne dépose rien.
+
+# Une barre franche et, loin d'elle, une tache détachée : le point d'un i.
+_img11 = Image.new("L", (400, 200), 0)
+_d11 = ImageDraw.Draw(_img11)
+_d11.line([40, 150, 360, 150], fill=255, width=16)
+_d11.ellipse([190, 30, 214, 54], fill=255)
+_encre11 = np.array(_img11) > 127
+_mm_px11 = 0.2
+_haut11 = (_encre11.shape[0] - 1) * _mm_px11
+
+def _en_mm(y_px, x_px, w_px):
+    return (x_px * _mm_px11, _haut11 - y_px * _mm_px11, w_px * _mm_px11)
+
+_barre = [_en_mm(150, x, 16) for x in range(45, 356, 5)]
+
+# (a) La tache est vue comme non servie ; la barre, non.
+_couv11 = cal.couverture(_encre11, [_barre], _mm_px11, _haut11)
+_sans11 = cal.taches_sans_geste(_encre11, _couv11)
+assert _sans11[42, 202], (
+    "la tache détachée n'est pas reconnue : un point d'i serait gravé "
+    "manquant")
+assert not _sans11[150, 200], (
+    "la barre est déclarée sans geste alors qu'un geste la parcourt : on "
+    "recomblerait l'intérieur des lettres, ce que Christophe a surligné")
+assert int(_sans11.sum()) < int(_encre11.sum()) * 0.2, (
+    "presque toute l'encre est déclarée sans geste", int(_sans11.sum()))
+
+# (b) Un doublon de la barre, décalé d'un pixel, ne dépose rien de neuf.
+_doublon = [(x, y - _mm_px11, w) for x, y, w in _barre]
+_point = [_en_mm(42, 196, 24), _en_mm(42, 208, 24)]
+_gardes11 = cal.gestes_utiles(_encre11, [_barre, _doublon, _point],
+                              _mm_px11, _haut11)
+assert len(_gardes11) == 2, (
+    "le doublon n'a pas été jeté (ou un vrai geste l'a été)", len(_gardes11))
+assert _point in _gardes11, (
+    "le geste de la tache détachée a été jeté : il dépose pourtant toute "
+    "son encre")
+assert _barre in _gardes11 or _doublon in _gardes11, (
+    "la barre entière a été jetée")
+
+# (c) Sur une vraie lettre, l'élagage doit AVOIR LIEU et ne rien coûter.
+_TXT11 = "il a été"
+_encre_r = cal.rendre_texte(_chemin, _TXT11)
+_sq_r = cal.amincir(_encre_r)
+_ar_r, _cy_r, _ = cal.construire(_sq_r)
+_haut_r = (_encre_r.shape[0] - 1) * (120.0 / _encre_r.shape[1])
+_ch11, _inf11 = cal.chaines_calligraphie(_chemin, _TXT11, largeur_mm=120.0)
+# Plus aucun geste ne doit être redondant : c'est la propriété, pas le compte.
+_mm_r = _inf11["mm_px"]
+_vide_r = cal.couverture(_encre_r, [], _mm_r, _haut_r)
+_petit_r = np.array(Image.fromarray((_encre_r > 0).astype(np.uint8) * 255)
+                    .resize((_vide_r.shape[1], _vide_r.shape[0]))) > 127
+for _i11, _c11 in enumerate(_ch11):
+    _autres = cal.couverture(_encre_r, _ch11[:_i11] + _ch11[_i11+1:],
+                             _mm_r, _haut_r)
+    _propre = cal.couverture(_encre_r, [_c11], _mm_r, _haut_r) & _petit_r
+    _neuf = float((_propre & ~_autres).sum()) / max(1, int(_propre.sum()))
+    assert _neuf > 0.0, (
+        "un geste ne dépose aucune encre que les autres ne déposent déjà : "
+        "il coûte un relevage, un transit et deux terminaisons franches",
+        _i11, _neuf)
+
+# (d) Les chiffres annoncés décrivent CE QUI SERA GRAVÉ. Les cumuler avant
+#     l'élagage laissait un moignon jeté fixer à lui seul la largeur mini,
+#     celle sur laquelle le panneau juge si le matériau sait faire le trait.
+_somme11 = sum(math.hypot(_q[0]-_p[0], _q[1]-_p[1])
+               for _c in _ch11 for _p, _q in zip(_c, _c[1:]))
+assert abs(_inf11["longueur_mm"] - _somme11) < 1e-6, (
+    "la longueur annoncée compte des gestes qui ne seront pas gravés",
+    _inf11["longueur_mm"], _somme11)
+assert abs(_inf11["largeur_trait_min"]
+           - min(w for _c in _ch11 for _x, _y, w in _c)) < 1e-9, (
+    "la largeur mini annoncée vient d'un geste jeté")
+assert _inf11["n_chaines"] == len(_ch11)
+print("11. « {} » : {} arêtes -> {} gestes, aucun redondant ; tache détachée "
+      "servie, intérieur des lettres non recomblé ; chiffres du verdict "
+      "conformes au tracé OK".format(_TXT11, len(_ar_r), len(_ch11)))

@@ -66,6 +66,35 @@ The other half of the same lesson: measure fidelity against **what the font asks
 target already clipped by our own bounds — that flatters itself (0.02 mm of error announced while
 the font was asking four times more).
 
+## A repair that outlives its defect becomes the defect
+
+`encre_oubliee` was written to serve **all** uncovered ink, because the medial axis stops half a
+width short of a tapered tip and Christophe saw the result as "coupures dans les lettres". The
+graph traversal (v2.65.0) closed those gaps at the source — and the repair kept firing. On "Atelier
+du Verdier" at 120 mm, **27 of the 55 gestures were fills, and 24 of them landed inside a letter
+already traced**: small strokes scattered along the junctions. Christophe highlighted them in
+yellow: *"il faut juste le squelette de la lettre et bien sûr les points sur les i et accents"*.
+
+Two rules replaced it, both judged on **ink**, never on a length:
+
+* `taches_sans_geste` — fill only an ink component that **no gesture covers at all**. The criterion
+  is coverage, not "the skeleton touches it": a detached dot does carry a one-or-two-pixel skeleton,
+  too short to survive the traversal, so judging on the skeleton would call it served and leave it
+  bare.
+* `gestes_utiles` — drop a gesture whose footprint is already burnt by another. Longest first,
+  cumulating. The threshold is read off the measurement, not chosen: contributions split into two
+  heaps with a gap between them (0 % on one side, ≥10 % on the other), and 2 %, 5 % and 10 % remove
+  **exactly the same set** on three fonts out of four. `APPORT_MINI = 0.05` sits mid-plateau.
+
+La Graziela 55 → 25 gestures, Blacksword 142 → 36, for **0.01 point** of ink coverage; blunt
+terminations 19 → 6. What is left bare is ~1000 slivers of ≤ 0.6 mm² along the tapered tips — an
+i-dot is 7 mm², so nothing legible is lost.
+
+Same trap in the same function: `longueur`, `w_min` and `w_max` were accumulated **inside the
+building loop**, i.e. before pruning. A discarded stub could set the announced minimum width on its
+own — the very number the panel uses to judge whether the material can make the stroke. They are now
+recomputed over the final chains.
+
 ## Size is the only lever
 
 The stroke width comes from the glyph scaled to the requested size, and the ceiling is the
