@@ -204,6 +204,29 @@ the entry point, or state plainly which stages you skipped.
 The deviation is a property of that letter's medial axis, not a defect. It shrinks by picking a font
 whose strokes cross less flatly, never by filtering afterwards.
 
+## Contrast is what says whether a font belongs here at all
+
+`polices_disponibles()` returns **1019 files** on this machine, 902 of them from
+`/usr/share/fonts`. Christophe: *"j'ai une liste interminable et j'utilise un autre logiciel pour
+voir la forme des fonts"*.
+
+`contraste_police` measures the ratio thickest/thinnest **on the skeleton, with the same local width
+the engraving will follow** — 10th and 90th percentiles, not min/max (the medial axis stops before
+the tips and swells at crossings; neither extreme describes the stroke). 6 ms per font, 0.7 s for his
+118 personal ones — fast enough for a specimen opened on demand, far too slow for all 1019.
+
+It discriminates cleanly: calligraphic faces 2.5–7.6× (Rosean 7.62, Doglover 7.00, Swirly 5.10,
+Blacksword 3.81, La Graziela 2.83, Byliner 2.55) against 1.34–1.44× for the system's sans and
+monospace. **Serifs land between, at 2.00–2.03×** — a serif italic has real contrast and engraves
+well, hence `CONTRASTE_MINI = 2.2` keeps them by a hair. Only **29 of 118** clear it.
+
+Below the threshold a font is **marked, not hidden**: it is a warning, not a ban.
+
+**`contraste_encre` exists so the measure can be tested.** The first version of §17 recomputed the
+percentile formula on its own synthetic shapes — and a sabotage that replaced the formula by
+`mean/mean` passed untouched. Splitting rendering from measuring lets the test call the very function
+the panel calls. Same trap as the Grille de test's button, in a different costume.
+
 ## Size is the only lever
 
 The stroke width comes from the glyph scaled to the requested size, and the ceiling is the

@@ -911,3 +911,69 @@ assert not _retours, (
     "ça".format(len(_retours)), _retours[:3])
 print("16. ordre d'écriture : {} gestes du G-code ÉMIS, aucun ne repart vers "
       "la gauche du précédent OK".format(len(_gestes16)))
+
+
+# --- 17. MILLE POLICES NE SE CHOISISSENT PAS ---------------------------
+# Christophe, 04/08/2026 : « j'ai une liste interminable et j'utilise un
+# autre logiciel pour voir la forme des fonts ». Sur sa machine la liste
+# compte 1019 fichiers, dont 902 dans /usr/share/fonts -- des Noto, des
+# DejaVu, des emoji : rien qui sache faire un plein et un délié.
+#
+# Le chiffre qui décide est le CONTRASTE, mesuré sur le squelette avec la
+# même largeur locale que la gravure. Sur ses 118 polices personnelles :
+# Rosean 7,62x, Doglover 7,00, Swirly 5,10, Blacksword 3,81, La Graziela
+# 2,83, Byliner 2,55 -- contre 1,34 à 1,44 pour les sans-serif et monospace
+# du système. 29 sur 118 dépassent CONTRASTE_MINI.
+
+# (a) La mesure : un nombre plausible sur une vraie police, None sur ce qui
+#     n'en est pas une -- jamais une exception, la liste en contient de tout.
+_c17 = cal.contraste_police(_chemin)
+assert _c17 is not None and _c17 >= 1.0, (
+    "contraste illisible sur une police valide", _c17, _chemin)
+assert cal.contraste_police(__file__) is None, (
+    "un fichier qui n'est pas une police doit rendre None, pas exploser")
+
+# (b) ELLE DOIT DISCRIMINER. Un trait d'épaisseur CONSTANTE ne donne aucun
+#     contraste ; le trait fuselé de §1 en donne beaucoup. On mesure avec la
+#     formule elle-même (centiles 10 et 90 de la largeur sur le squelette),
+#     sur deux formes dont on connaît la réponse par construction.
+_barre17 = np.zeros((200, 600), dtype=bool)
+_barre17[95:105, 20:580] = True                    # 10 px partout
+_fuselé17, _, _ = _trait_fuselé()                  # 6 -> 60 px
+_c_plat = cal.contraste_encre(_barre17)
+_c_fusele = cal.contraste_encre(_fuselé17)
+assert _c_plat < 1.3, ("un trait d'épaisseur constante ne doit pas avoir de "
+                       "contraste", _c_plat)
+assert _c_fusele > 2.0 * _c_plat, (
+    "la mesure ne distingue pas un fuseau d'un trait plat : elle ne peut "
+    "pas trier les polices", _c_plat, _c_fusele)
+assert _c_plat < cal.CONTRASTE_MINI <= _c_fusele, (
+    "le seuil ne sépare pas les deux cas qu'il doit séparer",
+    _c_plat, cal.CONTRASTE_MINI, _c_fusele)
+
+# Et le chemin complet passe bien par CETTE mesure-là : sans ce lien, on
+# pourrait casser la formule sans que rien ne tombe (essayé -- ça passait).
+assert abs(cal.contraste_police(_chemin)
+           - cal.contraste_encre(cal.rendre_texte(_chemin, "Mno", em_px=120))) < 1e-9, (
+    "contraste_police ne mesure pas ce que contraste_encre mesure")
+
+# (c) LE MENU : les polices personnelles AVANT celles du système. C'est ce
+#     qui rend la liste utilisable sans rien cacher.
+_p17 = tp.TaskPanelCalligraphie()
+_rangs = []
+for _i in range(_p17.combo_police.count()):
+    _ch17 = _p17.combo_police.itemData(_i)
+    if _ch17:
+        _rangs.append(str(_ch17).startswith("/usr/share/fonts"))
+if any(_rangs) and not all(_rangs):
+    _premier_systeme = _rangs.index(True)
+    assert not any(not _s for _s in _rangs[_premier_systeme:]), (
+        "une police personnelle est reléguée derrière celles du système")
+    print("17. {} polices dans le menu, les {} personnelles d'abord ; "
+          "contraste : trait plat {:.2f}x, fuseau {:.2f}x, seuil {:.1f}x OK"
+          .format(len(_rangs), _premier_systeme, _c_plat, _c_fusele,
+                  cal.CONTRASTE_MINI))
+else:
+    print("17. contraste : trait plat {:.2f}x, fuseau {:.2f}x, seuil {:.1f}x "
+          "OK (pas de mélange perso/système sur cette machine, ordre non "
+          "jugeable)".format(_c_plat, _c_fusele, cal.CONTRASTE_MINI))

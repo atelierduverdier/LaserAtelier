@@ -218,6 +218,62 @@ def polices_disponibles(dossiers=None):
     return sorted(trouve.items())
 
 
+# CONTRASTE MINIMAL pour qu'une police ait quelque chose à donner ici. En
+# dessous, le fuseau ne bouge presque pas et la gravure sort au trait
+# constant -- ce n'est plus de la calligraphie. Le seuil se lit dans la
+# mesure : sur les 118 polices installées chez Christophe, les
+# calligraphiques mesurent 2,5 à 7,6x (Rosean 7,62 ; Doglover 7,00 ; Swirly
+# 5,10 ; Blacksword 3,81 ; La Graziela 2,83 ; Byliner 2,55) tandis que les
+# sans-serif et monospace du système plafonnent à 1,34-1,44x. Entre les
+# deux, les SERIF à 2,00-2,03x : une italique serif a un vrai contraste et
+# se grave très bien, donc 2,2 les garde de justesse.
+CONTRASTE_MINI = 2.2
+
+
+def contraste_police(chemin_police, texte="Mno", em_px=120):
+    """Le rapport plein/délié que cette police peut donner, ou None.
+
+    C'est LE chiffre qui dit si une police a sa place dans ce mode : tout y
+    vient de l'alternance des pleins et des déliés, et une police à graisse
+    constante n'en a aucune. Christophe, 04/08/2026 : « j'ai une liste
+    interminable et j'utilise un autre logiciel pour voir la forme des
+    fonts » -- 1019 fichiers listés, dont 902 viennent de /usr/share/fonts
+    et n'ont rien à faire là.
+
+    On mesure sur le SQUELETTE, avec la même largeur locale que la gravure,
+    donc sur exactement ce que le fuseau suivra. Les centiles 10 et 90
+    plutôt que le min et le max : l'axe médian s'arrête avant les pointes et
+    enfle aux croisements, deux extrêmes qui ne décrivent pas le trait.
+
+    Coût mesuré : 6 ms par police, soit 0,7 s pour les 118 polices
+    personnelles -- assez rapide pour un spécimen ouvert à la demande, trop
+    lent pour les 1019 de la liste complète."""
+    try:
+        return contraste_encre(rendre_texte(chemin_police, texte, em_px=em_px))
+    except ErreurCalligraphie:
+        return None
+
+
+def contraste_encre(b):
+    """Le contraste plein/délié d'une forme déjà rendue, ou None.
+
+    Séparé de `contraste_police` pour que la MESURE se contrôle sur des
+    formes dont on connaît la réponse -- un trait d'épaisseur constante doit
+    donner 1,0 -- sans passer par un fichier de police. Un contrôle qui
+    recalculerait la formule de son côté ne prouverait rien : c'est ce
+    chemin-là qui est emprunté, c'est lui qu'il faut appeler."""
+    np = _numpy()
+    sq = amincir(b)
+    if not sq.any():
+        return None
+    l = largeur_locale(b)[sq]
+    if len(l) < 20:
+        return None
+    fin = float(np.percentile(l, 10))
+    large = float(np.percentile(l, 90))
+    return large / max(fin, 1e-6)
+
+
 def rendre_texte(chemin_police, texte, em_px=EM_PX, marge=None):
     """Le texte tramé en noir sur blanc, par FreeType (via PIL).
 

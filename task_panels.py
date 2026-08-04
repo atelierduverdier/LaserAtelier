@@ -6126,6 +6126,167 @@ def _choisir_police_visuel(parent, combo_font, texte_exemple):
     return None if it is None else it.data(QtCore.Qt.UserRole)
 
 
+def _apercu_police_reelle(chemin, texte, largeur_px, hauteur_px=44):
+    """Le texte tracé AVEC LA POLICE, en noir sur blanc, pour le spécimen.
+
+    On passe par `cal.rendre_texte`, donc par le même rendu FreeType que la
+    gravure : ce qu'on voit est la forme dont le squelette sera extrait, y
+    compris les caractères que la police ne possède pas."""
+    import calligraphie as cal
+    import numpy as np
+    b = cal.rendre_texte(chemin, texte, em_px=90)
+    h, w = b.shape
+    ech = min(float(hauteur_px) / max(h, 1), float(largeur_px) / max(w, 1))
+    img = QtGui.QImage(w, h, QtGui.QImage.Format_RGB32)
+    img.fill(QtGui.QColor("white"))
+    ys, xs = np.nonzero(b)
+    for y, x in zip(ys.tolist(), xs.tolist()):
+        img.setPixel(x, y, 0x00202020)
+    return img.scaled(max(1, int(w * ech)), max(1, int(h * ech)),
+                      QtCore.Qt.KeepAspectRatio,
+                      QtCore.Qt.SmoothTransformation)
+
+
+def _choisir_police_calligraphie(parent, combo_police, texte_exemple):
+    """Le spécimen des polices du disque, CLASSÉES PAR CONTRASTE.
+
+    Christophe, 04/08/2026 : « j'ai une liste interminable et j'utilise un
+    autre logiciel pour voir la forme des fonts ». La liste compte 1019
+    fichiers, dont 902 dans /usr/share/fonts -- des Noto, des DejaVu, des
+    emoji : rien qui sache faire un plein et un délié.
+
+    Deux choses la rendent utilisable, et la seconde est la vraie :
+
+    * les polices PERSONNELLES d'abord (118 au lieu de 1019), le système
+      derrière une case à cocher ;
+    * le classement par CONTRASTE MESURÉ, `cal.contraste_police`, le chiffre
+      qui décide si une police a sa place ici. Il est affiché : « 3,81x »
+      dit plus qu'un nom de fichier, et une police sous `CONTRASTE_MINI`
+      est marquée comme telle plutôt que cachée -- c'est un avertissement,
+      pas un interdit, et une italique serif à 2,0x se grave très bien.
+
+    Comme les deux autres sélecteurs visuels de ce fichier : la liste est
+    bâtie À PARTIR DU COMBO, et on renvoie un INDEX que le combo rejoue."""
+    import calligraphie as cal
+    exemple = (texte_exemple or "").strip().split("\n")[0] or "Atelier"
+
+    dlg = QtWidgets.QDialog(parent)
+    dlg.setWindowTitle("Choisir une police calligraphique")
+    dlg.resize(940, 660)
+    lay = QtWidgets.QVBoxLayout(dlg)
+    lay.addWidget(_WrapLabel(
+        "Classées par CONTRASTE plein/délié -- le rapport entre le trait le "
+        "plus large et le plus fin, mesuré sur la police elle-même."))
+    lay.addWidget(_WrapLabel(
+        "C'est ce contraste que la hauteur Z reproduit : sous {:.1f}x, la "
+        "tête ne bouge presque plus et la gravure sort au trait constant."
+        .format(cal.CONTRASTE_MINI)))
+
+    barre = QtWidgets.QHBoxLayout()
+    filtre = QtWidgets.QLineEdit()
+    filtre.setPlaceholderText("Filtrer par nom (script, italic…)")
+    barre.addWidget(filtre, 1)
+    chk_systeme = QtWidgets.QCheckBox("Inclure les polices du système")
+    barre.addWidget(chk_systeme)
+    lay.addLayout(barre)
+
+    liste = QtWidgets.QListWidget()
+    liste.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+    lay.addWidget(liste, 1)
+    etat = QtWidgets.QLabel("")
+    lay.addWidget(etat)
+
+    courant = combo_police.currentIndex()
+    mesures = {}
+
+    def _peupler():
+        liste.clear()
+        systeme = chk_systeme.isChecked()
+        entrees = []
+        for i in range(combo_police.count()):
+            chemin = combo_police.itemData(i)
+            if not chemin:
+                continue
+            if not systeme and str(chemin).startswith("/usr/share/fonts"):
+                continue
+            entrees.append((i, combo_police.itemText(i), chemin))
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        try:
+            for i, _lib, chemin in entrees:
+                if i not in mesures:
+                    try:
+                        mesures[i] = cal.contraste_police(chemin)
+                    except Exception:
+                        mesures[i] = None
+            entrees.sort(key=lambda e: -(mesures.get(e[0]) or 0.0))
+            for i, libelle, chemin in entrees:
+                c = mesures.get(i)
+                ligne = QtWidgets.QWidget()
+                vb = QtWidgets.QVBoxLayout(ligne)
+                vb.setContentsMargins(8, 5, 8, 7)
+                vb.setSpacing(1)
+                if c is None:
+                    txt, couleur = "{}  --  illisible".format(libelle), "#a03028"
+                elif c < cal.CONTRASTE_MINI:
+                    txt = "{}  --  contraste {:.2f}x (trop peu : trait presque " \
+                          "constant)".format(libelle, c)
+                    couleur = "#96601e"
+                else:
+                    txt = "{}  --  contraste {:.2f}x".format(libelle, c)
+                    couleur = "#2f3540"
+                nom = QtWidgets.QLabel(txt)
+                f = nom.font()
+                f.setPointSizeF(max(7.0, f.pointSizeF() - 1.0))
+                f.setBold(True)
+                nom.setFont(f)
+                nom.setStyleSheet("color: {};".format(couleur))
+                vb.addWidget(nom)
+                try:
+                    vue = QtWidgets.QLabel()
+                    vue.setPixmap(QtGui.QPixmap.fromImage(
+                        _apercu_police_reelle(chemin, exemple, 860)))
+                except Exception as exc:
+                    vue = QtWidgets.QLabel("(illisible : {})".format(exc))
+                vb.addWidget(vue)
+                it = QtWidgets.QListWidgetItem()
+                it.setData(QtCore.Qt.UserRole, i)
+                it.setData(QtCore.Qt.UserRole + 1, libelle)
+                it.setSizeHint(ligne.sizeHint())
+                liste.addItem(it)
+                liste.setItemWidget(it, ligne)
+                if i == courant:
+                    liste.setCurrentItem(it)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        bonnes = sum(1 for i, _l, _c in entrees
+                     if (mesures.get(i) or 0.0) >= cal.CONTRASTE_MINI)
+        etat.setText("{} polices, dont {} au-dessus de {:.1f}x".format(
+            len(entrees), bonnes, cal.CONTRASTE_MINI))
+
+    def _filtrer(txt):
+        t = (txt or "").strip().lower()
+        for r in range(liste.count()):
+            it = liste.item(r)
+            lib = (it.data(QtCore.Qt.UserRole + 1) or "").lower()
+            it.setHidden(bool(t) and t not in lib)
+
+    filtre.textChanged.connect(_filtrer)
+    chk_systeme.toggled.connect(lambda _c: (_peupler(), _filtrer(filtre.text())))
+    _peupler()
+
+    boutons = QtWidgets.QDialogButtonBox(
+        QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+    boutons.accepted.connect(dlg.accept)
+    boutons.rejected.connect(dlg.reject)
+    lay.addWidget(boutons)
+    liste.itemDoubleClicked.connect(lambda _i: dlg.accept())
+
+    if dlg.exec() != QtWidgets.QDialog.Accepted:
+        return None
+    it = liste.currentItem()
+    return None if it is None else it.data(QtCore.Qt.UserRole)
+
+
 def _choisir_reglage_visuel(parent, combo_shade, material, critere):
     """Grille de pastilles cliquables : le nuancier montré, pas décrit.
     Renvoie l'index d'item à sélectionner dans `combo_shade`, ou None.
@@ -10531,6 +10692,15 @@ class TaskPanelCalligraphie:
             "Polices trouvées dans tes dossiers de polices.\n"
             "« Parcourir… » pour en prendre une ailleurs.")
         self.combo_police.currentIndexChanged.connect(self._on_police_choisie)
+        btn_voir = QtWidgets.QPushButton("Voir les polices…")
+        btn_voir.setToolTip(
+            "Spécimen : chaque police ÉCRITE, classée par contraste\n"
+            "plein/délié -- le chiffre qui dit si elle a sa place ici.")
+        btn_voir.clicked.connect(self._on_voir_polices)
+        ligne_police = QtWidgets.QHBoxLayout()
+        ligne_police.setContentsMargins(0, 0, 0, 0)
+        ligne_police.addWidget(self.combo_police, 1)
+        ligne_police.addWidget(btn_voir)
         self.edt_police = QtWidgets.QLineEdit()
         self.edt_police.setToolTip("Chemin du fichier .otf / .ttf.")
         btn_parcourir = QtWidgets.QPushButton("Parcourir…")
@@ -10539,7 +10709,7 @@ class TaskPanelCalligraphie:
         ligne.setContentsMargins(0, 0, 0, 0)
         ligne.addWidget(self.edt_police, 1)
         ligne.addWidget(btn_parcourir)
-        form.addRow("Police installée :", self.combo_police)
+        form.addRow("Police installée :", ligne_police)
         form.addRow("Fichier :", ligne)
 
         self.edt_texte = QtWidgets.QLineEdit("Atelier du Verdier")
@@ -10681,7 +10851,20 @@ class TaskPanelCalligraphie:
         self.combo_police.blockSignals(True)
         self.combo_police.clear()
         self.combo_police.addItem("-- Choisir --", None)
+        # TES POLICES D'ABORD. Sur cette machine la liste compte 1019
+        # fichiers, dont 902 dans /usr/share/fonts -- des Noto, des DejaVu,
+        # des emoji, rien qui sache faire un plein et un délié. Les reléguer
+        # en fin de liste ne coûte rien (un test sur le chemin) et rend le
+        # menu utilisable sans rien cacher.
+        perso, systeme = [], []
         for nom, chemin in cal.polices_disponibles():
+            (systeme if str(chemin).startswith("/usr/share/fonts")
+             else perso).append((nom, chemin))
+        for nom, chemin in perso:
+            self.combo_police.addItem(nom, chemin)
+        if perso and systeme:
+            self.combo_police.insertSeparator(self.combo_police.count())
+        for nom, chemin in systeme:
             self.combo_police.addItem(nom, chemin)
         self.combo_police.blockSignals(False)
 
@@ -10690,6 +10873,13 @@ class TaskPanelCalligraphie:
         if chemin:
             self.edt_police.setText(chemin)
             self._maj_verdict()
+
+    def _on_voir_polices(self):
+        """Ouvre le spécimen et rejoue le choix dans le combo."""
+        i = _choisir_police_calligraphie(
+            self.form, self.combo_police, self.edt_texte.text())
+        if i is not None and i != self.combo_police.currentIndex():
+            self.combo_police.setCurrentIndex(i)
 
     def _on_parcourir(self):
         chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
