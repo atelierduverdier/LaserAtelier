@@ -125,6 +125,14 @@ APPORT_MINI = 0.05
 # du plateau.
 SOUDURE_EN_LARGEURS = 1.0
 
+# FUSION des jonctions, en multiple du RAYON de l'encre. Deux traits qui se
+# croisent de biais ne donnent pas un nœud à quatre branches mais deux nœuds
+# à trois, reliés par un pont d'un ou deux pixels : c'est ce pont qui permet
+# à l'appariement de coudre une branche à la mauvaise et de couper un trait
+# en son milieu. Au-delà du rayon du disque inscrit, le « pont » est un vrai
+# morceau de lettre et doit le rester.
+FUSION_EN_LARGEURS = 1.0
+
 _V8 = [(-1, 0), (-1, 1), (0, 1), (1, 1),
        (1, 0), (1, -1), (0, -1), (-1, -1)]     # P2..P9, sens horaire
 
@@ -445,6 +453,65 @@ def adjacence(sq):
             v.append(q)
         adj[p] = v
     return adj
+
+
+def fusionner_jonctions(aretes, larg_px, k_largeurs=FUSION_EN_LARGEURS):
+    """Recolle les jonctions qu'un MÊME disque d'encre contient.
+
+    UN CROISEMENT N'EST PAS DEUX JONCTIONS. Quand deux traits se croisent de
+    biais -- et une cursive n'est faite que de ça -- l'amincissement ne peut
+    pas produire un nœud à quatre branches : il en fabrique DEUX à trois
+    branches, reliés par un pont d'un ou deux pixels. `parcourir` apparie
+    nœud par nœud ; à chacun des deux il marie deux branches sur trois, et
+    rien ne l'empêche de coudre « barre-gauche + pont + fût-bas ».
+
+    Le résultat est un V là où il fallait deux traits droits, et les deux
+    autres branches restent pendantes. Mesuré sur un simple X de deux barres :
+    4 gestes au lieu de 2, dont un qui rebrousse (`droit = -0,00`) et deux
+    moitiés qui s'arrêtent pile au centre. Christophe, 04/08/2026, capture
+    annotée 1-2-3 : « pour le t le 3e est coupé en son centre, normalement on
+    trace une ligne 1 puis 2 puis 3 ».
+
+    Le critère est physique et proportionnel : les deux points de branchement
+    tiennent dans le même disque inscrit, donc leur écart est plus petit que
+    le RAYON de l'encre à cet endroit. Le pont n'est alors pas un morceau de
+    lettre, c'est un artefact de tramage.
+
+    On ne supprime pas le pont : on l'AJOUTE à chaque branche du second nœud,
+    qui se termine alors sur le premier. Les chaînes restent continues, donc
+    l'invariant « une chaîne ne saute jamais » vaut encore, et aucun pixel du
+    squelette ne disparaît."""
+    ar = [list(a) for a in aretes]
+    for _passe in range(len(ar) + 5):
+        deg = {}
+        for a in ar:
+            deg[a[0]] = deg.get(a[0], 0) + 1
+            deg[a[-1]] = deg.get(a[-1], 0) + 1
+        pont = None
+        for i, a in enumerate(ar):
+            n1, n2 = a[0], a[-1]
+            if n1 == n2 or deg.get(n1, 0) < 3 or deg.get(n2, 0) < 3:
+                continue
+            lg = sum(math.hypot(q[0] - p[0], q[1] - p[1])
+                     for p, q in zip(a, a[1:]))
+            rayon = 0.5 * float(larg_px[n1[0], n1[1]])
+            if lg <= k_largeurs * rayon:
+                pont = (i, n1, n2, a)
+                break
+        if pont is None:
+            break
+        i, n1, n2, a = pont
+        for j, b in enumerate(ar):
+            if j == i:
+                continue
+            # Toute branche qui aboutit sur n2 se prolonge par le pont
+            # jusqu'à n1 : les deux nœuds n'en font plus qu'un.
+            if b[-1] == n2:
+                ar[j] = b + a[::-1][1:]
+            elif b[0] == n2:
+                ar[j] = a[:-1] + b
+        del ar[i]
+    return ar
 
 
 def construire(sq):
@@ -907,9 +974,11 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
     # moins, c'est deux terminaisons franches en moins -- et une terminaison
     # au milieu d'un plein se grave en pâté.
     _ar, _cy, _rap = construire(sq)
-    # Le parcours apparie nœud par nœud ; la soudure rattrape ce qu'il ne peut
-    # pas voir, deux bouts pendants appartenant à deux jonctions voisines.
-    # Sans elle, la tête relève et repique au même endroit, qui sort en pâté.
+    # UN CROISEMENT D'ABORD, DEUX JONCTIONS ENSUITE. Fusionner les nœuds
+    # qu'un même disque d'encre contient rend au parcours le vrai degré du
+    # croisement, sans quoi il coupe un trait en son milieu. La soudure
+    # rattrape ensuite ce qui reste pendant.
+    _ar = fusionner_jonctions(_ar, larg_px)
     brutes = souder(parcourir(_ar, _cy), b > 0, larg_px)
     fenetre = max(3, int(round(lissage_mm / max(pas_arc_mm, 1e-6))))
     chaines, w_min, w_max, longueur = [], float("inf"), 0.0, 0.0

@@ -95,11 +95,38 @@ building loop**, i.e. before pruning. A discarded stub could set the announced m
 own — the very number the panel uses to judge whether the material can make the stroke. They are now
 recomputed over the final chains.
 
+## A crossing is ONE node — thinning says two, and that cuts strokes in half
+
+**An oblique crossing cannot produce a degree-4 node.** Thinning makes two degree-3 nodes joined by a
+one- or two-pixel bridge, and a cursive is made of nothing else. `parcourir` pairs node by node, so
+at each of the two it marries two branches out of three — nothing stops it stitching "left-bar +
+bridge + lower-stem" and leaving the other two dangling. The stroke comes out **cut in its middle**.
+
+The fixture that proves it is the simplest possible: **two bars in an X must engrave as two straight
+strokes**, each corner to opposite corner. Before `fusionner_jonctions` they gave **four**, one of
+them doubling back (`direction continuity = -0.00`) and two halves stopping dead at the centre.
+Christophe, 04/08/2026, screenshot annotated 1-2-3 over an "A" and a "t": *"pour le t le 3e est coupé
+en son centre, normalement on trace une ligne 1 puis 2 puis 3"*. He read the defect off the drawing
+before any measurement.
+
+`fusionner_jonctions` contracts a bridge whose two branch points sit inside the **same inscribed
+disc** (gap ≤ the ink's radius there). It does not delete the bridge — it *appends* it to every branch
+of the second node, so the chains stay continuous and no skeleton pixel is lost.
+
+**The threshold needs its own fixture, and the X cannot provide it.** The X's bridge is two pixels;
+removing the threshold changes nothing measurable there, so §13 passed under the broken code with the
+threshold gone — it proved only half the rule. An **H** proves the other half: its crossbar is a
+legitimate edge between two junctions, and swallowing it *duplicates* it into every branch. Total
+gesture length against skeleton length: **1.00× with the threshold** (stable from k = 0.5 to 3.0),
+**1.21× without**. Note the X sits at 1.40× at every threshold — both strokes must cross the centre —
+so it is the H, not the X, that discriminates here.
+
 ## Two neighbouring junctions leave two ends nobody pairs
 
 `parcourir` pairs branches **node by node**. Where two junctions touch — the rule at a cursive
 crossing, thinning makes a little bridge between them — each leaves one branch dangling, and the two
-free ends sit one or two pixels apart without ever seeing each other.
+free ends sit one or two pixels apart without ever seeing each other. (`fusionner_jonctions` removes
+most of these at the source; `souder` catches what is left.)
 
 That is not merely one gesture too many: the head lifts, transits, plunges and restarts **at the same
 spot**. That half-millimetre is burnt **twice**, plus two stops, and it comes out as a black blob.

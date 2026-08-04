@@ -630,3 +630,89 @@ assert not _gros, (
 print("12. avance compensée : Z plat inchangé, vitesse XY tenue à 45°, "
       "plafond Z respecté ; sur le G-code, {} segments et le pire à {:.2f}x "
       "l'énergie médiane OK".format(len(_e12), _e12[-1] / _med12))
+
+
+# --- 13. UN CROISEMENT SE TRAVERSE TOUT DROIT --------------------------
+# Christophe, 04/08/2026, capture annotée 1-2-3 sur le « A » et le « t » :
+# « c'est l'ordre des traits, pour le t le 3e est coupé en son centre,
+# normalement on trace une ligne 1 puis 2 puis 3 ».
+#
+# La cause n'est pas l'ordonnancement, c'est la TOPOLOGIE. Un croisement de
+# biais -- et une cursive n'est faite que de ça -- ne donne pas un nœud à
+# quatre branches : l'amincissement en fabrique DEUX à trois branches,
+# reliés par un pont d'un ou deux pixels. `parcourir` apparie nœud par nœud,
+# donc il peut coudre « barre-gauche + pont + fût-bas » et laisser les deux
+# autres branches pendantes. Le trait est alors coupé en son milieu.
+#
+# La figure qui le prouve est la plus simple qui soit : DEUX BARRES EN X
+# doivent donner DEUX TRAITS DROITS, chacun d'un coin à son opposé. Avant la
+# fusion des jonctions, elles en donnaient quatre, dont un qui rebroussait.
+_img13 = Image.new("L", (400, 400), 0)
+_d13 = ImageDraw.Draw(_img13)
+_d13.line([60, 60, 340, 340], fill=255, width=22)
+_d13.line([340, 60, 60, 340], fill=255, width=22)
+_b13 = np.array(_img13) > 127
+_sq13 = cal.amincir(_b13)
+_larg13 = cal.largeur_locale(_b13)
+_ar13, _cy13, _ = cal.construire(_sq13)
+_ar13 = cal.fusionner_jonctions(_ar13, _larg13)
+_g13 = cal.parcourir(_ar13, _cy13)
+
+# La fusion ne doit RIEN perdre du squelette, ni introduire de saut.
+_vus13 = {p for c in _g13 for p in c}
+_tous13 = {(int(y), int(x)) for y, x in zip(*np.nonzero(_sq13))}
+assert not (_tous13 - _vus13), (
+    "la fusion a perdu des pixels du squelette", len(_tous13 - _vus13))
+for _c in _g13:
+    for _p, _q in zip(_c, _c[1:]):
+        assert math.hypot(_q[0] - _p[0], _q[1] - _p[1]) <= 1.5, (
+            "la fusion a introduit un saut")
+
+# Les vrais traits : ceux qui font plus du quart de la diagonale.
+_diag13 = math.hypot(280.0, 280.0)
+def _lg13(c):
+    return sum(math.hypot(q[0] - p[0], q[1] - p[1]) for p, q in zip(c, c[1:]))
+_vrais = [c for c in _g13 if _lg13(c) > 0.25 * _diag13]
+assert len(_vrais) == 2, (
+    "un X doit se graver en DEUX traits, pas {} : le croisement est traversé "
+    "de travers".format(len(_vrais)), [round(_lg13(c)) for c in _vrais])
+for _c in _vrais:
+    _d0 = cal._direction(_c, True)
+    _d1 = cal._direction(_c, False)
+    _droit = -(_d0[0] * _d1[0] + _d0[1] * _d1[1])
+    assert _droit > 0.9, (
+        "un des deux traits REBROUSSE au croisement : c'est un V là où il "
+        "fallait une droite", _droit)
+    assert _lg13(_c) > 0.9 * _diag13, (
+        "un trait s'arrête avant le coin opposé : il est coupé en son milieu",
+        _lg13(_c), _diag13)
+# ET IL FAUT AUSSI QUE LA FUSION S'ARRÊTE. Sans seuil, tout pont entre deux
+# jonctions serait avalé, y compris un VRAI trait court -- la barre d'un H,
+# celle d'un e, un connecteur. On ne le voit pas sur le X (son pont fait deux
+# pixels, le supprimer ou non ne change rien de mesurable), donc le contrôle
+# ci-dessus passait aussi bien avec le seuil retiré : il ne prouvait qu'une
+# moitié de la règle.
+#
+# Le H la prouve entièrement. Sa barre est une arête légitime entre deux
+# jonctions ; la fusionner la DUPLIQUE dans chaque branche, donc la fait
+# graver plusieurs fois. Mesuré : longueur totale des gestes rapportée au
+# squelette, 1,00x avec le seuil (stable de k=0,5 à k=3,0) contre 1,21x sans.
+_img13b = Image.new("L", (400, 400), 0)
+_d13b = ImageDraw.Draw(_img13b)
+_d13b.line([120, 40, 120, 360], fill=255, width=20)
+_d13b.line([280, 40, 280, 360], fill=255, width=20)
+_d13b.line([120, 200, 280, 200], fill=255, width=18)
+_b13b = np.array(_img13b) > 127
+_sq13b = cal.amincir(_b13b)
+_ar13b, _cy13b, _ = cal.construire(_sq13b)
+_g13b = cal.parcourir(
+    cal.fusionner_jonctions(_ar13b, cal.largeur_locale(_b13b)), _cy13b)
+_ratio13 = sum(_lg13(c) for c in _g13b) / float(int(_sq13b.sum()))
+assert _ratio13 <= 1.05, (
+    "la fusion a avalé la barre du H : elle sera gravée plusieurs fois",
+    _ratio13)
+print("13. X de deux barres : {} arêtes -> {} traits, tous deux droits "
+      "({:.0f} px pour {:.0f} de diagonale), squelette entier, aucun saut ; "
+      "barre du H préservée ({:.2f}x le squelette) OK"
+      .format(len(_ar13), len(_vrais), min(_lg13(c) for c in _vrais), _diag13,
+              _ratio13))
