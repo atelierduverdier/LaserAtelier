@@ -11199,6 +11199,12 @@ class TaskPanelCalligraphie:
         _l_plume2.addStretch(1)
         form.addRow("Taille de la plume :", _l_plume2)
 
+        # LE SCHÉMA VIVANT. Une infobulle décrit une règle ; celui-ci
+        # montre le réglage COURANT, et bouge à chaque molette.
+        self.lbl_schema_plume = QtWidgets.QLabel()
+        self.lbl_schema_plume.setAlignment(QtCore.Qt.AlignHCenter)
+        form.addRow(self.lbl_schema_plume)
+
         def _maj_plume():
             actif = self.chk_plume.isChecked()
             for w in (self.combo_plume_police, self.spn_plume_angle,
@@ -11206,6 +11212,12 @@ class TaskPanelCalligraphie:
                 w.setEnabled(actif)
             self.combo_police.setEnabled(not actif)
             self.edt_police.setEnabled(not actif)
+            self.lbl_schema_plume.setVisible(actif)
+            if actif:
+                self.lbl_schema_plume.setPixmap(QtGui.QPixmap.fromImage(
+                    _schema_plume(self.spn_plume_angle.value(),
+                                  self.spn_plume_epais.value(),
+                                  self.spn_plume_contraste.value())))
             self._maj_verdict()
             # `getattr` : ce panneau n'a pas toujours eu d'aperçu, et le
             # câbler en dur ferait tomber la case au premier clic.
@@ -11654,6 +11666,82 @@ class TaskPanelCalligraphie:
 
     def reject(self):
         return True
+
+
+def _schema_plume(angle_deg, epaisseur_pct, contraste, larg=330, haut=132):
+    """Le schéma de la plume, redessiné à CHAQUE réglage.
+
+    Christophe : « je ne comprends pas comment fonctionne le bec et le
+    contraste, un petit schéma graphique sera le bienvenu non ? ». Un
+    schéma figé aurait montré UN cas ; celui-ci montre le SIEN, et bouge
+    quand il tourne la molette. C'est la différence entre expliquer une
+    règle et la voir marcher.
+
+    On dessine ce que la plume ferait sur cinq traits en éventail : le bec
+    en travers dépose un plein, le bec dans l'axe un délié. La ligne
+    fine du bec est répétée le long de chaque trait -- c'est littéralement
+    ce que fait une plume sur le papier, et c'est plus parlant qu'un
+    rectangle plein."""
+    img = QtGui.QImage(larg, haut, QtGui.QImage.Format_ARGB32)
+    img.fill(QtGui.QColor(250, 246, 238))
+    p = QtGui.QPainter(img)
+    p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+
+    ardoise = QtGui.QColor(47, 53, 64)
+    orange = QtGui.QColor(255, 138, 0)
+    gris = QtGui.QColor(140, 148, 160)
+
+    maxi = max(3.0, 0.34 * float(epaisseur_pct))       # px, à l'échelle du schéma
+    mini = maxi / max(float(contraste), 1.0)
+    a = math.radians(float(angle_deg))
+    L = 38.0
+
+    # 1. Cinq traits en éventail, du plus vertical au plus couché.
+    cx, cy = 74.0, 62.0
+    p.setPen(QtCore.Qt.NoPen)
+    p.setBrush(ardoise)
+    for k, theta_deg in enumerate((90.0, 45.0, 0.0, -45.0)):
+        t = math.radians(theta_deg)
+        ox = 0 + k * 68.0
+        x0, y0 = cx + ox - L * math.cos(t) / 2, cy + L * math.sin(t) / 2
+        x1, y1 = cx + ox + L * math.cos(t) / 2, cy - L * math.sin(t) / 2
+        w = mini + (maxi - mini) * abs(math.sin(t - a))
+        dx, dy = x1 - x0, y1 - y0
+        n = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / n * w / 2, dx / n * w / 2
+        p.drawPolygon(QtGui.QPolygonF([
+            QtCore.QPointF(x0 + nx, y0 + ny), QtCore.QPointF(x1 + nx, y1 + ny),
+            QtCore.QPointF(x1 - nx, y1 - ny), QtCore.QPointF(x0 - nx, y0 - ny)]))
+        # le bec lui-même, en travers du trait, à son extrémité
+        p.setPen(QtGui.QPen(orange, 2.0))
+        bx, by = maxi * math.cos(a) / 2, -maxi * math.sin(a) / 2
+        p.drawLine(QtCore.QPointF(x1 - bx, y1 - by), QtCore.QPointF(x1 + bx, y1 + by))
+        p.setPen(QtCore.Qt.NoPen)
+        f = QtGui.QFont(); f.setPointSizeF(7.5); p.setFont(f)
+        p.setPen(gris)
+        p.drawText(QtCore.QRectF(ox + 24, 92, 100, 16), QtCore.Qt.AlignHCenter,
+                   "{:.2f}".format(w / maxi))
+        p.setPen(QtCore.Qt.NoPen)
+
+    # 2. La légende : ce que le bec fait, en une phrase.
+    p.setPen(orange)
+    f = QtGui.QFont(); f.setPointSizeF(8.0); f.setBold(True); p.setFont(f)
+    p.drawText(QtCore.QRectF(0, 4, larg, 16), QtCore.Qt.AlignHCenter,
+               "bec à {:.0f}°  ·  plein {:.0f} %  ·  contraste 1:{:.0f}"
+               .format(angle_deg, epaisseur_pct, contraste))
+    p.setPen(gris)
+    f.setBold(False); f.setPointSizeF(7.5); p.setFont(f)
+    # La légende tient DANS l'image : mesurée, pas espérée. La première
+    # version débordait des deux côtés et se lisait « rait EN TRAVERS… ».
+    legende = "en travers du bec = plein · dans son axe = délié"
+    while (QtGui.QFontMetrics(f).horizontalAdvance(legende) > larg - 12
+           and f.pointSizeF() > 5.5):
+        f.setPointSizeF(f.pointSizeF() - 0.5)
+        p.setFont(f)
+    p.drawText(QtCore.QRectF(0, haut - 22, larg, 18), QtCore.Qt.AlignHCenter,
+               legende)
+    p.end()
+    return img
 
 
 def _rendre_calligraphie(chaines, prep, infos, largeur_px=1100):

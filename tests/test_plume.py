@@ -176,3 +176,45 @@ assert _bord == 0, (
     "et c'est le cadre qui est trop petit, pas le tracé trop gros".format(_bord))
 print("6. l'aperçu contient l'encre : {}×{} px, aucun pixel sur le bord OK"
       .format(_img.width(), _img.height()))
+
+
+# --- 7. LE SCHÉMA MONTRE LE RÉGLAGE COURANT -----------------------------
+# Christophe : « je ne comprends pas comment fonctionne le bec et le
+# contraste, un petit schéma graphique sera le bienvenu non ? ». Un schéma
+# FIGÉ aurait montré un cas ; celui-ci montre le sien. Le contrôle porte
+# donc sur ce qui compte : il doit CHANGER quand les réglages changent, et
+# tenir dans son image -- la première légende débordait des deux côtés et
+# se lisait « rait EN TRAVERS… ».
+_s0 = tp._schema_plume(0.0, 16.0, 16.0)
+_s25 = tp._schema_plume(25.0, 16.0, 16.0)
+_smince = tp._schema_plume(0.0, 6.0, 5.0)
+assert _s0.size() == _s25.size() == _smince.size()
+
+
+def _empreinte(im):
+    """L'encre de la BANDE DES TRAITS seule, hors titre et légende.
+
+    Premier jet : toute l'image. Il ne pouvait pas échouer -- le titre dit
+    « bec à 0° » puis « bec à 25° », deux textes de largeurs différentes,
+    donc deux comptes de pixels différents même avec un schéma figé. Le
+    sabotage (angle ignoré) est passé, et c'est exactement le genre de
+    contrôle qui rassure sans rien vérifier."""
+    return sum(1 for _x in range(0, im.width(), 2) for _y in range(32, 88, 2)
+               if im.pixel(_x, _y) != QtGui.QColor(250, 246, 238).rgb())
+
+
+_e0, _e25, _em = _empreinte(_s0), _empreinte(_s25), _empreinte(_smince)
+assert _e0 != _e25, ("le schéma ne bouge pas quand l'angle du bec change : "
+                     "il montre une règle, pas le réglage", _e0, _e25)
+assert _em < _e0, ("un plein de 6 % ne dessine pas moins d'encre qu'un plein "
+                   "de 16 % : le schéma ignore l'épaisseur", _em, _e0)
+
+# La légende ne doit pas déborder : aucun pixel de texte sur les colonnes
+# extrêmes.
+_fond = QtGui.QColor(250, 246, 238).rgb()
+_deborde = sum(1 for _y in range(_s25.height())
+               for _x in (0, 1, _s25.width() - 2, _s25.width() - 1)
+               if _s25.pixel(_x, _y) != _fond)
+assert _deborde == 0, ("le schéma déborde de son image sur {} pixels : la "
+                       "légende est coupée".format(_deborde))
+print("7. le schéma suit l'angle ET l'épaisseur, et tient dans son cadre OK")
