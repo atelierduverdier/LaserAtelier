@@ -9372,6 +9372,11 @@ class TaskPanelTexteContour:
             "<b>4.</b> Enchaîne avec <b>Marquage de motif</b> pour des "
             "lettres CREUSES (un trait fin qui suit le pourtour), ou avec "
             "<b>Gravure remplie</b> pour des lettres PLEINES.",
+            "<b>Changer la taille d'un texte déjà posé&nbsp;:</b> "
+            "sélectionne-le dans l'arbre, rouvre ce mode -- il se remplit "
+            "avec ses réglages et le dit -- change la largeur, <b>OK</b>. "
+            "Il est refait <b>au même endroit</b>. Un objet FreeCAD n'a pas "
+            "d'échelle&nbsp;: c'est la seule façon de le redimensionner.",
         ])
 
         _section(form, "① Police et texte", "sect_labels.svg", ouvert=True)
@@ -9549,6 +9554,11 @@ class TaskPanelTexteContour:
             "Les contreformes -- le trou d'un « o », d'un « e » -- sont des "
             "contours à part : <b>Gravure remplie</b> les creuse toute seule.",
         ]
+        if not infos.get("fusionnes", True):
+            lignes.append(
+                "<b>Contours non refondus</b> (shapely absent) : sur une "
+                "cursive, les traits qui se chevauchent se croiseront "
+                "visiblement à l'intérieur des lettres.")
         if infos["manquants"]:
             lignes.append(
                 "<b>Absents de cette police :</b> « {} » -- ces caractères "
@@ -9571,7 +9581,13 @@ class TaskPanelTexteContour:
                 self.form, "Texte gravé", res[1])
             return False
         contours, infos = res
+        # LA SÉLECTION EST RELUE ICI AUSSI. La reprise se fait à
+        # l'ouverture, mais rien n'oblige à sélectionner avant d'ouvrir --
+        # et un panneau qui punit cet ordre-là passe pour cassé.
         repris = self._objet_vivant()
+        if repris is None:
+            repris, _f = _objet_a_reprendre(core.fiche_objet_contours_texte)
+            self._objet = repris
         obj, err = core.creer_objet_contours_texte(
             contours, self.edt_texte.text(), self.edt_police.text().strip(),
             self.spn_largeur.value(), obj=repris)

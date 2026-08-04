@@ -203,8 +203,76 @@ def _numpy():
 FLECHE_CONTOUR_MM = 0.02
 
 
+def _aire_signee(c):
+    """L'aire orientée d'un contour fermé : son SIGNE dit le sens
+    d'enroulement, et c'est par là qu'une police exprime ses trous."""
+    return 0.5 * sum(x0 * y1 - x1 * y0
+                     for (x0, y0), (x1, y1) in zip(c, c[1:]))
+
+
+def fusionner_contours(contours):
+    """Les contours refondus en un seul pourtour. Renvoie `(anneaux, fait)`.
+
+    UNE CURSIVE SE CHEVAUCHE ELLE-MÊME : la boucle d'un « A » repasse sur son
+    propre fût, et chaque trait est un contour séparé dans le fichier de
+    police. Gravés tels quels, ces contours se TRAVERSENT à l'intérieur de la
+    lettre -- on voit les traits se croiser là où l'encre est pleine.
+    Christophe, 04/08/2026, capture d'un « Atelier » en Ananda : « il y a
+    certaines polices comme ananda qui se chevauche et ce n'est pas beau ».
+    Mesuré : 6 contours sur 11 se croisent.
+
+    LA RÈGLE EST CELLE DE LA POLICE, pas la parité. Un trou s'y exprime par
+    le SENS d'enroulement (règle non nulle) : fusionner naïvement remplirait
+    les contreformes, et la parité creuserait un trou partout où deux traits
+    se chevauchent -- l'inverse de ce qu'on veut. On prend donc le sens du
+    plus grand contour comme « plein », on réunit les pleins, et on soustrait
+    les creux.
+
+    Une police qui ne se chevauche pas ressort INCHANGÉE : sur DejaVu Serif,
+    11 anneaux et 568 points avant comme après. Sur Ananda, 11 contours
+    deviennent 5 anneaux, les 3 contreformes gardées, et les croisements
+    passent de 6 à 0.
+
+    `fait` est False si `shapely` manque : on rend alors les contours bruts
+    plutôt que de refuser -- une lettre qui se croise se grave encore, une
+    exception ne grave rien."""
+    if len(contours) < 2:
+        return contours, True
+    try:
+        from shapely.geometry import Polygon
+        from shapely.ops import unary_union
+    except ImportError:
+        return contours, False
+    aires = [_aire_signee(c) for c in contours]
+    dominant = max(range(len(aires)), key=lambda i: abs(aires[i]))
+    sens = 1.0 if aires[dominant] > 0 else -1.0
+    try:
+        # `buffer(0)` répare un contour qui se croise lui-même ; sans lui,
+        # shapely refuse l'union sur un polygone invalide.
+        pleins = [Polygon(c).buffer(0)
+                  for c, a in zip(contours, aires) if a * sens > 0]
+        creux = [Polygon(c).buffer(0)
+                 for c, a in zip(contours, aires) if a * sens < 0]
+        if not pleins:
+            return contours, False
+        u = unary_union(pleins)
+        if creux:
+            u = u.difference(unary_union(creux))
+        morceaux = list(u.geoms) if hasattr(u, "geoms") else [u]
+        anneaux = []
+        for g in morceaux:
+            if g.is_empty or not hasattr(g, "exterior"):
+                continue
+            anneaux.append([(float(x), float(y)) for x, y in g.exterior.coords])
+            for trou in g.interiors:
+                anneaux.append([(float(x), float(y)) for x, y in trou.coords])
+    except Exception:
+        return contours, False
+    return (anneaux, True) if anneaux else (contours, False)
+
+
 def contours_texte(chemin_police, texte, largeur_mm=None, hauteur_mm=None,
-                   fleche_mm=FLECHE_CONTOUR_MM):
+                   fleche_mm=FLECHE_CONTOUR_MM, fusionner=True):
     """Le CONTOUR des lettres, en millimètres. Renvoie `(contours, infos)`.
 
     L'AUTRE FAÇON DE GRAVER UNE POLICE, et elle vaut pour celles que le
@@ -332,12 +400,16 @@ def contours_texte(chemin_police, texte, largeur_mm=None, hauteur_mm=None,
     x0, y0 = min(xs), min(ys)
     contours = [[((px - x0) * ech, (py - y0) * ech) for px, py in c]
                 for c in contours_u]
+    fondus = True
+    if fusionner:
+        contours, fondus = fusionner_contours(contours)
     longueur = sum(math.hypot(b[0] - a[0], b[1] - a[1])
                    for c in contours for a, b in zip(c, c[1:]))
     infos = {
         "largeur_mm": (max(xs) - min(xs)) * ech,
         "hauteur_mm": (max(ys) - min(ys)) * ech,
         "n_contours": len(contours),
+        "fusionnes": bool(fusionner and fondus),
         "longueur_mm": longueur,
         "n_points": sum(len(c) for c in contours),
         "manquants": "".join(sorted(set(manquants))),

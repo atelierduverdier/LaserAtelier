@@ -262,3 +262,71 @@ finally:
     except NameError:
         pass
     FreeCAD.closeDocument("EssaiRedim")
+
+
+# --- 9. UNE CURSIVE SE CHEVAUCHE ELLE-MÊME -----------------------------
+# Christophe, 04/08/2026, capture d'un « Atelier » en Ananda : « il y a
+# certaines polices comme ananda qui se chevauche et ce n'est pas beau ».
+#
+# La boucle d'un « A » repasse sur son propre fût, et chaque trait est un
+# contour séparé dans le fichier de police : gravés tels quels, ils se
+# TRAVERSENT là où l'encre est pleine. On refond donc les contours -- selon
+# la règle de la police (non nulle, par le sens d'enroulement), pas selon la
+# parité, qui creuserait un trou partout où deux traits se chevauchent.
+#
+# La figure est synthétique : deux barres épaisses en croix, dont on sait
+# par construction qu'elles se chevauchent et que leur union n'a AUCUN
+# croisement.
+def _rect(cx, cy, dl, dh, ang):
+    ca, sa = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+    pts = [(-dl, -dh), (dl, -dh), (dl, dh), (-dl, dh)]
+    out = [(cx + x * ca - y * sa, cy + x * sa + y * ca) for x, y in pts]
+    return out + [out[0]]
+
+_croix = [_rect(0.0, 0.0, 30.0, 4.0, 0.0), _rect(0.0, 0.0, 30.0, 4.0, 90.0)]
+_fondu, _fait = cal.fusionner_contours(_croix)
+assert _fait, "la fusion a échoué là où shapely est disponible"
+assert len(_fondu) == 1, (
+    "deux barres croisées doivent donner UN pourtour, pas {}".format(
+        len(_fondu)))
+# L'aire de l'union est plus petite que la somme : c'est le recouvrement.
+def _aire(c):
+    return abs(0.5 * sum(x0 * y1 - x1 * y0
+                         for (x0, y0), (x1, y1) in zip(c, c[1:])))
+_somme = sum(_aire(c) for c in _croix)
+assert _aire(_fondu[0]) < _somme - 10.0, (
+    "l'union n'a pas retiré le recouvrement", _aire(_fondu[0]), _somme)
+
+# UNE FORME QUI NE SE CHEVAUCHE PAS NE DOIT PAS BOUGER. Sans cela, la
+# fusion abîmerait toutes les polices classiques pour en sauver quelques
+# cursives.
+_loin = [_rect(-40.0, 0.0, 8.0, 4.0, 0.0), _rect(40.0, 0.0, 8.0, 4.0, 0.0)]
+_f2, _ok2 = cal.fusionner_contours(_loin)
+assert len(_f2) == 2, ("deux formes disjointes doivent rester deux", len(_f2))
+assert abs(sum(_aire(c) for c in _f2) - sum(_aire(c) for c in _loin)) < 1e-6, (
+    "l'aire a changé alors que rien ne se chevauchait")
+
+# ET LES CONTREFORMES SURVIVENT : un anneau (carré dans un carré, sens
+# opposé) doit rendre deux anneaux, pas un carré plein.
+_ext = _rect(0.0, 0.0, 20.0, 20.0, 0.0)
+_int = list(reversed(_rect(0.0, 0.0, 10.0, 10.0, 0.0)))
+_f3, _ok3 = cal.fusionner_contours([_ext, _int])
+assert len(_f3) == 2, (
+    "la contreforme a été bouchée par la fusion : une police fusionnée à la "
+    "va-vite remplit le trou des « o »", len(_f3))
+assert abs(sum(_aire(c) for c in _f3) - (_aire(_ext) + _aire(_int))) < 1e-6
+
+# Sur une VRAIE police, la fusion ne doit rien perdre ni rien inventer.
+_cf, _iff = cal.contours_texte(_chemin, "Atelier", largeur_mm=120.0,
+                               fusionner=False)
+_cv, _ivf = cal.contours_texte(_chemin, "Atelier", largeur_mm=120.0)
+assert _ivf["fusionnes"] is True, "la fusion ne s'est pas faite"
+assert _ivf["n_contours"] <= _iff["n_contours"], (
+    "la fusion a fabriqué des contours", _iff["n_contours"],
+    _ivf["n_contours"])
+for _c in _cv:
+    _d = math.hypot(_c[-1][0] - _c[0][0], _c[-1][1] - _c[0][1])
+    assert _d < 1e-6, "un contour fusionné n'est pas fermé"
+print("9. croix de deux barres : 2 contours -> 1 pourtour sans croisement ; "
+      "formes disjointes et contreformes intactes ; « Atelier » {} -> {} "
+      "contours OK".format(_iff["n_contours"], _ivf["n_contours"]))

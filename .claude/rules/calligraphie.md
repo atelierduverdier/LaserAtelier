@@ -255,6 +255,26 @@ Three things worth keeping:
   nothing when you engrave the outline, and ranking on it would push serifs to the bottom — the very
   faces this mode exists for.
 
+## A cursive overlaps itself — merge by WINDING, never by parity
+
+Each stroke is a separate contour in the font file, and a script's loop runs back over its own stem:
+engraved as they come, the contours **cross each other** inside the letter. On "Atelier" in Ananda,
+**6 of the 11 contours cross**. Christophe: *"certaines polices comme ananda se chevauchent et ce
+n'est pas beau"*.
+
+`fusionner_contours` refolds them into one outline **by the font's own rule — non-zero, read off the
+winding direction** — never by parity. Parity would carve a hole wherever two strokes overlap, the
+exact opposite of what is wanted; a naive union would fill the counters. The largest contour gives
+the "solid" direction: union the solids, subtract the hollows.
+
+Measured: Ananda 11 contours → 5 rings, **3 counters kept, 6 crossings → 0**. A font that does not
+overlap comes back **untouched** — DejaVu Serif, 11 rings and 568 points before and after — which is
+why merging is on by default.
+
+`shapely` (present in FreeCAD's interpreter) does the boolean work; `buffer(0)` first, or it refuses
+a self-crossing polygon. If shapely is missing, return the raw contours and say so in the verdict: a
+letter that crosses itself still engraves, an exception engraves nothing.
+
 ## Reassigning `Shape` WIPES the placement
 
 There is no scale on a `Part::Feature`, and FreeCAD's `Placement` carries only position and rotation
