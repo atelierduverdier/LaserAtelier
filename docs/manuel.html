@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.70.1</span><br>
+      <span class="ver">Version 2.71.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.70.1</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.71.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1067,6 +1067,7 @@
     <h4>Job combiné (plusieurs opérations)</h4>
     <p class="quoi">Enchaîner plusieurs opérations en un seul fichier.</p>
     <p>Rassemble marquage, gravure, découpe, grille… en <strong>un seul travail</strong> avec un seul armement du laser au début et un seul désarmement à la fin — transitions plus rapides, et une hauteur de sécurité commune pour ne jamais plonger au mauvais endroit entre deux opérations. Son aperçu de cadrage trace <em>un seul</em> rectangle englobant global. Les modes combinables s'y ajoutent par un bouton, sans ressaisir leurs réglages.</p>
+    <p><b>Le bouton génère, OK ferme (v2.71.0).</b> La génération était accrochée à <b>OK</b>, si bien qu'après avoir supprimé une opération la seule façon de fermer le panneau était d'écrire un fichier dont on ne voulait pas. Un bouton «&nbsp;Générer et sauvegarder le G-code du job&nbsp;» s'en charge désormais, et le panneau <b>reste ouvert</b>&nbsp;: on supprime, on va ajouter une opération depuis son mode, on revient et on regénère. <b>OK</b> ne fait plus que fermer — la liste, elle, est conservée. Même convention que les quatre panneaux de test. Christophe&nbsp;: «&nbsp;un bouton afin de créer le G-code serait mieux, et le bouton OK sert à valider&nbsp;».</p>
     <p class="meta"><b>Fichier :</b> <code>job_combine.ngc</code></p>
   </div></div>
 </section>
@@ -1218,7 +1219,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.70.1 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.71.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

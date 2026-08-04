@@ -17498,9 +17498,15 @@ class TaskPanelCombined:
             "<b>3. Vérifie</b>&nbsp;: «&nbsp;Aperçu cadrage&nbsp;» (fichier "
             "séparé), «&nbsp;Aperçu du trajet&nbsp;» et «&nbsp;Aperçu "
             "photo&nbsp;» (rendu de tout le job d'un coup).",
-            "<b>4.</b> Clique <b>OK</b>&nbsp;: le job part en <b>un seul "
-            "fichier</b>&nbsp;— un seul armement (<code>M3</code>) au début, un "
-            "seul désarmement (<code>M5</code>)/<code>M2</code> à la fin.",
+            "<b>4.</b> Clique <b>«&nbsp;Générer et sauvegarder le G-code du "
+            "job&nbsp;»</b>&nbsp;: tout part en <b>un seul fichier</b> — un seul "
+            "armement (<code>M3</code>) au début, un seul désarmement "
+            "(<code>M5</code>)/<code>M2</code> à la fin. Le panneau <b>reste "
+            "ouvert</b>&nbsp;: tu peux supprimer une opération, en ajouter une "
+            "autre depuis son mode, revenir ici et regénérer.",
+            "<b>OK</b> ne fait que <b>fermer</b> le panneau, sans rien écrire. "
+            "La liste, elle, est conservée&nbsp;: tu la retrouves en rouvrant "
+            "le mode.",
         ])
 
         _section(form, "Opérations à graver", "sect_options.svg")
@@ -17533,6 +17539,17 @@ class TaskPanelCombined:
             "(réglable dans Préférences) -- la vraie vitesse rapide de\n"
             "ta machine n'est pas connue ici.".format(core.RAPID_FEED_MM_MIN))
         form.addRow(self.lbl_duration)
+
+        self.btn_generer = QtWidgets.QPushButton(
+            "Générer et sauvegarder le G-code du job…")
+        _btn_icon(self.btn_generer, "sect_gcode.svg")
+        self.btn_generer.setToolTip(
+            "Assemble toutes les opérations en un seul fichier et propose\n"
+            "l'enregistrement. LE PANNEAU RESTE OUVERT : on peut supprimer\n"
+            "une opération, en ajouter une autre depuis son mode, revenir\n"
+            "ici et regénérer. OK, lui, ne fait que fermer.")
+        self.btn_generer.clicked.connect(self._on_generer)
+        form.addRow(self.btn_generer)
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -17693,7 +17710,17 @@ class TaskPanelCombined:
             return
         _show_image_dialog(img, "Aperçu photo — Job combiné")
 
-    def accept(self):
+    def _on_generer(self):
+        """Assemble le job et propose l'enregistrement -- LE PANNEAU RESTE
+        OUVERT.
+
+        Christophe, 04/08/2026 : « je veux en effacer un puis revenir
+        travailler afin d'en mettre un autre, mais si je clique sur OK après
+        l'effacement du job il veut me créer le fichier ». La génération
+        était accrochée à OK, donc la seule façon de fermer le panneau après
+        avoir remanié la liste était d'écrire un fichier dont on ne voulait
+        pas. Même convention que les quatre panneaux de test : le travail se
+        fait par un bouton, OK ferme."""
         if not self.operations:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Ajoute au moins une opération avant de lancer le job.")
             return False
@@ -17714,11 +17741,16 @@ class TaskPanelCombined:
                 self.form, warnings_out.get("nozzle_warnings", 0), "job combiné", "ce"):
             return False
 
-        # Bouton : le panneau reste ouvert, re-cliquer regénère.
         chemin = _write_gcode_with_dialog(self.form, gcode, "/tmp/job_combine.ngc")
         if chemin:
             self._deposer_fiches_grilles(chemin)
         return chemin
+
+    def accept(self):
+        # OK = FERMER. La génération passe par le bouton ci-dessus : sans
+        # cela, remanier la liste puis fermer le panneau écrivait un fichier
+        # à chaque fois.
+        return True
 
     def _deposer_fiches_grilles(self, chemin_gcode):
         """Une fiche de grille par opération « Grille de test » MIRÉE du job.

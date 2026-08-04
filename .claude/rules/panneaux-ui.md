@@ -363,3 +363,17 @@ rows, which is where the original argument actually holds.
 
 Verified on the real photo: 50.06 px/mm, and 12 runs with the crosses jittered by ±12 px all land
 within ±0.4 %.
+
+## OK ferme, un bouton fait le travail
+
+Four test panels moved to this in v2.20; the **Job combiné** followed in v2.71.0, and the gap in
+between is instructive. Its generation hung off `accept()`, so after deleting one operation the only
+way to close the panel was to write a file nobody wanted. Christophe: *"si je clique sur OK après
+l'effacement du job il veut me créer le fichier ; un bouton afin de créer le G-code serait mieux"*.
+
+The rule, wherever a panel produces a file: **a named button does the work and leaves the panel open;
+`accept()` returns True and nothing else.** A panel you cannot leave without triggering its side
+effect is a trap, and the trap is invisible — the OK button looks like every other OK.
+
+Note what must survive `accept()`: the combined job's operation list. Closing must lose nothing, or
+the round trip "delete, go add another, come back" cannot work.
