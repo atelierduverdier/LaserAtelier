@@ -169,8 +169,17 @@ BAS = {
     's': (410, [arc(207, 352, 145, 122, 35, 215) + arc(205, 125, 148, 122, 35, -160)]),
     't': (300, [ligne((150, ASC), (150, 110)) + arc(230, 110, 80, 110, 180, 285),
                 ligne((30, XH), (275, XH))]),
-    'u': (480, [ligne((70, XH), (70, 180)) + arc(250, 180, 180, 180, 180, 360)
-                + ligne((430, XH)), ligne((430, 180), (430, 0))]),
+    # LE FÛT DROIT D'UN SEUL TENANT. Christophe, la plume pointue à
+    # l'écran : « un U est réalisé en 1 seul trait ». Il était coupé en
+    # deux ici -- la cuvette remontait jusqu'à la hauteur d'x, puis un
+    # SECOND trait redescendait du milieu jusqu'à la ligne de base. Sans
+    # plume ça ne se voyait pas ; avec une pointe, la partie remontante
+    # sort en délié et la descendante en plein, si bien que le même fût
+    # était fin en haut et gras en bas, avec une cassure au milieu. On
+    # trace donc le fût d'abord, entier et descendant, puis la cuvette
+    # vient s'y raccorder.
+    'u': (480, [ligne((430, XH), (430, 0)),
+                ligne((70, XH), (70, 180)) + arc(250, 180, 180, 180, 180, 360)]),
     'v': (450, [ligne((30, XH), (225, 0), (420, XH))]),
     'w': (660, [ligne((30, XH), (180, 0), (330, 330), (480, 0), (630, XH))]),
     'x': (440, [ligne((40, XH), (400, 0)), ligne((400, XH), (40, 0))]),

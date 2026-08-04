@@ -311,3 +311,62 @@ assert _ecart < 0.10, (
     "lissage compte des points au lieu de mesurer une distance", _ecart)
 print("10. même arc échantillonné 12 ou 48 fois : profils à {:.3f} mm près OK"
       .format(_ecart))
+
+
+# --- 11. UN FÛT NE SE TRACE PAS EN DEUX MORCEAUX ------------------------
+# Christophe, la plume pointue à l'écran : « un U est réalisé en 1 seul
+# trait ». Le « u » de Verdier avait son fût droit coupé en deux -- la
+# cuvette remontait jusqu'à la hauteur d'x, puis un SECOND trait
+# redescendait du milieu à la ligne de base.
+#
+# Sans plume, invisible. Avec une pointe, la moitié remontante sort en
+# délié et la descendante en plein : le même fût, fin en haut et gras en
+# bas, avec une cassure au milieu. Le contrôle porte sur la LARGEUR le
+# long du fût, pas sur le nombre de traits -- c'est le défaut visible qui
+# compte, et il attraperait aussi une autre façon de le produire.
+# Le contrôle porte sur CHAQUE TRAIT pris à part, et seulement sur les
+# traits qui SONT des fûts : longs et quasi verticaux. Premier jet : la
+# largeur de tous les points d'une colonne x -- il tombait sur le « u »
+# CORRIGÉ, parce que la cuvette vient légitimement se raccorder au fût par
+# le haut, en délié. Un contrôle qui accuse la bonne version n'apprend
+# rien.
+def _futs(car):
+    """Les traits longs et quasi verticaux du glyphe, avec leurs largeurs."""
+    ch, inf = core.chaines_plume("verdier", car, largeur_mm=30.0,
+                                 angle_deg=55.0, modele=core.PLUME_POINTUE)
+    out = []
+    for c in ch:
+        dy = abs(c[-1][1] - c[0][1])
+        dx = abs(c[-1][0] - c[0][0])
+        long_ = dy > 0.55 * inf["hauteur_mm"]
+        droit = dx < 0.12 * max(dy, 1e-9)
+        # et il ne serpente pas : la corde vaut presque le développé
+        dev = sum(_m.hypot(c[i + 1][0] - c[i][0], c[i + 1][1] - c[i][1])
+                  for i in range(len(c) - 1))
+        if long_ and droit and dev < 1.08 * _m.hypot(dx, dy):
+            out.append([p[2] for p in c])
+    return out
+
+
+_f_u = _futs("u")
+assert _f_u, "aucun fût droit trouvé dans le « u » : il est encore en morceaux"
+for _w in _f_u:
+    assert max(_w) / max(min(_w), 1e-9) < 1.25, (
+        "le fût du « u » change d'épaisseur sur sa hauteur : il est tracé "
+        "en deux morceaux, un montant et un descendant", min(_w), max(_w))
+
+# La propriété vaut pour TOUTE la famille -- règle de la maison : on
+# éprouve la propriété sur la famille, pas sur le cas signalé.
+_sans_fut = []
+for _c in "bdhklmnpqu":
+    _fs = _futs(_c)
+    if not _fs:
+        _sans_fut.append(_c)
+        continue
+    for _w in _fs:
+        assert max(_w) / max(min(_w), 1e-9) < 1.25, (
+            "le fût de « {} » change d'épaisseur sur sa hauteur".format(_c),
+            min(_w), max(_w))
+assert not _sans_fut, ("ces lettres n'ont plus de fût droit reconnaissable, "
+                       "le contrôle ne vérifie donc rien sur elles", _sans_fut)
+print("11. les fûts de b d h k l m n p q u sont d'un seul tenant OK")
