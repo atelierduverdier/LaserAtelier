@@ -202,10 +202,45 @@ assert _pan.spn_power_min.value() == 200.0, _pan.spn_power_min.value()
 print("6. le panneau applique le recalage et SUIT le matériau choisi OK")
 
 
-# --- 7. LES VRAIES DONNÉES DE L'ATELIER : on AFFICHE, on n'exige pas ---
+# --- 7. LE MATÉRIAU SE CHOISIT EN ①, LÀ OÙ IL SERT --------------------
+# Christophe, 04/08/2026, après la livraison : « je ne vois pas ta bande
+# 800, dis moi exactement où il se trouve ». Elle était bien là -- calée sur
+# le HÊTRE, parce que le panneau s'ouvre sur le premier matériau de la liste
+# et que le seul endroit où en changer était « Matériau mesuré », dans ②,
+# plusieurs écrans plus bas. Un réglage qui gouverne ① ne peut pas vivre
+# uniquement dans ②.
+#
+# Une seule valeur, deux vues : elles doivent se suivre DANS LES DEUX SENS,
+# sans quoi la bande se calerait sur un matériau que le panneau n'affiche
+# plus.
+assert hasattr(_pan, "combo_mat_objectif"), (
+    "il n'y a pas de champ matériau en ① : il faut descendre en ② pour "
+    "changer ce qui gouverne la bande")
+assert _pan.combo_mat_objectif.currentText() == DUR, (
+    "le champ de ① n'a pas suivi le choix fait en ②",
+    _pan.combo_mat_objectif.currentText())
+
+_i = _pan.combo_mat_objectif.findText(TENDRE)
+assert _i >= 0, "le matériau de test manque à la liste de ①"
+_pan.combo_mat_objectif.setCurrentIndex(_i)
+assert _pan.edt_measure_mat.currentText() == TENDRE, (
+    "le champ de ② n'a pas suivi le choix fait en ① : les mesures se "
+    "rangeraient sous un autre matériau que celui qu'on grave",
+    _pan.edt_measure_mat.currentText())
+assert _pan.spn_feed_min.value() == 800.0, (
+    "changer le matériau en ① n'a pas recalé la bande",
+    _pan.spn_feed_min.value())
+assert "materiau" in _pan._last_fields, (
+    "le matériau n'est pas retenu d'une session à l'autre : le panneau "
+    "rouvrira sur le premier de la liste")
+print("7. matériau choisi en ①, les deux champs se suivent dans les deux "
+      "sens, retenu d'une session à l'autre OK")
+
+
+# --- 8. LES VRAIES DONNÉES DE L'ATELIER : on AFFICHE, on n'exige pas ---
 # Elles bougent à chaque planche gravée. Un contrôle qui rougit parce que
 # Christophe a mesuré est pire que pas de contrôle du tout.
-print("7. sur les mesures réelles de l'atelier (informatif) :")
+print("8. sur les mesures réelles de l'atelier (informatif) :")
 for _mat in core.burn_width_materials():
     if _mat.startswith("ZZ-"):
         continue

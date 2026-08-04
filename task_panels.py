@@ -13858,6 +13858,47 @@ class TaskPanelTestGrid:
         # menus voisins, d'aspect identique, dont l'un GRISE l'autre sans
         # que rien ne l'explique. L'un part de ce qu'on veut OBTENIR,
         # l'autre recharge ce qu'on a SAUVEGARDÉ.
+        # LE MATÉRIAU EN TÊTE DE ①, parce que l'objectif en DÉPEND.
+        #
+        # Depuis la v2.75.0 la bande de tons se cale sur les planches du
+        # matériau (cf. _paliers_du_materiau) -- mais le seul endroit où le
+        # choisir était « Matériau mesuré » dans ②, plusieurs écrans plus
+        # bas. Christophe, 04/08/2026 : « je ne vois pas ta bande 800, dis
+        # moi exactement où il se trouve ». Elle était là où il fallait,
+        # calée sur le hêtre : le panneau s'ouvre sur le premier matériau de
+        # la liste, et rien en ① ne disait lequel gouvernait.
+        #
+        # UNE SEULE VALEUR, DEUX VUES, et il faut que ce soit clair : ② reste
+        # l'endroit où les mesures se rangent, celle-ci n'est qu'un miroir
+        # synchronisé dans les deux sens. Deux champs qui divergeraient
+        # seraient bien pires que le trajet qu'ils évitent.
+        self.combo_mat_objectif = QtWidgets.QComboBox()
+        self.combo_mat_objectif.setEditable(True)
+        self.combo_mat_objectif.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.combo_mat_objectif.setMinimumContentsLength(14)
+        _mats0 = core.burn_width_materials() or core.shade_materials()
+        self.combo_mat_objectif.addItems(_mats0)
+        self.combo_mat_objectif.setCurrentText(_mats0[0] if _mats0 else "MDF")
+        self.combo_mat_objectif.setToolTip(
+            "Le matériau que tu vas graver. L'objectif ci-dessous en tire la\n"
+            "VITESSE et le PLANCHER DE PUISSANCE, d'après tes planches\n"
+            "1/2/2b et les tons déjà jugés : pas de case gravée dont tes\n"
+            "propres mesures disent qu'elle sortira vierge.\n"
+            "\n"
+            "C'est le même champ que « Matériau mesuré » en ② : les deux\n"
+            "se suivent, c'est en ② que les mesures se rangent.")
+        form.addRow("Matériau visé :", self.combo_mat_objectif)
+        form.addRow(_WrapLabel(
+            "C'est lui qui décide de la <b>vitesse</b> et du <b>plancher de "
+            "puissance</b> de la bande de tons ci-dessous, d'après tes "
+            "planches. Même champ que «&nbsp;Matériau mesuré&nbsp;» en ② — "
+            "les deux se suivent, c'est en ② que les mesures se rangent."))
+        self.combo_mat_objectif.currentIndexChanged.connect(
+            lambda _i: self._materiau_change(self.combo_mat_objectif))
+        self.combo_mat_objectif.lineEdit().editingFinished.connect(
+            lambda: self._materiau_change(self.combo_mat_objectif))
+
         form.addRow(_WrapLabel(
             "Deux façons de partir : par ce que tu veux <b>obtenir</b>, ou "
             "en rechargeant des réglages que tu as <b>sauvegardés</b>. "
@@ -14344,6 +14385,11 @@ class TaskPanelTestGrid:
             "labels": self.chk_labels, "border": self.chk_border,
             "border_power": self.spn_border_power,
             "border_feed": self.spn_border_feed,
+            # Le matériau se retient d'une session à l'autre : sans ça, le
+            # panneau rouvrait sur le premier de la liste (le hêtre) et la
+            # bande de tons se calait dessus, alors qu'on travaille le
+            # sapin depuis trois jours.
+            "materiau": self.combo_mat_objectif,
         }
         _restore_last_values("testgrid", self._last_fields)
 
@@ -14781,12 +14827,38 @@ class TaskPanelTestGrid:
         powers, feeds = r.get("powers"), r.get("feeds")
         if not r.get("tons_materiau") or not feeds:
             return powers, feeds, None
-        combo = getattr(self, "edt_measure_mat", None)
-        materiau = (combo.currentText().strip() if combo else "")
         feed, puissances, dire = core.regime_bande_tons(
-            materiau, feeds[0], r.get("cell_defocus", 0.0),
+            self._materiau(), feeds[0], r.get("cell_defocus", 0.0),
             n=len(powers or []) or 10)
         return puissances, [feed], dire
+
+    def _materiau(self):
+        """Le matériau visé. ① fait foi parce qu'il existe le premier : la
+        restauration de session rejoue un objectif avant que ② soit bâti."""
+        for combo in (getattr(self, "combo_mat_objectif", None),
+                      getattr(self, "edt_measure_mat", None)):
+            if combo is not None:
+                return combo.currentText().strip()
+        return ""
+
+    def _materiau_change(self, source):
+        """Recopie le matériau dans l'autre champ, puis recale l'objectif.
+
+        Les deux champs sont deux VUES d'une seule valeur (① le choisit, ②
+        y range les mesures). `blockSignals` sur la destination : sans lui
+        chacun réveillerait l'autre indéfiniment."""
+        nom = source.currentText()
+        for combo in (getattr(self, "combo_mat_objectif", None),
+                      getattr(self, "edt_measure_mat", None)):
+            if combo is not None and combo is not source:
+                combo.blockSignals(True)
+                combo.setCurrentText(nom)
+                combo.blockSignals(False)
+        if getattr(self, "_ton_rapide", None):
+            self._ton_rapide["reload"]()
+        if getattr(self, "_mesures", None):
+            self._mesures.reload()
+        self._reappliquer_objectif()
 
     def _reappliquer_objectif(self):
         """Rejoue l'objectif courant : le matériau vient de changer, donc
@@ -14891,16 +14963,16 @@ class TaskPanelTestGrid:
             titre="Noirceur jugée à l'œil (nuancier)",
             on_added=self._maj_liste_materiaux)
         # Le matériau gouverne AUSSI les paliers de l'objectif ① (cf.
-        # _paliers_du_materiau) : le changer doit recaler la bande, pas
-        # seulement recharger la saisie du ton.
+        # _paliers_du_materiau) : le changer ici doit recaler la bande et
+        # recopier le nom dans le champ de ①, pas seulement recharger la
+        # saisie du ton.
         self.edt_measure_mat.currentIndexChanged.connect(
-            lambda _i: (self._ton_rapide["reload"](),
-                        self._reappliquer_objectif()))
+            lambda _i: self._materiau_change(self.edt_measure_mat))
         self.edt_measure_mat.lineEdit().editingFinished.connect(
-            lambda: (self._ton_rapide["reload"](),
-                     self._reappliquer_objectif()))
-        self._ton_rapide["reload"]()
-        self._reappliquer_objectif()
+            lambda: self._materiau_change(self.edt_measure_mat))
+        # ① a été bâti en premier et porte donc le choix : on aligne ② sur
+        # lui, jamais l'inverse.
+        self._materiau_change(self.combo_mat_objectif)
 
     def _on_lire_noirceur(self):
         """Ouvre la lecture de noirceur. La fenêtre se débrouille seule :
@@ -14931,14 +15003,23 @@ class TaskPanelTestGrid:
             self._photo["reload"]()
 
     def _maj_liste_materiaux(self):
-        """Après un enregistrement : rafraîchit la liste des matériaux du
-        sélecteur (un nouveau nom vient peut-être d'apparaître)."""
-        cur = self.edt_measure_mat.currentText()
-        self.edt_measure_mat.blockSignals(True)
-        self.edt_measure_mat.clear()
-        self.edt_measure_mat.addItems(core.burn_width_materials() or core.shade_materials())
-        self.edt_measure_mat.setCurrentText(cur)
-        self.edt_measure_mat.blockSignals(False)
+        """Après un enregistrement : rafraîchit la liste des matériaux des
+        DEUX sélecteurs (un nouveau nom vient peut-être d'apparaître).
+
+        Les deux, sans exception : le champ de ① a été ajouté après celui-ci
+        et ne rafraîchir que ② laisserait le premier sans le nom qu'on vient
+        de créer -- le seul endroit où il sert."""
+        noms = core.burn_width_materials() or core.shade_materials()
+        for combo in (getattr(self, "combo_mat_objectif", None),
+                      getattr(self, "edt_measure_mat", None)):
+            if combo is None:
+                continue
+            cur = combo.currentText()
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(noms)
+            combo.setCurrentText(cur)
+            combo.blockSignals(False)
 
     def _on_generer(self):
         """Crée les cellules dans le document, génère le G-code de la grille

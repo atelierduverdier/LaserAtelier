@@ -198,7 +198,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.75.0</span><br>
+      <span class="ver">Version 2.76.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -248,7 +248,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.75.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.76.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -981,6 +981,7 @@
     <p><b>Une seule vitesse</b>, et c'est toute sa raison d'être. La noirceur ne dépend pas que de l'énergie&nbsp;: à énergie par millimètre rigoureusement égale, plus c'est lent, plus c'est foncé. Une courbe bâtie sur des tons mesurés à des vitesses mélangées est donc incohérente par construction — c'était le cas, les clairs à F2000 et les foncés à F650, et aucune correction de formule ne pouvait la sauver. Corollaire à accepter&nbsp;: cette calibration ne vaut que pour la vitesse, le défocus et le pas gravés. Changer l'un des trois pour la gravure finale la sort de son régime.</p>
     <p><b>Les puissances sont volontairement dans le désordre.</b> Rangées par ordre croissant, les cases se jugent les unes par rapport aux autres et l'œil reconstruit une progression régulière qui n'existe pas&nbsp;: une première série ainsi jugée est ressortie en progressions arithmétiques exactes, avec 11&nbsp;% de paires inversées par rapport à l'ordre réel des énergies. Chaque case porte sa puissance gravée en dessous, la lecture reste directe.</p>
     <p><b>La bande est calée sur le matériau, pas sur le hêtre (v2.75.0).</b> Elle gravait les mêmes nombres pour tout le monde&nbsp;— S200&nbsp;→&nbsp;S1000 à F2000, défocus&nbsp;15 —, et ces nombres viennent du hêtre. Sur hêtre ils gaspillaient déjà <b>trois cases sur dix</b>&nbsp;: le nuancier de l'atelier en garde la trace, S195&nbsp;→&nbsp;0, S235&nbsp;→&nbsp;0, S275&nbsp;→&nbsp;2. Sur du sapin, <b>rien d'exploitable en dessous de ~S700</b>&nbsp;— six ou sept cases sur dix, donc une planche entière gravée pour trois ou quatre tons, dont le plus fort est un pâté. Or les planches 1/2/2b le disaient <em>avant</em> la gravure&nbsp;: elles offrent les mêmes cases à tous les matériaux, et sur le sapin celles du coin le moins énergique étaient restées vides faute de quoi que ce soit à mesurer. L'objectif lit maintenant ces cases vides et en tire deux choses&nbsp;: la <b>vitesse</b>, ramenée dans la plage où le matériau a été vu marquer, et le <b>plancher de puissance</b>, pour que la case la plus claire marque encore. La note affichée dit ce qui a été changé et sur quelle mesure. Christophe&nbsp;: «&nbsp;peut-être que pour graver une grille il faut se baser sur les résultats des traits faits dans les planches 1 2 2b&nbsp;?&nbsp;»</p>
+    <p><b>Le matériau se choisit en tête de ① (v2.76.0)</b>, sous le libellé «&nbsp;Matériau visé&nbsp;». Livré sans lui, le recalage existait mais ne se voyait pas&nbsp;: le seul endroit où changer de matériau était «&nbsp;Matériau mesuré&nbsp;» dans ②, plusieurs écrans plus bas, et le panneau s'ouvrant sur le premier de la liste, la bande restait calée sur le hêtre. Christophe&nbsp;: «&nbsp;je ne vois pas ta bande 800, dis-moi exactement où il se trouve&nbsp;». Les deux champs sont <b>deux vues d'une seule valeur</b> et se suivent dans les deux sens — ② reste l'endroit où les mesures se rangent — et le matériau est désormais <b>retenu d'une session à l'autre</b>.</p>
     <p><b>Sur un matériau jamais mesuré, rien n'est recalé — et c'est dit.</b> La première planche est alors un <b>repérage</b>&nbsp;: ses cases vierges sont elles aussi une mesure. Reportez-les en ② avec une noirceur de <b>0</b>, et la bande suivante partira du bon plancher. Un ton jugé au-dessus de 0 rouvre également la vitesse&nbsp;— indispensable, puisqu'une largeur en défocus ne se mesure qu'aux vitesses lentes des planches (F800 au plus)&nbsp;; sans cela l'atelier rabattrait la bande à F800 indéfiniment, même après l'avoir vue marquer plus vite.</p>
     <p>Le report se fait <b>sur place</b>, dans «&nbsp;Noirceur jugée à l'œil&nbsp;» au bas de la section ②&nbsp;: plus d'aller-retour vers le mode Nuancier avec les valeurs retenues de mémoire. Choisir cet objectif <b>pré-remplit la vitesse, le défocus et la largeur</b> — cette dernière valant l'espacement des hachures, comme expliqué plus haut. Pré-remplir vaut mieux qu'avertir&nbsp;: c'est l'erreur qui fausse la courbe d'un facteur 8. Il ne reste à saisir que la noirceur jugée et la puissance de la case.</p>
 
@@ -1225,7 +1226,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.75.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.76.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

@@ -79,6 +79,16 @@ Three points that make it work rather than merely look right:
 - **On a never-measured material nothing is recalibrated, and the panel says so** — that first board
   is a range-finder, and its blank cells are its measurement.
 
+**The material selector had to move (v2.76.0).** Shipped without it, the recalibration worked and
+was invisible: the only place to pick a material was "Matériau mesuré" down in ②, and the panel
+opens on the first of the list, so the band stayed on beech. *"je ne vois pas ta bande 800, dis moi
+exactement où il se trouve"* — it was there, calibrated for the wrong wood. `combo_mat_objectif`
+now heads ①; the two combos are **two views of one value**, synced both ways via
+`_materiau_change` (`blockSignals` on the destination, or each wakes the other forever), with ②
+still the place measurements are filed. `_materiau()` reads ① first because ① is built first — the
+session restore replays an objective before ② exists. The material joined `_last_fields`, so the
+panel reopens on the wood you were working.
+
 `ordre_melange(n)` now carries the shuffle rule (pair `i` with `i+n/2`, evens then odds) instead of
 a hand-written list of ten numbers, and **reproduces that list exactly** — `puissances_bande_tons`
 is asserted against it. The "no two adjacent ranks side by side" guarantee only holds from n=8
