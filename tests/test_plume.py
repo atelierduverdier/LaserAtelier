@@ -370,3 +370,29 @@ for _c in "bdhklmnpqu":
 assert not _sans_fut, ("ces lettres n'ont plus de fût droit reconnaissable, "
                        "le contrôle ne vérifie donc rien sur elles", _sans_fut)
 print("11. les fûts de b d h k l m n p q u sont d'un seul tenant OK")
+
+
+# --- 12. ON NE LISSE PAS LES POLICES EXTRAITES --------------------------
+# Christophe : « si le lissage fonctionne pourquoi pas le mettre sur les
+# autres caractères réalisés à partir des fonts ». Branché, puis MESURÉ :
+# chaque fenêtre coûte plus de contraste qu'elle ne gagne en régularité
+# (voir le tableau dans TaskPanelCalligraphie._chaines). Ce n'est pas du
+# bruit, c'est le dessin de la lettre.
+#
+# Le contrôle fige la mesure : si un jour le lissage y revient, il faudra
+# rouvrir ce chiffre-là. `lisser_largeurs` reste éprouvée pour elle-même --
+# c'est son EMPLOI sur les polices extraites qui est écarté.
+_ch12 = [[(float(i), 0.0, 1.0 if i % 2 else 0.4) for i in range(40)]]
+_lisse = core.lisser_largeurs(_ch12, 4.0, passes=2)
+_w12 = [p[2] for c in _lisse for p in c]
+assert max(_w12) - min(_w12) < 0.25, (
+    "lisser_largeurs ne lisse plus : une dent de scie doit s'aplatir",
+    min(_w12), max(_w12))
+_intact = core.lisser_largeurs(_ch12, 0.0)
+assert _intact is _ch12, "une fenêtre nulle doit rendre les gestes tels quels"
+# et elle ne touche JAMAIS au tracé
+assert all(a[0] == b[0] and a[1] == b[1]
+           for ca, cb in zip(_ch12, _lisse) for a, b in zip(ca, cb)), (
+    "le lissage a déplacé des points : il ne doit toucher que la largeur")
+print("12. lisser_largeurs aplatit la dent de scie sans bouger le tracé ; "
+      "écartée des polices extraites sur mesure OK")

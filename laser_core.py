@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.80.1"
+VERSION = "2.80.2"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2067,6 +2067,56 @@ def _largeurs_du_trait(pts, angle_deg, mini, maxi, modele=PLUME_BEC,
     return lisse
 
 
+def lisser_largeurs(chaines, fenetre_mm, passes=2):
+    """Lisse la LARGEUR le long de chaque geste, sans toucher au tracé.
+
+    Christophe, les trois aperçus sous les yeux : « il faudrait mettre un
+    lissage car c'est très inégal sur les côtés du trait ; d'ailleurs si le
+    lissage fonctionne pourquoi pas le mettre sur les autres caractères
+    réalisés à partir des fonts ». Les deux remarques portent, et la
+    SECONDE est la plus utile : les largeurs extraites d'une police
+    viennent d'une transformée de distance sur une image TRAMÉE. Elles sont
+    donc quantifiées au pixel -- à 120 px de corps, un pas de quantification
+    fait ~0,8 % de la hauteur, et il se voit sur le bord du trait comme des
+    dents. La plume, elle, est continue par construction : c'est la police
+    extraite qui en avait le plus besoin.
+
+    DEUX PASSES et non une : une moyenne glissante laisse des ANGLES aux
+    changements de pente (son noyau est un créneau). Deux passes valent un
+    noyau triangulaire, dont la dérivée est continue -- le bord du trait
+    cesse d'être facetté pour le même degré de lissage. Une troisième
+    n'apporte plus rien de visible et commence à manger le contraste.
+
+    On ne touche PAS à x/y : la lettre garde son dessin exact, seule
+    l'épaisseur est adoucie."""
+    fenetre = float(fenetre_mm)
+    if fenetre <= 0:
+        return chaines
+    out = []
+    for ch in chaines:
+        if len(ch) < 3:
+            out.append(ch)
+            continue
+        absc = [0.0]
+        for i in range(len(ch) - 1):
+            absc.append(absc[-1] + math.hypot(ch[i + 1][0] - ch[i][0],
+                                              ch[i + 1][1] - ch[i][1]))
+        w = [p[2] for p in ch]
+        demi = fenetre / 2.0
+        for _ in range(max(1, int(passes))):
+            neuf, j0 = [], 0
+            for i, si in enumerate(absc):
+                while absc[j0] < si - demi:
+                    j0 += 1
+                j1 = i
+                while j1 + 1 < len(absc) and absc[j1 + 1] <= si + demi:
+                    j1 += 1
+                neuf.append(sum(w[j0:j1 + 1]) / float(j1 - j0 + 1))
+            w = neuf
+        out.append([(p[0], p[1], wi) for p, wi in zip(ch, w)])
+    return out
+
+
 def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
                   angle_deg=PLUME_ANGLE_DEFAUT, epaisseur=PLUME_EPAISSEUR,
                   contraste=PLUME_CONTRASTE, modele=PLUME_BEC,
@@ -2131,6 +2181,11 @@ def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
         lg = _largeurs_du_trait(pts, angle_deg, mini, maxi, modele)
         ws.extend(lg)
         chaines.append([(p[0], p[1], w) for p, w in zip(pts, lg)])
+
+    # Seconde passe : le bord du trait cesse d'être facetté (cf.
+    # lisser_largeurs). La première est déjà faite par _largeurs_du_trait.
+    chaines = lisser_largeurs(chaines, maxi, passes=1)
+    ws = [p[2] for c in chaines for p in c]
 
     longueur = sum(math.hypot(c[i + 1][0] - c[i][0], c[i + 1][1] - c[i][1])
                    for c in chaines for i in range(len(c) - 1))

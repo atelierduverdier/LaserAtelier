@@ -11474,6 +11474,33 @@ class TaskPanelCalligraphie:
                                      epaisseur=cle[5] / 100.0,
                                      contraste=cle[6], modele=cle[7])
         else:
+            # PAS DE LISSAGE ICI, ET C'EST UNE MESURE QUI L'A DÉCIDÉ.
+            #
+            # Christophe : « si le lissage fonctionne pourquoi pas le
+            # mettre sur les autres caractères réalisés à partir des
+            # fonts ». L'idée se tient -- ces largeurs viennent d'une
+            # transformée de distance sur une image TRAMÉE, donc
+            # quantifiées au pixel. Je l'ai donc branché, puis mesuré
+            # l'ondulation du bord (somme des variations de largeur par mm
+            # de tracé) contre le contraste, sur un vrai texte :
+            #
+            #   fenêtre      ondulation        contraste
+            #   aucune         0,0828            4,2:1
+            #   larg_min       0,0763  (-8 %)    3,5:1   (-17 %)
+            #   max/2          0,0652  (-21 %)   3,0:1   (-29 %)
+            #   max            0,0479  (-42 %)   2,7:1   (-36 %)
+            #
+            # CHAQUE fenêtre coûte plus de contraste qu'elle ne gagne en
+            # régularité. Ce n'est donc pas du bruit qu'on peut moyenner :
+            # c'est le DESSIN de la lettre, qui change vite aux
+            # empattements et aux raccords. Lisser reviendrait à effacer ce
+            # qu'on est venu chercher -- et à refaire, sur les polices
+            # extraites, le défaut du 04/08 sur la plume : « c'est une
+            # police un peu plus épaisse quoi ».
+            #
+            # La plume, elle, garde son lissage : sa largeur est CALCULÉE,
+            # continue par construction, et ce qu'on y lisse est bien un
+            # artefact d'échantillonnage.
             res = cal.chaines_calligraphie(cle[0], cle[1], largeur_mm=cle[2])
         self._cache = (cle, res)
         return res
