@@ -199,7 +199,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.4</span><br>
+      <span class="ver">Version 2.99.5</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -250,7 +250,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.4</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.5</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1128,7 +1128,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.4 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.5 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1144,7 +1144,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 31 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 32 entrées</span></h3>
+  <p><b>Le balayage était trop étroit, et Projection payait la différence (v2.99.5).</b> Christophe&nbsp;: «&nbsp;dans projection de surface les réglages sont dans le mode d'emploi&nbsp;». Exactement le défaut des Hachures, corrigé douze versions plus tôt <em>avec un contrôle censé couvrir les 22 panneaux</em>. <b>Ce contrôle ne cherchait que les rangées AVEC libellé</b> — <code>form.addRow("Espacement :", …)</code> — et celle de Projection n'en a pas&nbsp;: <code>form.addRow(self.lbl_status)</code>. L'état de la sélection, la seule chose que ce panneau affiche, disparaissait donc avec le mode d'emploi replié — et le mode d'emploi renvoie à «&nbsp;l'état <em>ci-dessous</em>&nbsp;», désignant ce que son propre repli cachait. Il a maintenant sa section, ouverte. <b>Un balayage trop étroit rassure sans protéger</b>&nbsp;: le motif accepte désormais toute rangée, et le sabotage confirme qu'il nomme bien <code>TaskPanelProject</code> — ce qu'il ne faisait pas avant. C'est la même leçon que les trois <code>hasattr(ViewObject)</code> survivants d'une règle qui annonçait «&nbsp;corrigé sur les 8 sites&nbsp;» : <em>un contrôle qui passe ne prouve rien tant qu'on ne l'a pas vu échouer sur le cas qu'il vise</em>.</p>
+
   <p><b>Deux avertissements de trop dans la vue Rapport (v2.99.4).</b> Christophe&nbsp;: «&nbsp;j'ai des erreurs&nbsp;». Elles n'étaient pas dans une boîte de dialogue mais dans la vue Rapport, lue directement dans sa session — et il y en avait deux. <b>La première venait de FreeCAD</b>&nbsp;: «&nbsp;Link(s) to object(s) 'Pad' go out of the allowed scope [...] reside within 'Body' », <em>deux fois par projection</em>. Le lien que la projection mémorise vers le solide d'origine était un <code>App::PropertyLink</code>, qui est à <b>portée stricte</b> — or ce solide vit presque toujours dans un Body ou une Part. Le lien fonctionnait&nbsp;: c'était un avertissement, pas une panne. Mais <em>un avertissement qu'on apprend à ignorer finit par cacher celui qui compte</em>. <code>App::PropertyXLink</code> est fait pour traverser une portée. <b>La seconde était de moi</b>, livrée l'heure d'avant&nbsp;: après avoir correctement expliqué que le motif projeté n'est pas plat (6,07&nbsp;mm de creux sur son document), l'aperçu enchaînait avec «&nbsp;ne délimite aucune surface fermée&nbsp;» — deux messages pour une seule cause, et le second accusait à tort le contour d'être ouvert, en nommant le JOB qui plus est. Il ne se plaint plus qu'une fois. Les documents déjà créés gardent leur ancien lien&nbsp;: le type d'une propriété est figé à la création, et refaire la projection suffit à l'assainir.</p>
 
   <p><b>La Gravure remplie acceptait une forme galbée et sortait presque blanche (v2.99.3).</b> Christophe&nbsp;: une surface 3D, un texte projeté dessus, puis Gravure remplie sur la projection — «&nbsp;l'aplat couleur n'a pas bien fonctionné, juste le point du i et l'intérieur du e sont colorés&nbsp;». <b>Ce n'était pas l'aperçu&nbsp;: c'était la gravure.</b> Son document le chiffre — 1652 arêtes, <b>4 faces bâties, 4,63&nbsp;mm²</b> — et la reproduction sur un cylindre de 60&nbsp;mm le confirme&nbsp;: à plat 8 faces et 217,5&nbsp;mm², projeté <b>2 faces et 0,0&nbsp;mm²</b>, pour <b>0,317&nbsp;mm de creux seulement</b>. Or <code>_faces_from_any_shape</code> est le MÊME constructeur que la Gravure remplie utilise pour savoir quoi hachurer, et <code>build_filled_engraving_edges</code> annonce lui-même «&nbsp;à partir de faces 2D&nbsp;». Le G-code serait donc sorti quasi blanc, sans un mot. Le mode <b>refuse</b> désormais une forme dont les points s'écartent d'un plan, en donnant <b>l'ordre à suivre</b>&nbsp;: remplir à plat, PUIS projeter, puis graver en Marquage de motif — ce que le mode d'emploi des Hachures dit depuis toujours, mais que rien n'empêchait d'inverser. <b>Le seuil se déduit, il ne s'invente pas</b>&nbsp;: <code>_faces_rapides_depuis_fils</code> re-polygonise à 0,02&nbsp;mm, donc en dessous de deux fois cette flèche une forme est indiscernable d'une forme plane pour ce code-là. Le test vérifie aussi le cas dégénéré — une forme alignée n'a pas de plan à contredire et ne doit pas être refusée.</p>

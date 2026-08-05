@@ -9448,6 +9448,15 @@ class TaskPanelProject:
             "pour graver/découper en suivant le relief.",
         ])
 
+        # L'ÉTAT A BESOIN DE SA PROPRE SECTION. Posé après « Mode d'emploi »
+        # -- replié par défaut et seule section du panneau -- il disparaissait
+        # avec lui. Et le mode d'emploi renvoie à « l'état CI-DESSOUS » : il
+        # désignait donc quelque chose que son propre repli cachait.
+        # Christophe, 05/08/2026 : « dans projection de surface les réglages
+        # sont dans le mode d'emploi ». Même défaut que les Hachures en
+        # v2.94.0 -- le balayage d'alors ne cherchait que les rangées AVEC
+        # libellé, et celle-ci n'en a pas.
+        _section(form, "État de la sélection", "sect_preview.svg", ouvert=True)
         self.lbl_status = _WrapLabel()
         form.addRow(self.lbl_status)
 

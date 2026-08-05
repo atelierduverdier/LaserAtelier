@@ -1344,8 +1344,13 @@ for (_a, _nomc), (_b, _x) in zip(_cls, _cls[1:]):
     if not _secs:
         continue
     _dk, _dn = _secs[-1]
+    # TOUTE rangée, avec ou sans libellé. Le motif d'origine exigeait
+    # `form.addRow("…"` et laissait donc passer `form.addRow(self.lbl_status)`
+    # -- exactement la rangée avalée du panneau Projection, signalée par
+    # Christophe une fois le contrôle déjà en place. Un balayage trop étroit
+    # rassure sans protéger.
     _apres = [_k for _k, _l in enumerate(_bloc)
-              if _k > _dk and _re_sec.search(r'form\.addRow\(\s*"', _l)]
+              if _k > _dk and _re_sec.search(r'form\.addRow\(', _l)]
     if _apres and _dn == "Mode d'emploi":
         _coupables.append((_nomc, len(_apres)))
 assert not _coupables, (
