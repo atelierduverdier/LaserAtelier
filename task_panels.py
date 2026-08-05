@@ -5514,6 +5514,39 @@ class TaskPanelGuide:
         # le lit. On garde les VERBES du schéma, qui suffisent à s'y
         # retrouver, et les numéros restent à la calibration (★) et aux
         # étapes internes d'un panneau (①②③).
+        # LA DISTINCTION QUE TOUT LE RESTE SUPPOSE, et qui n'était écrite
+        # nulle part. Christophe, 05/08/2026, après avoir enchaîné texte,
+        # remplissage, hachures, projection, contour puis job combiné : « je
+        # ne comprends pas le flux de travail [...] si ce n'est pas clair
+        # pour moi, cela ne le sera pas pour un nouvel utilisateur ».
+        #
+        # Il avait raison, et l'atelier lui-même s'y perdait : les Hachures
+        # se créaient un Job qui ne pouvait rien graver.
+        _section(form, "Deux familles de modes -- à lire en premier",
+                 "sect_guide.svg", ouvert=True)
+        _bullet_list(form, [
+            "<b>Les modes qui fabriquent une FORME</b> — Hachures, Texte, "
+            "Texte gravé, Calligraphie, Import SVG, <b>Projection</b>. Ils "
+            "posent un objet dans l'arbre (rangé sous <i>Formes à graver</i>) "
+            "et <b>ne produisent AUCUN G-code</b>. Pas de Job, rien à "
+            "combiner.",
+            "<b>Les modes qui GRAVENT</b> — Marquage, Gravure remplie, "
+            "Découpe à plat, Découpe courbe, Gravure photo. Ils prennent une "
+            "forme et écrivent le <code>.ngc</code>. Chacun laisse un "
+            "<b>Job</b> dans l'arbre, et c'est cela que le Job combiné "
+            "assemble.",
+            "<b>Donc&nbsp;:</b> on fabrique d'abord, on grave ensuite. Un "
+            "remplissage ou des hachures ne sont pas un réglage de gravure — "
+            "c'est la <b>géométrie</b> que le laser suivra.",
+            "<b>Sur une pièce COURBE, l'ordre est imposé&nbsp;:</b> tout se "
+            "prépare <b>à plat</b> (texte, remplissage, hachures) → "
+            "<b>Projection</b> de l'ensemble d'un coup sur la surface → "
+            "<b>Marquage de motif</b> ou <b>Découpe courbe</b> sur l'objet "
+            "projeté <b>+</b> le modèle 3D. Remplir APRÈS avoir projeté ne "
+            "marche pas&nbsp;: ces modes travaillent en 2D, et ils le disent "
+            "désormais plutôt que de sortir une planche blanche.",
+        ])
+
         _section(form, "Le flux de travail", "sect_options.svg")
         _bullet_list(form, [
             "<b>CALIBRER</b> (une fois) : Préférences (engrenage) -- focale, "

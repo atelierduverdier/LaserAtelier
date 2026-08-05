@@ -326,3 +326,57 @@ assert "if not galbees:" in _src_jobs, (
     "second est faux")
 print("8. le lien vers la surface traverse la portée, et l'aperçu ne se "
       "plaint qu'une fois par cause OK")
+
+
+# --- 9. UN MODE QUI NE GRAVE PAS N'A PAS DE JOB -------------------------
+# Un Job est un signet vers une GÉNÉRATION de G-code. Les Hachures n'en
+# produisent aucun -- elles fabriquent une forme, que Marquage grave
+# ensuite -- et pourtant elles s'en créaient un. Il ne pouvait rien faire :
+# « mode non combinable » au job combiné, une case « Grave » sans objet, une
+# couleur de calque sur une source qu'on ne grave pas.
+#
+# Christophe, 05/08/2026, après avoir enchaîné texte, remplissage, hachures,
+# projection, contour puis job combiné : « je ne comprends pas le flux de
+# travail [...] si ce n'est pas clair pour moi, cela ne le sera pas pour un
+# nouvel utilisateur ». Projection, Texte, Texte gravé et Calligraphie
+# fabriquent aussi des formes et n'ont JAMAIS créé de Job : les Hachures
+# étaient l'exception.
+import laser_jobs as _lj9                                      # noqa: E402
+
+_d9 = FreeCAD.newDocument("EssaiFlux")
+try:
+    _o9 = _d9.addObject("Part::Feature", "Forme")
+    _o9.Shape = Part.makePolygon([FreeCAD.Vector(0, 0, 0),
+                                  FreeCAD.Vector(9, 0, 0)])
+    _d9.recompute()
+    assert _lj9.creer_ou_maj_job("hatch", [_o9]) is None, (
+        "les Hachures se créent encore un Job, qui ne pourra rien graver")
+    # ...mais un mode qui GRAVE doit toujours en créer un.
+    assert _lj9.creer_ou_maj_job("curved", [_o9]) is not None, (
+        "le Marquage ne crée plus de Job : le garde est trop large")
+
+    # TOUT MODE DE GÉOMÉTRIE RESTE CONNU. Les documents déjà créés portent
+    # des « Job Hachures » qu'il faut encore savoir nommer et rouvrir.
+    for _m9 in _lj9.MODES_GEOMETRIE:
+        assert _m9 in _lj9.MODES, (
+            "« {} » a disparu de MODES : les Jobs des anciens documents "
+            "perdraient leur nom et leur icône".format(_m9))
+
+    # ET LE REFUS DOIT APPRENDRE QUELQUE CHOSE. « mode non combinable »
+    # n'apprend rien à qui vient de passer une heure à préparer sa planche.
+    _vieux = _d9.addObject("App::FeaturePython", "Job_hatch_ancien")
+    _lj9.JobLaser(_vieux)
+    _vieux.addProperty("App::PropertyString", "Mode", "Job", "")
+    _vieux.Mode = "hatch"
+    _vieux.addProperty("App::PropertyLinkList", "Sources", "Job", "")
+    _vieux.Sources = [_o9]
+    _vieux.Label = "Job Hachures - Forme"
+    tp._COMBINED_OPS[:] = []
+    _aj9, _ig9 = _lj9.ajouter_jobs_au_combine([_vieux])
+    assert _aj9 == [] and _ig9, ("un ancien Job Hachures est passé", _aj9)
+    assert "Marquage" in _ig9[0] and "FORME" in _ig9[0], (
+        "le refus n'indique pas quoi faire à la place", _ig9[0])
+finally:
+    FreeCAD.closeDocument("EssaiFlux")
+print("9. les modes de géométrie ne créent plus de Job, et le refus des "
+      "anciens dit quoi faire OK")

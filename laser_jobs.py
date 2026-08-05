@@ -29,6 +29,22 @@ MODES = {
     "curved_cut": ("Découpe courbe",  "curved_cut.svg", "TaskPanelCurvedCut"),
 }
 
+# LES MODES QUI FABRIQUENT UNE FORME, PAS DU G-CODE. Ils n'ont donc pas de
+# Job : un Job est un signet vers une GÉNÉRATION, et ceux-là ne génèrent
+# rien -- leur résultat est une forme, qu'on grave ensuite avec Marquage.
+#
+# Les Hachures étaient les seules à s'en créer un, et il ne pouvait rien
+# faire : « mode non combinable » au job combiné, une case « Grave » sans
+# objet, une couleur de calque sur une source qu'on ne grave pas. Christophe,
+# 05/08/2026 : « je ne comprends pas le flux de travail [...] si ce n'est pas
+# clair pour moi, cela ne le sera pas pour un nouvel utilisateur ». Il avait
+# raison : Projection, Texte, Texte gravé et Calligraphie fabriquent aussi
+# des formes et n'ont jamais créé de Job. Les Hachures étaient l'exception.
+#
+# On les GARDE dans MODES : les documents déjà créés ont des « Job Hachures »
+# qu'il faut encore savoir nommer, iconifier et rouvrir.
+MODES_GEOMETRIE = ("hatch",)
+
 _ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "resources", "icons")
 
@@ -673,6 +689,15 @@ def ajouter_jobs_au_combine(jobs):
         if mode not in MODES:
             ignores.append("{} (mode inconnu)".format(job.Label))
             continue
+        if mode in MODES_GEOMETRIE:
+            # Un Job de ce genre ne peut venir que d'un document ancien : ce
+            # mode fabrique une FORME, pas du G-code. Le dire, plutôt que de
+            # laisser « mode non combinable », qui n'apprend rien.
+            ignores.append(
+                "{} — {} fabrique une FORME, pas du G-code : sélectionne la "
+                "forme produite et grave-la avec Marquage de motif"
+                .format(job.Label, MODES[mode][0]))
+            continue
         panneau_cls = getattr(task_panels, MODES[mode][2])
         if not hasattr(panneau_cls, "_build_combined_operation"):
             ignores.append("{} (mode non combinable)".format(job.Label))
@@ -776,7 +801,7 @@ def creer_ou_maj_job(mode, sources, sous_elements=None):
     différentes d'un même sketch/SVG donnent donc DEUX Jobs distincts,
     chacun avec sa recette. Renvoie le Job, ou None (pas de document,
     mode sans forme, sources invalides...)."""
-    if mode not in MODES:
+    if mode not in MODES or mode in MODES_GEOMETRIE:
         return None
     doc = FreeCAD.ActiveDocument
     if doc is None:

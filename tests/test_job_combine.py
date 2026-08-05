@@ -174,9 +174,13 @@ try:
     # gravure oui / non la couleur du dessous ou dessus ne s'affiche pas ».
     _t = _trait("Texte")
     _doc.recompute()
+    # Trois jobs QUI GRAVENT : les Hachures n'en créent plus (v2.99.8), elles
+    # fabriquent une forme. On empile donc deux jobs de TRAIT et un
+    # remplissage, qui est le cas réel de Christophe.
     _jm = lj.creer_ou_maj_job("curved", [_t])
     _jf = lj.creer_ou_maj_job("filled", [_t])
-    _jh = lj.creer_ou_maj_job("hatch", [_t])
+    _jh = lj.creer_ou_maj_job("flat", [_t])
+    assert None not in (_jm, _jf, _jh), "un job qui grave n'a pas été créé"
 
     def _trait_gagnant():
         """Le mode dont la couleur habille le TRAIT -- la même règle que
@@ -193,19 +197,24 @@ try:
     # rendait le marquage invisible dès qu'on cochait un remplissage.
     # Christophe : « donc je ne verrai jamais le vert sauf quand je cache
     # l'aperçu ? ». C'est SON cas exact qu'on éprouve ici.
+    assert _trait_gagnant() == "flat", (
+        "entre deux jobs de TRAIT, c'est le plus conséquent qui l'emporte -- "
+        "on ne rattrape pas une découpe", _trait_gagnant())
+    _jh.Grave = False
     assert _trait_gagnant() == "curved", (
-        "avec les trois cochés, le trait doit rester au MARQUAGE : le "
-        "remplissage a sa surface et les hachures ont leur propre objet",
+        "décocher la découpe ne révèle pas le marquage en dessous",
         _trait_gagnant())
     _jf.Grave = False
     assert _trait_gagnant() == "curved", (
-        "décocher le remplissage ne devrait rien changer au trait")
+        "décocher le remplissage ne devrait rien changer au trait : il a sa "
+        "surface")
     _jm.Grave = False
-    assert _trait_gagnant() == "hatch", (
-        "plus aucun job de trait : les hachures doivent reprendre le "
-        "contour, sinon la forme paraît éteinte alors qu'elle sera gravée",
+    _jf.Grave = True
+    assert _trait_gagnant() == "filled", (
+        "plus aucun job de trait : le remplissage doit reprendre le contour, "
+        "sinon la forme paraît éteinte alors qu'elle sera gravée",
         _trait_gagnant())
-    _jh.Grave = False
+    _jf.Grave = False
     assert _trait_gagnant() is None, (
         "tout décoché, la forme devrait passer au gris", _trait_gagnant())
     _jm.Grave = True
