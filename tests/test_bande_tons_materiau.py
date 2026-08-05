@@ -320,3 +320,54 @@ finally:
     core.burn_width_defocus_scaled = _vrai_largeur
 print("9. le pas s'élargit quand la bande sature, pas quand elle marche, "
       "et c'est la case la plus FONCÉE qui décide OK")
+
+
+# --- 10. LA RÈGLE VA DANS LES DEUX SENS ----------------------------------
+# Christophe, sa DEUXIÈME planche de sapin : « je crois que le sapin n'est
+# pas un bois adapté à la gravure laser, ou alors il faut mettre le test à
+# la focale ». La focale est la bonne piste -- mais la règle ne savait
+# qu'élargir, et au foyer elle laissait le pas du hêtre : 14 à 25 % de
+# couverture, 86 % de bois nu dans les clairs, pire que sa planche.
+core.burn_width_defocus_scaled, _table2 = _largeurs_fixes(None)
+try:
+    _puis = [200.0, 400.0, 600.0, 800.0]
+    # a) MAIGRE (le sapin au foyer) : traits fins, pas de hêtre -> RESSERRER.
+    for _s, _w in zip(_puis, (0.11, 0.14, 0.17, 0.20)):
+        _table2[_s] = _w
+    _pas, _dire = core.pas_bande_tons("Bois", 800.0, 0.0, _puis, 0.80)
+    assert _pas < 0.80, (
+        "la bande est maigre (25 % de couverture au plus) et le pas n'a pas "
+        "bougé : même la case la plus foncée sortira rayée de bois nu", _pas)
+    assert abs(0.20 / _pas - core.COUVERTURE_CIBLE) < 1e-6, (
+        "la case la plus foncée ne tombe pas sur la couverture visée",
+        0.20 / _pas)
+    assert _dire and "resserr" in _dire, (
+        "l'explication parle d'élargir alors que le pas a été resserré : "
+        "un message qui contredit ce qu'il a fait est pire que rien", _dire)
+
+    # b) LE HÊTRE QUI MARCHE reste intact dans les DEUX sens (50-62 %).
+    for _s, _w in zip(_puis, (0.40, 0.45, 0.48, 0.50)):
+        _table2[_s] = _w
+    _pas2, _dire2 = core.pas_bande_tons("Bois", 2000.0, 15.0, _puis, 0.80)
+    assert _pas2 == 0.80 and _dire2 is None, (
+        "une bande qui FONCTIONNE a été touchée par le nouveau seuil bas",
+        _pas2, _dire2)
+
+    # SABOTAGE : la règle borgne d'avant, qui ne savait qu'élargir.
+    _src = inspect.getsource(core.pas_bande_tons)
+    assert "COUVERTURE_MAIGRE <= couverture" in _src, (
+        "le seuil bas a disparu : la règle est redevenue borgne")
+    _faux = _src.replace("COUVERTURE_MAIGRE <= couverture <= COUVERTURE_SATUREE",
+                         "couverture <= COUVERTURE_SATUREE")
+    _ns = dict(core.__dict__)
+    exec(compile(_faux, "<sabotage>", "exec"), _ns)
+    for _s, _w in zip(_puis, (0.11, 0.14, 0.17, 0.20)):
+        _table2[_s] = _w
+    _pas3, _ = _ns["pas_bande_tons"]("Bois", 800.0, 0.0, _puis, 0.80)
+    assert _pas3 == 0.80, (
+        "le sabotage resserre quand même : le contrôle ne prouve pas que "
+        "c'est bien le seuil bas qui fait le travail", _pas3)
+finally:
+    core.burn_width_defocus_scaled = _vrai_largeur
+print("10. le pas se resserre aussi quand la bande est MAIGRE, le hêtre "
+      "reste intact, et le message dit le bon verbe OK")

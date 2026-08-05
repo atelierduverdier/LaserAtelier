@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.82.1"
+VERSION = "2.83.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5932,6 +5932,29 @@ COUVERTURE_CIBLE = 0.95
 # Ce n'est pas la case claire qui décide, c'est que le HAUT sature.
 COUVERTURE_SATUREE = 1.00
 
+# ... ET LE SEUIL SYMÉTRIQUE : sous cette couverture pour la case la plus
+# FONCÉE, la bande est MAIGRE -- même la plus sombre est faite de traits
+# écartés sur du bois nu, donc aucune case ne rend un aplat.
+#
+# La première règle ne savait qu'ÉLARGIR, et c'était une règle borgne.
+# Christophe, sa deuxième planche de sapin en main, 05/08/2026 : « je crois
+# que le sapin n'est pas un bois adapté à la gravure laser, ou alors il
+# faut mettre le test à la focale, je ne sais pas ». La focale est la bonne
+# piste -- au foyer le trait fait 0,11 à 0,20 mm au lieu de 0,68 à 0,96,
+# donc six fois plus de traits pour la même surface et le fil du bois se
+# moyenne au lieu de rayer la case. Mais au pas de 0,80 hérité du hêtre, la
+# couverture tombe à 14-25 % : 86 % de bois nu dans les clairs, bien pire
+# que sa planche en défocus. Il fallait RESSERRER à 0,21 mm.
+#
+# LE SEUIL EST BAS EXPRÈS, et c'est un seuil à UN ancrage. Le hêtre à F2000
+# plafonne à 62 % et sa bande fonctionne : son ton vient de la noirceur du
+# trait, pas du recouvrement, et la resserrer casserait ce qui marche. À
+# 25 % en revanche la case la plus sombre est encore aux trois quarts en
+# bois nu -- ce ne sont plus des tons, ce sont des rayures. 50 % sépare les
+# deux ; à resserrer le jour où une troisième planche donnera un troisième
+# point.
+COUVERTURE_MAIGRE = 0.50
+
 
 def pas_bande_tons(material, feed, defocus, puissances, pas_actuel):
     """Le pas de hachure d'une bande de tons, élargi si elle SATURE.
@@ -5957,14 +5980,18 @@ def pas_bande_tons(material, feed, defocus, puissances, pas_actuel):
                       for s in puissances) if w]
     if len(ws) < 2:
         return pas_actuel, None
-    if max(ws) / max(pas_actuel, 1e-9) <= COUVERTURE_SATUREE:
+    couverture = max(ws) / max(pas_actuel, 1e-9)
+    if COUVERTURE_MAIGRE <= couverture <= COUVERTURE_SATUREE:
         return pas_actuel, None
     pas = max(ws) / COUVERTURE_CIBLE
+    verbe = "élargi" if pas > pas_actuel else "resserré"
+    motif = ("toutes les cases se recouvrent" if pas > pas_actuel
+             else "même la case la plus foncée reste rayée de bois nu")
     return pas, (
-        "pas élargi de {:.2f} à {:.2f} mm : à {:.2f} toutes les cases se "
-        "recouvrent ({:.0f} à {:.0f} %) et rendent le même ton ; à {:.2f} "
-        "l'échelle va de {:.0f} à {:.0f} %".format(
-            pas_actuel, pas, pas_actuel,
+        "pas {} de {:.2f} à {:.2f} mm : à {:.2f} {} ({:.0f} à {:.0f} %) ; "
+        "à {:.2f} l'échelle va de {:.0f} à {:.0f} %".format(
+            verbe, 
+            pas_actuel, pas, pas_actuel, motif,
             100 * min(ws) / pas_actuel, 100 * max(ws) / pas_actuel,
             pas, 100 * min(ws) / pas, 100 * max(ws) / pas))
 
