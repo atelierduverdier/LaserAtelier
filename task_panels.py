@@ -6325,6 +6325,127 @@ def _choisir_police_calligraphie(parent, combo_police, texte_exemple,
     return None if it is None else it.data(QtCore.Qt.UserRole)
 
 
+def _choisir_police_plume(parent, combo_plume, texte_exemple, reglages):
+    """Le spécimen des 45 polices MONO-TRAIT, écrites à la plume courante.
+
+    Christophe, 05/08/2026 : « ce serait bien d'avoir, comme polices
+    installées, un visualisateur type "Voir les polices" mais pour police
+    mono-trait ». Le sélecteur des .ttf existait depuis la v2.69 ; celui-ci
+    manquait, et une liste de 45 noms comme « EMS Bird » ne dit rien de la
+    forme des lettres.
+
+    LA DIFFÉRENCE AVEC LE SPÉCIMEN DES .ttf TIENT EN UNE PHRASE : une police
+    mono-trait N'A PAS de contraste propre. Le sien vient de la plume qu'on
+    lui applique. Mesuré à réglages identiques sur les 45 : de 4,64:1 à
+    4,66:1 -- deux centièmes. Classer ou étiqueter là-dessus serait
+    exactement le détecteur de fût contourné, jeté parce qu'il donnait 27 %
+    contre 28 % : un chiffre qui ne sépare rien rassure à tort. On trie donc
+    par NOM et on ne calcule aucune note.
+
+    En revanche on dessine avec les RÉGLAGES COURANTS (bec, plein,
+    contraste, modèle) : sur une mono-trait, changer l'angle change la
+    lettre bien plus que changer la police, donc un spécimen dessiné avec
+    des réglages d'usine montrerait autre chose que ce qui sera gravé.
+
+    Les libellés portent déjà ce qu'il y a à savoir -- les quatre variantes
+    « fût contourné, grave double » se nomment elles-mêmes.
+
+    Même contrat que les deux autres sélecteurs visuels : la liste est bâtie
+    À PARTIR DU COMBO, et on renvoie un INDEX que le combo rejoue."""
+    exemple = (texte_exemple or "").strip().split("\n")[0] or "Atelier du Verdier"
+
+    dlg = QtWidgets.QDialog(parent)
+    dlg.setWindowTitle("Choisir une police mono-trait")
+    dlg.resize(940, 660)
+    lay = QtWidgets.QVBoxLayout(dlg)
+    lay.addWidget(_WrapLabel(
+        "Chaque police mono-trait écrite avec ton texte, et avec la plume "
+        "réglée comme elle l'est en ce moment (bec {:.0f}°, plein {:.0f} %, "
+        "contraste {:.0f}:1).".format(
+            reglages.get("angle_deg", 0.0),
+            100.0 * reglages.get("epaisseur", 0.0),
+            reglages.get("contraste", 1.0))))
+    lay.addWidget(_WrapLabel(
+        "Une mono-trait n'a pas de contraste à elle : c'est la plume qui le "
+        "donne. Ce qui change d'une police à l'autre, c'est le DESSIN -- "
+        "d'où le spécimen plutôt qu'un classement."))
+
+    filtre = QtWidgets.QLineEdit()
+    filtre.setPlaceholderText("Filtrer par nom (script, ems, serif…)")
+    lay.addWidget(filtre)
+    liste = QtWidgets.QListWidget()
+    liste.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+    lay.addWidget(liste, 1)
+    etat = QtWidgets.QLabel("")
+    lay.addWidget(etat)
+
+    courant = combo_plume.currentIndex()
+    entrees = []
+    for i in range(combo_plume.count()):
+        cle = combo_plume.itemData(i)
+        if cle:
+            entrees.append((i, combo_plume.itemText(i), cle))
+    entrees.sort(key=lambda e: e[1].lower())
+
+    QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+    try:
+        for i, libelle, cle in entrees:
+            ligne = QtWidgets.QWidget()
+            vb = QtWidgets.QVBoxLayout(ligne)
+            vb.setContentsMargins(8, 5, 8, 7)
+            vb.setSpacing(1)
+            nom = QtWidgets.QLabel(libelle)
+            f = nom.font()
+            f.setPointSizeF(max(7.0, f.pointSizeF() - 1.0))
+            f.setBold(True)
+            nom.setFont(f)
+            # Les variantes à fût contourné gravent chaque trait DEUX fois :
+            # le libellé le dit, on ne fait que le mettre en couleur.
+            nom.setStyleSheet("color: {};".format(
+                "#96601e" if "contourn" in libelle.lower() else "#2f3540"))
+            vb.addWidget(nom)
+            try:
+                ch, inf = core.chaines_plume(cle, exemple, largeur_mm=150.0,
+                                             **reglages)
+                vue = QtWidgets.QLabel()
+                vue.setPixmap(QtGui.QPixmap.fromImage(
+                    _rendre_calligraphie(ch, None, inf, 860)))
+            except Exception as exc:
+                vue = QtWidgets.QLabel("(illisible : {})".format(exc))
+            vb.addWidget(vue)
+            it = QtWidgets.QListWidgetItem()
+            it.setData(QtCore.Qt.UserRole, i)
+            it.setData(QtCore.Qt.UserRole + 1, libelle)
+            it.setSizeHint(ligne.sizeHint())
+            liste.addItem(it)
+            liste.setItemWidget(it, ligne)
+            if i == courant:
+                liste.setCurrentItem(it)
+    finally:
+        QtWidgets.QApplication.restoreOverrideCursor()
+    etat.setText("{} polices mono-trait".format(len(entrees)))
+
+    def _filtrer(txt):
+        s = (txt or "").strip().lower()
+        for r in range(liste.count()):
+            it = liste.item(r)
+            lib = (it.data(QtCore.Qt.UserRole + 1) or "").lower()
+            it.setHidden(bool(s) and s not in lib)
+
+    filtre.textChanged.connect(_filtrer)
+    boutons = QtWidgets.QDialogButtonBox(
+        QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+    boutons.accepted.connect(dlg.accept)
+    boutons.rejected.connect(dlg.reject)
+    lay.addWidget(boutons)
+    liste.itemDoubleClicked.connect(lambda _i: dlg.accept())
+
+    if dlg.exec() != QtWidgets.QDialog.Accepted:
+        return None
+    it = liste.currentItem()
+    return None if it is None else it.data(QtCore.Qt.UserRole)
+
+
 def _choisir_reglage_visuel(parent, combo_shade, material, critere):
     """Grille de pastilles cliquables : le nuancier montré, pas décrit.
     Renvoie l'index d'item à sélectionner dans `combo_shade`, ou None.
@@ -9445,6 +9566,17 @@ class TaskPanelTexteContour:
             "d'échelle&nbsp;: c'est la seule façon de le redimensionner.",
         ])
 
+        # LES PRÉRÉGLAGES, et ils manquaient ici seulement. Cinq panneaux
+        # les portent déjà ; celui-ci est pourtant le plus réglé de tous --
+        # treize champs, dont six pour la seule plume, tous trouvés à l'œil.
+        # Christophe, 05/08/2026 : « peut-être aussi pouvoir sauvegarder ses
+        # réglages ». La dernière session était bien mémorisée, mais UNE
+        # seule : essayer une autre plume effaçait celle qu'on venait de
+        # régler. `_last_fields` porte déjà les treize champs, donc il n'y a
+        # rien à décrire ici -- le bloc en prend un instantané.
+        self._presets = _PresetController(
+            form, inner, "calligraphie", lambda: self._last_fields,
+            on_loaded=lambda: self._maj_verdict())
         _section(form, "① Police et texte", "sect_labels.svg", ouvert=True)
         self.combo_police = QtWidgets.QComboBox()
         self.combo_police.setToolTip(
@@ -11111,6 +11243,17 @@ class TaskPanelCalligraphie:
             "texte, Z sur la surface.",
         ])
 
+        # LES PRÉRÉGLAGES, et ils manquaient ici seulement. Cinq panneaux
+        # les portent déjà ; celui-ci est pourtant le plus réglé de tous --
+        # treize champs, dont six pour la seule plume, tous trouvés à l'œil.
+        # Christophe, 05/08/2026 : « peut-être aussi pouvoir sauvegarder ses
+        # réglages ». La dernière session était bien mémorisée, mais UNE
+        # seule : essayer une autre plume effaçait celle qu'on venait de
+        # régler. `_last_fields` porte déjà les treize champs, donc il n'y a
+        # rien à décrire ici -- le bloc en prend un instantané.
+        self._presets = _PresetController(
+            form, inner, "calligraphie", lambda: self._last_fields,
+            on_loaded=lambda: self._maj_verdict())
         _section(form, "① Police et texte", "sect_labels.svg", ouvert=True)
         self.combo_police = QtWidgets.QComboBox()
         self.combo_police.setToolTip(
@@ -11235,9 +11378,16 @@ class TaskPanelCalligraphie:
             "\n"
             "Pour comparaison, les polices calligraphiques de l'atelier\n"
             "demandent 26:1 (Blacksword) et 31:1 (Aston Script).")
+        btn_voir_plume = QtWidgets.QPushButton("Voir…")
+        btn_voir_plume.setToolTip(
+            "Spécimen des 45 polices mono-trait, écrites avec la plume\n"
+            "réglée comme elle l'est en ce moment -- sur une mono-trait,\n"
+            "l'angle du bec change la lettre bien plus que la police.")
+        btn_voir_plume.clicked.connect(self._on_voir_polices_plume)
         _l_plume = QtWidgets.QHBoxLayout()
         _l_plume.setContentsMargins(0, 0, 0, 0)
         _l_plume.addWidget(self.combo_plume_police, 1)
+        _l_plume.addWidget(btn_voir_plume)
         _l_plume.addWidget(QtWidgets.QLabel("bec :"))
         _l_plume.addWidget(self.spn_plume_angle)
         form.addRow("Police mono-trait :", _l_plume)
@@ -11496,6 +11646,20 @@ class TaskPanelCalligraphie:
         if chemin:
             self.edt_police.setText(chemin)
             self._maj_verdict()
+
+    def _on_voir_polices_plume(self):
+        """Le spécimen des mono-trait. Comme les deux autres sélecteurs
+        visuels, il rend un INDEX que le combo rejoue -- PySide reconstruit
+        un objet neuf à chaque `itemData()`, donc apparier autrement qu'à
+        l'index échouerait en silence."""
+        i = _choisir_police_plume(
+            self.form, self.combo_plume_police, self.edt_texte.text(),
+            {"angle_deg": self.spn_plume_angle.value(),
+             "epaisseur": self.spn_plume_epais.value() / 100.0,
+             "contraste": self.spn_plume_contraste.value(),
+             "modele": self.combo_plume_modele.currentData()})
+        if i is not None and i != self.combo_plume_police.currentIndex():
+            self.combo_plume_police.setCurrentIndex(i)
 
     def _on_voir_polices(self):
         """Ouvre le spécimen et rejoue le choix dans le combo."""

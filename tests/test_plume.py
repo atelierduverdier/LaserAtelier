@@ -1031,3 +1031,77 @@ assert _c22["rapport"] > _c22b["rapport"], (
 print("22. le contraste s'écrit « {} » et 16 donne bien plus de modulation "
       "que 4 ({:.1f}:1 contre {:.1f}:1) OK".format(
           _txt22, _c22["rapport"], _c22b["rapport"]))
+
+
+# --- 23. LE SPÉCIMEN MONO-TRAIT ET LES PRÉRÉGLAGES ----------------------
+# Christophe, 05/08/2026 : « ce serait bien d'avoir, comme polices
+# installées, un visualisateur type "Voir les polices" mais pour police
+# mono-trait, et peut-être aussi pouvoir sauvegarder ses réglages ».
+#
+# ON PILOTE LE HANDLER DU BOUTON, PAS LES AIDES AUTOUR. La première version
+# de ce correctif a posé `_on_voir_polices_plume` dans TaskPanelText -- une
+# classe sans combo mono-trait ni plume -- parce que `_on_voir_polices`
+# existe dans quatre panneaux et que le remplacement a pris le premier. Le
+# contrôle de syntaxe passait ; seul un test qui CLIQUE le voit.
+_p23 = tp.TaskPanelCalligraphie()
+assert hasattr(_p23, "_on_voir_polices_plume"), (
+    "le panneau Calligraphie n'a pas le spécimen mono-trait -- il a peut-être "
+    "atterri dans un autre panneau")
+
+# Le dialogue ne s'ouvre pas : on le fait REFUSER, ce qui laisse tourner
+# tout le peuplement -- 45 polices rendues -- là où vit le vrai risque.
+_exec = tp.QtWidgets.QDialog.exec
+_vus = []
+try:
+    tp.QtWidgets.QDialog.exec = lambda self: (
+        _vus.append(self.windowTitle()),
+        tp.QtWidgets.QDialog.Rejected)[1]
+    _p23.chk_plume.setChecked(True)
+    _p23.edt_texte.setText("Atelier du Verdier")
+    _p23._on_voir_polices_plume()
+finally:
+    tp.QtWidgets.QDialog.exec = _exec
+assert _vus and "mono-trait" in _vus[0], (
+    "le spécimen mono-trait ne s'est pas ouvert", _vus)
+
+# Refusé, il ne doit RIEN changer ; accepté, il rejoue l'index rendu.
+_avant23 = _p23.combo_plume_police.currentIndex()
+_cible23 = (_avant23 + 3) % _p23.combo_plume_police.count()
+_vrai = tp._choisir_police_plume
+try:
+    tp._choisir_police_plume = lambda *a, **k: None
+    _p23._on_voir_polices_plume()
+    assert _p23.combo_plume_police.currentIndex() == _avant23, (
+        "annuler le spécimen change quand même la police")
+    tp._choisir_police_plume = lambda *a, **k: _cible23
+    _p23._on_voir_polices_plume()
+    assert _p23.combo_plume_police.currentIndex() == _cible23, (
+        "le spécimen ne rejoue pas l'index qu'il rend")
+finally:
+    tp._choisir_police_plume = _vrai
+
+# LES PRÉRÉGLAGES : un aller-retour complet sur les six champs de la plume.
+assert hasattr(_p23, "_presets"), "le panneau n'a pas de bloc de préréglages"
+_p23.spn_plume_angle.setValue(-40.0)
+_p23.spn_plume_contraste.setValue(5.0)
+_p23.spn_plume_epais.setValue(12.0)
+_nom23 = "essai-plume-test"
+core.save_preset("calligraphie", _nom23,
+                 {k: tp._widget_get(w) for k, w in _p23._last_fields.items()})
+_p23.spn_plume_angle.setValue(25.0)
+_p23.spn_plume_contraste.setValue(16.0)
+_p23.spn_plume_epais.setValue(16.0)
+_vals23 = core.all_presets("calligraphie")[_nom23]
+for _k, _w in _p23._last_fields.items():
+    if _k in _vals23:
+        tp._widget_set(_w, _vals23[_k])
+assert abs(_p23.spn_plume_angle.value() + 40.0) < 1e-9, (
+    "le préréglage ne rend pas l'angle du bec", _p23.spn_plume_angle.value())
+assert abs(_p23.spn_plume_contraste.value() - 5.0) < 1e-9, (
+    "le préréglage ne rend pas le contraste")
+assert abs(_p23.spn_plume_epais.value() - 12.0) < 1e-9, (
+    "le préréglage ne rend pas l'épaisseur du plein")
+core.delete_preset("calligraphie", _nom23)
+print("23. spécimen mono-trait ({} polices proposées) et préréglages : les "
+      "six réglages de plume font l'aller-retour OK".format(
+          _p23.combo_plume_police.count()))
