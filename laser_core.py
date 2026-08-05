@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.12"
+VERSION = "2.99.13"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2671,6 +2671,46 @@ def _point_dans_polygone(x, y, pts):
     return dedans
 
 
+def _face_moins_trous(contour, trous, z_ref, deflection=0.02):
+    """Rebâtit une face à trous par SOUSTRACTION BOOLÉENNE, quand
+    Part.Face refuse le jeu de fils. Renvoie une LISTE de faces (la coupe
+    peut en rendre plusieurs) ou None.
+
+    Part.Face([extérieur] + [trous]) suppose des trous DISJOINTS. Un
+    dessin au trait n'en offre aucune garantie : ses formes sont des
+    rubans posés les uns sur les autres, et deux rubans qui se croisent
+    donnent deux trous qui se chevauchent. La face sort alors invalide
+    et MUETTE À LA TESSELLATION -- donc impossible à hachurer.
+
+    Mesuré sur la pin-up Ricard de Christophe (05/08/2026) : sur ses
+    144 fils, une seule face rate, mais c'est le corps du dessin --
+    contour de 903 sommets, 40 trous dont 3 paires qui se chevauchent
+    sur 27,33 mm2. La coupe rend 5 632,81 mm2 là où la somme des
+    polygones annonce 5 605,47 : l'écart EST ce double comptage, à
+    0,01 mm2 près. C'est donc la coupe qui dit vrai, pas le modèle
+    polygonal -- lequel ne peut plus servir de référence d'aire ici.
+
+    Deux réparations plus économiques ont été essayées et MESURÉES
+    fausses : `fix()` gonfle la face à 33 313 mm2 (il efface les trous),
+    et ne fusionner que les trous chevauchants donne 12 337 mm2, toujours
+    muette. La coupe coûte 7,5 s sur cette face ; elle n'est tentée que
+    sur celles qui échouent."""
+    try:
+        plein = Part.Face(Part.makePolygon(
+            [FreeCAD.Vector(x, y, z_ref) for x, y in contour]))
+        decoupe = plein.cut([Part.Face(Part.makePolygon(
+            [FreeCAD.Vector(x, y, z_ref) for x, y in t])) for t in trous])
+        obtenues = [f for f in decoupe.Faces if f.Area > 1e-9]
+        if not obtenues:
+            return None
+        for f in obtenues:
+            if len(f.tessellate(0.05)[1]) == 0:
+                return None
+        return obtenues
+    except Exception:
+        return None
+
+
 def _faces_rapides_depuis_fils(wires, deflection=0.02):
     """Construit les faces (extérieur + trous, îlots compris) SANS
     FaceMakerBullseye, dont le tri d'imbrication est en O(n²) coûteux
@@ -2776,14 +2816,33 @@ def _faces_rapides_depuis_fils(wires, deflection=0.02):
                 continue
             ws = [Part.makePolygon(
                 [FreeCAD.Vector(x, y, z_ref) for x, y in sains[i]])]
-            aire_attendue += _aire_signee_2d(sains[i])
+            trous = []
             for k in range(n):
                 if prof[k] == prof[i] + 1 and i in contenants[k]:
                     ws.append(Part.makePolygon(
                         [FreeCAD.Vector(x, y, z_ref)
                          for x, y in sains[k][::-1]]))
-                    aire_attendue -= _aire_signee_2d(sains[k])
-            faces.append(Part.Face(ws))
+                    trous.append(k)
+            f = Part.Face(ws)
+            # Trous chevauchants : la face sort muette. On la rebâtit par
+            # soustraction plutôt que d'abandonner TOUT le lot -- le repli
+            # Bullseye rend alors le contour SANS ses trous (mesuré sur la
+            # pin-up : 22 796 mm2 au lieu de 5 633, soit la silhouette
+            # entière noircie), ce qui est bien pire qu'un chemin lent.
+            if trous and len(f.tessellate(0.05)[1]) == 0:
+                recousues = _face_moins_trous(
+                    sains[i], [sains[k] for k in trous], z_ref, deflection)
+                if recousues is None:
+                    return None
+                faces.extend(recousues)
+                # La coupe fait autorité sur son aire (cf. _face_moins_trous) :
+                # le modèle polygonal soustrairait deux fois les recouvrements.
+                aire_attendue += sum(x.Area for x in recousues)
+                continue
+            faces.append(f)
+            aire_attendue += _aire_signee_2d(sains[i])
+            for k in trous:
+                aire_attendue -= _aire_signee_2d(sains[k])
 
         # Contrôle final : tessellation non vide (le hachurage repose
         # dessus) et aire cohérente avec les polygones. isValid() peut
