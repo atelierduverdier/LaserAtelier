@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.87.0"
+VERSION = "2.88.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2031,6 +2031,10 @@ PLUME_LISSAGE_FENETRE = 0.5      # fenêtre de lissage / plein maxi
 # grandeur du pas que l'extraction produit sur le même texte (0,34).
 PAS_PLUME_EN_PLEINS = 0.25
 
+# Longueur MINIMALE, en pleins, d'une droite terminale pour qu'on accepte de
+# COUPER le geste en deux. Voir `_couper_queue_contrariante`.
+QUEUE_MINI_EN_PLEINS = 3.0
+
 
 # DEUX PLUMES, ET ELLES NE FONT PAS LA MÊME CHOSE. Christophe, la plume
 # appliquée à une police CURSIVE : « c'est une bonne idée mais c'est à
@@ -2076,6 +2080,71 @@ def largeur_plume(p, q, angle_deg, mini, maxi, modele=PLUME_BEC):
         descente = max(0.0, -math.sin(theta))
         plein *= descente ** 0.55
     return mini + (maxi - mini) * plein
+
+
+def _couper_queue_contrariante(pts, plein):
+    """Coupe le geste quand sa DROITE TERMINALE tire le reste à l'envers.
+
+    Renvoie une liste de morceaux (un seul si rien à couper).
+
+    LE « d » EST DEUX MOUVEMENTS DE PLUME, PAS UN. La police l'enchaîne en
+    une seule polyligne -- panse en anti-horaire, puis hampe vers le haut --
+    parce qu'une mono-trait ne sait pas lever le stylo. Mais les deux
+    moitiés ne demandent pas le même sens : la panse est déjà dans le bon
+    (son plein tombe à gauche, là où une main descend), tandis que la hampe
+    doit se graver du haut vers le bas pour être un plein.
+
+    `_sens_main_ok` ne lit que les deux BOUTS du geste, donc la hampe -- de
+    loin le plus long segment -- décidait pour tout le monde et retournait
+    la panse avec elle. Mesuré sur le « d » de « Verdier », largeur médiane
+    par secteur de la panse : le côté GAUCHE, la grande courbe qu'on voit le
+    plus, tombait à 0,096 mm -- le minimum absolu de tout le texte.
+    Christophe, 05/08/2026 : « j'aurais commencé le cercle du d en haut à
+    droite à environ 30 degrés et parti dans le sens anti-horaire [...] le
+    cercle du d est très fin du début à la fin ». C'est exactement ce que la
+    police fait, et c'est nous qui le défaisions.
+
+    Après coupure : gauche 0,096 -> 1,161 mm, la hampe reste à 0,610. Coût
+    3 gestes de plus sur 36 pour ce texte, soit trois relevages.
+
+    ON NE COUPE QUE SI LES DEUX MOITIÉS SE CONTREDISENT -- sinon la coupure
+    n'achèterait rien et laisserait deux terminaisons franches de plus au
+    milieu d'une lettre."""
+    n = len(pts)
+    if n < 3 or plein <= 0.0:
+        return [pts]
+    # début de la droite terminale (2° de tolérance)
+    a0 = math.atan2(pts[-1][1] - pts[-2][1], pts[-1][0] - pts[-2][0])
+    i = n - 2
+    while i > 0:
+        a1 = math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0])
+        if abs((a1 - a0 + math.pi) % (2 * math.pi) - math.pi) > 0.035:
+            break
+        i -= 1
+    if i <= 0 or i >= n - 1:
+        return [pts]
+    if math.hypot(pts[-1][0] - pts[i][0],
+                  pts[-1][1] - pts[i][1]) < QUEUE_MINI_EN_PLEINS * plein:
+        return [pts]
+    tout = _sens_main_ok(pts[0][0], pts[0][1], pts[-1][0], pts[-1][1])
+    tete = _sens_main_ok(pts[0][0], pts[0][1], pts[i][0], pts[i][1])
+    if tout == tete:
+        return [pts]
+    # LA TÊTE DOIT ÊTRE UNE BOUCLE, et c'est le §3 qui l'a imposé. Sans
+    # cette condition la règle coupait aussi le chevron du « A » -- dont
+    # les deux jambages sont bel et bien UN seul mouvement, monté puis
+    # descendu, ce que ce test gèle depuis la v2.80. Un chevron n'a pas de
+    # sens de rotation ; une panse si, et c'est lui qu'il ne faut pas
+    # retourner. On les sépare sur ce qu'ils sont : une boucle revient près
+    # de son point de départ, un chevron s'en éloigne autant qu'il avance.
+    arc = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+              for a, b in zip(pts[:i + 1], pts[1:i + 1]))
+    corde = math.hypot(pts[i][0] - pts[0][0], pts[i][1] - pts[0][1])
+    if arc <= 0.0 or corde > 0.3 * arc:
+        return [pts]
+    # Le point de coupure appartient AUX DEUX morceaux : ils se touchent,
+    # donc rien ne saute -- l'invariant « une chaîne ne saute jamais ».
+    return [pts[:i + 1], pts[i:]]
 
 
 def _densifier(pts, pas):
@@ -2258,8 +2327,11 @@ def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
 
     dx, dy = -min(xs), -min(ys)
     chaines, ws = [], []
+    brut = [m for t in brut
+            for m in _couper_queue_contrariante(
+                [((p[0] + dx) * ech, (p[1] + dy) * ech) for p in t], maxi)]
     for t in brut:
-        pts = [((p[0] + dx) * ech, (p[1] + dy) * ech) for p in t]
+        pts = list(t)
         # ORIENTER AVANT DE MESURER, parce que POUR LA PLUME LA LARGEUR EST
         # UNE FONCTION DU SENS. Le générateur retourne déjà chaque geste
         # dans le sens de la main (`sens_de_la_main`), mais il le faisait

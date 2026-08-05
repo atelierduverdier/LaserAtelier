@@ -791,3 +791,66 @@ assert _wsab < 1.5 * _ds18["w_min"], (
 print("18. la largeur suit le sens gravé : 0 geste à retourner, hampes à "
       "{:.3f} mm contre {:.3f} au plancher sans le correctif OK".format(
           _wfut, _wsab))
+
+
+# --- 19. LE PLEIN DE LA PANSE TOMBE À GAUCHE ----------------------------
+# Christophe, 05/08/2026, la hampe enfin bonne : « j'aurais commencé le
+# cercle du d en haut à droite à environ 30 degrés et parti dans le sens
+# anti-horaire [...] là c'est bien mais du coup le cercle du d est très fin
+# du début à la fin ».
+#
+# C'est exactement ce que la police fait -- et c'est nous qui le défaisions.
+# Le « d » est DEUX mouvements de plume dans UNE polyligne : panse en
+# anti-horaire, puis hampe vers le haut. `_sens_main_ok` ne lit que les deux
+# bouts, donc la hampe -- de loin le plus long segment -- décidait pour tout
+# le monde et retournait la panse avec elle. Le plein de la panse basculait
+# alors à DROITE, écrasé contre la hampe, et la grande courbe de gauche,
+# celle qu'on voit le plus, tombait au minimum absolu du texte.
+_ch19, _i19 = core.chaines_plume("hersheyscript1", _TXT17, largeur_mm=160.0,
+                                 angle_deg=50.0, epaisseur=0.16,
+                                 contraste=16.0, modele="pointue")
+
+
+def _panse_du_d(chaines):
+    """(médiane à gauche, médiane à droite) de la panse du 1er « d »."""
+    pts = [p for c in chaines for p in c if p[1] < 5.0 and 39.0 < p[0] < 45.6]
+    assert pts, "la panse du « d » est introuvable : le contrôle vise à côté"
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    g, d = [], []
+    for p in pts:
+        a = math.degrees(math.atan2(p[1] - cy, p[0] - cx)) % 360
+        if 135.0 <= a < 225.0:
+            g.append(p[2])
+        elif a >= 315.0 or a < 45.0:
+            d.append(p[2])
+    g.sort(), d.sort()
+    return (g[len(g) // 2] if g else 0.0), (d[len(d) // 2] if d else 0.0)
+
+
+_gau19, _dro19 = _panse_du_d(_ch19)
+assert _gau19 > _dro19, (
+    "le plein de la panse est à DROITE : la panse est parcourue à l'envers, "
+    "son plein s'écrase contre la hampe et la courbe de gauche sort en "
+    "filet", _gau19, _dro19)
+assert _gau19 > 5.0 * _i19["largeur_trait_min"], (
+    "la courbe de gauche du « d » est au filet ({:.3f} mm pour un délié de "
+    "{:.3f}) : c'est « le cercle est très fin du début à la fin »"
+    .format(_gau19, _i19["largeur_trait_min"]), _gau19)
+
+# SABOTAGE : on désarme la coupure, comme en v2.87.0.
+_src19 = inspect.getsource(core.chaines_plume)
+_faux19 = _src19.replace("_couper_queue_contrariante(", "(lambda p, m: [p])(")
+assert _faux19 != _src19, "le sabotage n'a rien remplacé -- il ne prouve rien"
+_ns19 = dict(core.__dict__)
+exec(compile(textwrap.dedent(_faux19), "<sabotage>", "exec"), _ns19)
+_chs19 = _ns19["chaines_plume"]("hersheyscript1", _TXT17, largeur_mm=160.0,
+                                angle_deg=50.0, epaisseur=0.16,
+                                contraste=16.0, modele="pointue")[0]
+_gs19, _ds19 = _panse_du_d(_chs19)
+assert _gs19 < 2.0 * _i19["largeur_trait_min"], (
+    "sans la coupure la panse garde son plein à gauche : le contrôle "
+    "ci-dessus ne prouve pas que c'est elle qui le remet là", _gs19)
+print("19. le plein de la panse est à gauche : {:.3f} mm contre {:.3f} à "
+      "droite, et {:.3f} au filet sans la coupure OK".format(
+          _gau19, _dro19, _gs19))
