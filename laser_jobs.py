@@ -599,6 +599,38 @@ def _ranger(doc, obj, cle):
     cible.addObject(obj)
 
 
+def ranger_forme(obj):
+    """Range une forme fabriquée par l'atelier dans « Formes à graver ».
+
+    LES OBJETS QUE L'ATELIER CRÉE, C'EST À L'ATELIER DE LES RANGER. Jusqu'ici
+    une forme n'atteignait son rayon qu'au moment où on lui faisait un JOB --
+    or les Hachures n'en créent aucun (elles ne produisent que de la
+    géométrie), si bien que leur objet restait à plat dans l'arbre, à côté du
+    dossier plutôt que dedans. Christophe, 05/08/2026 : « le job
+    hachures_paralleles n'est pas dans Aperçus de remplissage ».
+
+    Ce n'est PAS un aperçu -- un aperçu ne se grave jamais, celui-ci est le
+    tracé même que le laser suivra. Sa place est parmi les formes à graver.
+
+    Silencieuse : un rangement raté ne doit jamais empêcher de travailler."""
+    try:
+        doc = getattr(obj, "Document", None)
+        if doc is None:
+            return
+        deja = (getattr(obj, "getParentGroup", lambda: None)()
+                or getattr(obj, "getParentGeoFeatureGroup", lambda: None)())
+        # Une forme que l'utilisateur a lui-même classée dans un Body ou une
+        # Part ne bouge pas : on ne casse pas son organisation.
+        if deja is not None and not getattr(
+                deja, "Name", "").startswith("AtelierLaser"):
+            return
+        _ranger(doc, obj, "Formes")
+    except Exception as exc:
+        FreeCAD.Console.PrintLog(
+            "Rangement de « {} » impossible ({}).\n".format(
+                getattr(obj, "Label", "?"), exc))
+
+
 def _ranger_dans_groupe(doc, job, sources):
     """Range le Job dans « Jobs », ses sources encore orphelines dans
     « Formes à graver », et l'aperçu du job dans « Aperçus ».

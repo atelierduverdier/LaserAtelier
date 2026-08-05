@@ -406,6 +406,38 @@ try:
         "le recul de la surface est trop faible : le contour clignotera "
         "sous elle", lj.RECUL_APERCU_MM)
 
+    # L'ATELIER RANGE CE QU'IL CRÉE, MÊME SANS JOB. Les Hachures ne créent
+    # aucun job -- elles ne produisent que de la géométrie -- si bien que
+    # leur objet restait à plat dans l'arbre, à côté du dossier plutôt que
+    # dedans. Christophe : « le job hachures_paralleles n'est pas dans
+    # Aperçus de remplissage ». Ce n'est pas un aperçu -- un aperçu ne se
+    # grave jamais, celui-ci est le tracé même que le laser suivra : sa
+    # place est parmi les FORMES À GRAVER.
+    _hach = _doc.addObject("Part::Feature", "Hachures_paralleles_1_0_45_0deg")
+    _hach.Shape = Part.makePolygon([FreeCAD.Vector(0, 0, 0),
+                                    FreeCAD.Vector(9, 0, 0)])
+    _doc.recompute()
+    assert _hach.getParentGroup() is None, (
+        "le fixture doit partir d'une forme À PLAT, sinon il ne prouve rien")
+    lj.ranger_forme(_hach)
+    _p8 = _hach.getParentGroup()
+    assert _p8 is not None and _p8.Label.startswith("Formes"), (
+        "une forme fabriquée par l'atelier reste à plat dans l'arbre",
+        _p8.Label if _p8 else None)
+
+    # MAIS ON NE CASSE PAS L'ORGANISATION DE L'UTILISATEUR : une forme qu'il
+    # a lui-même classée dans un conteneur n'est pas déménagée.
+    _mien = _doc.addObject("App::Part", "MonConteneur")
+    _sien = _doc.addObject("Part::Feature", "AMoi")
+    _sien.Shape = _hach.Shape
+    _mien.addObject(_sien)
+    lj.ranger_forme(_sien)
+    _formes = next(_g for _g in (getattr(_grp, "Group", None) or [])
+                   if getattr(_g, "Label", "").startswith("Formes"))
+    assert _sien not in (getattr(_formes, "Group", None) or []), (
+        "l'atelier a déménagé une forme que l'utilisateur avait classée "
+        "lui-même")
+
     # L'APERÇU NE DOIT JAMAIS DEVENIR UN MOTIF. `Selectable = False` ne
     # bloque que le clic dans la VUE 3D ; un clic dans l'ARBRE passe outre,
     # et les cinq modes lisent la même sélection. Christophe : « si par

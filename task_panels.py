@@ -8056,6 +8056,11 @@ class TaskPanelHatch:
             self.selection, self.spn_spacing.value(), self.spn_angle.value(),
             fill_type=fill_type, inset=self.spn_inset.value(),
             contour=self.chk_hatch_contour.isChecked())
+        if obj is not None:
+            # Import LOCAL : `laser_jobs` n'est jamais tiré au niveau module
+            # (démarrage de FreeCAD), et ce fichier suit la même règle.
+            import laser_jobs as _lj
+            _lj.ranger_forme(obj)          # l'atelier range ce qu'il crée
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False
@@ -9510,6 +9515,11 @@ class TaskPanelProject:
     def accept(self):
         selection = Gui.Selection.getSelectionEx()
         obj, err = core.run_projection(selection)
+        if obj is not None:
+            # Import LOCAL : `laser_jobs` n'est jamais tiré au niveau module
+            # (démarrage de FreeCAD), et ce fichier suit la même règle.
+            import laser_jobs as _lj
+            _lj.ranger_forme(obj)          # l'atelier range ce qu'il crée
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
             return False
@@ -9872,6 +9882,11 @@ class TaskPanelTexteContour:
             os.path.basename(self.edt_police.text().strip()),
             self.spn_largeur.value(), obj=repris,
             chemin_police=self.edt_police.text().strip())
+        if obj is not None:
+            # Import LOCAL : `laser_jobs` n'est jamais tiré au niveau module
+            # (démarrage de FreeCAD), et ce fichier suit la même règle.
+            import laser_jobs as _lj
+            _lj.ranger_forme(obj)          # l'atelier range ce qu'il crée
         if err:
             QtWidgets.QMessageBox.critical(self.form, "Texte gravé", err)
             return False
@@ -12027,6 +12042,11 @@ class TaskPanelCalligraphie:
             os.path.basename(self.edt_police.text().strip()),
             self.spn_largeur.value(), obj=self._objet_vivant(),
             chemin_police=self.edt_police.text().strip())
+        if obj is not None:
+            # Import LOCAL : `laser_jobs` n'est jamais tiré au niveau module
+            # (démarrage de FreeCAD), et ce fichier suit la même règle.
+            import laser_jobs as _lj
+            _lj.ranger_forme(obj)          # l'atelier range ce qu'il crée
         if err:
             QtWidgets.QMessageBox.warning(self.form, "Calligraphie", err)
             return
