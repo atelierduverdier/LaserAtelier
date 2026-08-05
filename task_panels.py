@@ -18852,6 +18852,34 @@ class TaskPanelCombined:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Ajoute au moins une opération avant de lancer le job.")
             return False
 
+        # ON REPREND LES RÉGLAGES DES JOBS AVANT DE GRAVER. Une opération est
+        # un INSTANTANÉ : `_build_combined_operation` capture les arêtes et
+        # les réglages au moment de l'ajout, et modifier le job ensuite ne
+        # les touche pas. Christophe, 05/08/2026 : « j'ai changé un
+        # remplissage pour le mettre plus foncé, mais quand je vais dans les
+        # combinés, cela ne le prend pas en compte ». Il aurait gravé
+        # l'ancien réglage -- et ne l'aurait vu que sur le bois.
+        #
+        # On le fait ICI, à la génération, et non à l'ouverture du panneau :
+        # c'est le fichier qu'on écrit qui doit être à jour, et le dire
+        # après coup ne réparerait rien.
+        try:
+            import laser_jobs as _lj
+            repris, laisses = _lj.rafraichir_operations(self.operations)
+            if repris:
+                FreeCAD.Console.PrintMessage(
+                    "Job combiné : réglages repris depuis {} job(s) -- {}.\n"
+                    .format(len(repris), ", ".join(repris)))
+            for motif in laisses:
+                FreeCAD.Console.PrintMessage(
+                    "Job combiné : « {} » gardée telle quelle.\n".format(motif))
+        except Exception as exc:
+            # Un rafraîchissement raté ne doit pas empêcher de graver ce
+            # qu'on a : on le dit, et on continue avec l'instantané.
+            FreeCAD.Console.PrintWarning(
+                "Job combiné : réglages non repris ({}) -- le fichier part "
+                "avec les valeurs mémorisées à l'ajout.\n".format(exc))
+
         warnings_out = {}
         gcode = core.generate_gcode_combined(self.operations, warnings_out=warnings_out)
 

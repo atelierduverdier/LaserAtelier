@@ -735,6 +735,10 @@ def ajouter_jobs_au_combine(jobs):
             ignores.append("{} (opération invalide)".format(job.Label))
             continue
         op["label"] = job.Label
+        # ON MÉMORISE LE JOB, pas seulement son nom. C'est ce qui permettra
+        # de REPRENDRE ses réglages avant de graver : sans ce lien, une
+        # opération est un instantané qui vieillit en silence.
+        op["job"] = job.Name
         # Idempotent : si une opération portant le Label de ce Job est déjà
         # dans le job combiné, on la REMPLACE (rafraîchit ses réglages) au
         # lieu d'empiler un doublon. Re-cliquer « Jobs -> combiné » ne gonfle
@@ -749,6 +753,48 @@ def ajouter_jobs_au_combine(jobs):
         ajoutes.append(job.Label)
     Gui.Selection.clearSelection()
     return ajoutes, ignores
+
+
+def rafraichir_operations(ops, doc=None):
+    """Reprend les réglages COURANTS de chaque opération issue d'un Job.
+
+    UNE OPÉRATION EST UN INSTANTANÉ, et c'est le piège. `_build_combined_operation`
+    capture les arêtes ET les réglages au moment de l'ajout ; modifier le job
+    ensuite ne les touche pas. Christophe, 05/08/2026 : « j'ai changé un
+    remplissage pour le mettre plus foncé, mais quand je vais dans les
+    combinés, cela ne le prend pas en compte ». Il aurait gravé l'ANCIEN
+    réglage -- une planche perdue, découverte sur le bois.
+
+    Renvoie (labels repris, labels laissés tels quels avec la raison)."""
+    import FreeCAD as _fc
+    doc = doc or _fc.ActiveDocument
+    if doc is None:
+        return [], []
+    par_nom = {o.Name: o for o in doc.Objects if _est_job(o)}
+    repris, laisses = [], []
+    for i, op in enumerate(list(ops)):
+        nom = op.get("job")
+        if not nom:
+            laisses.append("{} (ajoutée depuis son mode, sans job)"
+                           .format(op.get("label", "?")))
+            continue
+        job = par_nom.get(nom)
+        if job is None:
+            laisses.append("{} (son job a été supprimé)"
+                           .format(op.get("label", "?")))
+            continue
+        avant = len(ops)
+        ajoutes, ignores = ajouter_jobs_au_combine([job])
+        if ajoutes:
+            repris.append(job.Label)
+        else:
+            laisses.append(ignores[0] if ignores else job.Label)
+        # `ajouter_jobs_au_combine` REMPLACE l'opération de même label : la
+        # liste ne doit pas avoir grandi, sinon on empilerait des doublons.
+        if len(ops) > avant:
+            del ops[avant:]
+            laisses.append("{} (remplacement impossible)".format(job.Label))
+    return repris, laisses
 
 
 def _est_job(obj):

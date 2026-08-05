@@ -380,3 +380,59 @@ finally:
     FreeCAD.closeDocument("EssaiFlux")
 print("9. les modes de géométrie ne créent plus de Job, et le refus des "
       "anciens dit quoi faire OK")
+
+
+# --- 10. UNE OPÉRATION COMBINÉE NE DOIT PAS VIEILLIR EN SILENCE ---------
+# `_build_combined_operation` capture les arêtes ET les réglages au moment de
+# l'ajout : une opération est un INSTANTANÉ. Modifier le job ensuite ne la
+# touche pas. Christophe, 05/08/2026 : « j'ai changé un remplissage pour le
+# mettre plus foncé, mais quand je vais dans les combinés, cela ne le prend
+# pas en compte ». Il aurait gravé l'ancien réglage -- et ne l'aurait vu que
+# sur le bois.
+_d10 = FreeCAD.newDocument("EssaiCombine")
+try:
+    _o10 = _d10.addObject("Part::Feature", "Forme")
+    _o10.Shape = Part.makePolygon([FreeCAD.Vector(0, 0, 0),
+                                   FreeCAD.Vector(9, 0, 0)])
+    _d10.recompute()
+    _j10 = _lj9.creer_ou_maj_job("curved", [_o10])
+
+    # LE LIEN VERS LE JOB EST CE QUI REND LA REPRISE POSSIBLE : sans lui, une
+    # opération ne sait pas d'où elle vient.
+    _ops = [{"type": "curved", "label": _j10.Label, "job": _j10.Name},
+            {"type": "curved", "label": "ajoutée depuis son mode"},
+            {"type": "curved", "label": "orpheline", "job": "Job_disparu"}]
+    _appels = []
+    _vrai_aj = _lj9.ajouter_jobs_au_combine
+    try:
+        _lj9.ajouter_jobs_au_combine = lambda jobs: (
+            _appels.append([j.Name for j in jobs]), ([j.Label for j in jobs], []))[1]
+        _repris, _laisses = _lj9.rafraichir_operations(_ops, _d10)
+    finally:
+        _lj9.ajouter_jobs_au_combine = _vrai_aj
+
+    assert _appels == [[_j10.Name]], (
+        "la reprise n'a pas interrogé le bon job", _appels)
+    assert _repris == [_j10.Label], ("le job vivant n'a pas été repris", _repris)
+    # LES DEUX AUTRES SONT NOMMÉS, PAS AVALÉS. Une opération gardée telle
+    # quelle sans le dire, c'est exactement le défaut qu'on répare.
+    assert len(_laisses) == 2, ("les opérations non reprises ne sont pas "
+                                "nommées", _laisses)
+    assert any("sans job" in _m for _m in _laisses), _laisses
+    assert any("supprimé" in _m for _m in _laisses), _laisses
+    assert len(_ops) == 3, ("la liste a changé de taille pendant la reprise",
+                            len(_ops))
+
+    # ET LA REPRISE DOIT AVOIR LIEU AVANT L'ÉCRITURE. Le dire après coup ne
+    # réparerait rien : c'est le fichier qu'on grave qui doit être à jour.
+    import inspect as _insp10
+    _src10 = _insp10.getsource(tp.TaskPanelCombined._on_generer)
+    _i_maj = _src10.find("rafraichir_operations")
+    _i_gen = _src10.find("generate_gcode_combined")
+    assert 0 <= _i_maj < _i_gen, (
+        "le job combiné écrit son G-code avant d'avoir repris les réglages "
+        "des jobs", _i_maj, _i_gen)
+finally:
+    FreeCAD.closeDocument("EssaiCombine")
+print("10. le job combiné reprend les réglages des jobs avant d'écrire, et "
+      "nomme les opérations qu'il garde telles quelles OK")
