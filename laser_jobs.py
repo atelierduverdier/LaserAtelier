@@ -94,52 +94,91 @@ def _autres_jobs(doc, job, source):
     return out
 
 
-def colorer_sources(job):
-    """Peint les formes du Job à la couleur de son mode -- ou en gris s'il
-    est décoché. Renvoie la liste des formes DISPUTÉES.
+# QUI GAGNE QUAND PLUSIEURS JOBS SE PARTAGENT UNE FORME. Le premier de
+# cette liste qui est COCHÉ donne sa couleur ; décocher un job fait donc
+# apparaître celui d'en dessous, ce qu'on attend d'une pile de calques.
+#
+# LA v2.93 PEIGNAIT JOB PAR JOB, dernier arrivé gagnant -- si bien que
+# décocher un job GRISAIT une forme que deux autres gravaient encore.
+# Christophe, 05/08/2026, trois jobs sur un même texte : « quand je décoche
+# gravure oui / non la couleur du dessous ou dessus ne s'affiche pas ». La
+# couleur d'une forme partagée ne PEUT PAS se décider depuis un seul de ses
+# jobs : il faut arbitrer sur l'ensemble.
+#
+# L'ordre suit la CONSÉQUENCE : ce qu'on ne rattrape pas d'abord.
+PRIORITE_CALQUE = ("flat", "curved_cut", "filled", "hatch", "curved")
 
-    UNE FORME PEUT SERVIR À DEUX JOBS, et c'est un usage légitime : marquer
-    puis découper le même contour. Or la couleur est portée par l'OBJET, pas
-    par le job -- FreeCAD n'a rien pour en montrer deux. Le dernier job posé
-    gagne donc, et on le DIT plutôt que de le taire : une couleur qui ment
-    sur ce qui sera gravé est pire que pas de couleur du tout."""
+
+def rafraichir_calques(doc):
+    """Repeint TOUTES les formes du document d'après TOUS les jobs.
+
+    Renvoie {label de forme: [modes cochés]} pour les formes PARTAGÉES."""
+    if doc is None:
+        return {}
+    par_forme = {}
+    for o in doc.Objects:
+        if not _est_job(o):
+            continue
+        mode = getattr(o, "Mode", "")
+        if mode not in COULEURS_MODE:
+            continue
+        for src in (getattr(o, "Sources", None) or []):
+            if src is not None:
+                par_forme.setdefault(src, []).append(
+                    (mode, bool(getattr(o, "Grave", True))))
+    partagees = {}
+    for src, jobs in par_forme.items():
+        actifs = [m for m, g in jobs if g]
+        if len(jobs) > 1:
+            partagees[getattr(src, "Label", "?")] = actifs
+        gagnant = next((m for m in PRIORITE_CALQUE if m in actifs), None)
+        _peindre(src, gagnant)
+    return partagees
+
+
+def _peindre(src, mode):
+    """La couleur du mode sur la forme -- ou le gris d'extinction si `mode`
+    est None (aucun job coché ne la vise)."""
+    vue = _vue(src)
+    if vue is None:
+        return                            # headless : rien à peindre
+    couleur = COULEURS_MODE[mode] if mode else GRIS_ETEINT
+    remplit = bool(mode) and mode in MODES_REMPLIS
+    for attr in ("LineColor", "PointColor", "ShapeColor"):
+        if hasattr(vue, attr):
+            try:
+                setattr(vue, attr, couleur)
+            except Exception:
+                pass                      # une vue qui refuse n'arrête rien
+    # UNE FORME SANS FACE NE SE REMPLIT PAS, et il faut le dire autrement.
+    # Le « Texte gravé » de l'atelier est un compound de 1742 ARÊTES et
+    # ZÉRO face : `ShapeColor` n'y peint rien, d'où « je ne vois pas de
+    # remplissage ». Le TRAIT est la seule surface dont on dispose, donc un
+    # job qui noircit une aire l'épaissit -- c'est ce qui distingue à l'oeil
+    # « on remplit ça » de « on suit ce trait ».
+    if hasattr(vue, "LineWidth"):
+        try:
+            vue.LineWidth = 4.0 if remplit else 2.0
+        except Exception:
+            pass
+    if hasattr(vue, "Transparency"):
+        try:
+            vue.Transparency = 0 if mode else 70
+        except Exception:
+            pass
+
+
+def colorer_sources(job):
+    """Repeint le document entier à partir de ce job. Gardée sous ce nom
+    parce que les appelants en tiennent un, mais elle ARBITRE désormais sur
+    l'ensemble. Renvoie les labels de SES formes qui sont partagées."""
     doc = getattr(job, "Document", None)
     if doc is None:
         return []
-    mode = getattr(job, "Mode", "")
-    grave = bool(getattr(job, "Grave", True))
-    if mode not in COULEURS_MODE:
-        return []
-    couleur = COULEURS_MODE[mode] if grave else GRIS_ETEINT
-    remplit = mode in MODES_REMPLIS
-    disputees = []
-    for src in (getattr(job, "Sources", None) or []):
-        if src is None:
-            continue
-        if _autres_jobs(doc, job, src):
-            disputees.append(getattr(src, "Label", "?"))
-        vue = _vue(src)
-        if vue is None:
-            continue                      # headless : rien à peindre
-        attrs = ["LineColor", "PointColor"]
-        if remplit:
-            # La FACE porte la couleur : le remplissage se voit rempli.
-            attrs.append("ShapeColor")
-        for attr in attrs:
-            if hasattr(vue, attr):
-                try:
-                    setattr(vue, attr, couleur)
-                except Exception:
-                    pass                  # une vue qui refuse n'arrête rien
-        if remplit and hasattr(vue, "Transparency"):
-            try:
-                # Décoché, la face s'efface au lieu de rester pleine : « si
-                # on ne veut pas graver, ne pas remplir ».
-                vue.Transparency = 0 if grave else 80
-            except Exception:
-                pass
-    return disputees
-
+    partagees = rafraichir_calques(doc)
+    miennes = {getattr(s, "Label", "?")
+               for s in (getattr(job, "Sources", None) or []) if s is not None}
+    return sorted(set(partagees) & miennes)
 
 class JobLaser:
     """Proxy App::FeaturePython du Job : un signet, rien à recalculer."""
@@ -375,12 +414,14 @@ def _dire_disputees(job, labels):
     montrer."""
     if not labels:
         return
-    FreeCAD.Console.PrintWarning(
-        "Couleur des calques : « {} » sert aussi à un autre job -- elle "
-        "porte donc la couleur du dernier posé ({}). Les deux jobs seront "
-        "bien gravés ; c'est l'affichage qui ne sait montrer qu'une "
-        "couleur.\n".format(", ".join(labels), MODES.get(
-            getattr(job, "Mode", ""), ("?",))[0]))
+    FreeCAD.Console.PrintMessage(
+        "Calques : « {} » sert à plusieurs jobs. La couleur montrée est "
+        "celle du plus conséquent qui reste COCHÉ (ordre : {}) -- décoche-le "
+        "et celui d'en dessous apparaît. Tous les jobs cochés sont gravés ; "
+        "c'est l'affichage qui ne sait montrer qu'une couleur à la "
+        "fois.\n".format(", ".join(labels),
+                          " > ".join(MODES[m][0] for m in PRIORITE_CALQUE
+                                     if m in MODES)))
 
 
 def creer_ou_maj_job(mode, sources, sous_elements=None):

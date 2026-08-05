@@ -159,16 +159,51 @@ try:
         "recoché, le job est toujours refusé pour « décoché » : ce n'est pas "
         "la case qui gouverne, et le contrôle ci-dessus ne prouve rien")
 
-    # UNE FORME PARTAGÉE EST NOMMÉE. La couleur est portée par l'objet, pas
-    # par le job : deux jobs sur une même forme ne peuvent pas s'afficher en
-    # deux couleurs, et on le dit plutôt que de laisser croire.
-    _j3 = lj.creer_ou_maj_job("curved", [_a])
-    _disputees = lj.colorer_sources(_j3)
-    assert "Contour" in _disputees, (
-        "une forme servant à deux jobs n'est pas signalée : sa couleur "
-        "mentira sur ce qui sera gravé", _disputees)
+    # UNE PILE DE CALQUES : décocher celui du dessus doit RÉVÉLER celui du
+    # dessous. La v2.93 peignait job par job, dernier arrivé gagnant, si
+    # bien que décocher un job GRISAIT une forme que deux autres gravaient
+    # encore -- Christophe, trois jobs sur un même texte : « quand je décoche
+    # gravure oui / non la couleur du dessous ou dessus ne s'affiche pas ».
+    _t = _trait("Texte")
+    _doc.recompute()
+    _jm = lj.creer_ou_maj_job("curved", [_t])
+    _jf = lj.creer_ou_maj_job("filled", [_t])
+    _jh = lj.creer_ou_maj_job("hatch", [_t])
+
+    def _qui_gagne():
+        _actifs = lj.rafraichir_calques(_doc).get(_t.Label, [])
+        return next((_m for _m in lj.PRIORITE_CALQUE if _m in _actifs), None)
+
+    assert _qui_gagne() == "filled", (
+        "avec les trois cochés, ce n'est pas le plus conséquent qui montre "
+        "sa couleur", _qui_gagne())
+    _jf.Grave = False
+    assert _qui_gagne() == "hatch", (
+        "décocher la gravure remplie ne révèle pas le calque du dessous",
+        _qui_gagne())
+    _jh.Grave = False
+    assert _qui_gagne() == "curved", (
+        "décocher deux calques ne révèle pas le troisième", _qui_gagne())
+    _jm.Grave = False
+    assert _qui_gagne() is None, (
+        "tout décoché, la forme devrait passer au gris et non garder une "
+        "couleur de mode", _qui_gagne())
+    _jf.Grave = True
+    assert _qui_gagne() == "filled", (
+        "recocher un calque ne le fait pas revenir")
+
+    # ET LA PILE DOIT ÊTRE COMPLÈTE : un mode absent de la priorité ne
+    # gagnerait jamais, donc sa couleur ne s'afficherait jamais.
+    assert set(lj.PRIORITE_CALQUE) == set(lj.COULEURS_MODE), (
+        "des modes colorés ne figurent pas dans la pile des calques",
+        set(lj.COULEURS_MODE) - set(lj.PRIORITE_CALQUE))
+
+    # Une forme d'UN SEUL job n'est pas signalée comme partagée.
     assert lj.colorer_sources(_j2) == [], (
-        "une forme d'un seul job est signalée comme disputée")
+        "une forme d'un seul job est signalée comme partagée")
+    assert lj.colorer_sources(_jm) == ["Texte"], (
+        "une forme servant à trois jobs n'est pas signalée",
+        lj.colorer_sources(_jm))
     # LA COULEUR DIT QUEL TRAVAIL, pas seulement quel mode. Ce qui noircit
     # une aire se montre REMPLI (la face prend la couleur) ; ce qui marque
     # ou coupe se montre au TRAIT seul -- forcer un solide 3D en fil de fer
