@@ -198,6 +198,61 @@ try:
         "des modes colorés ne figurent pas dans la pile des calques",
         set(lj.COULEURS_MODE) - set(lj.PRIORITE_CALQUE))
 
+    # LA SURFACE D'APERÇU : un contour n'a pas de face, mais la Gravure
+    # remplie sait en BÂTIR pour calculer ce qu'elle noircit -- on montre
+    # cette surface-là. Christophe : « je le veux car cela a vraiment un sens
+    # pratique et utile ».
+    _cadre = _doc.addObject("Part::Feature", "Cadre")
+    _pts = [FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(20, 0, 0),
+            FreeCAD.Vector(20, 10, 0), FreeCAD.Vector(0, 10, 0),
+            FreeCAD.Vector(0, 0, 0)]
+    _cadre.Shape = Part.Compound([Part.makePolygon(_pts)])
+    _doc.recompute()
+    assert not _cadre.Shape.Faces, (
+        "le fixture doit partir d'une forme SANS face, sinon il ne prouve "
+        "rien sur le cas de Christophe")
+
+    _n_bati = [0]
+    _vrai_faces = core._faces_from_any_shape
+    core._faces_from_any_shape = lambda *a, **k: (
+        _n_bati.__setitem__(0, _n_bati[0] + 1), _vrai_faces(*a, **k))[1]
+    try:
+        _jr = lj.creer_ou_maj_job("filled", [_cadre])
+        _ap = lj._apercu_existant(_doc, _jr)
+        assert _ap is not None and _ap.Shape.Faces, (
+            "aucune surface d'aperçu pour un job de remplissage sur un "
+            "contour fermé")
+        assert _ap.Shape.Area > 190.0, (
+            "la surface d'aperçu ne couvre pas le cadre", _ap.Shape.Area)
+        assert getattr(_ap, lj.PROP_APERCU) == _jr.Name, (
+            "la surface d'aperçu n'est pas rattachée à son job : on ne "
+            "saurait ni la retrouver ni la supprimer")
+        assert _ap.Placement.Base.z < 0, (
+            "la surface est au même Z que le tracé : le contour disparaîtra "
+            "sous elle par moirage")
+
+        # UN MARQUAGE NE REMPLIT RIEN, donc pas de surface : peindre une
+        # aire pleine pour un trait promettrait un noir qui n'aura pas lieu.
+        _jc = lj.creer_ou_maj_job("curved", [_cadre])
+        assert lj._apercu_existant(_doc, _jc) is None, (
+            "un job de marquage a posé une surface pleine")
+        assert "hatch" not in lj.MODES_APERCU_PLEIN, (
+            "les hachures laissent du bois nu entre les traits : les montrer "
+            "pleines promettrait un noir qu'elles ne rendent pas")
+
+        # COCHER/DÉCOCHER NE REBÂTIT PAS. 0,17 s par texte : le refaire à
+        # chaque clic rendrait la case désagréable.
+        _avant = _n_bati[0]
+        _jr.Grave = False
+        lj.rafraichir_calques(_doc)
+        _jr.Grave = True
+        lj.rafraichir_calques(_doc)
+        assert _n_bati[0] == _avant, (
+            "basculer la case reconstruit les faces : {} bâtis de plus"
+            .format(_n_bati[0] - _avant))
+    finally:
+        core._faces_from_any_shape = _vrai_faces
+
     # Une forme d'UN SEUL job n'est pas signalée comme partagée.
     assert lj.colorer_sources(_j2) == [], (
         "une forme d'un seul job est signalée comme partagée")

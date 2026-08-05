@@ -133,6 +133,11 @@ def rafraichir_calques(doc):
             partagees[getattr(src, "Label", "?")] = actifs
         gagnant = next((m for m in PRIORITE_CALQUE if m in actifs), None)
         _peindre(src, gagnant)
+    # Les surfaces d'aperçu suivent la case : on ne REBÂTIT pas ici (0,17 s
+    # par texte), on ne fait que montrer ou cacher.
+    for o in doc.Objects:
+        if _est_job(o) and getattr(o, "Mode", "") in MODES_APERCU_PLEIN:
+            _apercu_calque(o)
     return partagees
 
 
@@ -166,6 +171,119 @@ def _peindre(src, mode):
             vue.Transparency = 0 if mode else 70
         except Exception:
             pass
+
+
+# LE CALQUE PLEIN : les modes dont l'aperçu vaut une VRAIE surface. Un
+# contour n'a pas de face -- le « Texte gravé » de l'atelier est 1742 arêtes
+# et zéro face -- mais la Gravure remplie sait déjà en BÂTIR pour calculer ce
+# qu'elle va noircir. On montre donc cette surface-là.
+#
+# Christophe, 05/08/2026 : « je le veux car cela a vraiment un sens pratique
+# et utile ». Mesuré sur son texte : 0,17 s pour 8 faces, 340 mm².
+#
+# LES HACHURES EN SONT EXCLUES EXPRÈS. Elles couvrent bien une aire, mais
+# elles laissent du bois nu entre les traits : la peindre pleine promettrait
+# un noir qu'elles ne rendent pas. La couleur et l'épaisseur du trait leur
+# suffisent.
+MODES_APERCU_PLEIN = ("filled",)
+
+PROP_APERCU = "LaserAtelierApercuCalque"
+TRANSPARENCE_APERCU = 35
+# La surface se pose un cheveu SOUS le tracé : même Z, et le contour
+# disparaît sous elle par moirage (z-fighting).
+RECUL_APERCU_MM = 0.01
+
+
+def _apercu_existant(doc, job):
+    for o in doc.Objects:
+        if getattr(o, PROP_APERCU, None) == job.Name:
+            return o
+    return None
+
+
+def _apercu_calque(job, rebatir=False):
+    """Pose (ou met à jour) la surface d'aperçu d'un job de remplissage.
+
+    L'objet n'est JAMAIS une source de gravure : il est non sélectionnable
+    dans la vue 3D, pour qu'un clic malheureux n'en fasse pas un motif."""
+    doc = getattr(job, "Document", None)
+    if doc is None or getattr(job, "Mode", "") not in MODES_APERCU_PLEIN:
+        return None
+    sources = [s for s in (getattr(job, "Sources", None) or []) if s is not None]
+    if not sources:
+        return None
+    vieux = _apercu_existant(doc, job)
+    if not rebatir:
+        # RAFRAÎCHIR NE BÂTIT RIEN. Sans ce retour, un job dont la source ne
+        # borne aucune surface -- une ligne ouverte, un motif non fermé --
+        # retentait la construction des faces à CHAQUE clic sur la case, et
+        # cette construction coûte 0,17 s sur un texte. Le test le compte :
+        # il a trouvé quatre reconstructions pour deux bascules.
+        if vieux is not None:
+            _habiller_apercu(vieux, job)
+        return vieux
+    import laser_core as core
+    faces = []
+    for src in sources:
+        forme = getattr(src, "Shape", None)
+        if forme is None:
+            continue
+        if getattr(forme, "Faces", None):
+            faces.extend(forme.Faces)          # déjà des faces : rien à bâtir
+            continue
+        try:
+            baties = core._faces_from_any_shape(forme, getattr(src, "Label", "?"))
+        except Exception:
+            baties = None
+        if baties:
+            faces.extend(baties)
+    if not faces:
+        # Un contour OUVERT ne borne aucune surface : on le dit une fois
+        # plutôt que de poser un objet vide que personne ne comprendrait.
+        FreeCAD.Console.PrintWarning(
+            "Aperçu de calque : « {} » ne délimite aucune surface fermée -- "
+            "pas de remplissage à montrer.\n".format(job.Label))
+        if vieux is not None:
+            doc.removeObject(vieux.Name)
+        return None
+    import Part
+    obj = vieux if vieux is not None else doc.addObject(
+        "Part::Feature", "Calque_{}".format(job.Name))
+    obj.Shape = Part.Compound(faces)
+    plc = obj.Placement
+    plc.Base.z = -RECUL_APERCU_MM
+    obj.Placement = plc
+    obj.Label = "Aperçu remplissage - {}".format(
+        getattr(sources[0], "Label", "?"))
+    if not hasattr(obj, PROP_APERCU):
+        obj.addProperty("App::PropertyString", PROP_APERCU, "Job",
+                        "Job dont cet objet montre la surface (aperçu, "
+                        "jamais gravé)")
+    setattr(obj, PROP_APERCU, job.Name)
+    obj.setEditorMode(PROP_APERCU, 1)
+    _habiller_apercu(obj, job)
+    try:
+        _groupe_atelier(doc).addObject(obj)
+    except Exception:
+        pass
+    return obj
+
+
+def _habiller_apercu(obj, job):
+    """Couleur, transparence, visibilité -- et NON SÉLECTIONNABLE."""
+    vue = _vue(obj)
+    if vue is None:
+        return
+    grave = bool(getattr(job, "Grave", True))
+    couleur = COULEURS_MODE.get(getattr(job, "Mode", ""), GRIS_ETEINT)
+    for attr, val in (("ShapeColor", couleur), ("LineColor", couleur),
+                      ("Transparency", TRANSPARENCE_APERCU),
+                      ("Selectable", False), ("Visibility", grave)):
+        if hasattr(vue, attr):
+            try:
+                setattr(vue, attr, val)
+            except Exception:
+                pass
 
 
 def colorer_sources(job):
@@ -231,6 +349,19 @@ class VueJobLaser:
     def doubleClicked(self, vobj):
         ouvrir_job(vobj.Object)
         return True  # on gère le double-clic : pas d'édition par défaut
+
+    def onDelete(self, vobj, _sub):
+        """Supprimer le Job emporte sa surface d'aperçu -- sinon il resterait
+        dans l'arbre un objet plein, coloré, sans rien pour l'expliquer."""
+        try:
+            job = vobj.Object
+            doc = getattr(job, "Document", None)
+            ap = _apercu_existant(doc, job) if doc is not None else None
+            if ap is not None:
+                doc.removeObject(ap.Name)
+        except Exception:
+            pass
+        return True
 
     def dumps(self):
         return None
@@ -452,6 +583,7 @@ def creer_ou_maj_job(mode, sources, sous_elements=None):
                 and sorted(getattr(obj, "SousElements", None) or []) == sous):
             _poser_sources(obj, sources)
             _ranger_dans_groupe(doc, obj, sources)
+            _apercu_calque(obj, rebatir=True)
             _dire_disputees(obj, colorer_sources(obj))
             return obj
 
@@ -480,6 +612,7 @@ def creer_ou_maj_job(mode, sources, sous_elements=None):
     _ranger_dans_groupe(doc, obj, sources)
     if getattr(FreeCAD, "GuiUp", False) and getattr(obj, "ViewObject", None):
         VueJobLaser(obj.ViewObject)
+    _apercu_calque(obj, rebatir=True)
     _dire_disputees(obj, colorer_sources(obj))
     FreeCAD.Console.PrintMessage(
         "Job créé dans l'arborescence : « {} » (double-clic pour "
