@@ -628,6 +628,26 @@ def ranger_forme(obj):
     Ce n'est PAS un aperçu -- un aperçu ne se grave jamais, celui-ci est le
     tracé même que le laser suivra. Sa place est parmi les formes à graver.
 
+    ON DÉPLACE, ON NE COPIE PAS -- et la question a été posée. Christophe,
+    05/08/2026 : « ne vaudrait-il pas mieux faire une copie de la source dans
+    Formes à graver et garder l'original là où il se trouve ? ». L'idée se
+    tient pour l'arbre, et elle est refusée pour une raison de fond :
+
+    UNE COPIE EST UNE SECONDE SOURCE DE VÉRITÉ. Rouvrir un texte ou une
+    calligraphie reconstruit l'objet D'ORIGINE (`obj=repris`) ; la copie
+    garderait l'ancien tracé, et le job pointant dessus graverait le texte
+    périmé -- vu seulement sur le bois. C'est la famille exacte du job
+    combiné qui gravait de vieux réglages (v2.99.9), de l'aperçu qui montrait
+    une surface morte, et du Job qui devait rester un signet et non une
+    deuxième vérité.
+
+    Un App::Link éviterait la divergence, mais ajoute un objet par forme,
+    affiche la géométrie deux fois et laisse indécis lequel des deux un job
+    doit viser. Écarté aussi, après l'avoir posé sur la table.
+
+    Et un groupe FreeCAD n'est qu'une organisation d'arbre : l'objet garde
+    son nom, son placement et ses liens. Rien ne change pour la géométrie.
+
     Silencieuse : un rangement raté ne doit jamais empêcher de travailler."""
     try:
         doc = getattr(obj, "Document", None)
