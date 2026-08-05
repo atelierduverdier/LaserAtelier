@@ -453,3 +453,77 @@ finally:
     FreeCAD.closeDocument("EssaiCombine")
 print("10. le job combiné reprend les réglages des jobs avant d'écrire, et "
       "nomme les opérations qu'il garde telles quelles OK")
+
+
+# --- 11. UN REPÈRE D'ORIGINE N'EST PAS UN MOTIF -------------------------
+# Christophe, 05/08/2026 : un SVG importé, redimensionné sous Draft, posé sur
+# sa surface, « j'ai voulu faire une projection et FreeCAD a crashé ».
+#
+# LE COUPABLE EST UN AXE D'ORIGINE. Les `App::Line` X/Y/Z d'un Body ont une
+# épaisseur Z NULLE -- donc le classement les prenait pour des motifs 2D --
+# et une longueur de 2e100 mm. `drop_edges_to_surface` les discrétise tous
+# les PROJECTION_SAMPLE_DISTANCE millimètres : 2e100 points demandés. Mesuré
+# sur l'interpréteur de FreeCAD : 10 millions de points en 2,1 s pour une
+# arête de 10 000 km -- à 2e100, l'allocation ne revient jamais.
+#
+# Et ces axes sont VISIBLES par défaut dans un document PartDesign, donc
+# cliquables : les attraper demande juste un clic un peu large.
+_d11 = FreeCAD.newDocument("EssaiOrigine")
+try:
+    _axe = _d11.addObject("Part::Feature", "X_Axis")
+    _axe.Shape = Part.LineSegment(FreeCAD.Vector(-1e100, 0, 0),
+                                  FreeCAD.Vector(1e100, 0, 0)).toShape()
+    _motif = _d11.addObject("Part::Feature", "MotifSVG")
+    _motif.Shape = Part.makePolygon([FreeCAD.Vector(0, 0, 5),
+                                     FreeCAD.Vector(9, 0, 5),
+                                     FreeCAD.Vector(9, 9, 5),
+                                     FreeCAD.Vector(0, 0, 5)])
+    _surf = _d11.addObject("Part::Feature", "Pad")
+    _surf.Shape = Part.makeBox(40, 40, 10, FreeCAD.Vector(-5, -5, -10))
+    _d11.recompute()
+
+    class _Sel11:
+        def __init__(self, o):
+            self.Object = o
+
+    import time as _t11
+    _t0 = _t11.time()
+    _motifs, _ref = core.split_projection_selection(
+        [_Sel11(_axe), _Sel11(_motif), _Sel11(_surf)])
+    _dt = _t11.time() - _t0
+    assert [m.Name for m in (_motifs or [])] == ["MotifSVG"], (
+        "l'axe d'origine est encore pris pour un motif : la projection "
+        "tentera de le discrétiser tous les millimètres sur 2e100 mm",
+        [m.Name for m in (_motifs or [])])
+    assert _ref is _surf, ("la surface n'est plus reconnue", _ref)
+    # LE CLASSEMENT NE DOIT RIEN DISCRÉTISER : il écarte sur la boîte
+    # englobante, donc il est instantané quelle que soit la démesure.
+    assert _dt < 1.0, ("le classement s'attarde sur l'objet démesuré : il "
+                       "en lit sans doute la géométrie", _dt)
+
+    # ET LA PROJECTION COMPLÈTE DOIT ABOUTIR malgré l'axe dans la sélection.
+    _t0 = _t11.time()
+    _obj11, _err11 = core.run_projection(
+        [_Sel11(_axe), _Sel11(_motif), _Sel11(_surf)])
+    assert _obj11 is not None, ("la projection échoue alors que la sélection "
+                                "contient un motif et une surface valables",
+                                _err11)
+    assert _t11.time() - _t0 < 10.0, "la projection s'éternise"
+
+    # LE SEUIL EST LARGE EXPRÈS : une grande planche doit passer.
+    assert core.TAILLE_MOTIF_MAXI_MM >= 5000.0, (
+        "le seuil refuserait une planche de taille réaliste",
+        core.TAILLE_MOTIF_MAXI_MM)
+    _grand = _d11.addObject("Part::Feature", "GrandePlanche")
+    _grand.Shape = Part.makePolygon([FreeCAD.Vector(0, 0, 5),
+                                     FreeCAD.Vector(2000, 0, 5),
+                                     FreeCAD.Vector(2000, 1000, 5),
+                                     FreeCAD.Vector(0, 0, 5)])
+    _d11.recompute()
+    _m2, _r2 = core.split_projection_selection([_Sel11(_grand), _Sel11(_surf)])
+    assert _m2 and _m2[0] is _grand, (
+        "une planche de 2 m est refusée : le seuil est trop serré")
+finally:
+    FreeCAD.closeDocument("EssaiOrigine")
+print("11. un axe d'origine (2e100 mm) est écarté sans être discrétisé, la "
+      "projection aboutit, et une planche de 2 m passe encore OK")

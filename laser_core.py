@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.11"
+VERSION = "2.99.12"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3363,6 +3363,28 @@ PROJECTION_SAMPLE_DISTANCE = 1.0  # mm : Distance, pas Deflection -- une
                                    # courbure réelle entre les deux).
 
 
+# TAILLE AU-DELÀ DE LAQUELLE UN OBJET N'EST PLUS UN MOTIF. Christophe,
+# 05/08/2026 : un SVG importé, redimensionné sous Draft, posé sur sa surface,
+# « j'ai voulu faire une projection et FreeCAD a crashé ».
+#
+# LE COUPABLE EST UN AXE D'ORIGINE. Les `App::Line` X/Y/Z d'un Body ont une
+# épaisseur Z NULLE -- donc le classement les prenait pour des motifs 2D --
+# et une longueur de 2e100 mm. `drop_edges_to_surface` les discrétise alors
+# tous les PROJECTION_SAMPLE_DISTANCE millimètres : 2e100 points demandés.
+# Mesuré sur l'interpréteur de FreeCAD : 10 millions de points en 2,1 s pour
+# une arête de 10 000 km -- à 2e100, l'allocation ne revient jamais.
+#
+# Et ces axes sont VISIBLES par défaut dans un document PartDesign, donc
+# cliquables dans la vue 3D : les attraper en sélectionnant la surface
+# demande juste un clic un peu large.
+#
+# 10 mètres : aucune table de laser ne fait cela, et tout ce qui dépasse est
+# un repère d'origine, un plan infini ou une géométrie pathologique -- jamais
+# un motif à graver. Le seuil est LARGE exprès : il ne doit refuser que
+# l'absurde, pas une grande planche.
+TAILLE_MOTIF_MAXI_MM = 10000.0
+
+
 def split_projection_selection(selection):
     """Classe la sélection en (motifs 2D, surface 3D de référence) pour le
     mode Projection. Un objet est "2D" si son épaisseur Z est quasi nulle
@@ -3380,12 +3402,19 @@ def split_projection_selection(selection):
     (None, None) si la classification est ambiguë ou invalide."""
     motifs = []
     reference = None
+    demesures = []
     for sel_obj in selection:
         obj = sel_obj.Object
         shape = getattr(obj, 'Shape', None)
         if shape is None:
             continue
         bb = shape.BoundBox
+        # DÉMESURÉ = PAS UN MOTIF. On écarte AVANT de classer : un axe
+        # d'origine est plat, il passerait donc pour un motif et ferait
+        # tomber la projection dans une discrétisation sans fin.
+        if max(bb.XLength, bb.YLength, bb.ZLength) > TAILLE_MOTIF_MAXI_MM:
+            demesures.append(getattr(obj, "Label", "?"))
+            continue
         if bb.ZMax - bb.ZMin < 0.1:
             motifs.append(obj)
         elif shape.Faces:
@@ -3394,6 +3423,14 @@ def split_projection_selection(selection):
             reference = obj
         else:
             return None, None
+    if demesures:
+        FreeCAD.Console.PrintWarning(
+            "Projection : {} écarté(s) de la sélection -- plus de {:.0f} m "
+            "d'envergure, ce sont des repères d'origine ou des plans "
+            "infinis, pas des motifs. Masque-les (barre d'espace) pour ne "
+            "plus les attraper au clic.\n".format(
+                ", ".join("« {} »".format(d) for d in demesures),
+                TAILLE_MOTIF_MAXI_MM / 1000.0))
     if reference is None or not motifs:
         return None, None
     return motifs, reference

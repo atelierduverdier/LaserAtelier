@@ -199,7 +199,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.11</span><br>
+      <span class="ver">Version 2.99.12</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -250,7 +250,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.11</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.12</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1135,7 +1135,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.11 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.12 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1151,7 +1151,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 39 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 40 entrées</span></h3>
+  <p><b>Un axe d'origine faisait tomber FreeCAD (v2.99.12).</b> Christophe&nbsp;: un SVG importé, redimensionné sous Draft, posé sur sa surface — «&nbsp;j'ai voulu faire une projection et FreeCAD a crashé&nbsp;». Son document lu en lecture seule et la panne <b>reproduite en headless</b>, jamais dans sa session (la règle de la maison&nbsp;: un motif OCC risqué a déjà segfaulté son FreeCAD et perdu du travail non sauvé). <b>Le motif n'était pas en cause</b>&nbsp;: ses 10 491 arêtes se projettent en 0,4&nbsp;s pour 345&nbsp;Mo, et 40 000 en 1,6&nbsp;s. <b>Le coupable est un axe d'origine.</b> Les <code>App::Line</code> X/Y/Z d'un Body ont une épaisseur Z <em>nulle</em> — le classement les prenait donc pour des motifs 2D — et une longueur de <b>2×10¹⁰⁰ mm</b>. <code>drop_edges_to_surface</code> les discrétise alors tous les millimètres&nbsp;: 2×10¹⁰⁰ points demandés. Mesuré&nbsp;: 10 millions de points en 2,1&nbsp;s pour une arête de 10 000&nbsp;km — à 2×10¹⁰⁰, l'allocation ne revient jamais. Et ces axes sont <b>visibles par défaut</b> dans un document PartDesign, donc cliquables&nbsp;: les attraper demande juste un clic un peu large. Tout objet dépassant <b>10 mètres</b> d'envergure est désormais écarté de la sélection, <em>sur sa boîte englobante</em> — donc sans jamais lire sa géométrie — et l'atelier dit lesquels et pourquoi. Le seuil est large exprès&nbsp;: le test vérifie qu'une planche de 2&nbsp;m passe encore.</p>
+
   <p><b>Sept générateurs que personne n'éprouvait (v2.99.11).</b> Nouvelle chasse aux bugs vers la v3. <b>Cinq familles balayées n'ont rien donné, et c'est un résultat</b>&nbsp;: les trois caches du programme ont des clés d'invalidation complètes (celui du remplissage couvre exactement les cinq arguments de son constructeur)&nbsp;; aucun argument par défaut mutable&nbsp;; les trente <code>max()</code>/<code>min()</code> sur séquence sont tous précédés de leur garde&nbsp;; le <code>setEnabled</code> soupçonné dans la Découpe à plat est le bon motif (état initial posé avant la restauration, qui refait vivre le signal)&nbsp;; et les deux panneaux qui génèrent depuis OK — Catalogue et Photo — suivent l'ancienne convention, pas un défaut. <b>Le vrai trou était ailleurs</b>&nbsp;: en comptant les 26 générateurs de <code>laser_core</code> et en cherchant leur nom dans les tests, <b>sept n'y figuraient nulle part</b> — dont <code>filled_engraving</code>, <code>flat_multipass</code> et <code>curved_cut</code>, <em>c'est-à-dire les modes qui coupent vraiment du bois</em>. <code>tests/test_generateurs_muets.py</code> les fait tourner et tient les invariants qui se paient sur la machine&nbsp;: fin par <code>M2</code> (sans quoi LinuxCNC attend indéfiniment), aucun commentaire non fermé (le programme entier est refusé au chargement), aucun octet non-ASCII, aucun <code>G4</code> faisceau allumé. <b>17 507 lignes de G-code</b> passent désormais sous ce filet, et les trois sabotages échouent bien. Les sept passent&nbsp;: aucun bug de plus ce tour-ci — mais un générateur muet est un générateur dont personne ne saura dire, le jour où il casse, depuis quand il est cassé.</p>
 
   <p><b>Le fichier était à jour, mais pas ce qu'on regardait (v2.99.10).</b> Christophe a retesté&nbsp;: ton clair mis en job, puis assombri dans le job, validé — «&nbsp;je vais voir dans le job combiné et le rendu photo est toujours clair&nbsp;». <b>Ma correction de la veille protégeait le G-code, pas l'aperçu.</b> La reprise des réglages avait lieu au moment d'écrire&nbsp;; la liste, la durée estimée, l'aperçu du trajet et l'aperçu photo lisaient tous l'instantané d'origine. Or <em>un aperçu qui ne montre pas ce qu'on va obtenir est pire que pas d'aperçu&nbsp;: il donne la confiance sans la justifier</em> — la règle que ce dépôt avait déjà tirée du fuseau peint en trait uniforme et de l'aperçu combiné qui peignait la teinte théorique. La reprise a lieu désormais <b>dès l'ouverture du panneau</b>, ce qui met d'un coup les quatre affichages d'accord, <b>et</b> une seconde fois avant d'écrire — entre les deux on a pu remanier la liste. Elle est <b>partagée, pas recopiée</b>&nbsp;: le test refuse deux exemplaires, parce que de deux copies une seule finirait par être corrigée, et c'est l'autre qui mentirait.</p>
