@@ -261,10 +261,16 @@ t = tons[0]
 assert abs(float(t["feed"]) - sorted(vitesses)[0]) < 1e-6, (
     "vitesse non pré-remplie", t)
 assert abs(float(t["z_offset"]) - dz) < 1e-6, ("défocus non pré-rempli", t)
-assert abs(float(t["width"]) - r["hatch_spacing"]) < 1e-9, (
-    "la largeur pré-remplie n'est pas le PAS de hachure -- c'est "
-    "exactement l'erreur qui fausse la courbe d'un facteur 8",
-    t.get("width"), r["hatch_spacing"])
+# On compare au pas que le panneau va RÉELLEMENT graver, pas au littéral
+# de la recette : depuis v2.81.0 `pas_bande_tons` a le droit de l'élargir
+# quand le matériau sature au pas de hêtre (sapin : 80 à 120 % de
+# couverture, dix cases du même brun). Geler 0,80 ici reviendrait à exiger
+# que le ton soit rangé sous un pas qui n'a pas été gravé -- l'erreur de
+# facteur 8 sous une autre forme.
+assert abs(float(t["width"]) - p.spn_hatch_spacing.value()) < 1e-9, (
+    "la largeur pré-remplie n'est pas le PAS de hachure effectivement "
+    "gravé -- c'est exactement l'erreur qui fausse la courbe d'un "
+    "facteur 8", t.get("width"), p.spn_hatch_spacing.value())
 print("8. « + Ajouter ce ton » pré-rempli : F{:.0f}, défocus {:g}, largeur "
       "{:.2f} = le pas de hachure OK".format(
           float(t["feed"]), float(t["z_offset"]), float(t["width"])))

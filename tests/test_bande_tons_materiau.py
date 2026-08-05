@@ -20,6 +20,7 @@ rougir parce que Christophe a MESURÉ. Ses vraies données sont lues à la fin,
 et seulement AFFICHÉES -- une divergence y est une information sur les
 mesures, pas un défaut du code.
 """
+import inspect
 import sys
 
 from harness import preparer, sans_dialogues, texte
@@ -248,3 +249,74 @@ for _mat in core.burn_width_materials():
     print("   {:<10} F{:.0f}  S{:.0f}→S{:.0f}   {}".format(
         _mat, _fr, min(_pr), max(_pr),
         "(inchangé)" if not _dr else _dr[:100] + "…"))
+
+
+# --- 9. LE PAS S'ÉLARGIT QUAND LA BANDE SATURE ---------------------------
+# Christophe, planche de sapin en main, 05/08/2026 : « pour le sapin, tout
+# est à peu près au même ton ». Dix cases, dix fois le même brun.
+#
+# On ne mesure PAS sur les données de l'atelier ici : elles bougent à chaque
+# planche gravée, et un contrôle qui rougit parce qu'il a mesuré est pire
+# que pas de contrôle. On pose des largeurs choisies et on vérifie la
+# PROPRIÉTÉ, ce qui laisse le sabotage possible.
+_vrai_largeur = core.burn_width_defocus_scaled
+
+
+def _largeurs_fixes(valeurs):
+    """Remplace le modèle de largeur par une liste, une par puissance."""
+    _table = {}
+
+    def _faux(power, feed, defocus, material=None):
+        return _table.get(round(float(power), 3))
+
+    return _faux, _table
+
+
+core.burn_width_defocus_scaled, _table = _largeurs_fixes(None)
+try:
+    # a) SATURÉE : au pas de 0,80 la plus foncée couvre 120 %.
+    _puis = [200.0, 400.0, 600.0, 800.0]
+    for _s, _w in zip(_puis, (0.64, 0.78, 0.90, 0.96)):
+        _table[_s] = _w
+    _pas, _dire = core.pas_bande_tons("Bois", 800.0, 15.0, _puis, 0.80)
+    assert _pas > 0.80, (
+        "la bande sature (couverture 80 à 120 %) et le pas n'a pas bougé : "
+        "les dix cases se recouvrent toutes et rendront le même ton", _pas)
+    assert abs(0.96 / _pas - core.COUVERTURE_CIBLE) < 1e-6, (
+        "la case la plus foncée ne tombe pas sur la couverture visée",
+        0.96 / _pas)
+    assert 0.64 / _pas < 0.75, (
+        "la case la plus claire reste trop couverte : ce n'est toujours pas "
+        "une échelle de tons", 0.64 / _pas)
+    assert _dire and "0.80" in _dire, (
+        "l'élargissement est silencieux : le panneau ne pourra pas dire "
+        "pourquoi le pas n'est plus celui qu'on a demandé", _dire)
+
+    # b) SAINE : le hêtre à F2000 va de 50 à 62 %, on n'y touche pas.
+    for _s, _w in zip(_puis, (0.40, 0.45, 0.48, 0.50)):
+        _table[_s] = _w
+    _pas2, _dire2 = core.pas_bande_tons("Bois", 2000.0, 15.0, _puis, 0.80)
+    assert _pas2 == 0.80 and _dire2 is None, (
+        "une bande qui FONCTIONNE a été élargie : son ton vient de la "
+        "noirceur du trait, pas du recouvrement", _pas2, _dire2)
+
+    # c) SABOTAGE : le critère porté sur la case la plus CLAIRE -- la
+    # première version, celle que la planche de sapin a condamnée.
+    for _s, _w in zip(_puis, (0.64, 0.78, 0.90, 0.96)):
+        _table[_s] = _w
+    _src = inspect.getsource(core.pas_bande_tons)
+    assert "max(ws) / max(pas_actuel" in _src, (
+        "le critère de saturation ne porte plus sur la case la plus foncée "
+        "-- c'est exactement la version que le sapin a réfutée")
+    _faux_src = _src.replace("max(ws) / max(pas_actuel",
+                             "min(ws) / max(pas_actuel")
+    _ns = dict(core.__dict__)
+    exec(compile(_faux_src, "<sabotage>", "exec"), _ns)
+    _pas3, _ = _ns["pas_bande_tons"]("Bois", 800.0, 15.0, _puis, 0.80)
+    assert _pas3 == 0.80, (
+        "le sabotage ne change rien : le contrôle ci-dessus ne prouve pas "
+        "que c'est bien la case la plus foncée qui décide", _pas3)
+finally:
+    core.burn_width_defocus_scaled = _vrai_largeur
+print("9. le pas s'élargit quand la bande sature, pas quand elle marche, "
+      "et c'est la case la plus FONCÉE qui décide OK")

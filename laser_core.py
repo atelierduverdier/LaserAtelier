@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.80.2"
+VERSION = "2.81.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -5880,10 +5880,70 @@ def regime_bande_tons(material, feed, defocus=15.0, n=10, p_max=None):
             "rien n'a marqué à F{:.0f}".format(
                 plancher, p_max, plancher, feed))
 
+    puissances = (defaut if not dires
+                  else puissances_bande_tons(plancher, p_max, n))
     if not dires:
         return (feed, defaut, None)
-    return (feed, puissances_bande_tons(plancher, p_max, n),
+    return (feed, puissances,
             "D'après TES planches : " + " ; ".join(dires) + ".")
+
+
+# Couverture visée pour la case la PLUS FONCÉE d'une bande de tons. En
+# dessous de 1,0 le noir n'est pas plein ; au-dessus, on repasse sans
+# noircir davantage et on perd le haut de l'échelle.
+COUVERTURE_CIBLE = 0.95
+
+# Au-delà de cette couverture pour la case la plus FONCÉE, le haut de
+# l'échelle est déjà plein : les cases suivantes repassent sans noircir, et
+# tout ce qui est au-dessus est perdu.
+#
+# LE CRITÈRE PORTE SUR LA PLUS FONCÉE, ET C'EST UNE PLANCHE QUI L'A DIT.
+# Première version : sur la plus CLAIRE, seuil 85 %. Elle ne se déclenchait
+# pas sur le sapin (case la plus claire à 80 %) alors que la planche gravée
+# montrait dix cases du même brun. Les deux planches de l'atelier séparent
+# nettement sur l'autre bout :
+#
+#   hêtre F2000 : couverture 50 → 62 %   -> échelle complète, ça marche
+#   sapin F800  : couverture 80 → 120 %  -> dix fois le même ton
+#
+# Ce n'est pas la case claire qui décide, c'est que le HAUT sature.
+COUVERTURE_SATUREE = 1.00
+
+
+def pas_bande_tons(material, feed, defocus, puissances, pas_actuel):
+    """Le pas de hachure d'une bande de tons, élargi si elle SATURE.
+
+    Christophe, la planche de sapin en main, 05/08/2026 : « pour le sapin,
+    tout est à peu près au même ton ». Dix cases, dix fois le même brun.
+
+    La cause est mesurable et elle condamne la règle de la veille. Celle-ci
+    ramenait la VITESSE dans la plage où le bois a été vu marquer -- pour
+    qu'aucune case ne sorte vierge -- et laissait le PAS à 0,80 mm, un
+    nombre de hêtre. Or à F800 en défocus 15, le sapin brûle de 0,64 à
+    0,96 mm : au pas de 0,80 la couverture va de 88 % à 120 %. Toutes les
+    cases sont pleines ou repassées, donc toutes identiques. On avait
+    optimisé « aucune case vierge » et obtenu « aucune case claire ».
+
+    Le pas est l'autre levier, et le seul qui reste dans la plage mesurée :
+    à 1,20 mm les mêmes largeurs donnent 53 % à 80 %, une vraie échelle.
+
+    ON N'ÉLARGIT QUE SI ÇA SATURE. Sur hêtre à F2000 la couverture va de
+    50 à 62 % : la bande fonctionne, son ton vient de la noirceur du trait
+    et non du recouvrement, et y toucher casserait ce qui marche."""
+    ws = [w for w in (burn_width_defocus_scaled(s, feed, defocus, material)
+                      for s in puissances) if w]
+    if len(ws) < 2:
+        return pas_actuel, None
+    if max(ws) / max(pas_actuel, 1e-9) <= COUVERTURE_SATUREE:
+        return pas_actuel, None
+    pas = max(ws) / COUVERTURE_CIBLE
+    return pas, (
+        "pas élargi de {:.2f} à {:.2f} mm : à {:.2f} toutes les cases se "
+        "recouvrent ({:.0f} à {:.0f} %) et rendent le même ton ; à {:.2f} "
+        "l'échelle va de {:.0f} à {:.0f} %".format(
+            pas_actuel, pas, pas_actuel,
+            100 * min(ws) / pas_actuel, 100 * max(ws) / pas_actuel,
+            pas, 100 * min(ws) / pas, 100 * max(ws) / pas))
 
 
 def _niveaux_exploitables(levels):

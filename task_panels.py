@@ -15098,7 +15098,8 @@ class TaskPanelTestGrid:
         if "filltype" in r:
             self.combo_filltype.setCurrentIndex(r["filltype"])
         if "hatch_spacing" in r:
-            self.spn_hatch_spacing.setValue(r["hatch_spacing"])
+            self.spn_hatch_spacing.setValue(
+                getattr(self, "_pas_bande", None) or r["hatch_spacing"])
         # L'ANGLE, que les objectifs de MESURE doivent pouvoir imposer.
         # Il ne pouvait pas l'être, et le défaut du panneau est 45° : les
         # traits sortaient en diagonale alors que `profil_trait` moyenne
@@ -15160,9 +15161,20 @@ class TaskPanelTestGrid:
         powers, feeds = r.get("powers"), r.get("feeds")
         if not r.get("tons_materiau") or not feeds:
             return powers, feeds, None
+        mat = self._materiau()
+        defocus = r.get("cell_defocus", 0.0)
         feed, puissances, dire = core.regime_bande_tons(
-            self._materiau(), feeds[0], r.get("cell_defocus", 0.0),
-            n=len(powers or []) or 10)
+            mat, feeds[0], defocus, n=len(powers or []) or 10)
+        # LE PAS AUSSI, et pas seulement la vitesse. Christophe, la planche
+        # de sapin en main : « tout est à peu près au même ton ». La règle
+        # de la veille recalait la vitesse et laissait le pas à 0,80 mm --
+        # un nombre de hêtre. Sur sapin toutes les cases se recouvraient.
+        pas, dire_pas = core.pas_bande_tons(mat, feed, defocus, puissances,
+                                            r.get("hatch_spacing", 0.8))
+        self._pas_bande = pas
+        if dire_pas:
+            dire = ((dire + " ; " + dire_pas) if dire
+                    else "D'après TES planches : " + dire_pas + ".")
         return puissances, [feed], dire
 
     def _materiau(self):

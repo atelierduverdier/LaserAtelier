@@ -104,6 +104,38 @@ number. Un-clamping it would move engravings whose power and coverage Christophe
 wood, so the fix here is a **separate question** — "has this regime been observed at all?" — that
 callers who need it can ask.
 
+### The feed was only half of it — the PITCH saturated the band (v2.81.0)
+
+v2.75.0 recalibrated the **feed** and left the pitch at **0.80 mm**, a beech number. Christophe
+engraved the spruce band on 2026-08-05 and judged it in one sentence: *"pour le sapin, tout est à
+peu près au même ton"*. Ten cells, ten times the same brown. The rule had optimised "no blank cell"
+and delivered "no light cell".
+
+His own measurements say why. Coverage = burn width / pitch, at the band's own regime:
+
+| | pitch 0.80 | after |
+|---|---|---|
+| **Sapin F800** | **80 → 120 %** | 63 → 95 % at pitch 1.01 |
+| Hêtre F2000 | 50 → 62 % | untouched |
+| MDF F800 | 62 → 136 % | 44 → 95 % at pitch 1.15 |
+
+Every spruce cell is at or past full coverage, so every cell is a re-burnt flat and they all render
+the same black. The pitch is the other lever, and the only one still inside the measured span.
+
+`pas_bande_tons(material, feed, defocus, puissances, pas_actuel)` → `(pas, explanation)` widens it
+so the **darkest** cell lands on `COUVERTURE_CIBLE = 0.95`. The panel prints the explanation and
+`_paliers_du_materiau` feeds the value into the objective's `hatch_spacing`.
+
+**THE CRITERION PORTS ON THE DARKEST CELL, AND A BOARD SAID SO.** The first version tested the
+*lightest* one against 85 % — and did not fire on spruce, whose lightest cell sits at 80 %, while
+the engraved board showed ten identical browns. The two boards separate cleanly at the other end
+(beech tops out at 62 %, spruce at 120 %): it is not the light cell that decides, it is that the
+**top** saturates. `COUVERTURE_SATUREE = 1.00`, and beech is left alone — its band works, its tone
+comes from the darkness of the trace and not from overlap, and touching it would break what works.
+
+§9 of `test_bande_tons_materiau.py` freezes it on chosen widths (never on the workshop's own data,
+which moves with every board) and its sabotage puts the `min` back — the suite goes red.
+
 The Grille de test's `largeurs_defocus` objective (v1.87.0) exists to produce the missing pairing —
 measured width AND judged darkness, at the same defocus. A width measured at FOCUS cannot feed this
 curve at all (the `z_offset > 0` filter rejects it), which is why Planche 1 — the focus-widths board
