@@ -934,3 +934,64 @@ assert _e4 > 3.0, (
 print("20. panse lissée (virage maxi {:.1f}°) et coins préservés : le « 4 » "
       "s'écarte de {:.2f} % de capitale contre {:.2f} sans garde-angle OK"
       .format(_virage20, _ecart_a_la_police("4"), _e4))
+
+
+# --- 21. LA PLUME SE PENCHE DANS LES DEUX SENS --------------------------
+# Christophe, 05/08/2026, une police calligraphique en référence : « regarde
+# le d de cette fonte, le tien le trait épais est en bas, là il est sur la
+# gauche ».
+#
+# Le modèle savait le faire depuis toujours -- `largeur_plume` calcule
+# abs(sin(theta - angle)), de période 180°, donc -40° est un réglage à part
+# entière et NON le symétrique de +40°. C'est le CHAMP qui était borné à
+# 0-90 : la moitié des inclinaisons était inatteignable.
+sans_dialogues()
+_p21 = tp.TaskPanelCalligraphie()
+_lo21, _hi21 = _p21.spn_plume_angle.minimum(), _p21.spn_plume_angle.maximum()
+assert _lo21 <= -40.0, (
+    "le champ d'angle n'atteint pas les inclinaisons négatives : la moitié "
+    "des plumes reste hors de portée", _lo21, _hi21)
+_p21.spn_plume_angle.setValue(-40.0)
+assert abs(_p21.spn_plume_angle.value() + 40.0) < 1e-9, (
+    "le champ refuse -40° alors que sa plage l'annonce",
+    _p21.spn_plume_angle.value())
+
+
+def _bas_sur_gauche(angle):
+    """Rapport épaisseur du BAS-GAUCHE / épaisseur de la GAUCHE sur la panse
+    du « d ». Une vraie calligraphie place son plein à gauche et allège le
+    bas, donc ce rapport doit être PETIT.
+
+    LE SECTEUR EST CHOISI PARCE QU'IL SÉPARE. Mesuré à -40° contre +50° :
+    bas-gauche 0,36 contre 0,78, bas-droite 0,33 contre 0,55, mais le BAS
+    franc 0,24 contre 0,28 -- quatre centièmes, de quoi faire passer le
+    contrôle sous n'importe quel code. La police de référence de Christophe
+    est à 0,22 sur ce même secteur."""
+    ch, _i = core.chaines_plume("hersheyscript1", "d", largeur_mm=40.0,
+                                angle_deg=float(angle), epaisseur=0.12,
+                                contraste=5.0, modele="pointue")
+    ys = [p[1] for c in ch for p in c]
+    pts = [p for c in ch for p in c if p[1] < min(ys) + 0.55 * (max(ys) - min(ys))]
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    bas, gau = [], []
+    for p in pts:
+        a = math.degrees(math.atan2(p[1] - cy, p[0] - cx)) % 360
+        if 202.5 <= a < 247.5:
+            bas.append(p[2])
+        elif 157.5 <= a < 202.5:
+            gau.append(p[2])
+    bas.sort(), gau.sort()
+    return (bas[len(bas) // 2] / gau[len(gau) // 2]) if bas and gau else 0.0
+
+
+_neg21, _pos21 = _bas_sur_gauche(-40.0), _bas_sur_gauche(50.0)
+assert _neg21 < _pos21, (
+    "pencher la plume dans l'autre sens ne déplace pas le plein : le champ "
+    "élargi n'apporterait rien", _neg21, _pos21)
+assert _neg21 < 0.5 and _pos21 > 0.6, (
+    "le bas-gauche de la panse ne s'allège pas comme sur une vraie "
+    "calligraphie (référence mesurée : 0,22)", _neg21, _pos21)
+print("21. la plume se penche des deux côtés ({:.0f}° à {:.0f}°) : "
+      "bas-gauche/gauche de la panse {:.2f} à -40° contre {:.2f} à +50° OK".format(
+          _lo21, _hi21, _neg21, _pos21))

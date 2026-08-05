@@ -11165,15 +11165,39 @@ class TaskPanelCalligraphie:
         for _cle, _lib in core.HERSHEY_FONTS.items():
             self.combo_plume_police.addItem(_lib, _cle)
         self.spn_plume_angle = QtWidgets.QDoubleSpinBox()
-        self.spn_plume_angle.setRange(0.0, 90.0)
+        # LA MOITIÉ DES INCLINAISONS MANQUAIT. Le champ était borné à 0-90°,
+        # or une plume se penche dans les DEUX sens, et le modèle le sait
+        # depuis toujours : `largeur_plume` calcule abs(sin(theta - angle)),
+        # de période 180°, donc -40° n'est pas -40 ramené à 40 -- c'est un
+        # réglage à part entière, simplement inatteignable.
+        #
+        # Christophe, 05/08/2026, une police calligraphique en référence :
+        # « regarde le d de cette fonte, le tien le trait épais est en bas,
+        # là il est sur la gauche ». Mesuré en comparant la signature du
+        # trait -- l'épaisseur déposée par direction de tracé -- entre sa
+        # police et la nôtre sur « Atelier du Verdier » :
+        #
+        #   pointue -40°  écart 0,142   <- le meilleur, hors plage
+        #   pointue   0°  écart 0,173   <- le meilleur DANS la plage
+        #   pointue +50°  écart 0,276   <- son réglage, 47e sur 74
+        #
+        # Le plein basculait sur le BAS de la panse au lieu de la gauche,
+        # exactement ce qu'il a vu. Ouvrir les négatifs divise l'écart par
+        # deux sans une ligne de modèle.
+        self.spn_plume_angle.setRange(-90.0, 90.0)
         self.spn_plume_angle.setDecimals(0)
         self.spn_plume_angle.setSuffix(" °")
         self.spn_plume_angle.setValue(core.PLUME_ANGLE_DEFAUT)
         self.spn_plume_angle.setToolTip(
-            "Inclinaison du bec. À 0° les fûts sont épais et les barres\n"
-            "fines (contraste « romain ») -- mais la barre du A disparaît\n"
-            "presque. Vers 25-35° on retrouve l'anglaise, et la barre\n"
-            "revient. Au-delà de 45° le contraste s'inverse.")
+            "Inclinaison du bec, dans un sens ou dans l'autre.\n"
+            "À 0° les fûts sont épais et les barres fines (contraste\n"
+            "« romain ») -- mais la barre du A disparaît presque.\n"
+            "Vers 25-35° on retrouve l'anglaise, et la barre revient.\n"
+            "Au-delà de 45° le contraste s'inverse.\n"
+            "Les angles NÉGATIFS penchent la plume dans l'autre sens et\n"
+            "ne se déduisent pas des positifs : vers -30/-40° le plein\n"
+            "se place sur le côté GAUCHE des panses (a, d, g, o, q)\n"
+            "plutôt que sur leur bas.")
         # L'ÉPAISSEUR DU BEC, et elle manquait. Livré avec le seul angle,
         # le mode donnait « une police un peu plus épaisse » -- le réglage
         # qui décide s'il y a des pleins ou pas n'était pas à l'écran.
