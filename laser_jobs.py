@@ -313,7 +313,7 @@ def _apercu_calque(job, rebatir=False):
             _habiller_apercu(vieux, job)
         return vieux
     import laser_core as core
-    faces = []
+    faces, galbees = [], []
     for src in sources:
         forme = getattr(src, "Shape", None)
         if forme is None:
@@ -327,6 +327,7 @@ def _apercu_calque(job, rebatir=False):
         # n'informait. Le panneau, lui, refuse et dit le bon ordre.
         import laser_core as _c
         if not _c.forme_est_plane(forme):
+            galbees.append(getattr(src, "Label", "?"))
             FreeCAD.Console.PrintWarning(
                 "Aperçu de calque : « {} » n'est pas plat ({:.2f} mm de "
                 "creux) -- la Gravure remplie travaille en 2D, il n'y a pas "
@@ -342,9 +343,16 @@ def _apercu_calque(job, rebatir=False):
     if not faces:
         # Un contour OUVERT ne borne aucune surface : on le dit une fois
         # plutôt que de poser un objet vide que personne ne comprendrait.
-        FreeCAD.Console.PrintWarning(
-            "Aperçu de calque : « {} » ne délimite aucune surface fermée -- "
-            "pas de remplissage à montrer.\n".format(job.Label))
+        #
+        # MAIS PAS DEUX FOIS POUR UNE SEULE CAUSE : quand toutes les sources
+        # ont été écartées parce qu'elles sont galbées, on vient déjà de le
+        # dire, et ce second message accuse à tort le contour d'être ouvert
+        # -- en nommant le JOB, qui plus est. Vu tel quel dans la vue Rapport
+        # de Christophe le 05/08/2026, juste sous le bon message.
+        if not galbees:
+            FreeCAD.Console.PrintWarning(
+                "Aperçu de calque : « {} » ne délimite aucune surface "
+                "fermée -- pas de remplissage à montrer.\n".format(job.Label))
         if vieux is not None:
             doc.removeObject(vieux.Name)
         return None

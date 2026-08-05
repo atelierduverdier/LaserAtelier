@@ -297,3 +297,32 @@ finally:
     FreeCAD.closeDocument("EssaiPlan")
 print("7. un creux de 0,3 mm est vu comme galbé, un carré plat et une ligne "
       "restent plans OK")
+
+
+# --- 8. UN LIEN QUI SORT D'UN BODY DOIT ÊTRE UN XLink -------------------
+# `App::PropertyLink` est à PORTÉE STRICTE. Le solide d'origine d'une
+# projection vit presque toujours dans un Body ou une Part, et FreeCAD
+# protestait donc à chaque recalcul -- « Link(s) to object(s) 'Pad' go out of
+# the allowed scope [...] reside within 'Body' », deux fois par projection
+# dans la vue Rapport de Christophe le 05/08/2026.
+#
+# Le lien FONCTIONNAIT : c'est un avertissement, pas une panne. Mais un
+# avertissement qu'on apprend à ignorer finit par cacher celui qui compte.
+_src_proj = _lire("laser_core.py")
+_i8 = _src_proj.index("LaserAtelierSurfaceRef")
+_avant8 = _src_proj[max(0, _i8 - 200):_i8]
+assert "App::PropertyXLink" in _avant8, (
+    "le lien vers le solide d'origine n'est pas un XLink : FreeCAD "
+    "protestera à chaque recalcul dès que la surface vit dans un Body")
+
+# ET L'APERÇU NE DOIT PAS SE PLAINDRE DEUX FOIS D'UNE SEULE CAUSE. Quand
+# toutes les sources sont écartées parce qu'elles sont galbées, le message
+# « ne délimite aucune surface fermée » accuse à tort le contour d'être
+# ouvert -- en nommant le JOB, qui plus est.
+_src_jobs = _lire("laser_jobs.py")
+assert "if not galbees:" in _src_jobs, (
+    "l'aperçu de calque redit « aucune surface fermée » après avoir déjà "
+    "expliqué que la forme est galbée : deux messages pour une cause, et le "
+    "second est faux")
+print("8. le lien vers la surface traverse la portée, et l'aperçu ne se "
+      "plaint qu'une fois par cause OK")

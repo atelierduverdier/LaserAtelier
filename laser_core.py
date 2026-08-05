@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.3"
+VERSION = "2.99.4"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3526,8 +3526,15 @@ def run_projection(selection):
     # d'arêtes, sans aucune trace de la surface dont il vient -- sans ce
     # lien, retrouver une sonde de collision exacte plus tard obligerait à
     # RESÉLECTIONNER le solide à chaque génération (cf. split_selection).
+    # `XLink` ET NON `Link` : un lien ordinaire est à PORTÉE STRICTE, et le
+    # solide d'origine vit presque toujours dans un Body ou une Part. FreeCAD
+    # protestait alors à chaque recalcul -- « Link(s) to object(s) 'Pad' go
+    # out of the allowed scope [...] reside within 'Body' » -- deux fois par
+    # projection dans la vue Rapport de Christophe, le 05/08/2026. Le lien
+    # fonctionnait, mais un avertissement qu'on apprend à ignorer finit par
+    # cacher celui qui compte. `XLink` est fait pour traverser une portée.
     new_obj.addProperty(
-        "App::PropertyLink", "LaserAtelierSurfaceRef", "LaserAtelier",
+        "App::PropertyXLink", "LaserAtelierSurfaceRef", "LaserAtelier",
         "Solide 3D d'origine, mémorisé automatiquement à la projection "
         "pour retrouver la sonde de collision sans le réselectionner.")
     new_obj.LaserAtelierSurfaceRef = obj_3d
