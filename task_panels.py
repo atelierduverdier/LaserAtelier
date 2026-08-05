@@ -9435,15 +9435,25 @@ class TaskPanelProject:
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
-            "<b>1.</b> Prépare le <b>motif 2D à plat</b> (texte ShapeString, "
-            "hachures, tracés Draft) et la <b>surface 3D</b> cible (sphère, "
-            "vague, coque…).",
-            "<b>2.</b> Dans la vue 3D, sélectionne les <b>motifs 2D ET la "
-            "surface</b>, tout ensemble. L'état ci-dessous passe au vert quand "
-            "la sélection est valide (exactement une surface + ≥ 1 motif).",
-            "<b>3.</b> Clique <b>OK</b>&nbsp;: les motifs sont projetés sur la "
+            "<b>1. TOUT SE PRÉPARE À PLAT, Y COMPRIS LE REMPLISSAGE.</b> Un "
+            "remplissage ou des hachures ne sont pas un réglage de gravure&nbsp;: "
+            "c'est de la <b>géométrie</b>, le tracé que le laser suivra. Il "
+            "faut donc les fabriquer sur la forme plane (Gravure remplie, "
+            "Hachures) <b>avant</b> de projeter — une fois galbés, ces modes "
+            "ne savent plus les faire et le disent.",
+            "<b>2. Tous les motifs d'un coup, pas un par un.</b> Sélectionne "
+            "dans la vue 3D <b>tous les motifs 2D ET la surface</b>, ensemble "
+            ": ils partent en UN seul <code>Motif_Projete</code>. L'état "
+            "ci-dessous passe au vert quand la sélection convient (exactement "
+            "une surface + au moins un motif).",
+            "<b>3. La projection TOMBE À LA VERTICALE.</b> Chaque point "
+            "descend droit sur la surface&nbsp;: seule sa position <b>X/Y</b> "
+            "compte, sa hauteur n'a aucune importance. Une paroi verticale ne "
+            "reçoit donc rien, et sous un surplomb c'est la surface <b>la plus "
+            "haute</b> qui prend le motif.",
+            "<b>4.</b> Clique <b>OK</b>&nbsp;: les motifs sont projetés sur la "
             "surface en un objet <code>Motif_Projete</code>.",
-            "<b>4.</b> Enchaîne avec <b>Marquage de motif</b> ou <b>Découpe "
+            "<b>5.</b> Enchaîne avec <b>Marquage de motif</b> ou <b>Découpe "
             "courbe</b>&nbsp;: sélectionne l'objet projeté <b>+</b> le modèle 3D "
             "pour graver/découper en suivant le relief.",
         ])
