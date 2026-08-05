@@ -427,11 +427,28 @@ try:
     # réparerait rien : c'est le fichier qu'on grave qui doit être à jour.
     import inspect as _insp10
     _src10 = _insp10.getsource(tp.TaskPanelCombined._on_generer)
-    _i_maj = _src10.find("rafraichir_operations")
+    _i_maj = _src10.find("_reprendre_reglages")
     _i_gen = _src10.find("generate_gcode_combined")
     assert 0 <= _i_maj < _i_gen, (
         "le job combiné écrit son G-code avant d'avoir repris les réglages "
         "des jobs", _i_maj, _i_gen)
+
+    # ...ET DÈS L'OUVERTURE, sinon ce qu'on REGARDE ment. Christophe, après
+    # avoir assombri un ton dans son job : « je vais voir dans le job
+    # combiné et le rendu photo est toujours clair ». Protéger le fichier ne
+    # suffit pas : un aperçu qui ne montre pas ce qu'on va obtenir donne la
+    # confiance sans la justifier.
+    _src_init = _insp10.getsource(tp.TaskPanelCombined.__init__)
+    assert "_reprendre_reglages" in _src_init, (
+        "le job combiné n'actualise ses opérations qu'à la génération : la "
+        "liste, la durée, le trajet et l'aperçu photo montreront l'ancien "
+        "réglage")
+    # La reprise est PARTAGÉE, pas recopiée : deux copies divergeraient, et
+    # c'est l'une des deux qui mentirait.
+    assert _insp10.getsource(tp.TaskPanelCombined).count(
+        "rafraichir_operations") == 1, (
+        "la reprise est écrite deux fois dans le panneau : une seule des "
+        "deux finira par être corrigée")
 finally:
     FreeCAD.closeDocument("EssaiCombine")
 print("10. le job combiné reprend les réglages des jobs avant d'écrire, et "

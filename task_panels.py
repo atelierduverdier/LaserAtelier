@@ -18595,6 +18595,17 @@ class TaskPanelAssistant:
 class TaskPanelCombined:
     def __init__(self):
         self.operations = _COMBINED_OPS
+        # ON REPREND LES RÉGLAGES DES JOBS DÈS L'OUVERTURE, et pas seulement
+        # avant d'écrire. La v2.99.9 rafraîchissait à la génération, ce qui
+        # protégeait le fichier -- mais pas ce qu'on REGARDE. Christophe,
+        # 05/08/2026, après avoir assombri un ton dans son job : « je vais
+        # voir dans le job combiné et le rendu photo est toujours clair ».
+        #
+        # Un aperçu qui ne montre pas ce qu'on va obtenir est pire que pas
+        # d'aperçu : il donne la confiance sans la justifier. La liste, la
+        # durée, le trajet et l'aperçu photo lisent tous `self.operations`,
+        # donc une seule reprise ici les met tous d'accord.
+        self._reprendre_reglages()
 
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
@@ -18709,6 +18720,28 @@ class TaskPanelCombined:
         self.form.setWindowIcon(_icon("combined.svg"))
 
         self._refresh_list()
+
+    def _reprendre_reglages(self):
+        """Remet les opérations à l'heure des Jobs dont elles viennent.
+
+        Silencieuse en cas d'échec : on préfère travailler sur l'instantané
+        et le dire que refuser d'ouvrir le panneau."""
+        if not self.operations:
+            return
+        try:
+            import laser_jobs as _lj
+            repris, laisses = _lj.rafraichir_operations(self.operations)
+            if repris:
+                FreeCAD.Console.PrintMessage(
+                    "Job combiné : réglages repris depuis {} job(s) -- {}.\n"
+                    .format(len(repris), ", ".join(repris)))
+            for motif in laisses:
+                FreeCAD.Console.PrintMessage(
+                    "Job combiné : « {} » gardée telle quelle.\n".format(motif))
+        except Exception as exc:
+            FreeCAD.Console.PrintWarning(
+                "Job combiné : réglages non repris ({}) -- les opérations "
+                "gardent les valeurs mémorisées à l'ajout.\n".format(exc))
 
     def _refresh_list(self):
         self.list_ops.clear()
@@ -18863,22 +18896,10 @@ class TaskPanelCombined:
         # On le fait ICI, à la génération, et non à l'ouverture du panneau :
         # c'est le fichier qu'on écrit qui doit être à jour, et le dire
         # après coup ne réparerait rien.
-        try:
-            import laser_jobs as _lj
-            repris, laisses = _lj.rafraichir_operations(self.operations)
-            if repris:
-                FreeCAD.Console.PrintMessage(
-                    "Job combiné : réglages repris depuis {} job(s) -- {}.\n"
-                    .format(len(repris), ", ".join(repris)))
-            for motif in laisses:
-                FreeCAD.Console.PrintMessage(
-                    "Job combiné : « {} » gardée telle quelle.\n".format(motif))
-        except Exception as exc:
-            # Un rafraîchissement raté ne doit pas empêcher de graver ce
-            # qu'on a : on le dit, et on continue avec l'instantané.
-            FreeCAD.Console.PrintWarning(
-                "Job combiné : réglages non repris ({}) -- le fichier part "
-                "avec les valeurs mémorisées à l'ajout.\n".format(exc))
+        # Une DEUXIÈME reprise ici, même si l'ouverture en a déjà fait une :
+        # entre les deux, on a pu remanier la liste, et c'est LE FICHIER
+        # qu'on écrit qui doit être à jour.
+        self._reprendre_reglages()
 
         warnings_out = {}
         gcode = core.generate_gcode_combined(self.operations, warnings_out=warnings_out)
