@@ -11046,6 +11046,11 @@ def _tramage_veut_materiau(t):
     return bool(t["nuancier"] or t["au_foyer"])
 
 
+# Chaînes de calligraphie déjà calculées, partagées par toutes les
+# ouvertures du panneau. Clé = les réglages qui décident du tracé.
+_CACHE_CHAINES = {}
+
+
 class TaskPanelCalligraphie:
     """Une police d'ordinateur gravée en PLEINS ET DÉLIÉS par la hauteur Z.
 
@@ -11058,7 +11063,13 @@ class TaskPanelCalligraphie:
     pas."""
 
     def __init__(self):
-        self._cache = (None, None)        # (clé des réglages, (chaînes, infos))
+        # LE CACHE SURVIT À LA FERMETURE DU PANNEAU (_CACHE_CHAINES, au
+        # niveau du module). Extraire les pleins et déliés d'un TTF cursif
+        # coûte 4,61 s sur l'Aston Script de l'atelier -- rastérisation,
+        # squelette, largeur locale --, et le cache d'instance repartait de
+        # zéro à chaque réouverture : rouvrir le panneau sur le MÊME texte
+        # et la MÊME police repayait les 4,6 s pour redonner le même
+        # résultat. La plume mono-trait, elle, coûte 0,00 s.
         self._objet = None                # le tracé posé dans le document
         inner = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(inner)
@@ -11410,8 +11421,19 @@ class TaskPanelCalligraphie:
             "plume_modele": self.combo_plume_modele,
         }
         self._peupler_polices()
-        _restore_last_values("calligraphie", self._last_fields)
-        self._reprendre_selection()
+        # LE VERDICT SE TAIT PENDANT LA RESTAURATION. Chaque champ remis en
+        # place émet son signal, donc rejouait tout le verdict -- et le
+        # verdict extrait les glyphes de la police (numpy/scipy/PIL sur une
+        # image tramée) : 2,8 s par passage sur l'Aston Script de l'atelier.
+        # Restaurer sept champs faisait donc le travail deux fois pour
+        # afficher le même résultat. Christophe l'a entendu : « le panneau
+        # met beaucoup de temps à s'afficher et j'entends le PC souffler ».
+        self._verdict_muet = True
+        try:
+            _restore_last_values("calligraphie", self._last_fields)
+            self._reprendre_selection()
+        finally:
+            self._verdict_muet = False
         self._maj_verdict()
         self.form = _scrollable(inner)
 
@@ -11472,8 +11494,8 @@ class TaskPanelCalligraphie:
                round(self.spn_plume_epais.value(), 1),
                round(self.spn_plume_contraste.value(), 1),
                self.combo_plume_modele.currentData())
-        if self._cache[0] == cle:
-            return self._cache[1]
+        if cle in _CACHE_CHAINES:
+            return _CACHE_CHAINES[cle]
         if not cle[0] or not cle[1]:
             return None
         if plume:
@@ -11514,10 +11536,16 @@ class TaskPanelCalligraphie:
             # continue par construction, et ce qu'on y lisse est bien un
             # artefact d'échantillonnage.
             res = cal.chaines_calligraphie(cle[0], cle[1], largeur_mm=cle[2])
-        self._cache = (cle, res)
+        # Borné : une clé porte un texte entier, on ne garde pas en
+        # mémoire l'historique d'une soirée d'essais.
+        if len(_CACHE_CHAINES) > 32:
+            _CACHE_CHAINES.clear()
+        _CACHE_CHAINES[cle] = res
         return res
 
     def _maj_verdict(self):
+        if getattr(self, "_verdict_muet", False):
+            return
         msgs = []
         try:
             res = self._chaines()

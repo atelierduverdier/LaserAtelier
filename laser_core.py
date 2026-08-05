@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.82.0"
+VERSION = "2.82.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -9569,14 +9569,35 @@ def vitesse_pour_delie(material, largeur_voulue, power_max=None):
     mat = _burn_width_material(material)
     if not mat:
         return None
+    # UNE SEULE LECTURE DE LA CONFIG, ET AUCUNE ÉCHELLE CONSTRUITE.
+    #
+    # La première version appelait `echelle_fuseau_z` par vitesse candidate.
+    # Or cette fonction bâtit toute l'échelle du fuseau : une dichotomie de
+    # 40 itérations par palier, chacune relisant la table. Coût mesuré sur
+    # le panneau Calligraphie de l'atelier -- 26 appels, 138 762 appels à
+    # `_largeur_defocus`, 23 millions de logarithmes, et le panneau passait
+    # à 15 s à l'ouverture. Christophe l'a entendu avant de le voir : « le
+    # panneau met beaucoup de temps à s'afficher et j'entends le PC
+    # souffler ». C'est le défaut que la règle du dépôt décrit déjà mot pour
+    # mot : si on appelle une largeur dans une boucle, cette boucle est une
+    # boucle d'analyse de fichier.
+    #
+    # Or de toute cette échelle on ne lisait qu'UN nombre, `w_min`, et
+    # celui-ci ne demande pas de dichotomie : c'est la brûlure mesurée AU
+    # FOYER à la plus faible puissance de la table (même définition que
+    # dans `echelle_fuseau_z`, à l'identique).
     tables = load_burn_widths(mat)
-    mesures = (tables.get("focus") or []) + (tables.get("defocus") or [])
-    vitesses = sorted({float(e.get("feed", 0) or 0) for e in mesures})
-    for f in vitesses:
+    foyer = tables.get("focus") or []
+    mesures = foyer + (tables.get("defocus") or [])
+    pts_s = [float(e.get("power", 0) or 0) for e in mesures if e.get("width")]
+    if not pts_s or not foyer:
+        return None
+    s_bas = min(pts_s)
+    for f in sorted({float(e.get("feed", 0) or 0) for e in mesures}):
         if f <= 0:
             continue
-        ech = echelle_fuseau_z(mat, f, power_max=power_max, line_min_mm=0.0)
-        if ech and ech[1] <= largeur_voulue + 1e-9:
+        w = _bilinear_burn(foyer, s_bas, f)
+        if w and 0 < w <= largeur_voulue + 1e-9:
             return f
     return None
 

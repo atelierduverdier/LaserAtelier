@@ -13,6 +13,7 @@ incliné en tire des pleins et des déliés -- et sans les déviations aux
 croisements que coûte un squelette tramé, puisque rien n'est estimé.
 """
 import inspect
+import textwrap
 import math
 
 from harness import preparer, sans_dialogues
@@ -459,3 +460,74 @@ assert core.vitesse_pour_delie(u"Hêtre", 1e-4, 900.0) is None, (
     "message enverrait vers un réglage qui ne marchera pas")
 print("14. la vitesse proposée pour les déliés sait vraiment les faire, et "
       "l'impossible ne reçoit aucune proposition OK")
+
+
+# --- 15. LE PANNEAU NE DOIT PAS RELIRE LA CONFIG EN BOUCLE --------------
+# Christophe l'a ENTENDU avant de le voir : « le panneau met beaucoup de
+# temps à s'afficher et j'entends le PC souffler ». Cause : la première
+# version de `vitesse_pour_delie` appelait `echelle_fuseau_z` par vitesse
+# candidate, et cette fonction bâtit toute l'échelle du fuseau par
+# dichotomie. 26 échelles construites, 138 762 largeurs interpolées, 15 s.
+#
+# On compte les LECTURES, pas les secondes : un seuil en secondes est du
+# bruit sur une machine partagée, un compteur non.
+_n = [0]
+_vraie_config = core.load_config
+
+
+def _compter(*a, **k):
+    _n[0] += 1
+    return _vraie_config(*a, **k)
+
+
+core.load_config = _compter
+try:
+    core.vitesse_pour_delie(u"Hêtre", 0.125, 900.0)
+finally:
+    core.load_config = _vraie_config
+assert _n[0] <= 2, (
+    "vitesse_pour_delie relit la config plusieurs fois : chaque lecture "
+    "analyse tout le fichier JSON, et c'est une boucle d'analyse de "
+    "fichier déguisée en boucle de calcul", _n[0])
+
+# Et elle ne doit PAS APPELER l'échelle du fuseau -- vérifié sur l'ARBRE
+# SYNTAXIQUE, pas par une recherche de texte : le commentaire de la
+# fonction cite le nom pour raconter le défaut, et une recherche naïve
+# accusait donc l'explication du correctif.
+import ast as _ast
+_arbre = _ast.parse(textwrap.dedent(
+    inspect.getsource(core.vitesse_pour_delie)))
+_appels = {n.func.id for n in _ast.walk(_arbre)
+           if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Name)}
+assert "echelle_fuseau_z" not in _appels, (
+    "vitesse_pour_delie reconstruit l'échelle du fuseau : c'est le défaut "
+    "qui a fait passer le panneau Calligraphie à 15 s à l'ouverture",
+    sorted(_appels))
+
+# SABOTAGE : la version d'origine, et le compteur doit exploser.
+_faux = '''def sabote(material, largeur_voulue, power_max=None):
+    mat = _burn_width_material(material)
+    tables = load_burn_widths(mat)
+    mesures = (tables.get("focus") or []) + (tables.get("defocus") or [])
+    for f in sorted({float(e.get("feed", 0) or 0) for e in mesures}):
+        if f <= 0:
+            continue
+        ech = echelle_fuseau_z(mat, f, power_max=power_max, line_min_mm=0.0)
+        if ech and ech[1] <= largeur_voulue + 1e-9:
+            return f
+    return None
+'''
+_ns = dict(core.__dict__)
+exec(compile(_faux, "<sabotage>", "exec"), _ns)
+_n[0] = 0
+_ns["load_config"] = _compter
+core.load_config = _compter
+try:
+    _ns["sabote"](u"Hêtre", 0.125, 900.0)
+finally:
+    core.load_config = _vraie_config
+assert _n[0] > 2, (
+    "le sabotage ne relit pas la config plus souvent : le contrôle "
+    "ci-dessus ne prouve rien", _n[0])
+print("15. vitesse_pour_delie : {} lecture(s) de config contre {} pour la "
+      "version qui a fait souffler le PC OK".format(1, _n[0]))
