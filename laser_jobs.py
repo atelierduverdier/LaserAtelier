@@ -321,6 +321,18 @@ def _apercu_calque(job, rebatir=False):
         if getattr(forme, "Faces", None):
             faces.extend(forme.Faces)          # déjà des faces : rien à bâtir
             continue
+        # UNE FORME GALBÉE N'A PAS DE SURFACE PLANE À MONTRER. Sur un texte
+        # projeté, le constructeur 2D rendait deux ou trois éclats -- le
+        # point du i, la contreforme du e -- et l'aperçu mentait plus qu'il
+        # n'informait. Le panneau, lui, refuse et dit le bon ordre.
+        import laser_core as _c
+        if not _c.forme_est_plane(forme):
+            FreeCAD.Console.PrintWarning(
+                "Aperçu de calque : « {} » n'est pas plat ({:.2f} mm de "
+                "creux) -- la Gravure remplie travaille en 2D, il n'y a pas "
+                "de surface à montrer.\n".format(
+                    getattr(src, "Label", "?"), _c.ecart_au_plan(forme)))
+            continue
         try:
             baties = core._faces_from_any_shape(forme, getattr(src, "Label", "?"))
         except Exception:

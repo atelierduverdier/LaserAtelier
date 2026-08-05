@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.2"
+VERSION = "2.99.3"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2799,6 +2799,56 @@ def _faces_rapides_depuis_fils(wires, deflection=0.02):
         return faces
     except Exception:
         return None
+
+
+# La Gravure remplie et les Hachures sont des modes PLANS : leurs faces se
+# bâtissent en 2D. Au-delà de ce creux, une forme n'est plus plane et le
+# constructeur ne rend presque rien -- sans se plaindre.
+#
+# LE SEUIL SE DÉDUIT, IL NE S'INVENTE PAS : `_faces_rapides_depuis_fils`
+# re-polygonise les fils à 0,02 mm, donc en dessous de deux fois cette
+# flèche une forme est indiscernable d'une forme plane pour ce code-là.
+ECART_PLAN_MAXI_MM = 0.04
+
+
+def ecart_au_plan(shape):
+    """Le plus grand écart des sommets au plan qu'ils définissent, en mm.
+
+    Christophe, 05/08/2026 : un texte PROJETÉ sur une surface courbe, puis
+    passé en Gravure remplie -- « l'aplat couleur n'a pas bien fonctionné,
+    juste le point du i et l'intérieur du e sont colorés ». Mesuré sur son
+    document : 1652 arêtes, 4 faces bâties, 4,63 mm². Reproduit en headless
+    sur un cylindre de 60 mm : à plat 8 faces et 217,5 mm2, projeté 2 faces
+    et 0,0 mm2 -- pour 0,317 mm d'écart au plan seulement.
+
+    Et ce n'est PAS qu'un défaut d'aperçu : `_faces_from_any_shape` est le
+    même constructeur que la Gravure remplie utilise pour savoir quoi
+    hachurer. La gravure sortait donc vide elle aussi, sans un mot."""
+    pts = [v.Point for v in getattr(shape, "Vertexes", []) or []]
+    if len(pts) < 3:
+        return 0.0
+    p0 = pts[0]
+    p1 = max(pts, key=lambda q: q.distanceToPoint(p0))
+    u = p1.sub(p0)
+    if u.Length < 1e-9:
+        return 0.0
+    u.normalize()
+    # Le point le plus ÉLOIGNÉ DE LA DROITE p0p1 : le prendre au hasard
+    # donnerait un plan dégénéré sur un tracé presque aligné.
+    def _hors_droite(q):
+        w = q.sub(p0)
+        return (w - u * w.dot(u)).Length
+    p2 = max(pts, key=_hors_droite)
+    n = u.cross(p2.sub(p0))
+    if n.Length < 1e-9:
+        return 0.0                        # tout est aligné : pas de creux
+    n.normalize()
+    return max(abs(q.sub(p0).dot(n)) for q in pts)
+
+
+def forme_est_plane(shape, tol=ECART_PLAN_MAXI_MM):
+    """La forme tient-elle dans un plan, à `tol` près ?"""
+    return ecart_au_plan(shape) <= tol
 
 
 def _faces_from_any_shape(shape, label="?"):

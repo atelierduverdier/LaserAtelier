@@ -9088,6 +9088,36 @@ class TaskPanelFilledEngraving:
         (None, None, None, None) si la sélection est vide ou la calibration
         défocus invalide."""
         self._burn_note = None
+        # CE MODE EST PLAN, ET IL DOIT LE DIRE. Christophe, 05/08/2026 : un
+        # texte PROJETÉ sur une surface courbe, puis passé ici -- « l'aplat
+        # couleur n'a pas bien fonctionné, juste le point du i et l'intérieur
+        # du e sont colorés ». Le constructeur de faces ne sait travailler
+        # qu'en 2D : sur son document, 1652 arêtes ont donné 4 faces et
+        # 4,63 mm². Reproduit sur un cylindre : à plat 8 faces et 217,5 mm²,
+        # projeté 2 faces et 0,0 mm² -- pour 0,317 mm de creux seulement.
+        #
+        # Et le G-code serait vide de la même façon : c'est le MÊME
+        # constructeur qui décide de ce qu'on hachure. Mieux vaut refuser en
+        # nommant le bon ordre que graver une planche presque blanche.
+        for _so in (self.selection or []):
+            _forme = getattr(getattr(_so, "Object", None), "Shape", None)
+            if _forme is None:
+                continue
+            _creux = core.ecart_au_plan(_forme)
+            if _creux > core.ECART_PLAN_MAXI_MM:
+                if not silent:
+                    QtWidgets.QMessageBox.warning(
+                        self.form, "Gravure remplie",
+                        "« {} » n'est pas plat : ses points s'écartent de "
+                        "{:.2f} mm d'un plan.\n\nCe mode fabrique son "
+                        "remplissage en 2D — sur une forme galbée il ne "
+                        "trouve presque aucune surface, et la gravure "
+                        "sortirait quasi blanche.\n\nL'ORDRE À SUIVRE est "
+                        "l'inverse : remplis (ou hachure) la forme À PLAT, "
+                        "puis PROJETTE le résultat sur la surface 3D, et "
+                        "grave-le avec Marquage de motif."
+                        .format(getattr(_so.Object, "Label", "?"), _creux))
+                return None, None, None, None
         cle_faces = _cle_geometrie_selection(self.selection)
         if (_MEMO_REMPLISSAGE["cle_faces"] == cle_faces
                 and _MEMO_REMPLISSAGE["faces"]):

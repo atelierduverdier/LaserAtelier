@@ -243,3 +243,57 @@ assert not _perdus, (
     "avec la raison", _perdus)
 print("6. tous les réglages des panneaux sont mémorisés ({} exclusions, "
       "chacune justifiée) OK".format(len(_EXCLUS)))
+
+
+# --- 7. UN MODE PLAN DOIT REFUSER UNE FORME GALBÉE ----------------------
+# Christophe, 05/08/2026 : un texte PROJETÉ sur une surface courbe, puis
+# passé en Gravure remplie -- « l'aplat couleur n'a pas bien fonctionné,
+# juste le point du i et l'intérieur du e sont colorés ».
+#
+# Ce n'était pas l'aperçu : `_faces_from_any_shape` est le MÊME constructeur
+# que la Gravure remplie utilise pour savoir quoi hachurer, et il ne
+# travaille qu'en 2D. Mesuré sur son document -- 1652 arêtes, 4 faces,
+# 4,63 mm² -- et reproduit sur un cylindre de 60 mm : à plat 8 faces et
+# 217,5 mm², projeté 2 faces et 0,0 mm². Le G-code serait sorti quasi
+# blanc, sans un mot.
+import FreeCAD                                                 # noqa: E402
+import Part                                                    # noqa: E402
+
+_d7 = FreeCAD.newDocument("EssaiPlan")
+try:
+    # Un carré bien plat, puis le même galbé de 0,3 mm -- l'ordre de grandeur
+    # mesuré sur son cylindre.
+    _plat = Part.makePolygon([FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(20, 0, 0),
+                              FreeCAD.Vector(20, 20, 0), FreeCAD.Vector(0, 20, 0),
+                              FreeCAD.Vector(0, 0, 0)])
+    assert core.ecart_au_plan(_plat) < 1e-6, (
+        "un carré plat est vu comme galbé", core.ecart_au_plan(_plat))
+    assert core.forme_est_plane(_plat)
+
+    _galbe = Part.makePolygon([FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(20, 0, 0),
+                               FreeCAD.Vector(20, 20, 0.3),
+                               FreeCAD.Vector(0, 20, 0), FreeCAD.Vector(0, 0, 0)])
+    _e7 = core.ecart_au_plan(_galbe)
+    assert 0.1 < _e7 < 0.5, ("le creux mesuré ne ressemble pas à celui d'une "
+                             "projection", _e7)
+    assert not core.forme_est_plane(_galbe), (
+        "un creux de {:.2f} mm passe pour plan : c'est exactement le cas qui "
+        "a vidé sa gravure".format(_e7))
+
+    # LE SEUIL SE DÉDUIT DE LA FLÈCHE DE POLYGONISATION, il ne s'invente pas.
+    assert abs(core.ECART_PLAN_MAXI_MM - 0.04) < 1e-9, (
+        "le seuil de planéité a changé : il vaut deux fois la flèche de "
+        "re-polygonisation (0,02 mm), en dessous de laquelle le constructeur "
+        "de faces ne distingue plus rien", core.ECART_PLAN_MAXI_MM)
+
+    # ET LE CAS DÉGÉNÉRÉ NE DOIT PAS CRIER AU LOUP : une forme alignée n'a
+    # pas de plan à contredire.
+    _ligne = Part.makePolygon([FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(10, 0, 0),
+                               FreeCAD.Vector(20, 0, 0)])
+    assert core.forme_est_plane(_ligne), (
+        "une forme alignée est déclarée galbée : le mode refuserait une "
+        "sélection parfaitement valable")
+finally:
+    FreeCAD.closeDocument("EssaiPlan")
+print("7. un creux de 0,3 mm est vu comme galbé, un carré plat et une ligne "
+      "restent plans OK")
