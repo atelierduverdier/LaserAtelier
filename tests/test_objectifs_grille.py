@@ -353,3 +353,30 @@ print("Zone F800-F1500 : {} vitesses intérieures ({}), gravées par la "
           len(interieurs), interieurs))
 
 print("\nTOUS LES TESTS objectifs_grille PASSENT")
+
+
+# --- 11. LE PAS SUIT LA HAUTEUR RÉELLEMENT GRAVÉE ----------------------
+# Christophe a gravé la bande de tons AU FOYER et la planche est sortie
+# rayée : le pas valait toujours celui du défocus (1,01 mm, calculé pour un
+# trait de 0,68 à 0,96) alors qu'au foyer le trait fait 0,11 à 0,20. Deux
+# sources pour une seule valeur -- le pas lisait le `cell_defocus` LITTÉRAL
+# de la recette, la gravure lisait le champ.
+_ii = [k for k in range(p.combo_mat_objectif.count())
+       if p.combo_mat_objectif.itemText(k) == "Sapin"]
+if _ii:
+    p.combo_mat_objectif.setCurrentIndex(_ii[0])
+p.combo_recipe.setCurrentIndex(0)
+p.combo_recipe.setCurrentIndex(idx)
+_pas_dz = p.spn_hatch_spacing.value()
+p.spn_cell_defocus.setValue(0.0)
+_pas_foyer = p.spn_hatch_spacing.value()
+assert _pas_foyer < _pas_dz - 1e-6, (
+    "passer les cellules au foyer n'a pas resserré le pas : la planche "
+    "sortira rayée, chaque case faite de traits fins largement écartés",
+    _pas_dz, _pas_foyer)
+p.spn_cell_defocus.setValue(15.0)
+assert abs(p.spn_hatch_spacing.value() - _pas_dz) < 1e-6, (
+    "revenir au défocus ne restaure pas le pas : le réglage ne suit la "
+    "hauteur que dans un sens", p.spn_hatch_spacing.value(), _pas_dz)
+print("11. le pas suit la hauteur gravée dans les DEUX sens : {:.2f} mm en "
+      "défocus 15, {:.2f} mm au foyer OK".format(_pas_dz, _pas_foyer))

@@ -14497,6 +14497,10 @@ class TaskPanelTestGrid:
         # part où en noter les largeurs.
         self.spn_cell_defocus.valueChanged.connect(
             lambda _v: self._mesures.reload())
+        # LE PAS SUIT LA HAUTEUR RÉELLEMENT GRAVÉE. Changer de hauteur
+        # change la largeur du trait, donc le pas qui la couvre.
+        self.spn_cell_defocus.valueChanged.connect(
+            lambda _v: self._recalculer_pas())
 
         _section(form, "Remplissage", "sect_fill.svg")
         self.combo_filltype = QtWidgets.QComboBox()
@@ -15194,6 +15198,39 @@ class TaskPanelTestGrid:
                     self.spn_feed_min.value(), self.spn_hatch_spacing.value()),
             })
 
+    def _recalculer_pas(self):
+        """Le pas de hachure, recalculé sur la hauteur AFFICHÉE.
+
+        UN RECALCUL DÉDIÉ, PAS UNE RÉAPPLICATION DE L'OBJECTIF. Christophe
+        a gravé la bande de tons au foyer et la planche est sortie rayée :
+        le pas valait toujours 1,01 mm -- calculé pour un trait de 0,68 à
+        0,96 mm en défocus 15 -- alors qu'au foyer le trait fait 0,11 à
+        0,20. Couverture obtenue 11 à 25 % au lieu de 52 à 95 %.
+
+        La cause était deux sources pour une seule valeur : le pas se
+        calculait sur le `cell_defocus` LITTÉRAL de la recette pendant que
+        la gravure lisait le champ. Et rebrancher naïvement le champ ne
+        suffisait pas : `_reappliquer_objectif` REPOSE `spn_cell_defocus`
+        depuis la recette, donc la valeur saisie à la main était écrasée
+        avant d'être lue. D'où cette fonction, qui ne touche QUE le pas."""
+        cle = self.combo_recipe.currentData()
+        r = dict(self._recipes).get(cle) if cle else None
+        if not r or "hatch_spacing" not in r or not r.get("tons_materiau"):
+            return
+        powers = r.get("powers")
+        feeds = r.get("feeds")
+        if not feeds:
+            return
+        mat = self._materiau()
+        defocus = self.spn_cell_defocus.value()
+        feed, puissances, _dire = core.regime_bande_tons(
+            mat, feeds[0], defocus, n=len(powers or []) or 10)
+        pas, _dit = core.pas_bande_tons(mat, feed, defocus, puissances,
+                                        r.get("hatch_spacing", 0.8))
+        self._pas_bande = pas
+        if abs(self.spn_hatch_spacing.value() - pas) > 1e-6:
+            self.spn_hatch_spacing.setValue(pas)
+
     def _paliers_du_materiau(self, r):
         """(puissances, vitesses, explication) de cet objectif, RECALÉS sur
         le matériau choisi en ②.
@@ -15213,6 +15250,11 @@ class TaskPanelTestGrid:
         if not r.get("tons_materiau") or not feeds:
             return powers, feeds, None
         mat = self._materiau()
+        # La hauteur AFFICHÉE si elle existe (② se construit après ①, et la
+        # restauration de session rejoue un objectif avant).
+        # LA RECETTE fait foi à l'application ; le champ ne prend la main
+        # qu'ensuite, via `_recalculer_pas`. Le lire ici donnerait le 0 par
+        # défaut du panneau, jamais la hauteur de l'objectif.
         defocus = r.get("cell_defocus", 0.0)
         feed, puissances, dire = core.regime_bande_tons(
             mat, feeds[0], defocus, n=len(powers or []) or 10)
