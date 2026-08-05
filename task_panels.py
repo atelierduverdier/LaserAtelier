@@ -11426,6 +11426,39 @@ class TaskPanelCalligraphie:
         self.lbl_schema_plume.setAlignment(QtCore.Qt.AlignHCenter)
         form.addRow(self.lbl_schema_plume)
 
+        # L'APERÇU VIF. Christophe, 05/08/2026 : « est-il possible de voir la
+        # font changer au fur et à mesure que l'on change les paramètres,
+        # avec un mot au choix afin de prévisualiser le résultat ? ».
+        #
+        # LE COÛT DÉCIDE DE LA FORME, et il diffère de deux ordres de
+        # grandeur entre les deux voies : la plume rend un mot en 1,1 ms
+        # (8,4 ms pour tout le texte de l'atelier) contre 265 ms pour
+        # l'extraction d'une police à contour. Sur la plume c'est donc
+        # gratuit à chaque tour de molette ; et sur la voie extraction, les
+        # réglages de plume n'ont AUCUN effet, donc bouger l'angle ne
+        # recalcule rien. L'anti-rebond couvre le reste -- la frappe dans le
+        # champ texte, qui est le seul geste rapide qui coûte cher.
+        #
+        # UN MOT, PAS LE TEXTE ENTIER : « Atelier du Verdier du munu » dans
+        # une vignette de 420 px rend des lettres de trois pixels, où aucun
+        # plein ne se juge. Vide, le champ prend le PREMIER MOT du texte --
+        # de quoi que ça marche sans rien régler.
+        self.edt_mot = QtWidgets.QLineEdit()
+        self.edt_mot.setPlaceholderText("(le premier mot du texte)")
+        self.edt_mot.setToolTip(
+            "Le mot dessiné dans l'aperçu ci-dessous. Il ne change RIEN à\n"
+            "ce qui sera gravé -- c'est une loupe, pas un réglage.")
+        form.addRow("Mot d'aperçu :", self.edt_mot)
+        self.lbl_vignette = QtWidgets.QLabel()
+        self.lbl_vignette.setAlignment(QtCore.Qt.AlignHCenter)
+        self.lbl_vignette.setMinimumHeight(_VIGNETTE_CALLIGRAPHIE_H + 8)
+        form.addRow(self.lbl_vignette)
+        self._timer_apercu = QtCore.QTimer()
+        self._timer_apercu.setSingleShot(True)
+        self._timer_apercu.setInterval(180)
+        self._timer_apercu.timeout.connect(self._maj_vignette)
+        self.edt_mot.textChanged.connect(self._demander_apercu)
+
         def _maj_plume():
             actif = self.chk_plume.isChecked()
             for w in (self.combo_plume_police, self.spn_plume_angle,
@@ -11518,9 +11551,17 @@ class TaskPanelCalligraphie:
 
         for w in (self.edt_texte, self.edt_police):
             w.editingFinished.connect(self._maj_verdict)
+            w.editingFinished.connect(self._demander_apercu)
         for w in (self.spn_largeur, self.spn_feed, self.spn_power):
             w.valueChanged.connect(self._maj_verdict)
+            w.valueChanged.connect(self._demander_apercu)
         self.combo_mat.currentIndexChanged.connect(self._maj_verdict)
+        self.combo_mat.currentIndexChanged.connect(self._demander_apercu)
+        # LE TEXTE REDESSINE À LA FRAPPE, et lui seul : `editingFinished`
+        # n'arrive qu'à la validation, or c'est en tapant qu'on veut voir.
+        # C'est aussi le seul geste rapide qui peut coûter cher (265 ms sur
+        # une police à contour), d'où l'anti-rebond.
+        self.edt_texte.textChanged.connect(self._demander_apercu)
 
         _section(form, "③ Verdict et aperçu", "sect_preview.svg", ouvert=True)
         # UNE LIGNE PAR CONSTAT, pas un pavé. La règle de la maison est
@@ -11616,6 +11657,7 @@ class TaskPanelCalligraphie:
         finally:
             self._verdict_muet = False
         self._maj_verdict()
+        self._maj_vignette()
         self.form = _scrollable(inner)
 
     # -- police ---------------------------------------------------------
@@ -11646,6 +11688,61 @@ class TaskPanelCalligraphie:
         if chemin:
             self.edt_police.setText(chemin)
             self._maj_verdict()
+
+    def _demander_apercu(self, *_args):
+        """Programme un redessin de la vignette (anti-rebond : chaque frappe
+        redémarre le délai au lieu de l'empiler). Nom imposé : `_maj_plume`
+        appelle déjà ce crochet par `getattr` depuis la v2.80."""
+        if not getattr(self, "_verdict_muet", False):
+            self._timer_apercu.start()
+
+    def _maj_vignette(self):
+        """Le mot d'aperçu, dessiné comme il sera gravé.
+
+        On passe par `preparer_calligraphie` quand un matériau est choisi,
+        pour montrer le trait BORNÉ par le matériau et raboté par la pente
+        Z -- même honnêteté que le grand aperçu : sinon la vignette promet
+        une calligraphie que le bois ne rendra pas."""
+        try:
+            mot = (self.edt_mot.text().strip()
+                   or (self.edt_texte.text().strip().split() or [""])[0])
+            if not mot:
+                self.lbl_vignette.clear()
+                return
+            plume = self.chk_plume.isChecked()
+            if plume:
+                res = core.chaines_plume(
+                    self.combo_plume_police.currentData(), mot,
+                    largeur_mm=60.0,
+                    angle_deg=self.spn_plume_angle.value(),
+                    epaisseur=self.spn_plume_epais.value() / 100.0,
+                    contraste=self.spn_plume_contraste.value(),
+                    modele=self.combo_plume_modele.currentData())
+            else:
+                import calligraphie as cal
+                chemin = self.edt_police.text().strip()
+                if not chemin:
+                    self.lbl_vignette.clear()
+                    return
+                res = cal.chaines_calligraphie(chemin, mot, largeur_mm=60.0)
+            chaines, inf = res
+            mat = self.combo_mat.currentData()
+            prep = (core.preparer_calligraphie(
+                chaines, self.spn_feed.value(), mat,
+                power_max=self.spn_power.value()) if mat else None)
+            img = _rendre_calligraphie(chaines, prep, inf, 420)
+            # UNE QLabel ROGNE, ELLE NE RÉDUIT PAS. Un mot haut (jambages +
+            # hampes) rend 300 px pour 420 de large ; la case n'en montrait
+            # qu'une bande, et on y voyait un bout de trait agrandi plutôt
+            # qu'une lettre. On met donc l'image à l'échelle nous-mêmes.
+            if img.height() > _VIGNETTE_CALLIGRAPHIE_H:
+                img = img.scaledToHeight(_VIGNETTE_CALLIGRAPHIE_H,
+                                         QtCore.Qt.SmoothTransformation)
+            self.lbl_vignette.setPixmap(QtGui.QPixmap.fromImage(img))
+        except Exception as exc:
+            # UNE VIGNETTE NE DOIT JAMAIS EMPÊCHER DE TRAVAILLER. Un texte à
+            # demi tapé, une police illisible : on le dit et on continue.
+            self.lbl_vignette.setText("(aperçu impossible : {})".format(exc))
 
     def _on_voir_polices_plume(self):
         """Le spécimen des mono-trait. Comme les deux autres sélecteurs
@@ -11985,10 +12082,12 @@ class TaskPanelCalligraphie:
             _save_last_values("calligraphie", self._last_fields)
 
     def accept(self):
+        self._timer_apercu.stop()
         _save_last_values("calligraphie", self._last_fields)
         return True
 
     def reject(self):
+        self._timer_apercu.stop()
         return True
 
 
@@ -12092,7 +12191,7 @@ def _schema_plume(angle_deg, epaisseur_pct, contraste, modele=None,
     p.setPen(orange)
     f = QtGui.QFont(); f.setPointSizeF(8.0); f.setBold(True); p.setFont(f)
     p.drawText(QtCore.QRectF(0, 4, larg, 16), QtCore.Qt.AlignHCenter,
-               "{} {:.0f}°  ·  plein {:.0f} %  ·  contraste 1:{:.0f}"
+               "{} {:.0f}°  ·  plein {:.0f} %  ·  contraste {:.0f}:1"
                .format("bec à" if modele == core.PLUME_BEC else "pointe à",
                        angle_deg, epaisseur_pct, contraste))
     p.setPen(gris)
@@ -12110,6 +12209,10 @@ def _schema_plume(angle_deg, epaisseur_pct, contraste, modele=None,
                legende)
     p.end()
     return img
+
+
+# Hauteur maxi de la vignette d'aperçu du panneau Calligraphie.
+_VIGNETTE_CALLIGRAPHIE_H = 150
 
 
 def _rendre_calligraphie(chaines, prep, infos, largeur_px=1100):

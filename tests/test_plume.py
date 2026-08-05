@@ -1028,7 +1028,19 @@ _c22b = core.chaines_plume("hersheyscript1", "Atelier", largeur_mm=80.0,
 assert _c22["rapport"] > _c22b["rapport"], (
     "demander 16:1 donne MOINS de contraste que 4:1 : la valeur elle-même "
     "est inversée", _c22["rapport"], _c22b["rapport"])
-print("22. le contraste s'écrit « {} » et 16 donne bien plus de modulation "
+# ET LE SECOND APPELANT, car il portait le même défaut. Le schéma de plume
+# dessine sa propre légende, et elle disait « contraste 1:5 » juste sous un
+# champ remis à l'endroit -- deux notations opposées à trois centimètres
+# l'une de l'autre. Le contrôle porte sur la SOURCE faute de mieux : cette
+# légende est peinte dans une image, elle n'a pas de texte à interroger.
+_src22 = inspect.getsource(tp._schema_plume)
+assert "contraste 1:" not in _src22, (
+    "le schéma de plume écrit encore le rapport à l'envers alors que le "
+    "champ juste au-dessus a été remis à l'endroit")
+assert "{:.0f}:1" in _src22, (
+    "le schéma n'annonce plus le rapport sous la forme « X:1 »")
+
+print("22. le contraste s'écrit « {} » (champ ET schéma) et 16 donne bien plus de modulation "
       "que 4 ({:.1f}:1 contre {:.1f}:1) OK".format(
           _txt22, _c22["rapport"], _c22b["rapport"]))
 
@@ -1105,3 +1117,101 @@ core.delete_preset("calligraphie", _nom23)
 print("23. spécimen mono-trait ({} polices proposées) et préréglages : les "
       "six réglages de plume font l'aller-retour OK".format(
           _p23.combo_plume_police.count()))
+
+
+# --- 24. L'APERÇU VIF, ET CE QUI L'INTERDISAIT --------------------------
+# Christophe, 05/08/2026 : « est-il possible de voir la font changer au fur
+# et à mesure que l'on change les paramètres, avec un mot au choix afin de
+# prévisualiser le résultat ? »
+#
+# Ce qui l'interdisait n'était pas le dessin -- la plume rend un mot en
+# 1 ms -- mais `echelle_fuseau_z` : 128 paliers x 40 pas de dichotomie, soit
+# 5120 interpolations, 435 ms MESURÉES. Le verdict les payait DÉJÀ à chaque
+# tour de molette, y compris sur l'angle du bec, qui ne change pourtant rien
+# à la table de brûlures.
+#
+# ON COMPTE LES APPELS, PAS LES SECONDES : un seuil en millisecondes est du
+# bruit sur une machine partagée, un compteur ne l'est pas. (Même protocole
+# que le §24 de test_lignes_gravees.)
+_appels24 = [0]
+_vrai_ld = core._largeur_defocus
+core._largeur_defocus = lambda *a, **k: (_appels24.__setitem__(0, _appels24[0] + 1),
+                                         _vrai_ld(*a, **k))[1]
+try:
+    core._MEMO_FUSEAU.clear()
+    _args24 = dict(power_max=900.0, line_min_mm=0.0, largeur_max=1.3)
+    _e1 = core.echelle_fuseau_z(u"Hêtre", 600.0, **_args24)
+    _n_froid = _appels24[0]
+    _appels24[0] = 0
+    _e2 = core.echelle_fuseau_z(u"Hêtre", 600.0, **_args24)
+    _n_chaud = _appels24[0]
+finally:
+    core._largeur_defocus = _vrai_ld
+
+assert _e1 is not None, "pas de fuseau sur le hêtre : le contrôle vise à côté"
+assert _n_froid > 1000, (
+    "l'échelle ne coûte plus rien à froid : ce contrôle ne mesure plus le "
+    "mur qu'il est censé mesurer", _n_froid)
+assert _n_chaud == 0, (
+    "l'échelle est recalculée alors que rien n'a changé : {} interpolations "
+    "de plus".format(_n_chaud), _n_chaud)
+assert _e2 == _e1, "le mémo ne rend pas ce que le calcul complet donne"
+# Un autre régime reste un autre calcul.
+assert core.echelle_fuseau_z(u"Hêtre", 1200.0, **_args24) != _e1, (
+    "deux vitesses différentes rendent la même échelle : la clé du mémo "
+    "ignore la vitesse")
+
+# LE MÉMO DOIT LÂCHER QUAND LES MESURES CHANGENT. Sans cela, mesurer une
+# brûlure de plus laisserait le panneau sur l'ancienne table sans un mot --
+# et c'est la config de l'atelier qu'on trahirait, pas un cache.
+import os as _os                                              # noqa: E402
+_appels24[0] = 0
+core._largeur_defocus = lambda *a, **k: (_appels24.__setitem__(0, _appels24[0] + 1),
+                                         _vrai_ld(*a, **k))[1]
+try:
+    _st = _os.stat(core.CONFIG_FILE)
+    _os.utime(core.CONFIG_FILE, (_st.st_atime, _st.st_mtime + 5))
+    core.echelle_fuseau_z(u"Hêtre", 600.0, **_args24)
+finally:
+    core._largeur_defocus = _vrai_ld
+assert _appels24[0] > 1000, (
+    "la config a changé et le mémo a resservi l'ancienne échelle : une "
+    "mesure de plus resterait invisible", _appels24[0])
+
+# LA VIGNETTE : elle doit RÉAGIR, et revenir sur ses pas.
+_p24 = tp.TaskPanelCalligraphie()
+_p24.chk_plume.setChecked(True)
+_p24.edt_texte.setText("Atelier du Verdier")
+_p24.edt_mot.setText("")                    # vide -> le premier mot du texte
+_p24._maj_vignette()
+assert _p24.lbl_vignette.pixmap() is not None and \
+    not _p24.lbl_vignette.pixmap().isNull(), (
+    "le mot d'aperçu vide ne retombe pas sur le premier mot du texte")
+
+
+def _empreinte24():
+    im = _p24.lbl_vignette.pixmap().toImage()
+    return (im.width(), im.height(),
+            sum(im.pixel(x, y) for y in range(0, im.height(), 7)
+                for x in range(0, im.width(), 7)))
+
+
+_p24.edt_mot.setText("du")
+_p24.spn_plume_angle.setValue(-40.0)
+_p24._maj_vignette()
+_a24 = _empreinte24()
+_p24.spn_plume_angle.setValue(50.0)
+_p24._maj_vignette()
+_b24 = _empreinte24()
+_p24.spn_plume_angle.setValue(-40.0)
+_p24._maj_vignette()
+_c24 = _empreinte24()
+assert _a24 != _b24, (
+    "changer l'angle du bec ne change pas la vignette : elle ne prévisualise "
+    "rien")
+assert _a24 == _c24, (
+    "revenir au même angle ne redonne pas la même vignette : elle dépend de "
+    "quelque chose qu'elle ne devrait pas voir")
+print("24. aperçu vif : l'échelle coûte {} interpolations à froid et {} "
+      "ensuite, et la vignette suit l'angle du bec OK".format(
+          _n_froid, _n_chaud))

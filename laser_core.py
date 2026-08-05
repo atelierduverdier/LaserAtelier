@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.91.0"
+VERSION = "2.92.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -6579,6 +6579,9 @@ def largeur_max_mesuree(material, feed, power_max=None):
     return _largeur_defocus(table, s, feed, max(float(n) for n in niveaux))
 
 
+_MEMO_FUSEAU = {}
+
+
 def echelle_fuseau_z(material, feed, power_max=None, line_min_mm=0.10,
                      paliers=FUSEAU_PALIERS, largeur_max=None):
     """Échelle du FUSEAU : noirceur -> (hauteur Z, puissance, largeur).
@@ -6628,6 +6631,27 @@ def echelle_fuseau_z(material, feed, power_max=None, line_min_mm=0.10,
     mat = _burn_width_material(material)
     if not mat or feed <= 0:
         return None
+    # MÉMO : CETTE ÉCHELLE COÛTE 5120 INTERPOLATIONS, et elle ne dépend que
+    # du matériau et du régime. 128 paliers x 40 pas de dichotomie, soit
+    # 435 ms MESURÉES sur le hêtre -- payées par le verdict du panneau
+    # Calligraphie à CHAQUE tour de molette, y compris sur l'angle du bec,
+    # qui ne change pourtant rien à la table de brûlures. Christophe,
+    # 05/08/2026, en demandant un aperçu vif : c'est ce mur-là qui
+    # l'interdisait.
+    #
+    # La clé porte la MTIME du fichier de config, donc mesurer une brûlure
+    # de plus -- ou une autre session qui écrit -- invalide le mémo sans
+    # qu'on ait à s'en souvenir. Même famille que les deux relectures de
+    # config déjà attrapées ici (le panneau Photo à 14 s) : la règle est
+    # qu'un échantillonnage de courbe charge ses mesures UNE fois.
+    try:
+        _sig = os.path.getmtime(CONFIG_FILE)
+    except OSError:
+        _sig = 0.0
+    _cle = (_sig, mat, float(feed), power_max, float(line_min_mm),
+            int(paliers), largeur_max)
+    if _cle in _MEMO_FUSEAU:
+        return _MEMO_FUSEAU[_cle]
     table = load_burn_widths(mat)
     niveaux = [float(n) for n in niveaux_defocus_mesures(mat)]
     if not niveaux:
@@ -6709,7 +6733,12 @@ def echelle_fuseau_z(material, feed, power_max=None, line_min_mm=0.10,
     if borne_haut:
         avert.append("dans les foncés, la puissance bute sur S{:.0f}".format(
             s_haut))
-    return ech, w_min, w_max, avert
+    res = (ech, w_min, w_max, avert)
+    # Borné : une soirée d'essais ne doit pas empiler les échelles.
+    if len(_MEMO_FUSEAU) > 32:
+        _MEMO_FUSEAU.clear()
+    _MEMO_FUSEAU[_cle] = res
+    return res
 
 
 def pente_z_max(feed):
