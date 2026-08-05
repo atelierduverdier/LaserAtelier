@@ -13,6 +13,7 @@ incliné en tire des pleins et des déliés -- et sans les déviations aux
 croisements que coûte un squelette tramé, puisque rien n'est estimé.
 """
 import inspect
+import re
 import textwrap
 import math
 
@@ -575,3 +576,131 @@ assert _plancher_b > 90.0, (
 print("16. échelle plafonnée au plus gros trait du dessin : S{:.0f}-S{:.0f}, "
       "{:.0f} % au plancher contre {:.0f} % sans plafond OK".format(
           min(_ss16), max(_ss16), _au_plancher, _plancher_b))
+
+
+# --- 17. AUCUN BLOC GRAVÉ NE DOIT DÉPASSER LE PAS D'ÉCHANTILLONNAGE -----
+# Christophe, 05/08/2026, la calligraphie « Atelier du Verdier du munu » en
+# Aston Script 160 mm sous les yeux : « sur le d, la barre verticale ne va
+# pas, elle est fine en haut et épaisse en bas, je pense qu'elle est gravée
+# en 2 passes pour 2 hauteurs différentes et non en une seule passe avec un
+# z progressif ».
+#
+# La hampe était UN SEUL bloc G1 de 8,63 mm. Tout l'aval interpole entre
+# deux points -- la machine fait varier Z linéairement sur tout le bloc --
+# donc un fût droit, dont la plume donne une largeur CONSTANTE par
+# construction, recevait la montée du Z destinée au plein situé quatre
+# points plus loin, étalée sur ses 8,63 mm.
+#
+# LE CONTRÔLE PORTE SUR LE G-CODE ÉMIS, jamais sur la fonction qui le
+# produit : le défaut vivait exactement entre les deux (`chaines_plume`
+# rendait fidèlement les sommets qu'on lui demandait, et le générateur
+# écrivait fidèlement un G1 par point -- personne ne mentait, il manquait
+# simplement une étape).
+_TXT17 = u"Atelier du Verdier du munu"
+
+
+def _blocs_graves(txt):
+    """Longueur XY de chaque G1 du fichier, dans l'ordre. Un G0 déplace le
+    point courant sans rien graver."""
+    x = y = None
+    out = []
+    for ligne in txt.splitlines():
+        m = re.match(r"G([01]) X([-\d.]+) Y([-\d.]+)", ligne)
+        if not m:
+            continue
+        nx, ny = float(m.group(2)), float(m.group(3))
+        if m.group(1) == "1" and x is not None:
+            out.append(math.hypot(nx - x, ny - y))
+        x, y = nx, ny
+    return out
+
+
+_ch17, _i17 = core.chaines_plume("hersheyscript1", _TXT17, largeur_mm=160.0,
+                                 angle_deg=50.0, epaisseur=0.16,
+                                 contraste=16.0, modele="pointue")
+_g17 = core.generate_gcode_calligraphie(_ch17, 8.0, 600.0, u"Hêtre",
+                                        power_max=900.0)
+_blocs17 = _blocs_graves(_g17)
+_pire17 = max(_blocs17)
+# LA PROPRIÉTÉ S'ÉNONCE EN LARGEURS DE BEC, pas en millimètres : une plume
+# ne peut pas changer d'épaisseur plus vite que sa propre taille, donc la
+# tête ne doit jamais parcourir plus d'une demi-largeur de plein entre deux
+# consignes de hauteur. Dit en mm absolus, le contrôle serait faux à une
+# autre taille de texte -- et le pas l'était (cf. §2, qui a refusé la
+# première version de ce correctif).
+assert _pire17 <= 0.5 * _i17["largeur_trait_max"], (
+    "un bloc gravé de {:.2f} mm pour un plein de {:.2f} : la hauteur Z, "
+    "donc la largeur du trait, est interpolée en aveugle sur toute sa "
+    "longueur".format(_pire17, _i17["largeur_trait_max"]), _pire17)
+
+# ET ELLE NE DOIT PAS DÉPENDRE DE LA TAILLE. C'est ce qui interdit un pas
+# en millimètres absolus : le lissage, lui, vaut une fraction du plein.
+_ch17b, _i17b = core.chaines_plume("hersheyscript1", _TXT17, largeur_mm=40.0,
+                                   angle_deg=50.0, epaisseur=0.16,
+                                   contraste=16.0, modele="pointue")
+_g17b = core.generate_gcode_calligraphie(_ch17b, 8.0, 600.0, u"Hêtre",
+                                         power_max=900.0)
+_r17 = _pire17 / _i17["largeur_trait_max"]
+_r17b = max(_blocs_graves(_g17b)) / _i17b["largeur_trait_max"]
+assert abs(_r17 - _r17b) < 0.02, (
+    "l'échantillonnage n'est pas le même à 40 et à 160 mm : le contraste "
+    "obtenu suivra la taille du texte", _r17, _r17b)
+
+# LA MÊME PROPRIÉTÉ SUR L'AUTRE PRODUCTEUR. Les deux voies -- plume et
+# extraction -- se rejoignent dans `generate_gcode_calligraphie`, et c'est
+# la famille entière qu'il faut tenir : la voie extraction ré-échantillonne
+# depuis toujours (`calligraphie.PAS_ARC_MM`), la plume ne le faisait pas.
+import calligraphie as cal17
+
+_polices17 = cal17.polices_disponibles()
+assert _polices17, "aucune police .otf/.ttf sur ce système : test impossible"
+_che17 = cal17.chaines_calligraphie(_polices17[0][1], u"du", largeur_mm=40.0)[0]
+_ge17 = core.generate_gcode_calligraphie(_che17, 8.0, 600.0, u"Hêtre",
+                                         power_max=900.0)
+_pire_ext17 = max(_blocs_graves(_ge17))
+assert _pire_ext17 <= 1.5 * cal17.PAS_ARC_MM, (
+    "la voie extraction émet elle aussi des blocs plus longs que son pas",
+    _pire_ext17, cal17.PAS_ARC_MM)
+
+# LE FÛT DU « d » LUI-MÊME : il doit garder une hauteur CONSTANTE sur
+# l'essentiel de sa longueur. C'est la lecture de Christophe, pas une
+# statistique -- un trait droit de plume ne change pas d'épaisseur.
+_zs17 = []
+_lg17 = _g17.splitlines()
+_i = next(k for k, l in enumerate(_lg17) if l.startswith("G0 X46.82"))
+for _l in _lg17[_i + 1:]:
+    _m = re.match(r"G1 X([-\d.]+) Y([-\d.]+) Z([-\d.]+)", _l)
+    if _m:
+        _zs17.append((math.hypot(float(_m.group(1)) - 46.8203,
+                                 float(_m.group(2)) - 9.5531),
+                      float(_m.group(3))))
+        if math.hypot(float(_m.group(1)) - 44.1073,
+                      float(_m.group(2)) - 1.3637) < 1e-3:
+            break
+    elif _l.startswith("G0 X"):
+        break
+_plat17 = max([d for d, z in _zs17 if abs(z - 8.0) < 0.01] or [0.0])
+assert _plat17 > 4.0, (
+    "la hauteur bouge dès le haut de la hampe : le fût sortira fin en haut "
+    "et épais en bas, exactement le défaut vu sur bois", _plat17)
+
+# SABOTAGE : on retire la densification, comme avant le correctif.
+_src17 = inspect.getsource(core.chaines_plume)
+_faux17 = _src17.replace("pts = _densifier(pts, maxi * PAS_PLUME_EN_PLEINS)",
+                         "pass  # densification retiree")
+assert _faux17 != _src17, "le sabotage n'a rien remplacé -- il ne prouve rien"
+_ns17 = dict(core.__dict__)
+exec(compile(textwrap.dedent(_faux17), "<sabotage>", "exec"), _ns17)
+_chs17 = _ns17["chaines_plume"]("hersheyscript1", _TXT17, largeur_mm=160.0,
+                                angle_deg=50.0, epaisseur=0.16,
+                                contraste=16.0, modele="pointue")[0]
+_pires17 = max(_blocs_graves(
+    core.generate_gcode_calligraphie(_chs17, 8.0, 600.0, u"Hêtre",
+                                     power_max=900.0)))
+assert _pires17 > 5.0, (
+    "sans densification les blocs restent courts : le contrôle ci-dessus ne "
+    "prouve pas que c'est elle qui les borne", _pires17)
+print("17. plus aucun bloc gravé au-delà du pas : {:.2f} mm au pire (contre "
+      "{:.2f} sans densification), fût du « d » à hauteur constante sur "
+      "{:.1f} mm, voie extraction {:.2f} mm OK".format(
+          _pire17, _pires17, _plat17, _pire_ext17))

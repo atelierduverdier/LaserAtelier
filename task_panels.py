@@ -11761,10 +11761,23 @@ class TaskPanelCalligraphie:
                     "Calligraphie : le Z du placement ({:.2f} mm) est ignoré "
                     "-- dans ce mode la hauteur EST la largeur du trait.\n"
                     .format(plc.Base.z))
+        # LE FICHIER DOIT NOMMER LA POLICE QUI L'A VRAIMENT PRODUIT. Cochée,
+        # la plume trace la police MONO-TRAIT du combo -- pas le .ttf resté
+        # affiché au-dessus, qui ne sert plus à rien. L'en-tête annonçait
+        # pourtant « Aston Script.ttf » sur la gravure du 05/08/2026, tracée
+        # en hersheyscript1 : un fichier qui se décrit de travers envoie le
+        # diagnostic dans le mur, et celui-là y a passé sa première heure
+        # (on cherchait une barbule de squelettisation dans une voie qui ne
+        # squelettise rien). Pas de parenthèses ici : le sanitizer les
+        # crocheterait, l'en-tête étant lui-même entre parenthèses.
+        if self.chk_plume.isChecked():
+            police = "plume {}".format(self.combo_plume_police.currentData())
+        else:
+            police = os.path.basename(self.edt_police.text().strip())
         g = core.generate_gcode_calligraphie(
             chaines, self.spn_z.value(), self.spn_feed.value(), mat,
             power_max=self.spn_power.value(), frame_only=cadre,
-            police=os.path.basename(self.edt_police.text().strip()))
+            police=police)
         if not g:
             QtWidgets.QMessageBox.critical(
                 self.form, "Calligraphie",
