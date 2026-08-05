@@ -7863,6 +7863,16 @@ class TaskPanelHatch:
             "marquage / découpe courbe.",
         ])
 
+        # LES RÉGLAGES ONT BESOIN DE LEUR PROPRE SECTION. « Mode d'emploi »
+        # était l'UNIQUE section de ce panneau, et toute rangée posée après
+        # un `_section` lui appartient : replier le mode d'emploi -- son état
+        # par défaut -- emportait donc les cinq réglages avec lui.
+        # Christophe, 05/08/2026 : « dans hachure les réglages sont dans
+        # modes d'emploi ». C'est le même piège que le job combiné avait
+        # évité en 2.71, avec un commentaire qui le disait déjà ; il vivait
+        # encore ici. Un balayage des dix-huit panneaux dit qu'il n'y en a
+        # pas d'autre.
+        _section(form, "Réglages", "sect_fill.svg", ouvert=True)
         self.combo_filltype = QtWidgets.QComboBox()
         self.combo_filltype.addItems(["Parallèles", "Croisées (grille)", "Défocus (noir)"])
         # Par défaut, un QComboBox se dimensionne sur son item le PLUS

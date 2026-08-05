@@ -169,6 +169,33 @@ try:
         "mentira sur ce qui sera gravé", _disputees)
     assert lj.colorer_sources(_j2) == [], (
         "une forme d'un seul job est signalée comme disputée")
+    # LA COULEUR DIT QUEL TRAVAIL, pas seulement quel mode. Ce qui noircit
+    # une aire se montre REMPLI (la face prend la couleur) ; ce qui marque
+    # ou coupe se montre au TRAIT seul -- forcer un solide 3D en fil de fer
+    # pour la beauté du calque rendrait le modèle inutilisable.
+    assert lj.MODES_REMPLIS <= set(lj.MODES), (
+        "un mode remplissant n'existe pas dans la table des modes",
+        lj.MODES_REMPLIS - set(lj.MODES))
+    assert "filled" in lj.MODES_REMPLIS and "hatch" in lj.MODES_REMPLIS, (
+        "la gravure remplie et les hachures noircissent une aire : elles "
+        "doivent se montrer remplies", lj.MODES_REMPLIS)
+    for _m in ("flat", "curved_cut", "curved"):
+        assert _m not in lj.MODES_REMPLIS, (
+            "« {} » suit un trait : peindre sa face masquerait le modèle "
+            "sous une couleur pleine".format(_m))
+    # Le gris d'extinction doit être TRÈS clair -- demandé tel quel -- sans
+    # quoi une planche à moitié décochée reste illisible.
+    assert min(lj.GRIS_ETEINT) > 0.75, (
+        "le gris des jobs décochés n'est pas assez clair : les formes "
+        "éteintes continuent de réclamer l'attention", lj.GRIS_ETEINT)
+    # ET IL DOIT SE DISTINGUER DE TOUTES LES COULEURS DE MODE, sinon un job
+    # éteint se lirait comme un job allumé.
+    for _m, _c in lj.COULEURS_MODE.items():
+        _e = sum(abs(x - y) for x, y in zip(_c, lj.GRIS_ETEINT))
+        assert _e > 0.40, (
+            "la couleur du mode « {} » se confond avec le gris éteint"
+            .format(_m), _c, _e)
+
     print("calques : {} modes colorés et distincts, job décoché ignoré "
           "(« {} »), forme partagée nommée OK".format(
               len(lj.COULEURS_MODE), _ig[0]))

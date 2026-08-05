@@ -1317,6 +1317,44 @@ print("paragraphe : {} -> {} -> {} px, la rangee rend la place OK".format(
     _h_court, _h_long, _h_retour))
 
 # references, on laisse Qt digerer, et on sort explicitement.
+# --- LES RÉGLAGES NE DOIVENT PAS VIVRE DANS LE MODE D'EMPLOI -----------
+# Christophe, 05/08/2026 : « dans hachure les réglages sont dans modes
+# d'emploi ». Toute rangée posée après un `_section` appartient à son repli.
+# Quand « Mode d'emploi » -- replié par défaut -- est la DERNIÈRE section
+# d'un panneau, tout ce qui suit disparaît avec lui.
+#
+# Le job combiné avait évité ce piège en v2.71 et son commentaire le disait
+# déjà ; il vivait encore dans Hachures. Le contrôle porte donc sur TOUS les
+# panneaux, pas sur celui qui a été signalé : c'est exactement la famille
+# qu'il fallait balayer.
+import re as _re_sec                                          # noqa: E402
+_src_tp = _i.getsource(tp) if False else open(
+    _os.path.join(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__))), "task_panels.py"),
+    encoding="utf-8").read().splitlines()
+_cls = [(_k, _l.split(":")[0][6:]) for _k, _l in enumerate(_src_tp)
+        if _l.startswith("class TaskPanel")]
+_cls.append((len(_src_tp), "FIN"))
+_coupables = []
+for (_a, _nomc), (_b, _x) in zip(_cls, _cls[1:]):
+    _bloc = _src_tp[_a:_b]
+    _secs = [(_k, _re_sec.search(r'_section\(form,\s*"([^"]+)"', _l).group(1))
+             for _k, _l in enumerate(_bloc)
+             if _re_sec.search(r'_section\(form,\s*"', _l)]
+    if not _secs:
+        continue
+    _dk, _dn = _secs[-1]
+    _apres = [_k for _k, _l in enumerate(_bloc)
+              if _k > _dk and _re_sec.search(r'form\.addRow\(\s*"', _l)]
+    if _apres and _dn == "Mode d'emploi":
+        _coupables.append((_nomc, len(_apres)))
+assert not _coupables, (
+    "des réglages sont posés après « Mode d'emploi », dernière section du "
+    "panneau : ils disparaissent quand on le replie", _coupables)
+print("sections : aucun panneau ne range ses réglages dans son mode "
+      "d'emploi ({} panneaux balayés) OK".format(len(_cls) - 1))
+
+
 for _nom_w, _w in list(globals().items()):
     if _nom_w.startswith("_hote") and isinstance(_w, _Qt.QWidget):
         try:

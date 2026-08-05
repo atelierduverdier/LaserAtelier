@@ -53,9 +53,26 @@ COULEURS_MODE = {
     "hatch":      (1.00, 0.54, 0.00),      # hachures -- l'orange de l'atelier
 }
 
-# La couleur d'un job DÉCOCHÉ : gris. Un calque éteint doit se voir éteint,
-# sinon la case à cocher ne sert qu'à celui qui se souvient de l'avoir mise.
-GRIS_ETEINT = (0.60, 0.60, 0.60)
+# CE QUI NOIRCIT UNE SURFACE se montre REMPLI ; ce qui marque ou coupe se
+# montre au TRAIT. Christophe, 05/08/2026 : « pour les remplissages, il
+# faudrait peut-être remplir la sélection d'une couleur et si on ne veut pas
+# graver, ne pas remplir ; et pour le reste pareil, marquer d'une couleur
+# sinon pas de marquage ».
+#
+# La couleur seule disait QUEL MODE ; elle dit maintenant QUEL TRAVAIL, ce
+# qui est l'information qu'on cherche en regardant la planche. Gravure
+# remplie et Hachures noircissent une aire -- on peint donc la face. Les
+# deux découpes et le marquage suivent un trait -- on ne peint que le trait,
+# et on laisse la face tranquille : forcer un solide 3D en fil de fer pour
+# la beauté du calque rendrait le modèle inutilisable.
+MODES_REMPLIS = {"filled", "hatch"}
+
+# La couleur d'un job DÉCOCHÉ : un gris TRÈS clair, demandé tel quel (« ou
+# alors un gris très clair pour les non gravés »). Assez pâle pour que la
+# forme cesse de réclamer l'attention, assez visible pour qu'on la retrouve
+# et qu'on la recoche. Un calque éteint doit se voir éteint, sinon la case
+# ne sert qu'à celui qui se souvient de l'avoir mise.
+GRIS_ETEINT = (0.85, 0.85, 0.85)
 
 
 def _vue(obj):
@@ -89,11 +106,12 @@ def colorer_sources(job):
     doc = getattr(job, "Document", None)
     if doc is None:
         return []
+    mode = getattr(job, "Mode", "")
     grave = bool(getattr(job, "Grave", True))
-    couleur = (COULEURS_MODE.get(getattr(job, "Mode", ""), None)
-               if grave else GRIS_ETEINT)
-    if couleur is None:
+    if mode not in COULEURS_MODE:
         return []
+    couleur = COULEURS_MODE[mode] if grave else GRIS_ETEINT
+    remplit = mode in MODES_REMPLIS
     disputees = []
     for src in (getattr(job, "Sources", None) or []):
         if src is None:
@@ -103,12 +121,23 @@ def colorer_sources(job):
         vue = _vue(src)
         if vue is None:
             continue                      # headless : rien à peindre
-        for attr in ("LineColor", "PointColor"):
+        attrs = ["LineColor", "PointColor"]
+        if remplit:
+            # La FACE porte la couleur : le remplissage se voit rempli.
+            attrs.append("ShapeColor")
+        for attr in attrs:
             if hasattr(vue, attr):
                 try:
                     setattr(vue, attr, couleur)
                 except Exception:
                     pass                  # une vue qui refuse n'arrête rien
+        if remplit and hasattr(vue, "Transparency"):
+            try:
+                # Décoché, la face s'efface au lieu de rester pleine : « si
+                # on ne veut pas graver, ne pas remplir ».
+                vue.Transparency = 0 if grave else 80
+            except Exception:
+                pass
     return disputees
 
 
