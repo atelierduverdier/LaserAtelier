@@ -183,7 +183,7 @@ try:
         `rafraichir_calques`, rejouée depuis les modes actifs."""
         _actifs = lj.rafraichir_calques(_doc).get(_t.Label, [])
         _g = next((_m for _m in lj.PRIORITE_CALQUE
-                   if _m in _actifs and _m not in lj.MODES_APERCU_PLEIN), None)
+                   if _m in _actifs and _m not in lj.MODES_HORS_TRAIT), None)
         if _g is None:
             _g = next((_m for _m in lj.PRIORITE_CALQUE if _m in _actifs), None)
         return _g
@@ -193,29 +193,49 @@ try:
     # rendait le marquage invisible dès qu'on cochait un remplissage.
     # Christophe : « donc je ne verrai jamais le vert sauf quand je cache
     # l'aperçu ? ». C'est SON cas exact qu'on éprouve ici.
-    _jh.Grave = False
     assert _trait_gagnant() == "curved", (
-        "un marquage et un remplissage sur la même forme : le trait doit "
-        "rester au marquage, la surface dit déjà le remplissage",
+        "avec les trois cochés, le trait doit rester au MARQUAGE : le "
+        "remplissage a sa surface et les hachures ont leur propre objet",
         _trait_gagnant())
-    _jh.Grave = True
-    assert _trait_gagnant() == "hatch", (
-        "entre deux jobs de TRAIT, c'est le plus conséquent qui l'emporte",
-        _trait_gagnant())
+    _jf.Grave = False
+    assert _trait_gagnant() == "curved", (
+        "décocher le remplissage ne devrait rien changer au trait")
     _jm.Grave = False
     assert _trait_gagnant() == "hatch", (
-        "décocher le marquage ne devrait rien changer tant que les hachures "
-        "sont là", _trait_gagnant())
+        "plus aucun job de trait : les hachures doivent reprendre le "
+        "contour, sinon la forme paraît éteinte alors qu'elle sera gravée",
+        _trait_gagnant())
     _jh.Grave = False
-    assert _trait_gagnant() == "filled", (
-        "seul un remplissage reste : il doit reprendre le contour, sinon la "
-        "forme paraît éteinte alors qu'elle sera gravée", _trait_gagnant())
-    _jf.Grave = False
     assert _trait_gagnant() is None, (
         "tout décoché, la forme devrait passer au gris", _trait_gagnant())
     _jm.Grave = True
     assert _trait_gagnant() == "curved", "recocher un calque ne le ramène pas"
     _jf.Grave = True
+    _jh.Grave = True
+
+    # QUI A SA PROPRE GÉOMÉTRIE NE PREND PAS LE CONTOUR. Le remplissage a sa
+    # surface, les hachures leur objet « Hachures_… » ; seuls le marquage et
+    # les découpes n'existent QUE comme parcours sur la forme.
+    assert set(lj.MODES_HORS_TRAIT) == {"filled", "hatch"}, (
+        "la liste des modes qui ont leur propre géométrie a changé",
+        lj.MODES_HORS_TRAIT)
+    for _m7 in ("curved", "flat", "curved_cut"):
+        assert _m7 not in lj.MODES_HORS_TRAIT, (
+            "« {} » n'existe que comme trait sur la forme : lui retirer le "
+            "contour le rendrait invisible".format(_m7))
+
+    # ET L'OBJET DE HACHURES PORTE LA COULEUR DE SON CALQUE, plus le vert en
+    # dur hérité de la macro d'origine -- qui entrait en collision avec le
+    # vert du MARQUAGE et disait donc le contraire du reste.
+    _src_hach = _insp.getsource(core.run_hatch_generation)
+    assert "(0.0, 0.8, 0.0)" not in _src_hach, (
+        "le vert en dur des hachures est revenu : il se confond avec la "
+        "couleur du marquage")
+    assert "teinte_atelier" in _src_hach, (
+        "l'objet de hachures ne puise pas sa couleur dans la roue")
+    assert "hasattr(hatch_obj" not in _src_hach, (
+        "hasattr sur ViewObject : VRAI et INUTILE en headless, l'attribut "
+        "existe et vaut None")
 
     # ET LA PILE DOIT ÊTRE COMPLÈTE : un mode absent de la priorité ne
     # gagnerait jamais, donc sa couleur ne s'afficherait jamais.

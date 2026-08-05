@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.98.0"
+VERSION = "2.98.1"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3229,7 +3229,8 @@ def inset_face_robuste(face, inset, deflection=0.05):
 
 def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inset=0.0,
                          contour=False):
-    """Crée l'objet 'Hachures_...' dans le document (vert), comme
+    """Crée l'objet 'Hachures_...' dans le document (couleur du calque
+    Hachures, cf. `teinte_atelier`), comme
     hachure.fcmacro, avec 3 types de remplissage possibles :
     parallèles (défaut), croisées (2 passes à angle+90), défocus
     (remplissage noir plein -- même tracé que parallèles, seul le Z de
@@ -3286,9 +3287,18 @@ def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inse
     obj_name = "Hachures_{}_{}_{}deg".format(fill_type, spacing, angle).replace(".", "_").replace("-", "m")
     hatch_obj = doc.addObject("Part::Feature", obj_name)
     hatch_obj.Shape = hatch_compound
-    if hasattr(hatch_obj, 'ViewObject'):
-        hatch_obj.ViewObject.LineColor = (0.0, 0.8, 0.0)
-        hatch_obj.ViewObject.LineWidth = 1.0
+    # LA COULEUR DU CALQUE « HACHURES », plus un vert en dur. Ce vert-là
+    # datait de la macro d'origine ; depuis que les calques parlent une
+    # langue de couleurs, il entrait en collision avec le vert du MARQUAGE et
+    # disait donc le contraire de ce qu'on lisait ailleurs.
+    #
+    # `getattr(...) is not None` et non `hasattr` : en headless l'attribut
+    # EXISTE et vaut None, si bien que la ligne suivante meurt sur
+    # None.LineColor -- le piège déjà corrigé sur huit sites du dépôt.
+    vue = getattr(hatch_obj, "ViewObject", None)
+    if vue is not None:
+        vue.LineColor = teinte_atelier(2)          # cyan -- le mode Hachures
+        vue.LineWidth = 1.0
     doc.recompute()
     return hatch_obj, None
 

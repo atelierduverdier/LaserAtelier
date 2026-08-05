@@ -193,10 +193,11 @@ def rafraichir_calques(doc):
         # dit ce qu'on parcourt. On les voit ENSEMBLE au lieu de l'un ou
         # l'autre.
         gagnant = next((m for m in PRIORITE_CALQUE
-                        if m in actifs and m not in MODES_APERCU_PLEIN), None)
+                        if m in actifs and m not in MODES_HORS_TRAIT), None)
         if gagnant is None:
-            # Aucun job de trait : le remplissage reprend le contour, faute
-            # de quoi la forme paraîtrait éteinte alors qu'elle sera gravée.
+            # Aucun job de trait : le remplissage ou les hachures reprennent
+            # le contour, faute de quoi la forme paraîtrait éteinte alors
+            # qu'elle sera bel et bien gravée.
             gagnant = next((m for m in PRIORITE_CALQUE if m in actifs), None)
         _peindre(src, gagnant)
     # Les surfaces d'aperçu suivent la case : on ne REBÂTIT pas ici (0,17 s
@@ -247,6 +248,17 @@ def _peindre(src, mode):
 # un noir qu'elles ne rendent pas. La couleur et l'épaisseur du trait leur
 # suffisent.
 MODES_APERCU_PLEIN = ("filled",)
+
+# LES MODES QUI ONT LEUR PROPRE GÉOMÉTRIE ne prennent pas le contour de leur
+# source. La v2.98.0 l'a fait pour le remplissage, qui a sa surface ; les
+# HACHURES sont dans le même cas -- elles posent un objet « Hachures_… » bien
+# à elles, visible tout seul. Les laisser confisquer le trait recréait le
+# défaut un cran plus bas. Christophe, 05/08/2026 : « maintenant le fait de
+# mettre des hachures enlève le contour vert ».
+#
+# Il reste donc au trait ce qui n'existe QUE comme parcours sur la forme :
+# le marquage et les deux découpes.
+MODES_HORS_TRAIT = ("filled", "hatch")
 
 PROP_APERCU = "LaserAtelierApercuCalque"
 TRANSPARENCE_APERCU = 35
