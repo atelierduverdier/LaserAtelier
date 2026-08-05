@@ -477,19 +477,35 @@ def _groupe_atelier(doc):
 SOUS_GROUPES = (
     ("Jobs", "Jobs"),
     ("Formes", "Formes à graver"),
-    ("Apercus", "Aperçus (ne pas graver)"),
+    # « Aperçus de remplissage » et non « Aperçus » : le rayon ne contient
+    # QUE des surfaces de remplissage -- il n'existe pas d'aperçu de
+    # marquage -- et un nom précis dit ce qu'on cache en cachant le dossier.
+    # Christophe, 05/08/2026 : « comme cela on sait que l'on peut le cacher
+    # si on ne veut pas voir les remplissages ». L'avertissement « ne pas
+    # graver » qu'il portait n'a plus à tenir dans le libellé : depuis la
+    # v2.96.0 c'est `_sans_apercus` qui l'empêche, à l'entrée des cinq modes.
+    ("Apercus", "Aperçus de remplissage"),
 )
+
+# Nos anciens libellés : un dossier déjà posé garde son NOM interne, donc on
+# le retrouve, mais son étiquette resterait celle d'avant. On la met à jour
+# -- SEULEMENT si elle est encore l'une des nôtres, pour ne pas écraser un
+# nom que l'utilisateur aurait choisi lui-même.
+LIBELLES_ANCIENS = {"Apercus": ("Aperçus (ne pas graver)", "Aperçus")}
 
 
 def _sous_groupe(doc, cle):
     """Le rayon `cle` de « Atelier Laser », créé au besoin."""
     grp = _groupe_atelier(doc)
     nom = "AtelierLaser{}".format(cle)
+    voulu = dict(SOUS_GROUPES).get(cle, cle)
     for o in getattr(grp, "Group", None) or []:
         if getattr(o, "Name", "").startswith(nom):
+            if getattr(o, "Label", "") in LIBELLES_ANCIENS.get(cle, ()):
+                o.Label = voulu
             return o
     sous = doc.addObject("App::DocumentObjectGroup", nom)
-    sous.Label = dict(SOUS_GROUPES).get(cle, cle)
+    sous.Label = voulu
     grp.addObject(sous)
     return sous
 

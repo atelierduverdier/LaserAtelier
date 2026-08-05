@@ -310,6 +310,26 @@ try:
     assert any("Job " in _l for _l in _r_jobs), ("les jobs ne sont pas rangés",
                                                  _r_jobs)
     assert "Cadre" in _r_formes, ("la forme source n'est pas rangée", _r_formes)
+    # LE NOM DIT CE QU'ON CACHE. Le rayon ne contient que des surfaces de
+    # remplissage -- il n'existe pas d'aperçu de marquage -- donc « Aperçus »
+    # tout court ne disait pas ce qu'on éteint en éteignant le dossier.
+    assert any(_k.startswith("Aperçus de remplissage") for _k in _rayons), (
+        "le rayon des aperçus ne dit pas ce qu'il contient", sorted(_rayons))
+    # Un dossier posé sous un ANCIEN libellé est rattrapé...
+    _gap = lj._sous_groupe(_doc, "Apercus")
+    _gap.Label = "Aperçus (ne pas graver)"
+    lj._sous_groupe(_doc, "Apercus")
+    assert _gap.Label == "Aperçus de remplissage", (
+        "un dossier créé par une version précédente garde son ancien nom",
+        _gap.Label)
+    # ...mais un nom choisi par l'utilisateur ne s'écrase pas.
+    _gap.Label = "Mes surfaces à moi"
+    lj._sous_groupe(_doc, "Apercus")
+    assert _gap.Label == "Mes surfaces à moi", (
+        "l'atelier écrase le nom que l'utilisateur a donné à son dossier",
+        _gap.Label)
+    _gap.Label = "Aperçus de remplissage"
+
     assert any("Aperçu" in _l for _l in _r_ap), (
         "la surface d'aperçu n'est pas rangée", _r_ap)
     # RANGÉ DEUX FOIS = RANGÉ NULLE PART.
