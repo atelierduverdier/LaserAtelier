@@ -182,7 +182,22 @@ def rafraichir_calques(doc):
         actifs = [m for m, g in jobs if g]
         if len(jobs) > 1:
             partagees[getattr(src, "Label", "?")] = actifs
-        gagnant = next((m for m in PRIORITE_CALQUE if m in actifs), None)
+        # LE TRAIT REVIENT AUX JOBS QUI SUIVENT UN TRAIT. Un remplissage
+        # s'exprime par SA SURFACE (v2.95.0) ; lui laisser confisquer aussi
+        # la couleur du contour revenait à rendre le marquage invisible dès
+        # qu'un remplissage était coché. Christophe, 05/08/2026, un marquage
+        # et un remplissage sur le même texte : « donc je ne verrai jamais
+        # le vert sauf quand je cache l'aperçu ? ».
+        #
+        # Deux canaux, deux jobs : la surface dit ce qu'on noircit, le trait
+        # dit ce qu'on parcourt. On les voit ENSEMBLE au lieu de l'un ou
+        # l'autre.
+        gagnant = next((m for m in PRIORITE_CALQUE
+                        if m in actifs and m not in MODES_APERCU_PLEIN), None)
+        if gagnant is None:
+            # Aucun job de trait : le remplissage reprend le contour, faute
+            # de quoi la forme paraîtrait éteinte alors qu'elle sera gravée.
+            gagnant = next((m for m in PRIORITE_CALQUE if m in actifs), None)
         _peindre(src, gagnant)
     # Les surfaces d'aperçu suivent la case : on ne REBÂTIT pas ici (0,17 s
     # par texte), on ne fait que montrer ou cacher.

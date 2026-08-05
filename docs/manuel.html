@@ -199,7 +199,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.97.2</span><br>
+      <span class="ver">Version 2.98.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -250,7 +250,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.97.2</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.98.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1128,7 +1128,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.97.2 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.98.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1144,7 +1144,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 24 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 25 entrées</span></h3>
+  <p><b>Deux canaux, deux jobs : la surface et le trait (v2.98.0).</b> Christophe, un marquage et un remplissage sur le même texte&nbsp;: «&nbsp;donc je ne verrai jamais le vert sauf quand je cache l'aperçu&nbsp;?&nbsp;» Exact — et c'était une faiblesse de la pile de calques. Le remplissage l'emportait sur le marquage, donc il prenait la couleur du <em>trait</em>… alors qu'il dispose depuis la v2.95.0 de <b>sa propre surface</b>. Il confisquait un canal dont il n'avait plus besoin, et le vert du marquage ne pouvait jamais sortir. Le trait revient donc aux jobs <b>qui suivent un trait</b> — marquage, découpes, hachures — et le remplissage s'exprime par son aire. <b>Deux canaux pour deux jobs&nbsp;: la surface dit ce qu'on noircit, le trait dit ce qu'on parcourt</b>, et on les voit ENSEMBLE au lieu de l'un ou l'autre. Quand un remplissage est le seul job coché, il reprend le contour&nbsp;: sans cela la forme paraîtrait éteinte alors qu'elle sera gravée. Le test rejoue exactement son cas — marquage + remplissage → trait vert, surface ocre — puis toute la descente&nbsp;: hachures cochées reprennent le trait, seul le remplissage restant le récupère, tout décoché passe au gris.</p>
+
   <p><b>Le contour disparaissait dans son propre remplissage (v2.97.2).</b> Christophe&nbsp;: «&nbsp;le remplissage de couleur masque le contour du marquage&nbsp;». <b>Ce n'était pas la profondeur</b>, comme on pouvait le croire&nbsp;: sur son texte, la Gravure remplie gagne la priorité des calques, donc les <em>traits</em> portaient déjà sa couleur — et la surface posée dessous portait exactement la même. Le contour se noyait dans sa propre teinte. <b>Une aire et un chemin ne sont pas la même chose et ne doivent pas se peindre pareil</b>&nbsp;: la surface garde la teinte du mode mais monte en valeur et baisse en saturation, si bien que le trait s'en détache. Écart mesuré <b>0,90 à 1,05 selon le mode, contre 0,00 avant</b>, et la famille de teinte reste la même — une seule table d'indices sert au trait comme à la surface, donc ils ne peuvent pas partir dans deux directions. C'est aussi la langue de la maison&nbsp;: une famille, deux tons. Le recul de la surface passe au passage de 0,01 à <b>0,05&nbsp;mm</b>&nbsp;: le tampon de profondeur d'une scène de 100&nbsp;mm ne départage pas fiablement un centième, et cet objet n'étant jamais gravé, le recul ne coûte rien.</p>
 
   <p><b>Le rayon des aperçus dit enfin ce qu'il contient (v2.97.1).</b> Christophe&nbsp;: «&nbsp;dans Aperçus (ne pas graver) il y a juste les remplissages, peut-être mettre Aperçu remplissage&nbsp;? car il n'y a pas d'aperçu de marquage — comme cela on sait que l'on peut le cacher si on ne veut pas voir les remplissages&nbsp;». Le dossier s'appelle donc <b>«&nbsp;Aperçus de remplissage&nbsp;»</b>&nbsp;: un nom de dossier doit dire ce qu'on éteint en l'éteignant, et celui-ci ne contient rien d'autre. L'avertissement «&nbsp;ne pas graver&nbsp;» qu'il portait n'a plus à tenir dans le libellé — depuis la v2.96.0 c'est <code>_sans_apercus</code> qui l'empêche, à l'entrée des cinq modes. <b>Le renommage rattrape les documents déjà créés</b> (le dossier garde son nom interne, donc on le retrouve) <b>mais n'écrase pas un nom que l'utilisateur aurait choisi lui-même</b>&nbsp;: on ne remplace que nos propres étiquettes. Le test gèle les deux moitiés, la seconde étant la moins évidente.</p>

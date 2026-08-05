@@ -178,27 +178,44 @@ try:
     _jf = lj.creer_ou_maj_job("filled", [_t])
     _jh = lj.creer_ou_maj_job("hatch", [_t])
 
-    def _qui_gagne():
+    def _trait_gagnant():
+        """Le mode dont la couleur habille le TRAIT -- la même règle que
+        `rafraichir_calques`, rejouée depuis les modes actifs."""
         _actifs = lj.rafraichir_calques(_doc).get(_t.Label, [])
-        return next((_m for _m in lj.PRIORITE_CALQUE if _m in _actifs), None)
+        _g = next((_m for _m in lj.PRIORITE_CALQUE
+                   if _m in _actifs and _m not in lj.MODES_APERCU_PLEIN), None)
+        if _g is None:
+            _g = next((_m for _m in lj.PRIORITE_CALQUE if _m in _actifs), None)
+        return _g
 
-    assert _qui_gagne() == "filled", (
-        "avec les trois cochés, ce n'est pas le plus conséquent qui montre "
-        "sa couleur", _qui_gagne())
-    _jf.Grave = False
-    assert _qui_gagne() == "hatch", (
-        "décocher la gravure remplie ne révèle pas le calque du dessous",
-        _qui_gagne())
+    # LE TRAIT REVIENT AUX JOBS QUI SUIVENT UN TRAIT. Un remplissage
+    # s'exprime par SA SURFACE ; le laisser confisquer aussi le contour
+    # rendait le marquage invisible dès qu'on cochait un remplissage.
+    # Christophe : « donc je ne verrai jamais le vert sauf quand je cache
+    # l'aperçu ? ». C'est SON cas exact qu'on éprouve ici.
     _jh.Grave = False
-    assert _qui_gagne() == "curved", (
-        "décocher deux calques ne révèle pas le troisième", _qui_gagne())
+    assert _trait_gagnant() == "curved", (
+        "un marquage et un remplissage sur la même forme : le trait doit "
+        "rester au marquage, la surface dit déjà le remplissage",
+        _trait_gagnant())
+    _jh.Grave = True
+    assert _trait_gagnant() == "hatch", (
+        "entre deux jobs de TRAIT, c'est le plus conséquent qui l'emporte",
+        _trait_gagnant())
     _jm.Grave = False
-    assert _qui_gagne() is None, (
-        "tout décoché, la forme devrait passer au gris et non garder une "
-        "couleur de mode", _qui_gagne())
+    assert _trait_gagnant() == "hatch", (
+        "décocher le marquage ne devrait rien changer tant que les hachures "
+        "sont là", _trait_gagnant())
+    _jh.Grave = False
+    assert _trait_gagnant() == "filled", (
+        "seul un remplissage reste : il doit reprendre le contour, sinon la "
+        "forme paraît éteinte alors qu'elle sera gravée", _trait_gagnant())
+    _jf.Grave = False
+    assert _trait_gagnant() is None, (
+        "tout décoché, la forme devrait passer au gris", _trait_gagnant())
+    _jm.Grave = True
+    assert _trait_gagnant() == "curved", "recocher un calque ne le ramène pas"
     _jf.Grave = True
-    assert _qui_gagne() == "filled", (
-        "recocher un calque ne le fait pas revenir")
 
     # ET LA PILE DOIT ÊTRE COMPLÈTE : un mode absent de la priorité ne
     # gagnerait jamais, donc sa couleur ne s'afficherait jamais.
