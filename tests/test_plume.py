@@ -854,3 +854,83 @@ assert _gs19 < 2.0 * _i19["largeur_trait_min"], (
 print("19. le plein de la panse est à gauche : {:.3f} mm contre {:.3f} à "
       "droite, et {:.3f} au filet sans la coupure OK".format(
           _gau19, _dro19, _gs19))
+
+
+# --- 20. ARRONDIR LES COURBES, JAMAIS LES COINS -------------------------
+# Christophe, 05/08/2026, photo d'une vraie calligraphie à l'appui : « c'est
+# presque bon, voici un exemple concret que j'aurais dû te donner ». Son
+# exemple a des courbes ; le nôtre avait des facettes -- `hersheyscript1` ne
+# donne que 22 sommets pour tout le « d », et la densification n'y change
+# rien (subdiviser une droite ne donne que des droites).
+_ch20, _i20 = core.chaines_plume("hersheyscript1", "d", largeur_mm=40.0,
+                                 angle_deg=50.0, epaisseur=0.12,
+                                 contraste=5.0, modele="pointue")
+
+
+def _pire_virage(chaines, ymax):
+    """Le plus grand changement de direction, en degrés, sous `ymax` --
+    c'est-à-dire dans la PANSE, hors raccord de la hampe qui est un vrai
+    coin et doit le rester."""
+    pire = 0.0
+    for c in chaines:
+        bas = [p for p in c if p[1] < ymax]
+        for a, b, d in zip(bas, bas[1:], bas[2:]):
+            a0 = math.atan2(b[1] - a[1], b[0] - a[0])
+            a1 = math.atan2(d[1] - b[1], d[0] - b[0])
+            pire = max(pire, abs(math.degrees(
+                (a1 - a0 + math.pi) % (2 * math.pi) - math.pi)))
+    return pire
+
+
+_ymax20 = 0.45 * max(p[1] for c in _ch20 for p in c)
+_virage20 = _pire_virage(_ch20, _ymax20)
+assert _virage20 < 12.0, (
+    "la panse tourne par à-coups de {:.0f}° : elle sortira en polygone, pas "
+    "en courbe".format(_virage20), _virage20)
+
+
+def _ecart_a_la_police(lettre, seuil_deg=None):
+    """De combien le tracé produit s'éloigne-t-il de la polyligne de la
+    police, en % de capitale ? Le lissage passe PAR les sommets ; ce qu'on
+    mesure ici, c'est le ventre qu'il fait ENTRE eux."""
+    hf = core._hershey_module("hersheyscript1")
+    brut = [t for t in hf.GLYPHES[lettre][1] if len(t) >= 2]
+    pire = 0.0
+    for t in brut:
+        p = [(q[0], q[1]) for q in t]
+        lisse = (core._lisser_polyligne(p) if seuil_deg is None
+                 else core._lisser_polyligne(p, seuil_deg))
+        for q in lisse:
+            d = min(_dist_seg(q, a, b) for a, b in zip(p, p[1:]))
+            pire = max(pire, d)
+    return 100.0 * pire / float(hf.CAP_HEIGHT)
+
+
+def _dist_seg(p, a, b):
+    vx, vy = b[0] - a[0], b[1] - a[1]
+    l2 = vx * vx + vy * vy
+    if l2 < 1e-12:
+        return math.hypot(p[0] - a[0], p[1] - a[1])
+    u = max(0.0, min(1.0, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2))
+    return math.hypot(p[0] - a[0] - u * vx, p[1] - a[1] - u * vy)
+
+
+# UN VRAI COIN NE DOIT PAS SE CINTRER. Le « 4 » et le « A » sont les deux
+# glyphes les plus anguleux du jeu courant : sans garde-fou ils se
+# bombaient de 4,86 et 3,14 % de capitale, soit 0,49 et 0,31 mm sur un
+# texte de 160 mm -- parfaitement visibles.
+for _lettre in ("4", "A"):
+    _e = _ecart_a_la_police(_lettre)
+    assert _e < 1.5, (
+        "le « {} » s'écarte de {:.2f} % de capitale du dessin de la police : "
+        "la spline lui arrondit un angle qui EST le dessin".format(_lettre, _e),
+        _e)
+
+# SABOTAGE : on désarme le garde-angle, la spline lisse tout.
+_e4 = _ecart_a_la_police("4", 999.0)
+assert _e4 > 3.0, (
+    "sans garde-angle le « 4 » ne se cintre pas davantage : le contrôle "
+    "ci-dessus ne prouve pas que c'est le garde qui protège les coins", _e4)
+print("20. panse lissée (virage maxi {:.1f}°) et coins préservés : le « 4 » "
+      "s'écarte de {:.2f} % de capitale contre {:.2f} sans garde-angle OK"
+      .format(_virage20, _ecart_a_la_police("4"), _e4))

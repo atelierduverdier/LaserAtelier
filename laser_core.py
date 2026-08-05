@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.88.0"
+VERSION = "2.89.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2035,6 +2035,42 @@ PAS_PLUME_EN_PLEINS = 0.25
 # COUPER le geste en deux. Voir `_couper_queue_contrariante`.
 QUEUE_MINI_EN_PLEINS = 3.0
 
+# UNE POLICE MONO-TRAIT EST UN POLYGONE, et la densification n'y change
+# RIEN : subdiviser une droite ne donne que des droites. `hersheyscript1` ne
+# donne que 22 sommets pour tout le « d », donc sa panse sortait en polygone
+# d'une douzaine de côtés -- très visible sur un texte gravé.
+#
+# Christophe, 05/08/2026, photo d'une vraie calligraphie à l'appui : « c'est
+# presque bon, voici un exemple concret que j'aurais dû te donner ». Son
+# exemple a des courbes ; le nôtre avait des facettes.
+#
+# On fait donc passer une Catmull-Rom CENTRIPÈTE par les sommets. Elle passe
+# PAR chacun d'eux -- aucun point de la police n'est déplacé, contrairement à
+# une moyenne glissante, qui raboterait le dessin (la voie extraction a déjà
+# payé cette leçon : 97,6 -> 92,4 % de couverture).
+SPLINE_POINTS_PAR_SEGMENT = 8
+
+# MAIS UNE SPLINE ARRONDIT LES ANGLES, et certains sont le dessin même. Sans
+# garde-fou le « 4 » se cintrait de 4,86 % de capitale et le « A » de 3,14 --
+# 0,49 et 0,31 mm sur un texte de 160 mm, donc parfaitement visibles. On
+# coupe donc la spline à chaque VRAI coin, et on ne lisse que les courbes.
+#
+# Le seuil se lit dans la mesure, sur les seuls caractères qu'on grave
+# vraiment (lettres, chiffres, ponctuation courante) :
+#
+#   seuil     pire écart        panse du « d »
+#   aucun     4,86 % (« 4 »)    lissée (105 pts)
+#   60°       1,26 % (« ! »)    lissée (105 pts)
+#   45°       1,26 % (« ! »)    lissée (105 pts)
+#   30°       1,02 %            PLUS TOUT À FAIT (98 pts)
+#
+# 45 et 60 donnent le même résultat -- aucun sommet de ces glyphes ne tourne
+# entre les deux -- et 1,26 % vaut 0,13 mm sur 160 mm, soit exactement le
+# trait le plus fin que le hêtre sache brûler : invisible. À 30° la règle
+# commence à prendre des sommets de COURBE pour des coins et la panse
+# reperd son galbe. On garde le seuil le moins discutable des deux.
+ANGLE_COIN_DEG = 60.0
+
 
 # DEUX PLUMES, ET ELLES NE FONT PAS LA MÊME CHOSE. Christophe, la plume
 # appliquée à une police CURSIVE : « c'est une bonne idée mais c'est à
@@ -2080,6 +2116,71 @@ def largeur_plume(p, q, angle_deg, mini, maxi, modele=PLUME_BEC):
         descente = max(0.0, -math.sin(theta))
         plein *= descente ** 0.55
     return mini + (maxi - mini) * plein
+
+
+def _catmull_rom(pts, n=SPLINE_POINTS_PAR_SEGMENT, alpha=0.5):
+    """Catmull-Rom CENTRIPÈTE passant PAR chaque sommet.
+
+    `alpha=0.5` (centripète) plutôt que uniforme : c'est ce qui interdit les
+    boucles et les dépassements quand deux sommets sont très inégalement
+    espacés -- ce qui est la règle dans une police, où une courbe est dense
+    et une hampe fait un seul segment."""
+    if len(pts) < 3:
+        return list(pts)
+    ferme = math.hypot(pts[-1][0] - pts[0][0], pts[-1][1] - pts[0][1]) < 1e-9
+    if ferme:
+        p = [pts[-2]] + list(pts) + [pts[1]]
+    else:
+        p = [pts[0]] + list(pts) + [pts[-1]]
+    out = []
+    for i in range(len(p) - 3):
+        p0, p1, p2, p3 = p[i], p[i + 1], p[i + 2], p[i + 3]
+
+        def _t(ti, a, b):
+            d = math.hypot(b[0] - a[0], b[1] - a[1])
+            return ti + (d ** alpha if d > 1e-12 else 1e-6)
+
+        t0 = 0.0
+        t1, t2 = _t(t0, p0, p1), None
+        t2 = _t(t1, p1, p2)
+        t3 = _t(t2, p2, p3)
+        for k in range(n):
+            t = t1 + (t2 - t1) * k / float(n)
+
+            def _l(a, b, ta, tb):
+                if abs(tb - ta) < 1e-12:
+                    return a
+                u, v = (tb - t) / (tb - ta), (t - ta) / (tb - ta)
+                return (a[0] * u + b[0] * v, a[1] * u + b[1] * v)
+
+            a1, a2, a3 = _l(p0, p1, t0, t1), _l(p1, p2, t1, t2), _l(p2, p3, t2, t3)
+            b1, b2 = _l(a1, a2, t0, t2), _l(a2, a3, t1, t3)
+            out.append(_l(b1, b2, t1, t2))
+    out.append(pts[-1])
+    return out
+
+
+def _lisser_polyligne(pts, seuil_deg=ANGLE_COIN_DEG):
+    """Arrondit les COURBES d'une polyligne de police, jamais ses COINS.
+
+    Voir `ANGLE_COIN_DEG` pour le seuil et la mesure qui l'a fixé. La spline
+    est coupée à chaque sommet où la direction tourne plus que le seuil : de
+    part et d'autre on lisse, le sommet lui-même reste un angle vif."""
+    if len(pts) < 3:
+        return list(pts)
+    coupures = [0]
+    for i in range(1, len(pts) - 1):
+        a0 = math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0])
+        a1 = math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0])
+        if abs((a1 - a0 + math.pi) % (2 * math.pi)
+               - math.pi) > math.radians(seuil_deg):
+            coupures.append(i)
+    coupures.append(len(pts) - 1)
+    out = []
+    for a, b in zip(coupures, coupures[1:]):
+        bout = _catmull_rom(pts[a:b + 1]) if b - a >= 2 else pts[a:b + 1]
+        out.extend(bout if not out else bout[1:])
+    return out
 
 
 def _couper_queue_contrariante(pts, plein):
@@ -2355,6 +2456,10 @@ def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
         # inchangé (13,8 -> 13,9:1). 4 gestes sur 36 sont retournés.
         if not _sens_main_ok(pts[0][0], pts[0][1], pts[-1][0], pts[-1][1]):
             pts = pts[::-1]
+        # ARRONDIR LES COURBES, PAS LES COINS -- et APRÈS la coupure, qui a
+        # besoin de la droite terminale telle que la police la donne pour la
+        # reconnaître.
+        pts = _lisser_polyligne(pts)
         # DENSIFIER AVANT DE CALCULER LES LARGEURS, jamais après : la
         # largeur de plume se lit sur la DIRECTION du trait, et le lissage
         # sur une distance. Interpoler après coup ne ferait qu'étaler entre
