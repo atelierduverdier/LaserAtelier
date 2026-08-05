@@ -5817,9 +5817,15 @@ class TaskPanelNuancier:
             self.table.removeRow(r)
 
     def _table_shades(self):
-        """Relit le tableau -> liste de tons ; les lignes dont un nombre
-        est illisible sont ignorées avec un avertissement."""
-        shades = []
+        """Relit le tableau -> `(tons, numéros des lignes illisibles)`.
+
+        ON NE JETTE PLUS UNE LIGNE ILLISIBLE, ON LA SIGNALE. Elle était
+        ignorée avec un simple avertissement console : blanchir par mégarde
+        une cellule d'un ton MESURÉ AU PIED À COULISSE le faisait disparaître
+        à l'enregistrement, sans rien à l'écran. C'est la règle de la
+        v2.4.0 -- « ② ne doit jamais effacer ce qu'il ne sait pas afficher »
+        -- appliquée à ce qu'il ne sait pas LIRE."""
+        shades, illisibles = [], []
         for r in range(self.table.rowCount()):
             shade = {}
             ok = True
@@ -5838,9 +5844,8 @@ class TaskPanelNuancier:
                 shade["darkness"] = min(100.0, max(0.0, shade["darkness"]))
                 shades.append(shade)
             else:
-                FreeCAD.Console.PrintWarning(
-                    "Nuancier : ligne {} illisible, ignorée.\n".format(r + 1))
-        return shades
+                illisibles.append(r + 1)
+        return shades, illisibles
 
     def _maj_bandes_nuancier(self):
         """Alimente le choix de bande avec les COMPTES réels du matériau :
@@ -5901,10 +5906,26 @@ class TaskPanelNuancier:
             QtWidgets.QMessageBox.critical(
                 self.form, "Erreur", "Donne un nom de matériau (ex. « MDF 6mm »).")
             return False
-        core.save_shades(material, self._table_shades())
+        tons, illisibles = self._table_shades()
+        # ON REFUSE PLUTÔT QUE D'ÉCRIRE UNE TABLE AMPUTÉE. `save_shades`
+        # REMPLACE la liste du matériau : écrire ici, c'est supprimer les
+        # tons qu'on n'a pas su relire.
+        if illisibles:
+            QtWidgets.QMessageBox.critical(
+                self.form, "Nuancier",
+                "Rien n'a été enregistré.\n\nLigne(s) {} : un nombre est "
+                "illisible ou vide. Enregistrer maintenant EFFACERAIT ce(s) "
+                "ton(s) mesuré(s), car la table remplace celle du "
+                "matériau.\n\nCorrige ou supprime ces lignes, puis "
+                "réessaie.".format(", ".join(str(n) for n in illisibles)))
+            return False
+        core.save_shades(material, tons)
+        # LE COMPTE EST CELUI QUI PART, pas le nombre de lignes : l'ancien
+        # message annonçait `rowCount()` et pouvait donc se féliciter d'un
+        # enregistrement complet juste après en avoir perdu trois.
         FreeCAD.Console.PrintMessage(
             "Nuancier « {} » enregistré ({} ton(s)).\n".format(
-                material, self.table.rowCount()))
+                material, len(tons)))
         return True
 
     def reject(self):

@@ -118,3 +118,64 @@ print("3. les {} générateurs assainissent leur sortie OK".format(len(_gens)))
 # contre 28 %). On préfère ne rien mettre, et le dire.
 print("4. (contrôle des couleurs en dur écarté : mesuré incapable de "
       "séparer -- cf. le commentaire)")
+
+
+# --- 5. UN ENREGISTREMENT NE DOIT PAS SUPPRIMER CE QU'IL NE SAIT PAS LIRE
+# `save_shades` REMPLACE la liste du matériau : tout ce que le panneau ne
+# rend pas est effacé. Or le Nuancier jetait une ligne dont un nombre était
+# illisible -- une cellule blanchie par mégarde sur un ton MESURÉ AU PIED À
+# COULISSE -- avec un simple avertissement console. Et le message de succès
+# annonçait `rowCount()`, donc il pouvait se féliciter d'un enregistrement
+# complet juste après en avoir perdu trois.
+#
+# C'est la règle de la v2.4.0 (« ② ne doit jamais effacer ce qu'il ne sait
+# pas AFFICHER ») appliquée à ce qu'il ne sait pas LIRE.
+from harness import sans_dialogues                             # noqa: E402
+import task_panels as tp                                       # noqa: E402
+
+sans_dialogues()
+_p5 = tp.TaskPanelNuancier()
+_p5.combo_mat.setEditText("EssaiPieges")
+_p5.table.setRowCount(0)
+
+
+def _poser(r, valeurs):
+    _p5.table.insertRow(r)
+    for _c, _v in enumerate(valeurs):
+        _p5.table.setItem(r, _c, tp.QtWidgets.QTableWidgetItem(_v))
+
+
+_poser(0, ["50", "800", "1000", "15", "0.8", "bon"])
+_poser(1, ["60", "900", "1000", "15", "0.9", "bon aussi"])
+_tons, _mauvaises = _p5._table_shades()
+assert len(_tons) == 2 and not _mauvaises, ("table saine mal relue",
+                                            len(_tons), _mauvaises)
+
+# On blanchit UNE cellule, comme un doigt qui glisse sur un ton mesuré.
+_p5.table.setItem(1, 2, tp.QtWidgets.QTableWidgetItem(""))
+_tons, _mauvaises = _p5._table_shades()
+assert _mauvaises == [2], ("la ligne illisible n'est pas signalée", _mauvaises)
+
+# ET L'ENREGISTREMENT DOIT REFUSER, sans rien écrire.
+_ecrits = []
+_vrai_save = core.save_shades
+try:
+    core.save_shades = lambda m, s: _ecrits.append((m, list(s)))
+    _ok = _p5.accept()
+finally:
+    core.save_shades = _vrai_save
+assert _ok is False, ("le panneau accepte alors qu'une ligne est illisible : "
+                      "le ton mesuré serait effacé")
+assert not _ecrits, ("il a écrit malgré la ligne illisible", _ecrits)
+
+# Corrigée, elle repasse -- sinon le refus serait un blocage, pas un garde.
+_p5.table.setItem(1, 2, tp.QtWidgets.QTableWidgetItem("1000"))
+try:
+    core.save_shades = lambda m, s: _ecrits.append((m, list(s)))
+    _ok = _p5.accept()
+finally:
+    core.save_shades = _vrai_save
+assert _ok is True and len(_ecrits) == 1 and len(_ecrits[0][1]) == 2, (
+    "une table saine devrait s'enregistrer", _ok, _ecrits)
+print("5. le Nuancier refuse d'enregistrer une table qu'il ne sait pas "
+      "relire, au lieu d'en effacer les tons OK")
