@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.86.0"
+VERSION = "2.87.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2260,6 +2260,29 @@ def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
     chaines, ws = [], []
     for t in brut:
         pts = [((p[0] + dx) * ech, (p[1] + dy) * ech) for p in t]
+        # ORIENTER AVANT DE MESURER, parce que POUR LA PLUME LA LARGEUR EST
+        # UNE FONCTION DU SENS. Le générateur retourne déjà chaque geste
+        # dans le sens de la main (`sens_de_la_main`), mais il le faisait
+        # APRÈS que les largeurs soient figées : on gravait donc une
+        # descente en portant la largeur d'une montée. Sur la voie
+        # extraction c'était sans effet -- une largeur lue dans l'encre ne
+        # connaît pas le sens -- d'où le fait que personne ne l'ait vu.
+        #
+        # Christophe, 05/08/2026 : « en écriture un d commence par le cercle
+        # puis la barre verticale, et la barre verticale commence en haut ».
+        # La police enchaîne bien cercle puis hampe, mais elle trace la
+        # hampe VERS LE HAUT -- c'est la remontée dans le jambage, celle
+        # qu'une main fait en filet avant de redescendre en plein. Une
+        # mono-trait ne peut tracer qu'un des deux, et la plume pointue
+        # n'appuyant qu'en descendant, les trois « d » du texte recevaient
+        # 0,096 mm : le trait le plus fin de tout le texte, là où la lettre
+        # demande son plein le plus visible.
+        #
+        # Mesuré sur « Atelier du Verdier du munu » : hampe 0,096 -> 0,610 mm,
+        # pour +6,5 % d'encre au total (184,8 -> 196,8 mm2) et un contraste
+        # inchangé (13,8 -> 13,9:1). 4 gestes sur 36 sont retournés.
+        if not _sens_main_ok(pts[0][0], pts[0][1], pts[-1][0], pts[-1][1]):
+            pts = pts[::-1]
         # DENSIFIER AVANT DE CALCULER LES LARGEURS, jamais après : la
         # largeur de plume se lit sur la DIRECTION du trait, et le lissage
         # sur une distance. Interpoler après coup ne ferait qu'étaler entre
@@ -13521,6 +13544,28 @@ def placer_chaines(chaines, placement):
     return out
 
 
+def _sens_main_ok(x0, y0, x1, y1):
+    """Ce geste va-t-il DÉJÀ dans le sens de la main ? Vertical -> vers le
+    bas ; horizontal -> vers la droite.
+
+    Sorti de `sens_de_la_main` pour que la plume puisse s'orienter AVANT de
+    mesurer ses largeurs, sur des points nus. Une seule règle, deux
+    appelants : recopier le critère serait la garantie qu'un jour l'un des
+    deux dérive, et la plume graverait alors une descente en portant la
+    largeur d'une montée -- exactement le défaut que cette règle répare."""
+    dy, dx = y1 - y0, x1 - x0
+    # UNE BOUCLE FERMÉE NE SE DÉCIDE PAS PAR SES BOUTS : ils sont confondus,
+    # donc dx = dy = 0 et la règle « vers la droite » répondait toujours NON
+    # -- elle retournait la boucle à CHAQUE appel. Sans conséquence tant que
+    # la largeur ignorait le sens ; depuis que la plume la lit, le double
+    # retournement (à la construction puis dans le générateur) remettait les
+    # pleins et les déliés à l'envers sur les boucles. Il n'y a rien à
+    # décider ici : on ne touche pas, et la fonction devient idempotente.
+    if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+        return True
+    return (dy < 0.0) if abs(dy) >= abs(dx) else (dx > 0.0)
+
+
 def sens_de_la_main(geste):
     """Le geste, retourné s'il le faut pour aller dans le sens de la main.
 
@@ -13542,9 +13587,7 @@ def sens_de_la_main(geste):
     à G0 sur un job de 2,3 minutes. Le sens du geste vaut mieux que ça."""
     if len(geste) < 2:
         return geste
-    dy = geste[-1].y - geste[0].y
-    dx = geste[-1].x - geste[0].x
-    bon = (dy < 0.0) if abs(dy) >= abs(dx) else (dx > 0.0)
+    bon = _sens_main_ok(geste[0].x, geste[0].y, geste[-1].x, geste[-1].y)
     return geste if bon else geste[::-1]
 
 

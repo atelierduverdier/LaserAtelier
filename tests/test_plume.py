@@ -679,7 +679,10 @@ for _l in _lg17[_i + 1:]:
             break
     elif _l.startswith("G0 X"):
         break
-_plat17 = max([d for d, z in _zs17 if abs(z - 8.0) < 0.01] or [0.0])
+# La propriété est « la hauteur TIENT », pas « la hauteur vaut 8 » : ce
+# fût est devenu un plein en v2.87.0, donc il se grave haut. Ce qu'un trait
+# droit interdit, c'est que la hauteur BOUGE sur sa longueur.
+_plat17 = max([d for d, z in _zs17 if abs(z - _zs17[0][1]) < 0.05] or [0.0])
 assert _plat17 > 4.0, (
     "la hauteur bouge dès le haut de la hampe : le fût sortira fin en haut "
     "et épais en bas, exactement le défaut vu sur bois", _plat17)
@@ -704,3 +707,87 @@ print("17. plus aucun bloc gravé au-delà du pas : {:.2f} mm au pire (contre "
       "{:.2f} sans densification), fût du « d » à hauteur constante sur "
       "{:.1f} mm, voie extraction {:.2f} mm OK".format(
           _pire17, _pires17, _plat17, _pire_ext17))
+
+
+# --- 18. LA LARGEUR DOIT SUIVRE LE SENS RÉELLEMENT GRAVÉ ----------------
+# Christophe, 05/08/2026 : « en écriture un d commence par le cercle puis
+# la barre verticale, et la barre verticale commence en haut ».
+#
+# La police enchaîne bien cercle puis hampe, mais elle trace la hampe VERS
+# LE HAUT -- la remontée dans le jambage, celle qu'une main fait en filet
+# avant de redescendre en plein. `sens_de_la_main` retournait ensuite le
+# geste pour le graver de haut en bas, mais APRÈS que `_largeurs_du_trait`
+# ait figé les largeurs : on gravait une descente en portant la largeur
+# d'une montée, et la plume pointue n'appuyant qu'en descendant, les trois
+# « d » recevaient 0,096 mm -- le trait le plus fin du texte là où la
+# lettre demande son plein le plus visible.
+#
+# L'INVARIANT, et il est plus fort qu'une valeur : sur la plume,
+# `sens_de_la_main` ne doit RIEN avoir à retourner. S'il retourne quoi que
+# ce soit, c'est qu'un geste porte des largeurs mesurées à l'envers.
+_ch18, _i18 = core.chaines_plume("hersheyscript1", _TXT17, largeur_mm=160.0,
+                                 angle_deg=50.0, epaisseur=0.16,
+                                 contraste=16.0, modele="pointue")
+_g18, _d18 = core.preparer_calligraphie(_ch18, 600.0, u"Hêtre", power_max=900.0)
+_retournes = sum(1 for g in _g18
+                 if len(g) > 1 and core.sens_de_la_main(g)[0] is not g[0])
+assert _retournes == 0, (
+    "{} gestes sont encore retournés APRÈS coup : ceux-là portent la "
+    "largeur du sens inverse de celui qu'on grave".format(_retournes))
+
+
+def _futs_descendants(gestes):
+    """Les longs runs droits et verticaux, avec la largeur qu'ils portent."""
+    out = []
+    for g in gestes:
+        i = 0
+        while i < len(g) - 1:
+            j = i + 1
+            a0 = math.atan2(g[i + 1].y - g[i].y, g[i + 1].x - g[i].x)
+            while j < len(g) - 1:
+                a1 = math.atan2(g[j + 1].y - g[j].y, g[j + 1].x - g[j].x)
+                if abs((a1 - a0 + math.pi) % (2 * math.pi) - math.pi) > 0.035:
+                    break
+                j += 1
+            dx, dy = g[j].x - g[i].x, g[j].y - g[i].y
+            if math.hypot(dx, dy) > 5.0 and abs(dy) > abs(dx):
+                # LA MÉDIANE, PAS LE MAXI : un fût est uniforme sur sa
+                # longueur, et le maxi ne rapporte que la transition de ses
+                # bouts -- assez pour que le sabotage rende 0,34 mm au lieu
+                # du plancher et se fasse déclarer inoffensif.
+                _w = sorted(p.w for p in g[i:j + 1])
+                out.append((math.hypot(dx, dy), dy < 0.0, _w[len(_w) // 2]))
+            i = j
+    return out
+
+
+_futs = _futs_descendants(_g18)
+assert _futs, "aucun fût vertical de plus de 5 mm : le contrôle vise à côté"
+assert all(desc for _L, desc, _w in _futs), (
+    "un fût vertical est encore gravé en REMONTANT", _futs)
+_wfut = min(w for _L, _d, w in _futs)
+assert _wfut > 3.0 * _d18["w_min"], (
+    "les hampes sortent au plancher matière ({:.3f} mm) alors qu'une "
+    "descente demande un plein : c'est le « d » que Christophe a vu"
+    .format(_wfut), _wfut, _d18["w_min"])
+
+# SABOTAGE : on retire l'orientation faite à la construction, comme avant.
+_src18 = inspect.getsource(core.chaines_plume)
+_faux18 = _src18.replace("if not _sens_main_ok(", "if False and _sens_main_ok(")
+assert _faux18 != _src18, "le sabotage n'a rien remplacé -- il ne prouve rien"
+_ns18 = dict(core.__dict__)
+exec(compile(textwrap.dedent(_faux18), "<sabotage>", "exec"), _ns18)
+_chs18 = _ns18["chaines_plume"]("hersheyscript1", _TXT17, largeur_mm=160.0,
+                                angle_deg=50.0, epaisseur=0.16,
+                                contraste=16.0, modele="pointue")[0]
+_gs18, _ds18 = core.preparer_calligraphie(_chs18, 600.0, u"Hêtre",
+                                          power_max=900.0)
+_gs18 = [core.sens_de_la_main(g) for g in _gs18]
+_wsab = min(w for _L, _d, w in _futs_descendants(_gs18))
+assert _wsab < 1.5 * _ds18["w_min"], (
+    "sans l'orientation à la construction les hampes ne retombent PAS au "
+    "plancher : le contrôle ci-dessus ne prouve pas que c'est elle qui les "
+    "épaissit", _wsab, _ds18["w_min"])
+print("18. la largeur suit le sens gravé : 0 geste à retourner, hampes à "
+      "{:.3f} mm contre {:.3f} au plancher sans le correctif OK".format(
+          _wfut, _wsab))
