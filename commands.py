@@ -27,6 +27,35 @@ def _warn_selection(message):
     QtWidgets.QMessageBox.warning(None, "Sélection", message)
 
 
+def _sans_apercus(selection):
+    """La sélection débarrassée des surfaces d'APERÇU de calque.
+
+    Christophe, 05/08/2026 : « si par erreur je clique sur aperçu
+    remplissage puis hachure, cela va faire des hachures dans les
+    remplissages ? ». Oui, et `Selectable = False` n'y suffit pas : il ne
+    bloque que le clic dans la VUE 3D, alors qu'un clic dans l'ARBRE
+    sélectionne tout aussi bien.
+
+    Ces surfaces sont un rendu, pas une pièce : elles sont bâties à partir
+    d'une autre forme et n'ont aucune existence à graver. Les hachurer
+    reviendrait à graver l'ombre au lieu de l'objet. On les retire donc de
+    toute sélection, à l'entrée des cinq modes -- un garde par mode aurait
+    laissé passer celui qu'on aurait oublié."""
+    import laser_jobs
+    garde = []
+    for sel in selection or []:
+        obj = getattr(sel, "Object", None)
+        if obj is not None and getattr(obj, laser_jobs.PROP_APERCU, None):
+            continue
+        garde.append(sel)
+    if selection and not garde:
+        _warn_selection(
+            "« Aperçu remplissage » n'est pas une pièce : c'est le rendu de "
+            "ce qu'un job va noircir, bâti à partir d'une autre forme.\n\n"
+            "Sélectionne la forme elle-même -- l'aperçu suivra.")
+    return garde
+
+
 def assurer_document():
     """Garantit un document actif, et le crée sinon. Renvoie son nom ou None.
 
@@ -169,7 +198,7 @@ class HatchCommand:
         return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
 
     def Activated(self):
-        selection = Gui.Selection.getSelectionEx()
+        selection = _sans_apercus(Gui.Selection.getSelectionEx())
         if not selection:
             _warn_selection("Sélectionne le motif (face/sketch) avant de lancer ce mode.")
             return
@@ -189,7 +218,7 @@ class FilledEngravingCommand:
         return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
 
     def Activated(self):
-        selection = Gui.Selection.getSelectionEx()
+        selection = _sans_apercus(Gui.Selection.getSelectionEx())
         if not selection:
             _warn_selection("Sélectionne le motif 2D (face/sketch/ShapeString) avant de lancer ce mode.")
             return
@@ -380,7 +409,7 @@ class CurvedCommand:
         return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
 
     def Activated(self):
-        selection = Gui.Selection.getSelectionEx()
+        selection = _sans_apercus(Gui.Selection.getSelectionEx())
         if not selection:
             _warn_selection(
                 "Pièce PLATE : sélectionne juste le motif 2D (hachures,\n"
@@ -408,7 +437,7 @@ class CurvedCutCommand:
         return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
 
     def Activated(self):
-        selection = Gui.Selection.getSelectionEx()
+        selection = _sans_apercus(Gui.Selection.getSelectionEx())
         if not selection:
             _warn_selection(
                 "Sélectionne le Motif_Projete ET le modèle 3D\n"
@@ -431,7 +460,7 @@ class FlatCommand:
         return FreeCAD.ActiveDocument is not None and bool(Gui.Selection.getSelection())
 
     def Activated(self):
-        selection = Gui.Selection.getSelectionEx()
+        selection = _sans_apercus(Gui.Selection.getSelectionEx())
         if not selection:
             _warn_selection("Sélectionne le(s) contour(s) à découper.")
             return

@@ -263,7 +263,7 @@ def _apercu_calque(job, rebatir=False):
     obj.setEditorMode(PROP_APERCU, 1)
     _habiller_apercu(obj, job)
     try:
-        _groupe_atelier(doc).addObject(obj)
+        _ranger(doc, obj, "Apercus")
     except Exception:
         pass
     return obj
@@ -424,23 +424,75 @@ def _groupe_atelier(doc):
     return grp
 
 
+# TROIS RAYONS, PAS UN TAS. Christophe, 05/08/2026 : « peut-être faudrait-il
+# ordonner un peu mieux les calques, d'un côté les jobs, de l'autre le
+# compound que l'on a créé, et de l'autre les compounds qui se créent au fur
+# et à mesure des ajouts de remplissage ou de marquage, sinon cela va être
+# le foutoir ». Tout atterrissait à plat dans « Atelier Laser » ; sur son
+# document, quatre objets de natures différentes s'y mêlaient déjà.
+#
+# Les trois natures ne se manipulent pas pareil : un JOB se coche et se
+# double-clique, une FORME se sélectionne pour en faire un job, un APERÇU
+# ne se touche jamais.
+SOUS_GROUPES = (
+    ("Jobs", "Jobs"),
+    ("Formes", "Formes à graver"),
+    ("Apercus", "Aperçus (ne pas graver)"),
+)
+
+
+def _sous_groupe(doc, cle):
+    """Le rayon `cle` de « Atelier Laser », créé au besoin."""
+    grp = _groupe_atelier(doc)
+    nom = "AtelierLaser{}".format(cle)
+    for o in getattr(grp, "Group", None) or []:
+        if getattr(o, "Name", "").startswith(nom):
+            return o
+    sous = doc.addObject("App::DocumentObjectGroup", nom)
+    sous.Label = dict(SOUS_GROUPES).get(cle, cle)
+    grp.addObject(sous)
+    return sous
+
+
+def _ranger(doc, obj, cle):
+    """Pose `obj` dans son rayon, en le retirant du rayon voisin s'il y
+    traînait -- un objet rangé deux fois n'est rangé nulle part."""
+    cible = _sous_groupe(doc, cle)
+    if obj in (getattr(cible, "Group", None) or []):
+        return
+    grp = _groupe_atelier(doc)
+    for autre in [grp] + list(getattr(grp, "Group", None) or []):
+        if autre is cible or not hasattr(autre, "Group"):
+            continue
+        if obj in (getattr(autre, "Group", None) or []):
+            autre.removeObject(obj)
+    cible.addObject(obj)
+
+
 def _ranger_dans_groupe(doc, job, sources):
-    """Range le Job -- et ses sources encore orphelines -- dans le dossier
-    « Atelier Laser ». Une source déjà dans un groupe, un Body ou une Part
-    n'est pas déplacée (on ne casse pas l'organisation de l'utilisateur)."""
+    """Range le Job dans « Jobs », ses sources encore orphelines dans
+    « Formes à graver », et l'aperçu du job dans « Aperçus ».
+
+    Une source déjà dans un groupe, un Body ou une Part n'est PAS déplacée :
+    on ne casse pas l'organisation de l'utilisateur."""
     try:
-        grp = _groupe_atelier(doc)
-        contenu = list(getattr(grp, "Group", None) or [])
-        if job not in contenu:
-            grp.addObject(job)
+        _ranger(doc, job, "Jobs")
         for src in sources:
             deja_range = (
                 (getattr(src, "getParentGroup", lambda: None)() is not None)
                 or (getattr(src, "getParentGeoFeatureGroup",
                             lambda: None)() is not None))
-            if not deja_range and src not in contenu:
-                grp.addObject(src)
-                contenu.append(src)
+            # `getParentGroup` répond « Atelier Laser » pour une forme qu'on
+            # y a soi-même rangée : sans cette exception, une forme posée à
+            # plat par une version précédente n'atteindrait jamais son rayon.
+            parent = getattr(src, "getParentGroup", lambda: None)()
+            a_nous = parent is not None and getattr(
+                parent, "Name", "").startswith("AtelierLaser")
+            if not deja_range or a_nous:
+                _ranger(doc, src, "Formes")
+        ap = _apercu_existant(doc, job)
+        if ap is not None:
+            _ranger(doc, ap, "Apercus")
     except Exception as exc:
         FreeCAD.Console.PrintWarning(
             "Dossier « Atelier Laser » : rangement impossible ({}).\n".format(exc))

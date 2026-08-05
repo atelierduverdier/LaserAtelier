@@ -15,6 +15,7 @@ On teste le CÂBLAGE du panneau, pas le générateur : `generate_gcode_combined`
 est bouchonné. Ce qui a changé est l'endroit d'où part l'écriture, et c'est
 cela qu'il faut prendre.
 """
+import inspect as _insp
 import sys
 
 from harness import preparer, sans_dialogues
@@ -285,6 +286,59 @@ try:
         assert _e > 0.40, (
             "la couleur du mode « {} » se confond avec le gris éteint"
             .format(_m), _c, _e)
+
+    # TROIS RAYONS, PAS UN TAS. Un job se coche, une forme se sélectionne,
+    # un aperçu ne se touche jamais : trois natures, trois dossiers.
+    _grp = lj._groupe_atelier(_doc)
+    _rayons = {_g.Label: [_x.Label for _x in (getattr(_g, "Group", None) or [])]
+               for _g in (getattr(_grp, "Group", None) or [])
+               if hasattr(_g, "Group")}
+    assert len(_rayons) == 3, (
+        "« Atelier Laser » n'a pas ses trois rayons", sorted(_rayons))
+    _r_jobs = next(v for k, v in _rayons.items() if k == "Jobs")
+    _r_formes = next(v for k, v in _rayons.items() if k.startswith("Formes"))
+    _r_ap = next(v for k, v in _rayons.items() if k.startswith("Aperçus"))
+    assert any("Job " in _l for _l in _r_jobs), ("les jobs ne sont pas rangés",
+                                                 _r_jobs)
+    assert "Cadre" in _r_formes, ("la forme source n'est pas rangée", _r_formes)
+    assert any("Aperçu" in _l for _l in _r_ap), (
+        "la surface d'aperçu n'est pas rangée", _r_ap)
+    # RANGÉ DEUX FOIS = RANGÉ NULLE PART.
+    _tous = _r_jobs + _r_formes + _r_ap
+    assert len(_tous) == len(set(_tous)), (
+        "un objet figure dans deux rayons à la fois", _tous)
+    assert not [_x for _x in (getattr(_grp, "Group", None) or [])
+                if not hasattr(_x, "Group")], (
+        "des objets traînent encore à plat dans « Atelier Laser »")
+
+    # L'APERÇU NE DOIT JAMAIS DEVENIR UN MOTIF. `Selectable = False` ne
+    # bloque que le clic dans la VUE 3D ; un clic dans l'ARBRE passe outre,
+    # et les cinq modes lisent la même sélection. Christophe : « si par
+    # erreur je clique sur aperçu remplissage puis hachure, cela va faire
+    # des hachures dans les remplissages ? »
+    import commands as _cmd                                   # noqa: E402
+
+    class _Sel:
+        def __init__(self, o):
+            self.Object = o
+
+    _apercu = next(_x for _x in _doc.Objects
+                   if getattr(_x, lj.PROP_APERCU, None))
+    _garde = _cmd._sans_apercus([_Sel(_apercu), _Sel(_cadre)])
+    assert [_s.Object for _s in _garde] == [_cadre], (
+        "la surface d'aperçu n'est pas écartée de la sélection : elle serait "
+        "hachurée comme une pièce")
+    assert _cmd._sans_apercus([_Sel(_apercu)]) == [], (
+        "une sélection ne contenant QUE des aperçus doit devenir vide")
+    # Et le garde ne doit pas manger une sélection normale.
+    assert len(_cmd._sans_apercus([_Sel(_cadre), _Sel(_t)])) == 2, (
+        "le garde écarte des formes ordinaires")
+    # Les CINQ modes doivent le traverser -- en oublier un le laisserait
+    # ouvert, et c'est toujours celui-là qu'on clique.
+    _src_cmd = _insp.getsource(_cmd)
+    assert _src_cmd.count("_sans_apercus(Gui.Selection.getSelectionEx())") == \
+        _src_cmd.count("Gui.Selection.getSelectionEx()"), (
+        "un mode lit la sélection sans passer par le garde des aperçus")
 
     print("calques : {} modes colorés et distincts, job décoché ignoré "
           "(« {} »), forme partagée nommée OK".format(
