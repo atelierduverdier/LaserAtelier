@@ -264,16 +264,18 @@ try:
     # une aire se montre REMPLI (la face prend la couleur) ; ce qui marque
     # ou coupe se montre au TRAIT seul -- forcer un solide 3D en fil de fer
     # pour la beauté du calque rendrait le modèle inutilisable.
-    assert lj.MODES_REMPLIS <= set(lj.MODES), (
-        "un mode remplissant n'existe pas dans la table des modes",
-        lj.MODES_REMPLIS - set(lj.MODES))
-    assert "filled" in lj.MODES_REMPLIS and "hatch" in lj.MODES_REMPLIS, (
-        "la gravure remplie et les hachures noircissent une aire : elles "
-        "doivent se montrer remplies", lj.MODES_REMPLIS)
-    for _m in ("flat", "curved_cut", "curved"):
-        assert _m not in lj.MODES_REMPLIS, (
-            "« {} » suit un trait : peindre sa face masquerait le modèle "
-            "sous une couleur pleine".format(_m))
+    # L'ATELIER N'IMPOSE PAS DE LARGEUR DE TRAIT. La v2.94.1 épaississait
+    # les modes remplissants faute de savoir montrer la surface ; la v2.95.0
+    # la montre, donc le gros trait ne dit plus rien de neuf. Christophe :
+    # « le bord large pour les remplis et autre on en a plus besoin ».
+    assert "LineWidth" not in _insp.getsource(lj), (
+        "le calque impose de nouveau une largeur de trait : c'est un "
+        "réglage d'affichage qui n'appartient pas à l'atelier, et l'aperçu "
+        "plein dit déjà ce qu'il disait")
+    assert not hasattr(lj, "MODES_REMPLIS"), (
+        "MODES_REMPLIS n'a plus aucun lecteur depuis que la largeur de "
+        "trait est partie : une constante que personne ne lit finit par "
+        "être relue de travers")
     # Le gris d'extinction doit être TRÈS clair -- demandé tel quel -- sans
     # quoi une planche à moitié décochée reste illisible.
     assert min(lj.GRIS_ETEINT) > 0.75, (

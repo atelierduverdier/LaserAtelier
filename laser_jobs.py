@@ -53,20 +53,6 @@ COULEURS_MODE = {
     "hatch":      (1.00, 0.54, 0.00),      # hachures -- l'orange de l'atelier
 }
 
-# CE QUI NOIRCIT UNE SURFACE se montre REMPLI ; ce qui marque ou coupe se
-# montre au TRAIT. Christophe, 05/08/2026 : « pour les remplissages, il
-# faudrait peut-être remplir la sélection d'une couleur et si on ne veut pas
-# graver, ne pas remplir ; et pour le reste pareil, marquer d'une couleur
-# sinon pas de marquage ».
-#
-# La couleur seule disait QUEL MODE ; elle dit maintenant QUEL TRAVAIL, ce
-# qui est l'information qu'on cherche en regardant la planche. Gravure
-# remplie et Hachures noircissent une aire -- on peint donc la face. Les
-# deux découpes et le marquage suivent un trait -- on ne peint que le trait,
-# et on laisse la face tranquille : forcer un solide 3D en fil de fer pour
-# la beauté du calque rendrait le modèle inutilisable.
-MODES_REMPLIS = {"filled", "hatch"}
-
 # La couleur d'un job DÉCOCHÉ : un gris TRÈS clair, demandé tel quel (« ou
 # alors un gris très clair pour les non gravés »). Assez pâle pour que la
 # forme cesse de réclamer l'attention, assez visible pour qu'on la retrouve
@@ -148,24 +134,19 @@ def _peindre(src, mode):
     if vue is None:
         return                            # headless : rien à peindre
     couleur = COULEURS_MODE[mode] if mode else GRIS_ETEINT
-    remplit = bool(mode) and mode in MODES_REMPLIS
     for attr in ("LineColor", "PointColor", "ShapeColor"):
         if hasattr(vue, attr):
             try:
                 setattr(vue, attr, couleur)
             except Exception:
                 pass                      # une vue qui refuse n'arrête rien
-    # UNE FORME SANS FACE NE SE REMPLIT PAS, et il faut le dire autrement.
-    # Le « Texte gravé » de l'atelier est un compound de 1742 ARÊTES et
-    # ZÉRO face : `ShapeColor` n'y peint rien, d'où « je ne vois pas de
-    # remplissage ». Le TRAIT est la seule surface dont on dispose, donc un
-    # job qui noircit une aire l'épaissit -- c'est ce qui distingue à l'oeil
-    # « on remplit ça » de « on suit ce trait ».
-    if hasattr(vue, "LineWidth"):
-        try:
-            vue.LineWidth = 4.0 if remplit else 2.0
-        except Exception:
-            pass
+    # PAS DE LARGEUR DE TRAIT ICI, ET C'EST UN RETRAIT ASSUMÉ. La v2.94.1
+    # épaississait le trait des modes remplissants, faute de savoir montrer
+    # la surface : un pis-aller. La v2.95.0 pose la vraie surface, donc le
+    # gros trait ne dit plus rien que l'aperçu ne dise mieux. Christophe :
+    # « je pense que le bord large pour les remplis et autre on en a plus
+    # besoin ». Élaguer plutôt qu'empiler -- et l'atelier cesse d'imposer
+    # une largeur d'affichage qui ne le regarde pas.
     if hasattr(vue, "Transparency"):
         try:
             vue.Transparency = 0 if mode else 70
