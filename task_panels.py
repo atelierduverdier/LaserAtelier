@@ -11218,7 +11218,14 @@ class TaskPanelCalligraphie:
         self.spn_plume_contraste = QtWidgets.QDoubleSpinBox()
         self.spn_plume_contraste.setRange(1.0, 40.0)
         self.spn_plume_contraste.setDecimals(0)
-        self.spn_plume_contraste.setPrefix("1:")
+        # « 16:1 », PAS « 1:16 ». Le champ portait un préfixe « 1: », donc il
+        # écrivait le rapport à l'envers : 1:16 se lit « le plein fait un
+        # seizième du délié », l'exact contraire de ce que la valeur commande.
+        # Le panneau se contredisait lui-même -- son propre verdict annonce
+        # « X:1 entre délié et plein » et l'infobulle juste en dessous cite
+        # « 26:1 » et « 31:1 ». Christophe, 05/08/2026 : « dans la case je ne
+        # peux mettre que 1:16 et non 16:1 ».
+        self.spn_plume_contraste.setSuffix(":1")
         self.spn_plume_contraste.setValue(core.PLUME_CONTRASTE)
         self.spn_plume_contraste.setToolTip(
             "Rapport entre le plein et le délié DEMANDÉ. Le rapport\n"

@@ -995,3 +995,39 @@ assert _neg21 < 0.5 and _pos21 > 0.6, (
 print("21. la plume se penche des deux côtés ({:.0f}° à {:.0f}°) : "
       "bas-gauche/gauche de la panse {:.2f} à -40° contre {:.2f} à +50° OK".format(
           _lo21, _hi21, _neg21, _pos21))
+
+
+# --- 22. LE RAPPORT S'ÉCRIT DANS LE BON SENS ----------------------------
+# Christophe, 05/08/2026 : « dans la case je ne peux mettre que 1:16 et non
+# 16:1 ». Le champ portait un préfixe « 1: », donc il écrivait le rapport à
+# l'envers -- « 1:16 » se lit « le plein fait un seizième du délié », l'exact
+# contraire de ce que la valeur commande. Et le panneau se contredisait :
+# son verdict annonce « X:1 entre délié et plein », son infobulle cite
+# « 26:1 » et « 31:1 ».
+_p22 = tp.TaskPanelCalligraphie()
+_p22.spn_plume_contraste.setValue(16.0)
+_txt22 = _p22.spn_plume_contraste.text()
+assert _txt22.replace(" ", " ").strip().startswith("16"), (
+    "le champ de contraste écrit « {} » : le rapport est à l'envers, un "
+    "plein SEIZE FOIS plus large s'y lit comme seize fois plus fin"
+    .format(_txt22), _txt22)
+assert _txt22.rstrip().endswith(":1"), (
+    "le champ n'annonce pas le rapport sous la forme « X:1 » utilisée par "
+    "le verdict et par l'infobulle juste à côté", _txt22)
+
+# LE CHIFFRE AFFICHÉ EST BIEN CELUI QUI COMMANDE. Un libellé remis à
+# l'endroit sur une valeur qui, elle, serait inversée ne serait qu'un
+# mensonge mieux tourné : on vérifie que 16 demande un plein SEIZE FOIS
+# plus large, pas l'inverse.
+_c22 = core.chaines_plume("hersheyscript1", "Atelier", largeur_mm=80.0,
+                          angle_deg=-40.0, epaisseur=0.12,
+                          contraste=16.0, modele="pointue")[1]
+_c22b = core.chaines_plume("hersheyscript1", "Atelier", largeur_mm=80.0,
+                           angle_deg=-40.0, epaisseur=0.12,
+                           contraste=4.0, modele="pointue")[1]
+assert _c22["rapport"] > _c22b["rapport"], (
+    "demander 16:1 donne MOINS de contraste que 4:1 : la valeur elle-même "
+    "est inversée", _c22["rapport"], _c22b["rapport"])
+print("22. le contraste s'écrit « {} » et 16 donne bien plus de modulation "
+      "que 4 ({:.1f}:1 contre {:.1f}:1) OK".format(
+          _txt22, _c22["rapport"], _c22b["rapport"]))
