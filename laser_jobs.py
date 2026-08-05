@@ -32,6 +32,85 @@ MODES = {
 _ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "resources", "icons")
 
+# COULEUR PAR MODE -- « le calque de LightBurn ». Christophe, 05/08/2026 :
+# « il y a une sorte de calque pour chaque type de trait ou travail afin de
+# les sélectionner ou pas pour la gravure, et aussi grâce à la couleur de
+# voir sur l'écran quel job pour quel trait ».
+#
+# Les Jobs de l'arbre TENAIENT DÉJÀ le rôle de calques -- un par couple
+# (mode, forme), avec l'icône du mode, et `ajouter_jobs_au_combine` en fait
+# déjà un fichier unique. Il manquait la couleur et la case à cocher.
+#
+# Le rouge aux DEUX découpes (la coupe est ce qu'on ne rattrape pas), le
+# bleu au marquage, le vert au remplissage, l'orange de la maison aux
+# hachures. Deux nuances de rouge plutôt qu'une : à plat et sur relief ne
+# se pilotent pas pareil, et les confondre coûte une pièce.
+COULEURS_MODE = {
+    "flat":       (0.85, 0.15, 0.15),      # découpe à plat -- rouge
+    "curved_cut": (0.62, 0.09, 0.30),      # découpe courbe -- grenat
+    "curved":     (0.13, 0.42, 0.78),      # marquage -- bleu
+    "filled":     (0.16, 0.55, 0.28),      # gravure remplie -- vert
+    "hatch":      (1.00, 0.54, 0.00),      # hachures -- l'orange de l'atelier
+}
+
+# La couleur d'un job DÉCOCHÉ : gris. Un calque éteint doit se voir éteint,
+# sinon la case à cocher ne sert qu'à celui qui se souvient de l'avoir mise.
+GRIS_ETEINT = (0.60, 0.60, 0.60)
+
+
+def _vue(obj):
+    """Le ViewObject, ou None. `hasattr` est VRAI ET INUTILE en headless :
+    l'attribut existe et vaut None, et la ligne suivante meurt sur
+    None.LineColor. Le dépôt a déjà corrigé ce piège sur huit sites."""
+    return getattr(obj, "ViewObject", None)
+
+
+def _autres_jobs(doc, job, source):
+    """Les autres Jobs qui visent la même forme, avec un mode différent."""
+    out = []
+    for o in doc.Objects:
+        if o is job or not _est_job(o):
+            continue
+        if source in (getattr(o, "Sources", None) or []):
+            if getattr(o, "Mode", None) != getattr(job, "Mode", None):
+                out.append(o)
+    return out
+
+
+def colorer_sources(job):
+    """Peint les formes du Job à la couleur de son mode -- ou en gris s'il
+    est décoché. Renvoie la liste des formes DISPUTÉES.
+
+    UNE FORME PEUT SERVIR À DEUX JOBS, et c'est un usage légitime : marquer
+    puis découper le même contour. Or la couleur est portée par l'OBJET, pas
+    par le job -- FreeCAD n'a rien pour en montrer deux. Le dernier job posé
+    gagne donc, et on le DIT plutôt que de le taire : une couleur qui ment
+    sur ce qui sera gravé est pire que pas de couleur du tout."""
+    doc = getattr(job, "Document", None)
+    if doc is None:
+        return []
+    grave = bool(getattr(job, "Grave", True))
+    couleur = (COULEURS_MODE.get(getattr(job, "Mode", ""), None)
+               if grave else GRIS_ETEINT)
+    if couleur is None:
+        return []
+    disputees = []
+    for src in (getattr(job, "Sources", None) or []):
+        if src is None:
+            continue
+        if _autres_jobs(doc, job, src):
+            disputees.append(getattr(src, "Label", "?"))
+        vue = _vue(src)
+        if vue is None:
+            continue                      # headless : rien à peindre
+        for attr in ("LineColor", "PointColor"):
+            if hasattr(vue, attr):
+                try:
+                    setattr(vue, attr, couleur)
+                except Exception:
+                    pass                  # une vue qui refuse n'arrête rien
+    return disputees
+
 
 class JobLaser:
     """Proxy App::FeaturePython du Job : un signet, rien à recalculer."""
@@ -41,6 +120,15 @@ class JobLaser:
 
     def execute(self, obj):
         pass
+
+    def onChanged(self, obj, prop):
+        """Décocher « Grave » doit se VOIR tout de suite, sinon la case ne
+        sert qu'à celui qui se souvient de l'avoir mise."""
+        if prop == "Grave":
+            try:
+                colorer_sources(obj)
+            except Exception:
+                pass          # une couleur ratée ne doit pas casser le doc
 
     # Sérialisation avec le document : le proxy ne porte aucun état
     # (tout est dans les propriétés de l'objet).
@@ -176,6 +264,12 @@ def ajouter_jobs_au_combine(jobs):
         if not hasattr(panneau_cls, "_build_combined_operation"):
             ignores.append("{} (mode non combinable)".format(job.Label))
             continue
+        # DÉCOCHÉ = PAS GRAVÉ. `getattr` avec True par défaut : les Jobs
+        # d'avant la v2.93 n'ont pas la propriété, et un ancien document
+        # doit continuer à tout graver.
+        if not bool(getattr(job, "Grave", True)):
+            ignores.append("{} (décoché)".format(job.Label))
+            continue
         sources = [o for o in (getattr(job, "Sources", None) or [])
                    if o is not None]
         if not sources:
@@ -246,6 +340,20 @@ def _poser_sources(obj, sources):
     obj.Sources = sources
 
 
+def _dire_disputees(job, labels):
+    """Nomme les formes que DEUX jobs se disputent. On ne choisit pas à la
+    place de l'utilisateur -- on lui dit ce que la couleur ne peut pas
+    montrer."""
+    if not labels:
+        return
+    FreeCAD.Console.PrintWarning(
+        "Couleur des calques : « {} » sert aussi à un autre job -- elle "
+        "porte donc la couleur du dernier posé ({}). Les deux jobs seront "
+        "bien gravés ; c'est l'affichage qui ne sait montrer qu'une "
+        "couleur.\n".format(", ".join(labels), MODES.get(
+            getattr(job, "Mode", ""), ("?",))[0]))
+
+
 def creer_ou_maj_job(mode, sources, sous_elements=None):
     """Crée -- ou met à jour -- l'objet Job du triplet [mode, source
     principale, sous-éléments] dans le document actif. Appelé à chaque
@@ -274,6 +382,7 @@ def creer_ou_maj_job(mode, sources, sous_elements=None):
                 and sorted(getattr(obj, "SousElements", None) or []) == sous):
             _poser_sources(obj, sources)
             _ranger_dans_groupe(doc, obj, sources)
+            _dire_disputees(obj, colorer_sources(obj))
             return obj
 
     obj = doc.addObject("App::FeaturePython",
@@ -288,12 +397,20 @@ def creer_ou_maj_job(mode, sources, sous_elements=None):
                     "Sous-éléments de la source principale (vide = objet entier)")
     obj.SousElements = sous
     obj.setEditorMode("SousElements", 1)
+    # LA CASE À COCHER DU CALQUE. Sauvée avec le document, donc préparer une
+    # planche une fois et n'en regraver qu'une partie ne demande plus de
+    # re-sélectionner quoi que ce soit.
+    obj.addProperty("App::PropertyBool", "Grave", "Job",
+                    "Inclure ce job dans le job combiné (décoché : la forme "
+                    "passe en gris et le job est ignoré)")
+    obj.Grave = True
     obj.Label = "Job {} - {}{}".format(
         MODES[mode][0], principal.Label,
         " [" + ", ".join(sous) + "]" if sous else "")
     _ranger_dans_groupe(doc, obj, sources)
     if getattr(FreeCAD, "GuiUp", False) and getattr(obj, "ViewObject", None):
         VueJobLaser(obj.ViewObject)
+    _dire_disputees(obj, colorer_sources(obj))
     FreeCAD.Console.PrintMessage(
         "Job créé dans l'arborescence : « {} » (double-clic pour "
         "rouvrir le panneau pré-rempli).\n".format(obj.Label))

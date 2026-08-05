@@ -85,3 +85,92 @@ finally:
     tp._write_gcode_with_dialog = _vrai_write
     core.generate_gcode_combined = _vrai_gen
     FreeCAD.closeDocument("EssaiJobCombine")
+
+
+# --- LES CALQUES : une couleur par mode, une case pour graver ou non ----
+# Christophe, 05/08/2026, après avoir vu LightBurn : « il y a une sorte de
+# calque pour chaque type de trait ou travail afin de les sélectionner ou
+# pas pour la gravure, et aussi grâce à la couleur de voir sur l'écran quel
+# job pour quel trait ».
+#
+# Les Jobs de l'arbre TENAIENT DÉJÀ ce rôle -- un par couple (mode, forme),
+# et `ajouter_jobs_au_combine` en faisait déjà un fichier unique. Il
+# manquait la couleur et la case.
+import laser_jobs as lj                                       # noqa: E402
+import Part                                                   # noqa: E402
+
+# TOUT MODE DOIT AVOIR SA COULEUR, sinon sa forme reste de la couleur du
+# document et le calque est muet précisément là où on le regarde.
+_sans = sorted(set(lj.MODES) - set(lj.COULEURS_MODE))
+assert not _sans, ("des modes n'ont aucune couleur de calque : leurs formes "
+                   "ne diront rien", _sans)
+# Et elles doivent SE DISTINGUER : deux calques de même couleur ne sont
+# qu'un calque.
+_couleurs = list(lj.COULEURS_MODE.values())
+for _i, _a in enumerate(_couleurs):
+    for _b in _couleurs[_i + 1:]:
+        _ecart = sum(abs(x - y) for x, y in zip(_a, _b))
+        assert _ecart > 0.30, (
+            "deux modes portent des couleurs trop proches pour être "
+            "séparées à l'œil", _a, _b, _ecart)
+
+_doc = FreeCAD.newDocument("EssaiCalques")
+
+
+def _trait(nom):
+    o = _doc.addObject("Part::Feature", nom)
+    o.Shape = Part.LineSegment(FreeCAD.Vector(0, 0, 0),
+                               FreeCAD.Vector(10, 0, 0)).toShape()
+    return o
+
+
+try:
+    _a, _b = _trait("Contour"), _trait("Motif")
+    _doc.recompute()
+    _j1 = lj.creer_ou_maj_job("flat", [_a])
+    _j2 = lj.creer_ou_maj_job("curved", [_b])
+    assert _j1.Grave is True and _j2.Grave is True, (
+        "un job neuf doit être gravé par défaut : sinon une planche préparée "
+        "comme avant sortirait vide")
+
+    # DÉCOCHÉ = PAS GRAVÉ, et la raison est NOMMÉE. Un job qui disparaît du
+    # fichier sans un mot, c'est une planche ratée qu'on ne s'explique pas.
+    tp._COMBINED_OPS[:] = []
+    _j1.Grave = False
+    _doc.recompute()
+    _aj, _ig = lj.ajouter_jobs_au_combine([_j1])
+    assert _aj == [] and len(tp._COMBINED_OPS) == 0, (
+        "un job décoché est quand même parti dans le job combiné", _aj)
+    assert _ig and "décoché" in _ig[0], (
+        "le job décoché est ignoré SANS le dire", _ig)
+
+    # SABOTAGE : la case doit être ce qui bloque, et non un refus général.
+    # Recoché, le même job doit repasser la porte -- il échouera plus loin,
+    # sur la sélection 3D que le harnais ne sait pas bouchonner, et c'est
+    # justement la preuve qu'il a dépassé la case.
+    _j1.Grave = True
+    _doc.recompute()
+    try:
+        _aj2, _ig2 = lj.ajouter_jobs_au_combine([_j1])
+        _passe = not (_ig2 and "décoché" in _ig2[0])
+    except AttributeError:
+        _passe = True          # tombé APRÈS la case, sur Gui.Selection
+    assert _passe, (
+        "recoché, le job est toujours refusé pour « décoché » : ce n'est pas "
+        "la case qui gouverne, et le contrôle ci-dessus ne prouve rien")
+
+    # UNE FORME PARTAGÉE EST NOMMÉE. La couleur est portée par l'objet, pas
+    # par le job : deux jobs sur une même forme ne peuvent pas s'afficher en
+    # deux couleurs, et on le dit plutôt que de laisser croire.
+    _j3 = lj.creer_ou_maj_job("curved", [_a])
+    _disputees = lj.colorer_sources(_j3)
+    assert "Contour" in _disputees, (
+        "une forme servant à deux jobs n'est pas signalée : sa couleur "
+        "mentira sur ce qui sera gravé", _disputees)
+    assert lj.colorer_sources(_j2) == [], (
+        "une forme d'un seul job est signalée comme disputée")
+    print("calques : {} modes colorés et distincts, job décoché ignoré "
+          "(« {} »), forme partagée nommée OK".format(
+              len(lj.COULEURS_MODE), _ig[0]))
+finally:
+    FreeCAD.closeDocument("EssaiCalques")
