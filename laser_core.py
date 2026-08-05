@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.83.0"
+VERSION = "2.84.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -13141,6 +13141,29 @@ def preparer_calligraphie(chaines, feed, material, power_max=None,
     propres bornes, qui se flatterait toute seule (piège tombé le
     03/08/2026 : l'écart annoncé était de 0,02 mm contre une consigne déjà
     plafonnée, alors que la police en demandait quatre fois plus)."""
+    # LE HAUT DE L'ÉCHELLE, C'EST LE PLUS GROS TRAIT DU DESSIN -- jamais
+    # la plus large brûlure que le matériau sache faire.
+    #
+    # Sans ce plafond, `echelle_fuseau_z` monte jusqu'aux 3,43 mm mesurés
+    # sur le hêtre, et comme la puissance suit la largeur (S = S_max x
+    # largeur / largeur_max), un texte dont le plein fait 0,52 mm réclame
+    # S136 -- rabattu au plancher S200. Mesuré sur la calligraphie de
+    # l'atelier du 05/08/2026 : 100 % DES POINTS À S200, contre S207-S900
+    # une fois plafonné. La puissance était donc collée en butée basse et
+    # ne pouvait plus suivre la vitesse : passer de F200 à F800 a divisé
+    # l'énergie par quatre sans compensation possible. Christophe : « à
+    # F800 c'est vraiment moins bon qu'avant ». Le G-code le disait dans
+    # son propre en-tête -- « Trait 0.12 a 3.43 mm », alors qu'aucune
+    # lettre ne dépasse 0,52.
+    #
+    # C'est mot pour mot ce que la spirale a appris en v2.59.1 avec
+    # `largeur_max = pas` ; la leçon n'avait pas été portée jusqu'ici.
+    # Bénéfice second : la course Z tombe de 6,8 à 5,3 mm, donc le limiteur
+    # de pente rabote moins et les gestes courts rendent enfin leur fuseau.
+    if largeur_max is None:
+        demande = [float(p[2]) for ch in chaines for p in ch if len(ch) >= 2]
+        if demande:
+            largeur_max = max(demande)
     ech = echelle_fuseau_z(material, feed, power_max=power_max,
                            line_min_mm=0.0, largeur_max=largeur_max)
     if ech is None:

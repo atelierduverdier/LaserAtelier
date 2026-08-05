@@ -531,3 +531,47 @@ assert _n[0] > 2, (
     "ci-dessus ne prouve rien", _n[0])
 print("15. vitesse_pour_delie : {} lecture(s) de config contre {} pour la "
       "version qui a fait souffler le PC OK".format(1, _n[0]))
+
+
+# --- 16. LA PUISSANCE NE DOIT PAS ÊTRE COLLÉE À SON PLANCHER ------------
+# Christophe, sa calligraphie gravée à F800 : « c'est vraiment moins bon
+# qu'avant ». Son G-code annonçait « Trait 0.12 a 3.43 mm » alors qu'aucune
+# lettre ne dépasse 0,52 : le haut de l'échelle était la plus large brûlure
+# du MATÉRIAU, pas le plus gros trait du DESSIN. Comme S suit la largeur,
+# tout le texte réclamait S136 et sortait rabattu au plancher S200 -- donc
+# la puissance ne pouvait plus compenser la vitesse.
+# UN CAS DISCRIMINANT D'ABORD. À 80 mm le plein de la plume fait 0,84 mm et
+# échappe de justesse au plancher : le contrôle passerait sans rien prouver.
+# On prend la taille où l'écart est franc -- et c'est la taille ordinaire
+# d'une signature.
+_ch16, _i16 = core.chaines_plume("verdier", u"Atelier du Verdier",
+                                 largeur_mm=30.0)
+_wmax16 = max(p[2] for c in _ch16 for p in c)
+_g16, _d16 = core.preparer_calligraphie(_ch16, 800.0, u"Hêtre",
+                                        power_max=900.0)
+_ss16 = [p.s for c in _g16 for p in c]
+assert _d16["w_max"] <= _wmax16 + 1e-6, (
+    "le haut de l'échelle dépasse le plus gros trait du dessin : la "
+    "puissance sera écrasée vers le bas pour tout le texte",
+    _d16["w_max"], _wmax16)
+_au_plancher = 100.0 * sum(1 for s in _ss16 if s <= 201) / len(_ss16)
+assert _au_plancher < 50.0, (
+    "plus de la moitié du tracé est collée au plancher de puissance : à "
+    "cette vitesse le trait ne marquera pas, et accélérer ne pourra plus "
+    "être compensé", _au_plancher)
+assert max(_ss16) > 2 * min(_ss16), (
+    "la puissance ne varie presque pas d'un délié à un plein : le fuseau "
+    "ne module plus rien", min(_ss16), max(_ss16))
+
+# SABOTAGE : on retire le plafond, comme avant le correctif.
+_g16b, _d16b = core.preparer_calligraphie(_ch16, 800.0, u"Hêtre",
+                                          power_max=900.0,
+                                          largeur_max=99.0)
+_ss16b = [p.s for c in _g16b for p in c]
+_plancher_b = 100.0 * sum(1 for s in _ss16b if s <= 201) / len(_ss16b)
+assert _plancher_b > 90.0, (
+    "sans plafond la puissance n'est PAS écrasée : le contrôle ci-dessus "
+    "ne prouve pas que c'est le plafond qui fait le travail", _plancher_b)
+print("16. échelle plafonnée au plus gros trait du dessin : S{:.0f}-S{:.0f}, "
+      "{:.0f} % au plancher contre {:.0f} % sans plafond OK".format(
+          min(_ss16), max(_ss16), _au_plancher, _plancher_b))
