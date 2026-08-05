@@ -334,7 +334,11 @@ try:
     # a) MAIGRE (le sapin au foyer) : traits fins, pas de hêtre -> RESSERRER.
     for _s, _w in zip(_puis, (0.11, 0.14, 0.17, 0.20)):
         _table2[_s] = _w
-    _pas, _dire = core.pas_bande_tons("Bois", 800.0, 0.0, _puis, 0.80)
+    # LA VITESSE EST RAPIDE EXPRÈS. Resserrer concentre l'énergie, et le
+    # §11 l'interdit désormais quand ça brûlerait -- ce qui est arrivé à
+    # Christophe au foyer à F800. Ici on veut vérifier le RESSERREMENT
+    # lui-même, donc on se place là où il est sans danger.
+    _pas, _dire = core.pas_bande_tons("Bois", 4000.0, 0.0, _puis, 0.80)
     assert _pas < 0.80, (
         "la bande est maigre (25 % de couverture au plus) et le pas n'a pas "
         "bougé : même la case la plus foncée sortira rayée de bois nu", _pas)
@@ -363,7 +367,7 @@ try:
     exec(compile(_faux, "<sabotage>", "exec"), _ns)
     for _s, _w in zip(_puis, (0.11, 0.14, 0.17, 0.20)):
         _table2[_s] = _w
-    _pas3, _ = _ns["pas_bande_tons"]("Bois", 800.0, 0.0, _puis, 0.80)
+    _pas3, _ = _ns["pas_bande_tons"]("Bois", 4000.0, 0.0, _puis, 0.80)
     assert _pas3 == 0.80, (
         "le sabotage resserre quand même : le contrôle ne prouve pas que "
         "c'est bien le seuil bas qui fait le travail", _pas3)
@@ -371,3 +375,42 @@ finally:
     core.burn_width_defocus_scaled = _vrai_largeur
 print("10. le pas se resserre aussi quand la bande est MAIGRE, le hêtre "
       "reste intact, et le message dit le bon verbe OK")
+
+
+# --- 11. COUVRIR NE SUFFIT PAS : IL FAUT AUSSI NE PAS BRÛLER ------------
+# Christophe a gravé la bande au foyer avec le pas resserré par le §10, et
+# NEUF CASES SUR DIX ONT CARBONISÉ : « juste la S467 est bonne ». L'indice
+# d'énergie valait 11,4 contre 4,81 pour un carré de hêtre déjà sorti brûlé.
+# La règle optimisait la couverture sans jamais regarder l'énergie.
+core.burn_width_defocus_scaled, _t3 = _largeurs_fixes(None)
+try:
+    _puis = [200.0, 400.0, 600.0, 1000.0]
+    # Traits fins (le foyer) : couvrir demanderait un pas minuscule.
+    for _s, _w in zip(_puis, (0.11, 0.14, 0.17, 0.20)):
+        _t3[_s] = _w
+    _pas, _dire = core.pas_bande_tons("Bois", 800.0, 0.0, _puis, 0.80)
+    assert _pas == 0.80, (
+        "le pas a été resserré alors que l'énergie surfacique dépasserait "
+        "le seuil : la planche sortira carbonisée", _pas)
+    assert _dire and "carbonis" in _dire, (
+        "le refus ne dit pas que ça brûlerait : l'utilisateur croira que "
+        "son réglage est bon", _dire)
+    assert "{:.1f}".format(core.ENERGIE_CARBONISATION_MESUREE) in _dire, (
+        "le refus ne cite pas la planche qui a brûlé -- un seuil qu'on ne "
+        "peut pas rattacher à du bois se lit comme un caprice", _dire)
+
+    # SABOTAGE : sans le garde-fou, le pas se resserre et la planche brûle.
+    _src = inspect.getsource(core.pas_bande_tons)
+    assert "SEUIL_ENERGIE_REMPLISSAGE" in _src, "le garde-fou a disparu"
+    _faux = _src.replace("if e > SEUIL_ENERGIE_REMPLISSAGE:",
+                         "if False:")
+    _ns = dict(core.__dict__)
+    exec(compile(_faux, "<sabotage>", "exec"), _ns)
+    _pas2, _ = _ns["pas_bande_tons"]("Bois", 800.0, 0.0, _puis, 0.80)
+    assert _pas2 < 0.80, (
+        "le sabotage ne resserre pas : le contrôle ne prouve pas que c'est "
+        "bien le garde-fou d'énergie qui retient", _pas2)
+finally:
+    core.burn_width_defocus_scaled = _vrai_largeur
+print("11. le pas ne se resserre PAS quand ça brûlerait, et le refus cite "
+      "la planche carbonisée OK")

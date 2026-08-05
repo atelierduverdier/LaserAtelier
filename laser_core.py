@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.85.0"
+VERSION = "2.86.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1995,6 +1995,42 @@ PLUME_CONTRASTE = 16.0           # rapport plein / délié demandé
 # points étaient à moins de 0,05 mm de la consigne) : c'était le lissage.
 PLUME_LISSAGE_FENETRE = 0.5      # fenêtre de lissage / plein maxi
 
+# PAS D'ÉCHANTILLONNAGE DU TRACÉ DE LA PLUME, EN FRACTION DU PLEIN.
+#
+# LA PLUME N'EN AVAIT AUCUN, et c'est le défaut vu sur bois le 05/08/2026 :
+# une police mono-trait est une POLYLIGNE À SOMMETS RARES, et `chaines_plume`
+# reprenait ces sommets tels quels. Sur « Atelier du Verdier du munu » en
+# 160 mm, cela donne 399 points pour 447 mm de tracé -- un pas MÉDIAN de
+# 1,02 mm et un maxi de 9,55 mm, contre 1809 points et un pas plafonné à
+# 0,40 mm pour le même texte passé par l'extraction.
+#
+# Or tout l'aval interpole ENTRE deux points : la hauteur Z, donc la largeur
+# du trait, varie linéairement d'un sommet au suivant. La hampe du « d »
+# était UN SEUL bloc G1 de 8,63 mm, et le limiteur de pente y étalait sur
+# toute sa longueur une montée de Z destinée au plein qui suit quatre points
+# plus loin. Christophe : « sur le d, la barre verticale ne va pas, elle est
+# fine en haut et épaisse en bas, je pense qu'elle est gravée en 2 passes
+# pour 2 hauteurs différentes et non en une seule passe avec un z progressif ».
+# Le fût est droit, donc la plume y a une largeur CONSTANTE par construction
+# -- c'était le seul endroit du geste qui ne devait pas varier.
+#
+# Le lissage de `_largeurs_du_trait` porte sur une DISTANCE, et son propre
+# commentaire nommait déjà le piège (« un fût droit fait deux points sur
+# 10 mm ») : sur des sommets espacés de 1 mm, une fenêtre de 0,65 mm ne
+# couvrait qu'un point, donc ne lissait rien du tout.
+#
+# UN PAS EN MILLIMÈTRES ABSOLUS EST LA MAUVAISE UNITÉ, et le §2 de
+# `test_plume.py` l'a dit tout de suite : la fenêtre de lissage, elle, vaut
+# une fraction du PLEIN, donc elle grandit avec le texte. Un pas fixe fait
+# alors varier le nombre d'échantillons par fenêtre avec la taille -- donc
+# la quantité de lissage, donc le contraste, qui doit rester le même à
+# 40 mm et à 160 mm. Même leçon que `DIRECTION_EN_LARGEURS` sur les
+# polices extraites : ce qui sert d'étalon ici, c'est la largeur du bec.
+#
+# 0,25 plein donne 0,33 mm sur le texte de l'atelier (160 mm) -- l'ordre de
+# grandeur du pas que l'extraction produit sur le même texte (0,34).
+PAS_PLUME_EN_PLEINS = 0.25
+
 
 # DEUX PLUMES, ET ELLES NE FONT PAS LA MÊME CHOSE. Christophe, la plume
 # appliquée à une police CURSIVE : « c'est une bonne idée mais c'est à
@@ -2040,6 +2076,31 @@ def largeur_plume(p, q, angle_deg, mini, maxi, modele=PLUME_BEC):
         descente = max(0.0, -math.sin(theta))
         plein *= descente ** 0.55
     return mini + (maxi - mini) * plein
+
+
+def _densifier(pts, pas):
+    """Un point au moins tous les `pas` mm, SANS DÉPLACER UN SEUL SOMMET.
+
+    On subdivise chaque segment au lieu de ré-échantillonner à abscisse
+    constante, et la différence n'est pas cosmétique : une police mono-trait
+    est faite d'ANGLES VIFS, et un ré-échantillonnage régulier ne retombe
+    pas dessus -- il coupe le coin. `calligraphie.py` peut se le permettre,
+    ses chaînes viennent d'un squelette déjà dense au pixel ; ici les
+    sommets SONT le dessin de la lettre.
+
+    Le tracé rendu est donc rigoureusement le même : on n'ajoute que des
+    points, tous sur la polyligne d'origine."""
+    if pas <= 0.0 or len(pts) < 2:
+        return list(pts)
+    out = [pts[0]]
+    for a, b in zip(pts, pts[1:]):
+        d = math.hypot(b[0] - a[0], b[1] - a[1])
+        n = max(1, int(math.ceil(d / pas - 1e-9)))
+        for k in range(1, n):
+            t = float(k) / n
+            out.append((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])))
+        out.append(b)
+    return out
 
 
 def _largeurs_du_trait(pts, angle_deg, mini, maxi, modele=PLUME_BEC,
@@ -2199,6 +2260,14 @@ def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
     chaines, ws = [], []
     for t in brut:
         pts = [((p[0] + dx) * ech, (p[1] + dy) * ech) for p in t]
+        # DENSIFIER AVANT DE CALCULER LES LARGEURS, jamais après : la
+        # largeur de plume se lit sur la DIRECTION du trait, et le lissage
+        # sur une distance. Interpoler après coup ne ferait qu'étaler entre
+        # deux sommets une largeur déjà moyennée à leur écartement -- c'est
+        # exactement ce qui étirait la montée du Z sur toute la hampe du
+        # « d ». Sur un segment droit, tous les sous-segments ont la même
+        # direction, donc la même largeur : le fût redevient constant.
+        pts = _densifier(pts, maxi * PAS_PLUME_EN_PLEINS)
         lg = _largeurs_du_trait(pts, angle_deg, mini, maxi, modele,
                                 lissage_mm=maxi * PLUME_LISSAGE_FENETRE)
         ws.extend(lg)
@@ -5955,6 +6024,12 @@ COUVERTURE_SATUREE = 1.00
 # point.
 COUVERTURE_MAIGRE = 0.50
 
+# L'indice d'énergie surfacique d'un aplat qui a VRAIMENT carbonisé, mesuré
+# sur le carré de hêtre du 30/07/2026 (S1000, F800, pas 0,26 mm). Il ne sert
+# qu'à être CITÉ dans un refus : un seuil qu'on ne peut pas rattacher à une
+# planche se lit comme un caprice.
+ENERGIE_CARBONISATION_MESUREE = 4.81
+
 
 def pas_bande_tons(material, feed, defocus, puissances, pas_actuel):
     """Le pas de hachure d'une bande de tons, élargi si elle SATURE.
@@ -5984,6 +6059,41 @@ def pas_bande_tons(material, feed, defocus, puissances, pas_actuel):
     if COUVERTURE_MAIGRE <= couverture <= COUVERTURE_SATUREE:
         return pas_actuel, None
     pas = max(ws) / COUVERTURE_CIBLE
+
+    # COUVRIR NE SUFFIT PAS : IL FAUT AUSSI NE PAS BRÛLER.
+    #
+    # Christophe a gravé la bande au foyer avec le pas que cette fonction
+    # avait resserré à 0,11 mm, et NEUF CASES SUR DIX SONT SORTIES
+    # CARBONISÉES -- « juste la S467 est bonne, les autres ont carbonisé ».
+    # L'indice d'énergie surfacique le disait :
+    #
+    #   sa planche au foyer, S1000, pas 0,11    11,36
+    #   le carré de hêtre déjà sorti carbonisé    4,81
+    #   sa bande en défocus 15, qui marchait      1,24
+    #
+    # Plus du DOUBLE de ce qui avait déjà brûlé le hêtre. La règle
+    # optimisait la couverture et ne regardait pas l'énergie -- exactement
+    # le piège que `.claude/rules/photo-et-tramages.md` décrit : « un
+    # remplissage peut être parfaitement plein et complètement surcuit ;
+    # vérifier l'un ne dit rien de l'autre ».
+    #
+    # ET RESSERRER N'EST PAS RATTRAPABLE ICI. Pour ramener ce régime au
+    # niveau de sa bande qui marchait, il faudrait F7345. Au foyer les
+    # traits sont si fins que le pas qui les couvre concentre l'énergie
+    # plus vite que la vitesse ne peut la diluer. Donc on ne resserre pas :
+    # on le DIT, et on laisse le pas tel quel plutôt que de faire brûler
+    # une planche pour une échelle de tons qui n'existe pas à ce régime.
+    if pas < pas_actuel:
+        e = energie_surfacique(max(puissances), feed, pas)
+        if e > SEUIL_ENERGIE_REMPLISSAGE:
+            return pas_actuel, (
+                "pas NON resserré : à {:.2f} mm la couverture serait bonne "
+                "mais l'énergie surfacique monterait à {:.1f} -- le seuil "
+                "de gaspillage est {:.1f}, et une planche a carbonisé à "
+                "{:.1f}. À ce régime la bande de tons n'existe pas : grave-la "
+                "en défocus plutôt qu'au foyer".format(
+                    pas, e, SEUIL_ENERGIE_REMPLISSAGE,
+                    ENERGIE_CARBONISATION_MESUREE))
     verbe = "élargi" if pas > pas_actuel else "resserré"
     motif = ("toutes les cases se recouvrent" if pas > pas_actuel
              else "même la case la plus foncée reste rayée de bois nu")
