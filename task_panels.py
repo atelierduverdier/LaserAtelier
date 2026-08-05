@@ -18592,6 +18592,99 @@ class TaskPanelAssistant:
 # boîte d'ajout) : un job combiné sert avant tout à enchaîner plusieurs
 # opérations déjà calibrées séparément, pas à explorer tous les réglages
 # fins en même temps.
+# Mémo à une case de la durée du job combiné (cf.
+# TaskPanelCombined._update_duration_preview).
+_MEMO_DUREE_COMBINE = {}
+
+
+def _empreinte_geometrie(valeur):
+    """Empreinte de CONTENU d'une géométrie : (nombre d'éléments, longueur
+    cumulée, premier et dernier point). None si l'objet n'a pas de
+    longueur -- ce n'est alors pas de la géométrie.
+
+    Le contenu, et NON l'identité des objets : à chaque ouverture du
+    panneau, `laser_jobs.rafraichir_operations` reconstruit chaque
+    opération depuis son Job, donc tout y est neuf. Un mémo comparant des
+    `id()` manquerait exactement le cas pour lequel il existe -- vérifié :
+    il ratait ses trois ouvertures sur trois.
+
+    Les deux points extrêmes séparent deux tracés de même nombre et même
+    longueur (une hachure tournée) que la seule longueur confondrait.
+    Coût mesuré : 2,8 ms pour 825 arêtes, 13,7 ms pour 4 949 -- gratuit
+    face aux 7,38 s de génération."""
+    try:
+        elements = list(valeur) if hasattr(valeur, "__iter__") else [valeur]
+        total = 0.0
+        for e in elements:
+            longueur = getattr(e, "Length", None)
+            if longueur is None:
+                return None
+            total += float(longueur)
+        bouts = []
+        for e in (elements[0], elements[-1]) if elements else ():
+            sommets = getattr(e, "Vertexes", None) or []
+            for v in (sommets[0], sommets[-1]) if sommets else ():
+                bouts.append((round(v.Point.x, 4), round(v.Point.y, 4),
+                              round(v.Point.z, 4)))
+        return (len(elements), round(total, 4), tuple(bouts))
+    except Exception:
+        return None
+
+
+def _empreinte_valeur(valeur, profondeur=0):
+    """Empreinte comparable d'un paramètre d'opération, quel qu'il soit.
+
+    L'identité ne sert qu'en TOUT DERNIER recours. Un premier jet ne
+    traitait que les scalaires et la géométrie : les dictionnaires de
+    style (`fill_style_params`, `contour_style_params`) retombaient donc
+    sur `id()`, et comme la reconstruction depuis le Job en refabrique de
+    neufs, le mémo ratait à chaque ouverture -- deux clés sur dix-huit
+    suffisaient à annuler tout le gain."""
+    if isinstance(valeur, (bool, int, float, str)) or valeur is None:
+        return valeur
+    if profondeur > 4:
+        return ("profond", id(valeur))
+    if isinstance(valeur, dict):
+        try:
+            cles = sorted(valeur)
+        except Exception:
+            return ("id", id(valeur))
+        return ("dict", tuple((c, _empreinte_valeur(valeur[c], profondeur + 1))
+                              for c in cles))
+    empreinte = _empreinte_geometrie(valeur)
+    if empreinte is not None:
+        return empreinte
+    if isinstance(valeur, (list, tuple, set)):
+        return ("liste", tuple(_empreinte_valeur(v, profondeur + 1)
+                               for v in valeur))
+    return ("id", id(valeur))
+
+
+# Mémo à une case de la durée du job combiné (cf.
+# TaskPanelCombined._update_duration_preview).
+_MEMO_DUREE_COMBINE = {}
+
+
+def _signature_combine(operations):
+    """Ce dont la durée du job combiné dépend.
+
+    L'ORDRE compte (les transits d'une opération à l'autre en dépendent),
+    le type et le libellé aussi, et tous les paramètres -- réglages
+    scalaires, dictionnaires de style et géométrie -- pris par leur
+    CONTENU via `_empreinte_valeur`."""
+    signature = []
+    for op in operations:
+        params = op.get("params") or {}
+        try:
+            cles = sorted(params)
+        except Exception:
+            cles = list(params)
+        signature.append((
+            op.get("type"), op.get("label"), op.get("materiau"),
+            tuple((c, _empreinte_valeur(params[c])) for c in cles)))
+    return tuple(signature)
+
+
 class TaskPanelCombined:
     def __init__(self):
         self.operations = _COMBINED_OPS
@@ -18784,15 +18877,43 @@ class TaskPanelCombined:
         self._refresh_list()
 
     def _update_duration_preview(self):
+        """Durée estimée -- MÉMORISÉE d'une ouverture à l'autre.
+
+        Pour afficher une ligne de texte, cette méthode générait le job
+        ENTIER. Christophe, 05/08/2026 : « à chaque fois que je vais dans
+        les job combiné, l'ordinateur souffle, il recalcule tout ? » --
+        oui. Mesuré sur un remplissage de 150 x 200 mm au pas 0,2 :
+        **507 877 lignes de G-code produites en 2,13 s**, puis relues en
+        0,51 s pour en tirer un nombre. Et cela à CHAQUE ouverture du
+        panneau, plus un `_refresh_list` par montée, descente ou
+        suppression dans la liste.
+
+        Le mémo est à une seule case, au niveau du module : `_COMBINED_OPS`
+        survit à la fermeture du panneau, donc rouvrir sans rien changer
+        doit être gratuit. `_signature_combine` décide, et elle porte les
+        RÉGLAGES SCALAIRES, pas seulement la géométrie : `_reprendre_reglages`
+        rafraîchit les opérations depuis les Jobs à l'ouverture, et un mémo
+        aveugle à cela rejouerait le défaut que la v2.99.10 a corrigé --
+        un aperçu qui ne montre pas ce qu'on va obtenir est pire que pas
+        d'aperçu. En cas de doute la signature change, donc on régénère :
+        l'erreur possible coûte du temps, jamais un chiffre faux."""
         if not self.operations:
             self.lbl_duration.setText("Durée estimée : -- (aucune opération)")
             return
+        signature = _signature_combine(self.operations)
+        connue = _MEMO_DUREE_COMBINE.get("signature")
+        if connue is not None and connue == signature:
+            self.lbl_duration.setText(_MEMO_DUREE_COMBINE["texte"])
+            return
         gcode = core.generate_gcode_combined(self.operations, quiet=True)
         if not gcode:
-            self.lbl_duration.setText("Durée estimée : -- (aucune géométrie dans les opérations)")
-            return
-        seconds = core.estimate_job_time_seconds(gcode)
-        self.lbl_duration.setText("Durée estimée : {}".format(core.format_duration(seconds)))
+            texte = "Durée estimée : -- (aucune géométrie dans les opérations)"
+        else:
+            seconds = core.estimate_job_time_seconds(gcode)
+            texte = "Durée estimée : {}".format(core.format_duration(seconds))
+        _MEMO_DUREE_COMBINE["signature"] = signature
+        _MEMO_DUREE_COMBINE["texte"] = texte
+        self.lbl_duration.setText(texte)
 
     def _on_frame_preview(self):
         if not self.operations:
