@@ -179,3 +179,67 @@ assert _ok is True and len(_ecrits) == 1 and len(_ecrits[0][1]) == 2, (
     "une table saine devrait s'enregistrer", _ok, _ecrits)
 print("5. le Nuancier refuse d'enregistrer une table qu'il ne sait pas "
       "relire, au lieu d'en effacer les tons OK")
+
+
+# --- 6. UN RÉGLAGE TROUVÉ À L'ŒIL NE DOIT PAS SE PERDRE À LA FERMETURE ---
+# La Calligraphie a perdu six réglages de plume pendant des semaines, le
+# Marquage cinq champs de dégradé, puis deux du « ton sur mesure ». Chacun
+# est une valeur cherchée à l'œil sur du bois, effacée par un clic sur la
+# croix. Le balayage compare donc, panneau par panneau, les widgets de
+# RÉGLAGE créés et ce que `_last_fields` mémorise.
+#
+# CHAQUE EXCLUSION EST NOMMÉE ET JUSTIFIÉE. Une liste d'exceptions muette
+# finirait par tout absoudre -- et c'est exactement comme ça qu'un réglage
+# se reperd.
+_EXCLUS = {
+    # Sélecteurs, pas des réglages : ils agissent puis se remettent au neutre.
+    "combo_preset": "sélecteur de préréglages",
+    "combo_police": "sélecteur qui remplit edt_police, lui mémorisé",
+    "combo_recipe": "sélecteur d'objectif : le rejouer réappliquerait sa recette",
+    # Persistés AILLEURS, et c'est le bon endroit.
+    "chk_origin_bbox": "écrit dans save_settings au clic (réglage machine)",
+    "spn_spot_dtest": "PER_LASER_KEYS, via save_settings",
+    "spn_spot_focus": "PER_LASER_KEYS, via save_settings",
+    "spn_spot_ztest": "PER_LASER_KEYS, via save_settings",
+    "edt_measure_mat": "deuxième vue du matériau de ①, synchronisée",
+    # Mesures et aides, pas des consignes.
+    "spn_measured": "mesure au pied à coulisse, à refaire à chaque planche",
+    "spn_dx": "résultat mesuré de la planche d'offset",
+    "spn_dy": "résultat mesuré de la planche d'offset",
+    "edt_mot": "loupe d'aperçu de la Calligraphie, pas un réglage gravé",
+    # DÉLIBÉRÉMENT oublié : une hauteur défocalisée laissée derrière
+    # empoisonne en silence tous les jobs suivants (défaut observé).
+    "spn_cell_defocus": "remis au Z de travail à chaque objectif, exprès",
+}
+_src_tp = _lire("task_panels.py")
+_classes = [(_m.start(), _m.group(1))
+            for _m in re.finditer(r"^class (TaskPanel\w+)", _src_tp, re.M)]
+_classes.append((len(_src_tp), "FIN"))
+_perdus = []
+for (_a, _nomp), (_b, _x) in zip(_classes, _classes[1:]):
+    _bloc = _src_tp[_a:_b]
+    _m = re.search(r"self\._last_fields\s*=\s*\{", _bloc)
+    if not _m:
+        continue
+    _i = _m.end() - 1
+    _prof, _j = 0, _i
+    while _j < len(_bloc):
+        if _bloc[_j] == "{":
+            _prof += 1
+        elif _bloc[_j] == "}":
+            _prof -= 1
+            if _prof == 0:
+                break
+        _j += 1
+    _memo = set(re.findall(r"self\.(\w+)", _bloc[_i:_j]))
+    _crees = set(re.findall(
+        r"self\.(spn_\w+|combo_\w+|chk_\w+|edt_\w+)\s*=\s*QtWidgets\.", _bloc))
+    for _w in sorted(_crees - _memo):
+        if _w not in _EXCLUS:
+            _perdus.append("{}.{}".format(_nomp, _w))
+assert not _perdus, (
+    "des réglages ne sont pas mémorisés et se perdront à la fermeture du "
+    "panneau : les ajouter à _last_fields, ou les inscrire dans _EXCLUS "
+    "avec la raison", _perdus)
+print("6. tous les réglages des panneaux sont mémorisés ({} exclusions, "
+      "chacune justifiée) OK".format(len(_EXCLUS)))

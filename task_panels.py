@@ -10728,6 +10728,11 @@ class TaskPanelPowerRamp:
             "power_min": self.spn_power_min, "power_max": self.spn_power_max,
             "steps": self.spn_steps, "zramp": self.chk_zramp, "z_end": self.spn_z_end,
             "labels": self.chk_labels,
+            # LE MATÉRIAU AUSSI. Il porte la clé des photos de résultat : sans
+            # lui, rouvrir le panneau montre les photos d'un autre bois. Même
+            # correction que la bande de tons en v2.76.0 -- « le panneau
+            # rouvre sur le bois où tu travaillais ».
+            "material": self.combo_mat,
             }
         _restore_last_values("powerramp", self._last_fields)
         self._presets.on_loaded = self._update_duration_preview
@@ -16493,6 +16498,12 @@ class TaskPanelCurved:
             "deg_w1": self.spn_deg_w1, "deg_boucle": self.combo_deg_boucle,
             "deg_s0": self.spn_deg_s0, "deg_s1": self.spn_deg_s1,
             "deg_s_rampe": self.chk_deg_s,
+            # LE « TON SUR MESURE » MANQUAIT, exactement comme les cinq
+            # champs du dégradé au-dessus : deux valeurs cherchées à l'oeil
+            # sur une largeur et une noirceur, perdues à la fermeture. Le
+            # balayage des `_last_fields` de la v2.99.2 les a trouvées.
+            "custom_width": self.spn_custom_width,
+            "custom_dark": self.spn_custom_dark,
             "fluence_on": self._fluence["chk"], "ref_power": self._fluence["ref_power"],
             "ref_feed": self._fluence["ref_feed"], "ref_spot": self._fluence["ref_spot"],
         }
