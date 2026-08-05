@@ -55,15 +55,21 @@ _ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # découpe à plat, orange de la maison à la gravure remplie, vert au
 # marquage. Les deux qui se partageaient une barre empruntent une autre
 # teinte de la même table plutôt qu'une nuance voisine indistinguable.
+# L'indice de teinte de chaque mode dans la roue de l'atelier. Le TRAIT et
+# la SURFACE y puisent la même, à deux tons différents -- une seule table,
+# donc ils ne peuvent pas se retrouver de familles distinctes.
+_TEINTE_INDICE = {
+    "flat": 6,          # rouge -- sa propre barre
+    "curved_cut": 7,    # magenta
+    "filled": 4,        # orange -- sa barre ET la maison
+    "hatch": 2,         # cyan
+    "curved": 5,        # vert -- sa propre barre
+}
+
+
 def _couleurs_modes():
     import laser_core as core
-    return {
-        "flat":       core.teinte_atelier(6),   # rouge -- sa propre barre
-        "curved_cut": core.teinte_atelier(7),   # magenta
-        "filled":     core.teinte_atelier(4),   # orange -- sa barre ET la maison
-        "hatch":      core.teinte_atelier(2),   # cyan
-        "curved":     core.teinte_atelier(5),   # vert -- sa propre barre
-    }
+    return {m: core.teinte_atelier(i) for m, i in _TEINTE_INDICE.items()}
 
 
 class _CouleursModes(dict):
@@ -229,9 +235,26 @@ MODES_APERCU_PLEIN = ("filled",)
 
 PROP_APERCU = "LaserAtelierApercuCalque"
 TRANSPARENCE_APERCU = 35
-# La surface se pose un cheveu SOUS le tracé : même Z, et le contour
-# disparaît sous elle par moirage (z-fighting).
-RECUL_APERCU_MM = 0.01
+
+# LA SURFACE EST UN TON PLUS CLAIR QUE LE TRAIT, même teinte. Christophe,
+# 05/08/2026 : « le remplissage de couleur masque le contour du marquage ».
+# Ce n'était pas la profondeur : sur son texte, la Gravure remplie gagne la
+# priorité des calques, donc les TRAITS portaient déjà sa couleur -- et la
+# surface posée dessous portait exactement la même. Le contour disparaissait
+# dans son propre remplissage.
+#
+# Une aire et un chemin ne sont pas la même chose et ne doivent pas se
+# peindre pareil. Même teinte pour rester dans la famille, valeur montée et
+# saturation baissée pour que le trait se détache : écart mesuré 0,96 contre
+# 0,00. C'est aussi la langue de la maison -- une famille, deux tons.
+APERCU_SATURATION = 0.30
+APERCU_VALEUR = 0.95
+
+# La surface se pose un cheveu SOUS le tracé : à Z égal, le contour
+# clignote sous elle (z-fighting). 0,05 mm plutôt que 0,01 : le tampon de
+# profondeur d'une scène de 100 mm ne départage pas fiablement un centième,
+# et cet objet n'est jamais gravé -- le recul ne coûte rien.
+RECUL_APERCU_MM = 0.05
 
 
 def _apercu_existant(doc, job):
@@ -314,8 +337,12 @@ def _habiller_apercu(obj, job):
     vue = _vue(obj)
     if vue is None:
         return
+    import laser_core as core
     grave = bool(getattr(job, "Grave", True))
-    couleur = COULEURS_MODE.get(getattr(job, "Mode", ""), GRIS_ETEINT)
+    mode = getattr(job, "Mode", "")
+    couleur = _TEINTE_INDICE.get(mode)
+    couleur = (core.teinte_atelier(couleur, APERCU_SATURATION, APERCU_VALEUR)
+               if couleur is not None else GRIS_ETEINT)
     for attr, val in (("ShapeColor", couleur), ("LineColor", couleur),
                       ("Transparency", TRANSPARENCE_APERCU),
                       ("Selectable", False), ("Visibility", grave)):

@@ -340,6 +340,35 @@ try:
                 if not hasattr(_x, "Group")], (
         "des objets traînent encore à plat dans « Atelier Laser »")
 
+    # LA SURFACE NE DOIT PAS AVALER LE CONTOUR. Christophe : « le
+    # remplissage de couleur masque le contour du marquage ». Ce n'était pas
+    # la profondeur : la Gravure remplie gagnant la priorité des calques,
+    # les TRAITS portaient déjà sa couleur -- et la surface posée dessous
+    # portait exactement la même. Une aire et un chemin ne se peignent pas
+    # pareil : même teinte, deux tons.
+    for _m6, _i6 in lj._TEINTE_INDICE.items():
+        _trait6 = lj.COULEURS_MODE[_m6]
+        _surf6 = core.teinte_atelier(_i6, lj.APERCU_SATURATION,
+                                     lj.APERCU_VALEUR)
+        _e6 = sum(abs(_x - _y) for _x, _y in zip(_trait6, _surf6))
+        assert _e6 > 0.50, (
+            "la surface d'aperçu du mode « {} » est trop proche de son "
+            "trait : le contour disparaîtra dans son propre remplissage"
+            .format(_m6), _trait6, _surf6, _e6)
+        # ...mais elle doit rester de la MÊME FAMILLE, sinon la surface et
+        # son contour se liraient comme deux jobs différents.
+        assert _surf6 == core.teinte_atelier(_i6, lj.APERCU_SATURATION,
+                                             lj.APERCU_VALEUR), _m6
+    # Une seule table d'indices : le trait et la surface ne PEUVENT pas
+    # partir dans deux familles.
+    assert set(lj._TEINTE_INDICE) == set(lj.COULEURS_MODE), (
+        "le trait et la surface ne puisent plus dans la même table")
+    # Et la surface reste EN DESSOUS du tracé, assez pour que le tampon de
+    # profondeur les départage sur une scène de 100 mm.
+    assert lj.RECUL_APERCU_MM >= 0.05, (
+        "le recul de la surface est trop faible : le contour clignotera "
+        "sous elle", lj.RECUL_APERCU_MM)
+
     # L'APERÇU NE DOIT JAMAIS DEVENIR UN MOTIF. `Selectable = False` ne
     # bloque que le clic dans la VUE 3D ; un clic dans l'ARBRE passe outre,
     # et les cinq modes lisent la même sélection. Christophe : « si par
