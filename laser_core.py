@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.98.1"
+VERSION = "2.99.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3583,9 +3583,12 @@ def create_fit_test_pattern(tenon_w=20.0, tenon_h=10.0, n_slots=5,
     cut_shapes = [rect_wire(x0, y0, w, h) for (x0, y0, w, h, _role) in rects]
     cut_obj = doc.addObject("Part::Feature", "Test_Ajustement_decoupe")
     cut_obj.Shape = Part.Compound(cut_shapes)
-    if hasattr(cut_obj, 'ViewObject'):
-        cut_obj.ViewObject.LineColor = (1.0, 0.6, 0.0)
-        cut_obj.ViewObject.LineWidth = 2.0
+    # `getattr(...) is not None` et non `hasattr` : en headless l'attribut
+    # EXISTE et vaut None, donc la ligne suivante meurt sur None.LineColor.
+    _vue = getattr(cut_obj, "ViewObject", None)
+    if _vue is not None:
+        _vue.LineColor = teinte_atelier(6)          # rouge -- on découpe
+        _vue.LineWidth = 2.0
     objs = [cut_obj]
 
     # GRAVURE (faible puissance, opération distincte de la découpe) : TOUT le
@@ -3605,9 +3608,10 @@ def create_fit_test_pattern(tenon_w=20.0, tenon_h=10.0, n_slots=5,
     if engrave_shapes:
         eng_obj = doc.addObject("Part::Feature", "Test_Ajustement_gravure")
         eng_obj.Shape = Part.Compound(engrave_shapes)
-        if hasattr(eng_obj, 'ViewObject'):
-            eng_obj.ViewObject.LineColor = (0.2, 0.5, 1.0)
-            eng_obj.ViewObject.LineWidth = 1.0
+        _vue = getattr(eng_obj, "ViewObject", None)
+        if _vue is not None:
+            _vue.LineColor = teinte_atelier(5)      # vert -- on marque
+            _vue.LineWidth = 1.0
         objs.append(eng_obj)
 
     doc.recompute()
