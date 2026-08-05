@@ -199,7 +199,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.81.0</span><br>
+      <span class="ver">Version 2.82.0</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -250,7 +250,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.81.0</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.82.0</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1128,7 +1128,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.81.0 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.82.0 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1144,7 +1144,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 1 entrée</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 2 entrées</span></h3>
+  <p><b>Le lissage mangeait les deux tiers des pleins et déliés (v2.82.0).</b> Le champ «&nbsp;contraste&nbsp;» affichait 16:1 et le bois recevait <b>4,1:1</b>&nbsp;; demander 30:1 n'achetait qu'un demi-point. Ce n'était ni la police (EMS Swiss 4,3, Relief 4,3), ni le limiteur de pente Z (87&nbsp;% des points étaient à moins de 0,05&nbsp;mm de la consigne)&nbsp;: c'était le lissage livré la veille — fenêtre égale au plein entier, <em>plus</em> une seconde passe. Mesuré sur la gravure «&nbsp;Atelier du Verdier du munu&nbsp;»&nbsp;: aucun lissage 6,7:1 pour une ondulation de bord de 0,1559&nbsp;; <b>fenêtre maxi/2 en une passe 6,7:1 pour 0,1539</b>&nbsp;; fenêtre pleine en une passe 4,9:1 pour 0,1369&nbsp;; et le réglage de la v2.80.2, fenêtre pleine plus seconde passe, 4,1:1 pour 0,1259. Soit <b>39&nbsp;% de contraste perdus pour 19&nbsp;% d'ondulation gagnés</b> — le même échange défavorable qui avait été mesuré puis <em>refusé</em> la veille sur les polices extraites, et appliqué quand même à la plume. La fenêtre tombe à la moitié du plein et la seconde passe disparaît. Un étalonnage de la plume sur la police avait été essayé d'abord et <b>jeté</b>&nbsp;: elle couvre déjà toute la plage d'appuis (0,003 à 1,000), il n'y avait rien à étirer. Deux conséquences se sont invitées. D'abord le <b>plancher du matériau</b>&nbsp;: à 16:1 la plume demande 0,125&nbsp;mm, or le hêtre ne descend qu'à 0,180&nbsp;mm <em>à F200</em> — le verdict le disait déjà, mais sans issue, alors que la branche voisine propose une taille. Il nomme désormais la <b>vitesse</b> qui débloque (0,180&nbsp;mm à F200, 0,140 à F400, <b>0,120 à F800</b>, 0,080 à F1200), et seulement parmi les vitesses réellement mesurées. Ensuite, les <b>six réglages de plume n'étaient pas retenus</b>&nbsp;: la case, l'angle, l'épaisseur, le contraste, le bec et la police mono-trait revenaient par défaut à chaque ouverture du panneau. Ils le sont.</p>
+
   <p><b>Le PAS de la bande de tons, lui aussi calé sur le matériau (v2.81.0).</b> La v2.75.0 avait recalé la <b>vitesse</b> et laissé le pas à <b>0,80&nbsp;mm</b>&nbsp;— un nombre de hêtre. Christophe a gravé la bande sur du sapin et l'a jugée d'une phrase&nbsp;: «&nbsp;pour le sapin, tout est à peu près au même ton&nbsp;». Dix cases, dix fois le même brun. Ses propres mesures disent pourquoi&nbsp;: à F800 en défocus&nbsp;15 le sapin brûle de 0,64 à 0,96&nbsp;mm, donc au pas de 0,80 la <b>couverture va de 80 à 120&nbsp;%</b> — toutes les cases sont pleines ou repassées, donc toutes identiques. On avait optimisé «&nbsp;aucune case vierge&nbsp;» et obtenu «&nbsp;aucune case claire&nbsp;». Le pas s'élargit maintenant pour que la case la <b>plus foncée</b> tombe à 95&nbsp;% de couverture&nbsp;: sur sapin 1,01&nbsp;mm et une échelle de 63 à 95&nbsp;%, sur MDF 1,15&nbsp;mm et 44 à 95&nbsp;%. <b>Le hêtre n'est pas touché</b> — il va de 50 à 62&nbsp;%, sa bande fonctionne, son ton vient de la noirceur du trait et non du recouvrement. C'est la case la plus foncée qui décide, et c'est une planche qui l'a imposé&nbsp;: la première version regardait la plus <em>claire</em> et ne se déclenchait pas sur le sapin, dont la plus claire est déjà à 80&nbsp;%. La largeur pré-remplie dans «&nbsp;+&nbsp;Ajouter ce ton&nbsp;» suit le pas réellement gravé, puisque c'est lui qui gouverne l'énergie reçue.</p>
 
   <h3>Versions 2.70 à 2.79 <span class="jcompte">— 9 entrées</span></h3>

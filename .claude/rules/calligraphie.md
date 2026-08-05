@@ -316,3 +316,52 @@ halftones.
 
 ~1 s for a word at `EM_PX = 600` (rendering + thinning + tracing). The panel caches on
 (font, text, width) because the verdict recomputes on every keystroke.
+
+## Smoothing the pen's widths eats the contrast (v2.82.0)
+
+The v2.80.2 smoothing — window = the whole nib width, **plus** a second
+`lisser_largeurs` pass — cost two thirds of the contrast. The "contraste"
+field read 16:1 and the wood got **4.1:1**; asking for 30:1 bought half a
+point. Measured on the engraved "Atelier du Verdier du munu" (Verdier,
+25° nib, 80 mm wide, beech F200):
+
+| smoothing | contrast | edge waviness |
+|---|---|---|
+| none | 6.7:1 | 0.1559 |
+| **window maxi/2, 1 pass** | **6.7:1** | 0.1539 |
+| window maxi, 1 pass | 4.9:1 | 0.1369 |
+| v2.80.2 — maxi + 2nd pass | 4.1:1 | 0.1259 |
+
+39 % of the contrast for 19 % of the waviness — **the same bad trade
+measured and then REFUSED the day before on the extracted fonts**, and
+applied to the pen anyway one file over. `PLUME_LISSAGE_FENETRE = 0.5` and
+the second pass is gone.
+
+**Three suspects were cleared by measuring, before the culprit was found.**
+It was not the font (EMS Swiss 4.3:1, Relief 4.3:1 — same as Verdier), not
+the Z slope limiter (87 % of points within 0.05 mm of the requested width,
+0 % clamped by the table), and not the pen model. Calibrating the pen's
+response on the font's own angle distribution was written first, measured,
+and **thrown away**: the font already spans 0.003 → 1.000 of nib pressure,
+so there is nothing to stretch. A remap that separates nothing is worse
+than none.
+
+**The material floor is the real ceiling, and the FEED is its lever.** At
+16:1 the pen asks for 0.125 mm; beech burns no thinner than 0.180 mm *at
+F200* — but 0.140 at F400, **0.120 at F800**, 0.080 at F1200. The verdict
+already reported the floor and named no way out, while the "too wide"
+branch right above it computes a size. `vitesse_pour_delie(material,
+largeur_voulue, power_max)` returns the **slowest MEASURED** feed that can
+draw it (slowest, because slower burns darker; measured, because proposing
+a never-engraved feed sends the user to a number the model invented — same
+discipline as `swell_max_feed`).
+
+**The six pen settings were not remembered.** `_last_fields` carried
+police/texte/largeur/matériau/vitesse/puissance/Z and nothing of the pen:
+the checkbox, angle, thickness, contrast, nib model and monoline font all
+came back to defaults on every reopen — six values found by eye, lost on
+close. Found by reading the workshop's own config after the engraving,
+never by a test.
+
+§13 and §14 of `test_plume.py` freeze both halves; §13's sabotage restores
+the v2.80.2 window and the check fails (6.7:1 → 4.9:1).

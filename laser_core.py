@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.81.0"
+VERSION = "2.82.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1972,7 +1972,28 @@ PLUME_ANGLE_DEFAUT = 25.0        # inclinaison du bec, degrés
 # contreformes se ferment ; à 11 % on hésite encore.
 PLUME_EPAISSEUR = 0.16           # plein maxi, en fraction de la capitale
 PLUME_CONTRASTE = 16.0           # rapport plein / délié demandé
-PLUME_LISSAGE = 3                # points de moyenne glissante sur la largeur
+# LA FENÊTRE DE LISSAGE, EN FRACTION DU PLEIN -- ET C'EST UNE MESURE QUI
+# L'A RAMENÉE DE 1,0 À 0,5, EN SUPPRIMANT LA SECONDE PASSE.
+#
+# Le lissage livré en v2.80.2 (fenêtre = le plein entier, plus une seconde
+# passe) mangeait les deux tiers du contraste. Mesuré sur la gravure du
+# 05/08/2026, « Atelier du Verdier du munu » en Verdier, bec 25° :
+#
+#   réglage                     contraste   ondulation du bord
+#   aucun lissage                  6,7:1        0,1559
+#   fenêtre maxi/2, 1 passe        6,7:1        0,1539     <- retenu
+#   fenêtre maxi,   1 passe        4,9:1        0,1369
+#   fenêtre maxi + 2e passe        4,1:1        0,1259     <- v2.80.2
+#
+# 39 % de contraste perdus pour 19 % d'ondulation gagnés : le MÊME échange
+# défavorable que celui mesuré la veille sur les polices extraites, où il
+# avait été refusé -- et appliqué quand même ici, un fichier plus loin.
+#
+# Le champ « contraste » en devenait faux : réglé à 16:1 il gravait 4,1:1,
+# et demander 30:1 n'achetait qu'un demi-point. Ce n'était pas la police
+# (EMS Swiss 4,3:1, Relief 4,3:1) ni le limiteur de pente Z (87 % des
+# points étaient à moins de 0,05 mm de la consigne) : c'était le lissage.
+PLUME_LISSAGE_FENETRE = 0.5      # fenêtre de lissage / plein maxi
 
 
 # DEUX PLUMES, ET ELLES NE FONT PAS LA MÊME CHOSE. Christophe, la plume
@@ -2178,13 +2199,15 @@ def chaines_plume(font, texte, largeur_mm=None, hauteur_mm=None,
     chaines, ws = [], []
     for t in brut:
         pts = [((p[0] + dx) * ech, (p[1] + dy) * ech) for p in t]
-        lg = _largeurs_du_trait(pts, angle_deg, mini, maxi, modele)
+        lg = _largeurs_du_trait(pts, angle_deg, mini, maxi, modele,
+                                lissage_mm=maxi * PLUME_LISSAGE_FENETRE)
         ws.extend(lg)
         chaines.append([(p[0], p[1], w) for p, w in zip(pts, lg)])
 
-    # Seconde passe : le bord du trait cesse d'être facetté (cf.
-    # lisser_largeurs). La première est déjà faite par _largeurs_du_trait.
-    chaines = lisser_largeurs(chaines, maxi, passes=1)
+    # PAS DE SECONDE PASSE. Elle était là pour dé-facetter le bord ; elle
+    # coûtait à elle seule 4,9:1 -> 4,1:1 de contraste pour 8 % d'ondulation
+    # (cf. PLUME_LISSAGE_FENETRE). Ce qu'elle corrigeait était surtout
+    # visible dans l'APERÇU ; ce qu'elle détruisait se grave.
     ws = [p[2] for c in chaines for p in c]
 
     longueur = sum(math.hypot(c[i + 1][0] - c[i][0], c[i + 1][1] - c[i][1])
@@ -9522,6 +9545,38 @@ def swell_max_feed(material, power_max=None, defocus=0.0):
         # était lui-même refusé.
         p = swell_plage(material, f, power_max, defocus=defocus)
         if p and p[2] >= SWELL_RAPPORT_MINI:
+            return f
+    return None
+
+
+def vitesse_pour_delie(material, largeur_voulue, power_max=None):
+    """La vitesse MESURÉE la plus lente qui sache brûler un trait aussi fin
+    que `largeur_voulue`, ou None si aucune n'y arrive.
+
+    NOMMER LE LEVIER, PAS SEULEMENT LE MUR. Le verdict de la calligraphie
+    disait « X % du tracé demande plus fin que les 0,18 mm que le laser sait
+    faire : ces déliés sortiront gras » -- exact, et sans issue, alors que
+    la branche « trop large » juste au-dessus calcule et propose une taille.
+    Or le plancher dépend de la VITESSE, et fortement : sur le hêtre de
+    l'atelier, 0,180 mm à F200, 0,140 à F400, 0,120 à F800, 0,080 à F1200.
+    Le délié qu'on croyait hors de portée est à un changement de vitesse.
+
+    La plus LENTE qui suffit, parce que ralentir noircit : on ne va pas
+    chercher F2000 quand F800 fait l'affaire. Et seulement des vitesses
+    MESURÉES -- proposer une vitesse jamais gravée, c'est renvoyer vers un
+    nombre que le modèle a inventé (cf. `swell_max_feed`, même discipline).
+    """
+    mat = _burn_width_material(material)
+    if not mat:
+        return None
+    tables = load_burn_widths(mat)
+    mesures = (tables.get("focus") or []) + (tables.get("defocus") or [])
+    vitesses = sorted({float(e.get("feed", 0) or 0) for e in mesures})
+    for f in vitesses:
+        if f <= 0:
+            continue
+        ech = echelle_fuseau_z(mat, f, power_max=power_max, line_min_mm=0.0)
+        if ech and ech[1] <= largeur_voulue + 1e-9:
             return f
     return None
 

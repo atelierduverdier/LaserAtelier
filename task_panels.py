@@ -11391,11 +11391,23 @@ class TaskPanelCalligraphie:
         self.btn_gcode.clicked.connect(lambda: self._generer(cadre=False))
         form.addRow(self.btn_gcode)
 
+        # LA PLUME AUSSI EST RETENUE. Elle ne l'était pas : Christophe
+        # rouvrait le panneau, la case décochée et l'angle, l'épaisseur, le
+        # contraste et le bec revenus par défaut -- six réglages qu'il
+        # venait de trouver à l'œil, perdus à la fermeture. Trouvé le
+        # 05/08/2026 en relisant sa config après la gravure : `last_calligraphie`
+        # ne portait que police/texte/largeur/matériau/vitesse/puissance/Z.
         self._last_fields = {
             "police": self.edt_police, "texte": self.edt_texte,
             "largeur": self.spn_largeur, "material": self.combo_mat,
             "feed": self.spn_feed, "power": self.spn_power,
             "z_work": self.spn_z,
+            "plume": self.chk_plume,
+            "plume_police": self.combo_plume_police,
+            "plume_angle": self.spn_plume_angle,
+            "plume_epais": self.spn_plume_epais,
+            "plume_contraste": self.spn_plume_contraste,
+            "plume_modele": self.combo_plume_modele,
         }
         self._peupler_polices()
         _restore_last_values("calligraphie", self._last_fields)
@@ -11554,9 +11566,20 @@ class TaskPanelCalligraphie:
                         "{:.0f} mm de large.".format(
                             d["part_trop_large"], d["w_max"], conseil))
         if d["part_trop_fin"] > 0.5:
+            # ON NOMME LA VITESSE QUI DÉBLOQUE. Le plancher du trait dépend
+            # fortement de l'avance (hêtre : 0,18 mm à F200, 0,12 à F800),
+            # et ce message-ci se contentait du mur alors que celui du
+            # dessus propose une taille. Un verdict sans levier renvoie
+            # chercher.
+            v = core.vitesse_pour_delie(mat, inf["largeur_trait_min"],
+                                        self.spn_power.value())
+            issue = ("" if not v or abs(v - feed) < 1e-6 else
+                     " {} descend à ce trait dès <b>F{:.0f}</b> : passe "
+                     "cette vitesse et les déliés sortent.".format(mat, v))
             msgs.append("{:.0f} % du tracé demande plus fin que les {:.2f} mm "
-                        "que le laser sait faire : ces déliés sortiront "
-                        "gras.".format(d["part_trop_fin"], d["w_min"]))
+                        "que le laser sait faire à F{:.0f} : ces déliés "
+                        "sortiront gras.{}".format(
+                            d["part_trop_fin"], d["w_min"], feed, issue))
         mini = core.longueur_mini_fuseau(feed, d["z_max"] - d["z_min"])
         msgs.append("Pente Z bornée à {:.1f} mm/mm : un geste de moins de "
                     "{:.0f} mm ne montrera pas le fuseau entier (il sortira "

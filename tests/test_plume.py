@@ -12,6 +12,7 @@ chaque trait, lue dans le dessin de la police. Un bec de plume large et
 incliné en tire des pleins et des déliés -- et sans les déviations aux
 croisements que coûte un squelette tramé, puisque rien n'est estimé.
 """
+import inspect
 import math
 
 from harness import preparer, sans_dialogues
@@ -396,3 +397,65 @@ assert all(a[0] == b[0] and a[1] == b[1]
     "le lissage a déplacé des points : il ne doit toucher que la largeur")
 print("12. lisser_largeurs aplatit la dent de scie sans bouger le tracé ; "
       "écartée des polices extraites sur mesure OK")
+
+
+# --- 13. LE LISSAGE NE DOIT PAS MANGER LE CONTRASTE ----------------------
+# Christophe, la gravure « Atelier du Verdier du munu » en main le
+# 05/08/2026. Le champ affichait 16:1 et le bois recevait 4,1:1 -- et ce
+# n'était ni la police, ni le limiteur de pente Z : c'était le lissage
+# livré la veille (fenêtre = le plein entier, PLUS une seconde passe).
+_TXT = u"Atelier du Verdier du munu"
+_ch, _inf = core.chaines_plume("verdier", _TXT, largeur_mm=80.0,
+                               contraste=16.0)
+_ws = [w for g in _ch for (_x, _y, w) in g]
+_rapport = max(_ws) / min(_ws)
+assert _rapport > 6.0, (
+    "le contraste obtenu est retombé sous 6:1 : le lissage remange ce que "
+    "le champ promet (16:1 demandé, 4,1:1 gravé avant correction)", _rapport)
+
+# La fenêtre est BIEN la moitié du plein, et il n'y a PLUS de seconde passe.
+assert abs(core.PLUME_LISSAGE_FENETRE - 0.5) < 1e-9, (
+    "la fenêtre de lissage a changé sans que la mesure soit refaite",
+    core.PLUME_LISSAGE_FENETRE)
+_src = inspect.getsource(core.chaines_plume)
+assert "lisser_largeurs" not in _src, (
+    "la seconde passe de lissage est revenue : elle coûtait à elle seule "
+    "4,9:1 -> 4,1:1 de contraste pour 8 % d'ondulation")
+
+# SABOTAGE : on remet le réglage de la v2.80.2 et le contrôle doit échouer.
+_faux = _src.replace("lissage_mm=maxi * PLUME_LISSAGE_FENETRE",
+                     "lissage_mm=maxi")
+assert _faux != _src, "le sabotage n'a rien remplacé -- il ne prouve rien"
+_ns = dict(core.__dict__)
+exec(compile(_faux, "<sabotage>", "exec"), _ns)
+_ch2, _ = _ns["chaines_plume"]("verdier", _TXT, largeur_mm=80.0,
+                               contraste=16.0)
+_ws2 = [w for g in _ch2 for (_x, _y, w) in g]
+assert max(_ws2) / min(_ws2) < _rapport - 0.5, (
+    "revenir à la fenêtre pleine ne change rien : le contrôle ci-dessus ne "
+    "prouve pas que c'est le lissage qui gouvernait le contraste",
+    max(_ws2) / min(_ws2), _rapport)
+print("13. le lissage ne mange plus le contraste : {:.1f}:1 obtenu contre "
+      "{:.1f}:1 avec le réglage de la v2.80.2 OK".format(
+          _rapport, max(_ws2) / min(_ws2)))
+
+
+# --- 14. LE VERDICT NOMME LA VITESSE QUI DÉBLOQUE LES DÉLIÉS ------------
+# Un verdict qui dit « ces déliés sortiront gras » sans dire quoi faire
+# renvoie chercher. Le plancher du trait dépend fortement de l'avance.
+for _mat in core.burn_width_materials():
+    if _mat.startswith("ZZ-"):
+        continue
+    _v = core.vitesse_pour_delie(_mat, 0.125, 900.0)
+    if _v is None:
+        continue
+    _ech = core.echelle_fuseau_z(_mat, _v, power_max=900.0, line_min_mm=0.0)
+    assert _ech and _ech[1] <= 0.125 + 1e-9, (
+        "la vitesse proposée ne sait pas faire le trait demandé -- c'est "
+        "exactement le défaut « descendre à F3000 alors que F3000 refuse »",
+        _mat, _v, _ech[1] if _ech else None)
+assert core.vitesse_pour_delie(u"Hêtre", 1e-4, 900.0) is None, (
+    "un délié impossible se voit proposer une vitesse quand même : le "
+    "message enverrait vers un réglage qui ne marchera pas")
+print("14. la vitesse proposée pour les déliés sait vraiment les faire, et "
+      "l'impossible ne reçoit aucune proposition OK")
