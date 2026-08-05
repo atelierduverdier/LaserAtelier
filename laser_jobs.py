@@ -37,21 +37,80 @@ _ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 # les sélectionner ou pas pour la gravure, et aussi grâce à la couleur de
 # voir sur l'écran quel job pour quel trait ».
 #
-# Les Jobs de l'arbre TENAIENT DÉJÀ le rôle de calques -- un par couple
-# (mode, forme), avec l'icône du mode, et `ajouter_jobs_au_combine` en fait
-# déjà un fichier unique. Il manquait la couleur et la case à cocher.
+# LES TEINTES VIENNENT DE LA ROUE DE L'ATELIER, celle qui teinte déjà les
+# neuf barres d'outils (`laser_core.TEINTES_ATELIER`) -- une seule table,
+# lue par les deux. Christophe : « il faudrait rester uni par rapport à la
+# barre d'icônes et au reste ». Les couleurs d'origine étaient des primaires
+# saturées qui juraient avec les barres pastel et les icônes orange-ardoise.
 #
-# Le rouge aux DEUX découpes (la coupe est ce qu'on ne rattrape pas), le
-# bleu au marquage, le vert au remplissage, l'orange de la maison aux
-# hachures. Deux nuances de rouge plutôt qu'une : à plat et sur relief ne
-# se pilotent pas pareil, et les confondre coûte une pièce.
-COULEURS_MODE = {
-    "flat":       (0.85, 0.15, 0.15),      # découpe à plat -- rouge
-    "curved_cut": (0.62, 0.09, 0.30),      # découpe courbe -- grenat
-    "curved":     (0.13, 0.42, 0.78),      # marquage -- bleu
-    "filled":     (0.16, 0.55, 0.28),      # gravure remplie -- vert
-    "hatch":      (1.00, 0.54, 0.00),      # hachures -- l'orange de l'atelier
-}
+# CE QUE CE CHOIX COÛTE, ET IL A ÉTÉ MESURÉ : l'écart minimal entre deux
+# calques tombe de 0,44 à 0,25. Rester dans la charte se paie en lisibilité,
+# et c'est un arbitrage assumé, pas un oubli. Une variante plus stricte
+# encore -- une teinte par BARRE, les deux modes d'une même barre séparés
+# par la clarté -- descendait à 0,23 en mettant côte à côte deux clairs
+# chauds (découpe courbe et hachures) : plus « uni » sur le papier, moins
+# lisible sur l'écran, écartée pour ça.
+#
+# Chaque mode garde la teinte de SA barre quand elle est libre : rouge à la
+# découpe à plat, orange de la maison à la gravure remplie, vert au
+# marquage. Les deux qui se partageaient une barre empruntent une autre
+# teinte de la même table plutôt qu'une nuance voisine indistinguable.
+def _couleurs_modes():
+    import laser_core as core
+    return {
+        "flat":       core.teinte_atelier(6),   # rouge -- sa propre barre
+        "curved_cut": core.teinte_atelier(7),   # magenta
+        "filled":     core.teinte_atelier(4),   # orange -- sa barre ET la maison
+        "hatch":      core.teinte_atelier(2),   # cyan
+        "curved":     core.teinte_atelier(5),   # vert -- sa propre barre
+    }
+
+
+class _CouleursModes(dict):
+    """Le dictionnaire des couleurs, rempli à la PREMIÈRE lecture.
+
+    `laser_jobs` est importé par FreeCAD au démarrage ; tirer `laser_core`
+    à ce moment-là allongerait le lancement pour une couleur dont personne
+    n'a encore besoin."""
+
+    def _charger(self):
+        if not dict.__len__(self):
+            self.update(_couleurs_modes())
+
+    def __getitem__(self, k):
+        self._charger()
+        return dict.__getitem__(self, k)
+
+    def get(self, k, defaut=None):
+        self._charger()
+        return dict.get(self, k, defaut)
+
+    def __contains__(self, k):
+        self._charger()
+        return dict.__contains__(self, k)
+
+    def keys(self):
+        self._charger()
+        return dict.keys(self)
+
+    def items(self):
+        self._charger()
+        return dict.items(self)
+
+    def values(self):
+        self._charger()
+        return dict.values(self)
+
+    def __len__(self):
+        self._charger()
+        return dict.__len__(self)
+
+    def __iter__(self):
+        self._charger()
+        return dict.__iter__(self)
+
+
+COULEURS_MODE = _CouleursModes()
 
 # La couleur d'un job DÉCOCHÉ : un gris TRÈS clair, demandé tel quel (« ou
 # alors un gris très clair pour les non gravés »). Assez pâle pour que la

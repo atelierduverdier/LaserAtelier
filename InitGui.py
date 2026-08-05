@@ -154,7 +154,11 @@ class LaserAtelierWorkbench(Workbench):
     # Christophe, 04/08/2026 : « moins fortes les couleurs, beaucoup plus
     # pastel ». Mesuré sur un fond clair (#efefef), écart moyen au fond :
     # 43 en v2.72.0, 17 ici -- 40 % de l'ancien.
-    _TEINTES = (28, 205, 190, 265, 35, 150, 0, 300, 220)
+    # La table vit dans `laser_core.TEINTES_ATELIER` : les CALQUES s'en
+    # servent aussi (couleur d'un job dans la vue 3D), et deux copies
+    # auraient dérivé au premier ajustement -- « uni » est exactement ce qui
+    # ne survit pas à une copie. Lue paresseusement dans `_colorer_barres`,
+    # pour ne pas tirer laser_core au démarrage de FreeCAD.
     _SATURATION = 16           # points de saturation ajoutés au fond
 
     def _colorer_barres(self):
@@ -171,8 +175,10 @@ class LaserAtelierWorkbench(Workbench):
             fen = FreeCADGui.getMainWindow()
             if fen is None:
                 return
+            import laser_core
             fond = fen.palette().color(QtGui.QPalette.Window)
-            for (nom, _cmds), teinte in zip(self._barres, self._TEINTES):
+            for (nom, _cmds), teinte in zip(self._barres,
+                                            laser_core.TEINTES_ATELIER):
                 barre = None
                 for b in fen.findChildren(QtWidgets.QToolBar):
                     if b.windowTitle() == nom or b.objectName() == nom:

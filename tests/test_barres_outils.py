@@ -140,3 +140,40 @@ assert _noms == _ATTENDUS, (
     [n for n in _ATTENDUS if n not in _noms])
 print("4. les {} noms de barres sont ceux que FreeCAD a mémorisés OK".format(
     len(_ATTENDUS)))
+
+
+# --- 5. UNE SEULE ROUE CHROMATIQUE, LUE PAR LES DEUX --------------------
+# Christophe, 05/08/2026 : « je pense que pour les couleurs de remplissage,
+# il faudrait rester uni par rapport à la barre d'icônes et au reste ». Les
+# calques prennent donc leurs teintes dans la table qui teinte déjà les
+# barres. Deux copies auraient dérivé au premier ajustement -- et « uni »
+# est exactement ce qui ne survit pas à une copie.
+import inspect as _insp2                                      # noqa: E402
+import laser_jobs as _lj                                      # noqa: E402
+
+_src_gui = open(os.path.join(RACINE, "InitGui.py"), encoding="utf-8").read()
+assert "TEINTES_ATELIER" in _src_gui, (
+    "InitGui ne lit plus la roue partagée : il a sans doute repris une "
+    "table à lui, et les deux vont diverger")
+import re as _re5                                             # noqa: E402
+_tables = _re5.findall(r"_TEINTES\s*=\s*\(", _src_gui)
+assert not _tables, (
+    "InitGui redéfinit une table de teintes en propre", _tables)
+
+# AUTANT DE TEINTES QUE DE BARRES. `zip` s'arrête au plus court : une barre
+# ajoutée sans sa teinte ne serait pas colorée, en silence.
+assert len(h.core.TEINTES_ATELIER) == len(_ATTENDUS), (
+    "la roue n'a pas autant de teintes que l'atelier a de barres : la "
+    "dernière resterait incolore sans un mot",
+    len(h.core.TEINTES_ATELIER), len(_ATTENDUS))
+
+# ET LES CALQUES EN VIENNENT VRAIMENT. Un test qui se contenterait de
+# vérifier qu'ils ont une couleur passerait sur n'importe quelle palette.
+_roue = {h.core.teinte_atelier(_i5) for _i5 in range(len(h.core.TEINTES_ATELIER))}
+for _m5, _c5 in _lj.COULEURS_MODE.items():
+    assert _c5 in _roue, (
+        "la couleur du mode « {} » ne vient pas de la roue de l'atelier : "
+        "elle jurera avec les barres".format(_m5), _c5)
+print("5. une seule roue de {} teintes : les {} barres et les {} calques y "
+      "puisent OK".format(len(h.core.TEINTES_ATELIER), len(_ATTENDUS),
+                          len(_lj.COULEURS_MODE)))

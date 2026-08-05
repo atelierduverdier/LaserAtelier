@@ -111,7 +111,14 @@ _couleurs = list(lj.COULEURS_MODE.values())
 for _i, _a in enumerate(_couleurs):
     for _b in _couleurs[_i + 1:]:
         _ecart = sum(abs(x - y) for x, y in zip(_a, _b))
-        assert _ecart > 0.30, (
+        # LE SEUIL EST CELUI QUE LA CHARTE PERMET, et il a baissé sciemment.
+        # Les couleurs viennent de la roue des barres d'outils (v2.97.0) au
+        # lieu de primaires saturées : l'écart minimal passe de 0,44 à 0,25,
+        # et c'est le prix de « rester uni par rapport à la barre d'icônes ».
+        # 0,20 laisse la marge de mesure sans autoriser deux nuances
+        # voisines -- la variante écartée en descendait à 0,23 avec deux
+        # clairs chauds côte à côte.
+        assert _ecart > 0.20, (
             "deux modes portent des couleurs trop proches pour être "
             "séparées à l'œil", _a, _b, _ecart)
 
@@ -285,7 +292,7 @@ try:
     # éteint se lirait comme un job allumé.
     for _m, _c in lj.COULEURS_MODE.items():
         _e = sum(abs(x - y) for x, y in zip(_c, lj.GRIS_ETEINT))
-        assert _e > 0.40, (
+        assert _e > 0.30, (
             "la couleur du mode « {} » se confond avec le gris éteint"
             .format(_m), _c, _e)
 

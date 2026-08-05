@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.96.1"
+VERSION = "2.97.0"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -13585,6 +13585,36 @@ def _interp_croissant(xs, ys, x):
         return ys[lo]
     t = (x - xs[lo]) / (xs[hi] - xs[lo])
     return ys[lo] + t * (ys[hi] - ys[lo])
+
+
+# ==========================================================================
+# LA ROUE CHROMATIQUE DE L'ATELIER (source unique)
+# ==========================================================================
+# Les teintes, en DEGRÉS, dont l'atelier se sert partout : le fond des neuf
+# barres d'outils (`InitGui`) et la couleur des calques (`laser_jobs`).
+#
+# UNE SEULE TABLE, LUE PAR LES DEUX. Christophe, 05/08/2026 : « je pense
+# que pour les couleurs de remplissage, il faudrait rester uni par rapport à
+# la barre d'icônes et au reste ». Deux tables auraient dérivé au premier
+# ajustement, et « uni » est exactement ce qui ne survit pas à une copie.
+#
+# Elles ne sont jamais posées telles quelles : les barres TEINTENT le fond
+# du thème courant (pastel par construction, cf. `_colorer_barres`), les
+# calques les rendent à un registre sourd lisible sur de la géométrie.
+TEINTES_ATELIER = (28, 205, 190, 265, 35, 150, 0, 300, 220)
+
+# Saturation/valeur des calques. Assez sourd pour s'accorder aux barres
+# pastel et aux icônes orange-ardoise, assez franc pour se lire sur une
+# forme -- un calque dont on ne distingue pas la couleur ne sert à rien.
+CALQUE_SATURATION = 0.62
+CALQUE_VALEUR = 0.70
+
+
+def teinte_atelier(indice, saturation=CALQUE_SATURATION, valeur=CALQUE_VALEUR):
+    """Un triplet RVB (0-1) depuis la roue de l'atelier."""
+    import colorsys
+    h = TEINTES_ATELIER[indice % len(TEINTES_ATELIER)] / 360.0
+    return tuple(round(c, 4) for c in colorsys.hsv_to_rgb(h, saturation, valeur))
 
 
 PROP_CALLIGRAPHIE = "LaserAtelierCalligraphie"
