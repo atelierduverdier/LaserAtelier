@@ -247,29 +247,47 @@ def main():
     total = dev_h + a["machine_h"] + a["estime_h"]
     mesures = a["largeurs"] + a["tons"]
 
+    # VIRGULE DÉCIMALE : le site et le manuel sont en français, et une
+    # regénération ne doit pas défaire la typographie à chaque fois.
+    def fr(x, dec=1):
+        return ("{:.%df}" % dec).format(x).replace(".", ",")
+
     if args.html:
-        print('<div class="effort">\n'
-              '  <b>≈ {tot:.0f} heures</b> — développement ≈ {dev:.0f} h '
-              '({com} commits, {ver} versions, du {d1} au {d2}), '
-              'atelier ≈ {ate:.0f} h dont <b>{mac:.1f} h</b> de machine '
-              'chronométrées sur les {fic} fichiers gravés '
-              '({gra:.0f} m de trait, {mes} mesures relevées sur le bois).\n'
-              '</div>'.format(tot=total, dev=dev_h, com=commits, ver=versions,
-                              d1=premier, d2=dernier,
-                              ate=a["machine_h"] + a["estime_h"],
-                              mac=a["machine_h"], fic=a["fichiers"],
-                              gra=a["grave_m"], mes=mesures))
+        # Le bandeau sort volontairement du conteneur `.wrap` : il occupe
+        # toute la largeur de la fenêtre, sous la rangée de boutons.
+        print('  <div class="effort">\n'
+              '    <b>≈ {tot:.0f} heures</b> pour en arriver là, du {d1} au '
+              '{d2} :\n'
+              '    <b>≈ {dev:.0f} h</b> de développement ({com} commits, '
+              '{ver} versions) et\n'
+              '    <b>≈ {ate:.0f} h</b> d\'atelier, dont <b>{mac} h</b> de '
+              'laser chronométrées sur\n'
+              '    les {fic} fichiers gravés — {gra:.0f} m de trait brûlé et '
+              '{mes} mesures relevées\n'
+              '    sur le bois.\n'
+              '    <span class="qui">Le code est écrit par Claude '
+              '(Anthropic). Christophe\n'
+              '    Le Verdier décide, éprouve chaque version sur le bois et '
+              'tranche : la\n'
+              '    plupart des défauts corrigés ici ont été trouvés en '
+              'regardant une\n'
+              '    planche, pas en relisant du code.</span>\n'
+              '  </div>'.format(tot=total, dev=dev_h, com=commits, ver=versions,
+                                d1=premier, d2=dernier,
+                                ate=a["machine_h"] + a["estime_h"],
+                                mac=fr(a["machine_h"]), fic=a["fichiers"],
+                                gra=a["grave_m"], mes=mesures))
         return 0
     if args.md:
-        print("**≈ {tot:.0f} heures** — développement ≈ {dev:.0f} h "
-              "({com} commits, {ver} versions, du {d1} au {d2}), atelier "
-              "≈ {ate:.0f} h dont **{mac:.1f} h** de machine chronométrées "
-              "sur les {fic} fichiers gravés ({gra:.0f} m de trait, {mes} "
-              "mesures relevées sur le bois)."
+        print("> **≈ {tot:.0f} heures pour en arriver là**, du {d1} au {d2} : "
+              "≈ {dev:.0f} h de développement ({com} commits, {ver} versions) "
+              "et ≈ {ate:.0f} h d'atelier, dont **{mac} h de laser** "
+              "chronométrées sur les {fic} fichiers gravés — {gra:.0f} m de "
+              "trait brûlé et {mes} mesures relevées sur le bois."
               .format(tot=total, dev=dev_h, com=commits, ver=versions,
                       d1=premier, d2=dernier,
                       ate=a["machine_h"] + a["estime_h"],
-                      mac=a["machine_h"], fic=a["fichiers"],
+                      mac=fr(a["machine_h"]), fic=a["fichiers"],
                       gra=a["grave_m"], mes=mesures))
         return 0
 
