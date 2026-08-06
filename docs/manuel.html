@@ -209,7 +209,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.20</span><br>
+      <span class="ver">Version 2.99.21</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -260,7 +260,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.20</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.21</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1145,7 +1145,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.20 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.21 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1161,7 +1161,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 48 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 49 entrées</span></h3>
+  <p><b>Une consigne juste, lue au mauvais moment, se lit comme un reproche (v2.99.21).</b> Christophe avait tout fait&nbsp;: hachures déposées (13&nbsp;656 arêtes, à plat), projetées sur son galbe — son «&nbsp;Motif_Projete&nbsp;» passait de 1&nbsp;739 à <b>3&nbsp;184&nbsp;mm</b> de trait, contour <em>plus</em> hachures. Il en était à la dernière étape. En ouvrant Gravure remplie pour l'ajouter au job combiné, il s'est fait réciter <b>les quatre étapes depuis le début</b>. Le message était exact et inutile&nbsp;: il parlait à quelqu'un qui commence, pas à quelqu'un qui finit. Or une forme galbée est presque toujours une projection, donc quelqu'un qui a déjà tout fait. Le refus mène désormais par le cas fréquent&nbsp;: «&nbsp;SI CETTE FORME EST DÉJÀ PROJETÉE, tu y es&nbsp;: ouvre <b>Marquage de motif</b> en sélectionnant ce motif ET le modèle 3D — c'est là que se trouve <b>Ajouter au job combiné</b>&nbsp;», les quatre étapes n'arrivant qu'ensuite, pour qui part de zéro. Le test vérifie non seulement que les deux noms sont dits, mais qu'ils sont dits <b>AVANT</b>&nbsp;; son sabotage remet les étapes en tête.</p>
+
   <p><b>Le verdict de finesse comptait les faces au lieu de peser l'encre (v2.99.20).</b> Corrigé <b>le jour même</b>, et c'est une image qui l'a démenti. Christophe voulait projeter son remplissage sur son galbe&nbsp;; avant de lui faire manipuler quoi que ce soit, trois rendus ont été posés côte à côte — hachures seules au pas 1&nbsp;mm&nbsp;: des <b>tirets épars</b>&nbsp;; contour seul&nbsp;: un <b>dessin au trait</b> propre mais creux&nbsp;; contour + hachures fines&nbsp;: le <b>noir massif</b> qu'il cherchait, cheveux, robe et lettrage compris. La v2.99.19 conseillait pourtant «&nbsp;le contour seul les noircit&nbsp;». <b>Faux</b>&nbsp;: elle raisonnait sur la MÉDIANE des largeurs, et un dessin au trait compte des dizaines de rubans minuscules qui ne pèsent rien. Mesuré sur sa pin-up&nbsp;: médiane 0,104&nbsp;mm, mais <b>97,4&nbsp;% de l'aire</b> vit dans des rubans de 0,12&nbsp;mm ou plus, et <b>DEUX faces en portent 85&nbsp;%</b> (0,29 et 0,35&nbsp;mm de large). Le contour n'en noircit que 2,6&nbsp;%. <code>analyse_finesse</code> pèse désormais par l'AIRE et conseille un pas — la moitié de la médiane <em>en aire</em>, soit <b>0,17&nbsp;mm</b> sur ce dessin (3,3&nbsp;m à graver, contour compris). Le centile bas a été essayé puis écarté&nbsp;: quelques poussières de face le tiraient à 0,02&nbsp;mm, un pas que personne ne veut graver. §5 du test gèle le piège, et son sabotage rejoue mot pour mot le contresens de la veille.</p>
 
   <p><b>Un dessin au trait ne se hachure pas — et l'atelier le dit enfin (v2.99.19).</b> Christophe&nbsp;: «&nbsp;les hachures sur ma forme ne se font pas, mais cela doit être dû aux épaisseurs de traits&nbsp;». <b>C'était exactement ça</b>, et son dessin le chiffre&nbsp;: 96 faces de <b>0,104&nbsp;mm</b> de large en médiane (la plus large 0,745) pour 272&nbsp;mm² d'encre — au pas d'1&nbsp;mm, <b>96 faces sur 96</b> sont plus fines que le pas. Le hachurage ne rend pourtant pas zéro, il rend <em>pire</em>&nbsp;: 561 segments de <b>0,25&nbsp;mm de long en médiane</b>, espacés d'un pas entier le long de rubans larges d'un dixième de millimètre. Il pointille le trait. Et la longueur de segment ne bouge pas quand on resserre le pas (0,251&nbsp;mm à pas 1,0&nbsp;; 0,253 à pas 0,08)&nbsp;: ce sont des <b>traversées</b>, pas des remplissages. <b>Ce qui noircit ces rubans, c'est le CONTOUR</b>&nbsp;: ses deux lignes sont distantes de 0,104&nbsp;mm et la brûlure mesurée sur le hêtre fait 0,12 à 0,20&nbsp;mm — elles se rejoignent, le ruban sort plein. 1&nbsp;738&nbsp;mm de contour contre 3&nbsp;401&nbsp;mm de hachures au pas 0,08 pour le même noir&nbsp;: le contour est aussi le plus économe. <b>Le programme le savait déjà</b> — <code>inset_face_robuste</code> saute les traits fins «&nbsp;le contour les noircit&nbsp;» — mais en silence, et une soirée y est passée. Un troisième verdict compare désormais la largeur RÉELLE des formes (2&nbsp;×&nbsp;aire/périmètre, exact pour une bande) au pas, et nomme l'issue&nbsp;: le contour si la brûlure couvre le ruban, un pas plus fin sinon. <b>Muet sur un aplat</b>&nbsp;: un avertissement permanent ne se lit plus. Conséquence pour le relief&nbsp;: sur un dessin au trait, «&nbsp;on ne peut faire que du marquage&nbsp;» n'est pas une limite — c'est la réponse juste.</p>

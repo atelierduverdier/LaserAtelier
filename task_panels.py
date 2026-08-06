@@ -9426,8 +9426,20 @@ class TaskPanelFilledEngraving:
                         "{:.2f} mm d'un plan.\n\nCe mode fabrique son "
                         "remplissage en 2D — sur une forme galbée il ne "
                         "trouve presque aucune surface, et la gravure "
-                        "sortirait quasi blanche.\n\nL'ORDRE À SUIVRE est "
-                        "l'inverse :\n"
+                        "sortirait quasi blanche.\n\n"
+                        # LE CAS LE PLUS FRÉQUENT D'ABORD. Christophe,
+                        # 06/08/2026 : ses hachures étaient déposées et
+                        # projetées, il en était à la DERNIÈRE étape, et ce
+                        # message lui a récité les quatre depuis le début.
+                        # Une consigne juste, lue au mauvais moment, se lit
+                        # comme un reproche et n'aide pas.
+                        "SI CETTE FORME EST DÉJÀ PROJETÉE, tu y es : ferme "
+                        "cette fenêtre et ouvre « Marquage de motif » en "
+                        "sélectionnant ce motif ET le modèle 3D d'origine. "
+                        "C'est ce mode qui grave un motif posé sur du "
+                        "relief — et c'est là que se trouve « Ajouter au "
+                        "job combiné ».\n\nSi tu pars de zéro, L'ORDRE À "
+                        "SUIVRE est l'inverse :\n"
                         "1. sélectionne la forme À PLAT et règle le "
                         "remplissage ici ;\n"
                         "2. clique « Déposer les hachures dans le document "

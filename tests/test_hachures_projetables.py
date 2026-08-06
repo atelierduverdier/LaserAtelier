@@ -147,6 +147,21 @@ assert textes, "aucun refus : une forme galbée est acceptée en silence"
 assert "Déposer les hachures" in textes, (
     "le refus ne nomme pas le dépôt : il conseille un geste que ce mode "
     "ne permet pas")
+# ET il doit parler D'ABORD à celui qui est déjà arrivé au bout : une forme
+# galbée est presque toujours une projection, donc quelqu'un qui en est à la
+# dernière étape. Lui réciter les quatre depuis le début se lit comme un
+# reproche -- c'est ce qui est arrivé le 06/08/2026, hachures déposées et
+# projetées, panneau ouvert au mauvais endroit.
+assert "Marquage de motif" in textes, (
+    "le refus ne nomme pas le mode qui grave une projection")
+assert "job combiné" in textes, (
+    "le refus ne dit pas où ajouter la projection au job combiné, alors "
+    "que c'est précisément ce que l'utilisateur cherchait")
+i_marquage = textes.index("Marquage de motif")
+i_etapes = textes.index("1. sélectionne")
+assert i_marquage < i_etapes, (
+    "les quatre étapes passent AVANT le conseil qui sert à celui qui est "
+    "déjà arrivé au bout")
 
 FreeCAD.closeDocument("hachures_projetables")
 print()
