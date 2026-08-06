@@ -178,7 +178,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.36"
+VERSION = "2.99.37"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -960,6 +960,14 @@ ACCEL_MM_S2 = 600.0                   # accélération machine RÉELLE (mm/s2) p
                                       # n'explique pas tout l'écart. Ça ne change rien au
                                       # correctif (M67 supprime l'arrêt quel que soit a),
                                       # seulement à l'estimation de durée.
+ASSISTANCE_AIR = False                # émettre M8 à l'armement et M9 au désarmement. Les
+                                      # graveurs de table pilotent leur pompe à air par M8/M9 ;
+                                      # LightBurn les pose systématiquement. Réglé PAR LASER.
+                                      # L'air change la BRÛLURE (halo brun avec, propre sans) :
+                                      # c'est la variable cachée que les planches de mesure de
+                                      # l'atelier n'enregistrent nulle part -- si tu changes ce
+                                      # réglage, tes largeurs mesurées ne décrivent plus le même
+                                      # régime.
 MACHINE_SANS_AXE_Z = False            # machine à mise au point MANUELLE (graveur diode de
                                       # table type Creality Falcon) : aucun mot Z n'est écrit,
                                       # et les mouvements qui n'étaient que du Z disparaissent.
@@ -1023,6 +1031,7 @@ _USER_SETTINGS = (
     ("accel_mm_s2", "ACCEL_MM_S2", float, lambda v: v > 0),
     ("chemin_ini_linuxcnc", "CHEMIN_INI_LINUXCNC", str, lambda v: isinstance(v, str)),
     ("machine_sans_axe_z", "MACHINE_SANS_AXE_Z", bool, lambda v: isinstance(v, bool)),
+    ("assistance_air", "ASSISTANCE_AIR", bool, lambda v: isinstance(v, bool)),
     ("z_work_mm", "Z_WORK_MM", float, lambda v: -100 <= v <= 500),
     ("transit_margin_mm", "TRANSIT_MARGIN_MM", float, lambda v: v >= 0),
     ("spot_focus_mm", "SPOT_FOCUS_MM", float, lambda v: v > 0),
@@ -1081,6 +1090,20 @@ def _apply_settings_config():
         CMD_BEAM_ON = _CMD_BEAM_ON_M67
         CMD_BEAM_OFF = _CMD_BEAM_OFF_M67
         CMD_DISARM = _CMD_DISARM_M67
+    # ASSISTANCE D'AIR : M8 avec l'armement, M9 avec le désarmement.
+    #
+    # Greffé sur CMD_ARM / CMD_DISARM et NON dans chaque générateur : ces
+    # deux modèles sont émis par les dix familles (35 et 50 points d'appel),
+    # une seule fois par fichier même en job combiné -- où `body_only`
+    # supprime l'armement des corps et le wrapper arme une fois. Un M8 par
+    # opération aurait rallumé l'air à chaque sous-job.
+    #
+    # L'ORDRE VIENT D'UN FICHIER QUI A TOURNÉ, pas d'un raisonnement : le
+    # LightBurn de Christophe pour son Falcon 2 pose M8 juste après M4, et
+    # M9 AVANT le S0/M5 final. On le reproduit tel quel.
+    if ASSISTANCE_AIR:
+        CMD_ARM = CMD_ARM + "\nM8 (assistance d'air)"
+        CMD_DISARM = "M9 (arret assistance d'air)\n" + CMD_DISARM
 
 
 def current_settings():
@@ -1347,7 +1370,7 @@ def save_nozzle(bottom_diameter_mm, top_diameter_mm, height_mm):
 PER_LASER_KEYS = ("laser_tool", "s_max", "spot_focus_mm", "spot_test_defocus_mm",
                   "spot_test_diameter_mm", "z_work_mm", "frame_power",
                   "label_power", "label_feed", "mire_power", "mire_feed",
-                  "gcode_dialect", "machine_sans_axe_z")
+                  "gcode_dialect", "machine_sans_axe_z", "assistance_air")
 
 
 def _laser_slug(name):

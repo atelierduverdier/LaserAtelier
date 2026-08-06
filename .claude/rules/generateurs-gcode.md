@@ -32,6 +32,34 @@ a hard-coded 1000). The emitted `T<n> M6` loads the laser tool itself (no-op if 
 > `subroutines/toolchange.ngc` rewrites it (`G10 L1 P<tool> Z<offset>`) at **every** `M6`. Only X
 > and Y survive. Don't advise editing that Z.
 
+## Air assist — `assistance_air` (v2.99.37)
+
+Bench engravers drive their air pump with `M8`/`M9`. `ASSISTANCE_AIR` (per-laser) grafts them onto
+**`CMD_ARM` / `CMD_DISARM` in `_apply_settings_config`, last, after the dialect rewrites them** —
+those two templates are what the ten generator families emit (35 and 50 call sites), and `body_only`
+strips them from a combined job's bodies, so the wrapper arms once. An `M8` written into each
+generator would have re-lit an already-running pump once per operation.
+
+**The order comes from a file that actually ran**, not from reasoning: Christophe's LightBurn 1.3.01
+export for his Falcon 2 puts `M8` right after `M4` and `M9` **before** the final `M5`. Reproduced
+verbatim.
+
+**The property is NOT "exactly one pair".** That was an assumption, and `generate_gcode_planche_defocus`
+disproved it: it burns the framing rectangle, disarms, stops on `M0` for the operator to check the
+placement, then re-arms —
+`M4 → M8 → [frame] → M5 → M0 → M4 → M8 → [board] → M9 → M5`. Two `M8`, both correct: `M8` on a
+running pump does nothing. What must be unique is the **cut-off** — a stray `M9` and the tail of the
+job engraves without air, silently. `tests/test_assistance_air.py` §2 asserts `M8 ≥ 1` and `M9 == 1`.
+
+Second weak anchor fixed in the same pass: "last engraved move" looked for an `S` word, but a marking
+sets its power **once** and then emits bare `G1`s — the anchor landed on line 16 of a 557-line file
+and the check passed without checking. Use the last `G1`.
+
+**It changes what burns.** Air gives a brown halo around the trace, none without it, and the lens
+fouls faster dry — the hidden variable no measurement board records (see the mire note above). So it
+is per-laser, and the tooltip says switching it invalidates the regime the burn widths were measured
+in.
+
 ## Machines with NO Z axis — `machine_sans_axe_z` (v2.99.36)
 
 Bench diode engravers (Creality Falcon, Ortur, xTool) focus by hand and have **no Z motor**.

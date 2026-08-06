@@ -20143,6 +20143,23 @@ class TaskPanelSettings:
             "PAS ce qui a été calculé.")
         form.addRow("", self.chk_sans_z)
 
+        self.chk_air = QtWidgets.QCheckBox("Assistance d'air (M8 / M9)")
+        self.chk_air.setChecked(bool(settings.get("assistance_air", False)))
+        self.chk_air.setToolTip(
+            "Émet « M8 » avec l'armement du laser et « M9 » à la fin du job.\n"
+            "C'est ainsi que les graveurs de table pilotent leur pompe à air ;\n"
+            "LightBurn les pose systématiquement.\n"
+            "\n"
+            "Une seule paire par fichier, y compris en job combiné : l'air ne\n"
+            "se rallume pas à chaque opération.\n"
+            "\n"
+            "ATTENTION, ÇA CHANGE CE QUI BRÛLE : avec l'air, un halo brun\n"
+            "apparaît autour du trait ; sans lui, la coupe est plus propre\n"
+            "mais la lentille s'encrasse plus vite. Tes largeurs mesurées et\n"
+            "ton nuancier décrivent le régime dans lequel ils ont été gravés :\n"
+            "changer ce réglage change ce régime.")
+        form.addRow("", self.chk_air)
+
         self.chk_m67 = QtWidgets.QCheckBox(
             "Puissance par M67 (sortie analogique synchronisée)")
         self.chk_m67.setChecked(bool(settings.get("puissance_par_m67", False)))
@@ -20617,6 +20634,7 @@ class TaskPanelSettings:
         core.save_settings({
             "gcode_dialect": self.combo_dialect.currentData(),
             "machine_sans_axe_z": self.chk_sans_z.isChecked(),
+            "assistance_air": self.chk_air.isChecked(),
             "puissance_par_m67": self.chk_m67.isChecked(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
             "planches_dir": self.edt_planches_dir.text().strip(),
