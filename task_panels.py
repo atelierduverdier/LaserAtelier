@@ -5320,7 +5320,10 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
         "peut être élevé sans danger si tu vises un ton foncé.")
     outer.addWidget(lbl)
 
-    chk = QtWidgets.QCheckBox("Compenser la puissance automatiquement (matériau sans nuancier)")
+    # Pas de parenthèse explicative ici : une QCheckBox ne revient pas à la
+    # ligne non plus, et « (matériau sans nuancier) » répétait mot pour mot
+    # la première phrase de l'étiquette juste au-dessus.
+    chk = QtWidgets.QCheckBox("Compenser la puissance automatiquement")
     chk.setToolTip(
         "Coché : la puissance est CALCULÉE pour déposer la même énergie\n"
         "qu'à la référence, au défocus et à la vitesse actuels (la\n"
@@ -5385,7 +5388,10 @@ def _make_fluence_widgets(form, ref_power=500.0, ref_feed=800.0, ref_spot=1.0):
 
     form.addRow(box)
     return {"container": box, "chk": chk, "ref_power": ref_power_w,
-            "ref_feed": ref_feed_w, "ref_spot": ref_spot_w, "info": info}
+            "ref_feed": ref_feed_w, "ref_spot": ref_spot_w, "info": info,
+            # `lbl` sort d'ici pour que la raison de griser le bloc puisse
+            # s'écrire DEDANS plutôt que dans le titre, qui ne se plie pas.
+            "lbl": lbl}
 
 
 def _fluence_advice(spot, power, feed, w):
@@ -5452,15 +5458,41 @@ def _appliquer_priorite_nuancier(shade_picker, fluence):
     if titre is None:
         titre = box.title()
         box._titre_defaut_priorite_nuancier = titre
+    # Même mise de côté pour le texte de l'étiquette : sans elle, revenir à
+    # « aucun matériau » laisserait le message « inutile ici » en place et
+    # la notice d'origine serait perdue pour de bon.
+    lbl = fluence.get("lbl")
+    if lbl is None:
+        return
+    texte_defaut = getattr(box, "_texte_defaut_priorite_nuancier", None)
+    if texte_defaut is None:
+        texte_defaut = lbl.text()
+        box._texte_defaut_priorite_nuancier = texte_defaut
     mat = shade_picker["mat"].currentData()
     if mat:
         if fluence["chk"].isChecked():
             fluence["chk"].setChecked(False)
         box.setEnabled(False)
-        box.setTitle("{} -- inutile : {} a des tons mesurés".format(titre, mat))
+        # LE TITRE RESTE COURT, LA RAISON VA DANS L'ÉTIQUETTE. Un titre de
+        # QGroupBox ne revient JAMAIS à la ligne : sa largeur devient la
+        # largeur minimale du groupe, donc du panneau entier. En y collant
+        # le nom du matériau -- « Puissance vs défocus -- inutile : Hêtre a
+        # des tons mesurés » -- il exigeait 679 px, et la vue des tâches de
+        # FreeCAD en fait ~570 : tout ce qui dépassait à droite était
+        # rogné, boutons « Corriger » et « Alléger » compris. Christophe,
+        # 06/08/2026, capture à l'appui : « dans gravure remplie j'ai un
+        # problème d'affichage ». Mesuré sur son panneau : 693 px exigés.
+        # Raccourcir la case à cocher n'y changeait RIEN (693 px avant
+        # comme après) -- c'était bien le titre, et lui seul, qui
+        # contraignait. Une fois court : 529 px.
+        box.setTitle("{} -- inutile ici".format(titre))
+        lbl.setText(
+            "Inutile ici : {} a des tons mesurés, et l'interpolation du "
+            "nuancier fait déjà ce travail, en mieux (courbe mesurée).".format(mat))
     else:
         box.setEnabled(True)
         box.setTitle(titre)
+        lbl.setText(texte_defaut)
 
 
 # ==========================================================================
