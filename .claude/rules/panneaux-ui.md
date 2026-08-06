@@ -286,6 +286,51 @@ of truth. `VueJobLaser.doubleClicked` re-selects the sources and reopens the mod
 (`ouvrir_job`). Proxies carry no state (dumps/loads return None); regenerating updates the existing
 Job (user-renamed Labels are preserved).
 
+## Multithreading buys NOTHING here — measured end to end (2026-08-06)
+
+Christophe has 32 cores and asked. The answer is no, and it was measured rather than argued, so
+**don't re-derive it**: run the numbers below only if something changes (a FreeCAD release, a
+Python without the GIL).
+
+Profile of the heavy path (importing his pin-up SVG, building faces, hatching): **9,35 s total,
+of which 7,894 s is a single `Part.Shape.cut`**. Everything else is noise — `tessellate` 0,58 s
+over 345 calls, `isValid` 0,23 s, and the pure-Python O(n²) nesting loop only ~0,2 s (it looked
+like a suspect; it isn't — profile before optimising).
+
+Speedup with 4 threads on independent tasks:
+
+| | ×4 threads | |
+|---|---|---|
+| `Part.Shape.cut` (the 7,9 s one) | **×1,02** | GIL held |
+| `fuse` / `makeOffset2D` / `discretize` | ×0,93 / ×1,05 / ×0,92 | GIL held |
+| hatching (`generate_hatch_edges`) | ×0,94 | |
+| G-code emission | ×0,94 | pure Python |
+| `estimate_job_time_seconds` | ×0,98 | pure Python |
+| `tessellate` | ×2,57 | **GIL released** — but 6 % of the path |
+| calligraphy skeleton (numpy/scipy) | ×1,53 | GIL partly released |
+
+Threads are therefore useless, and **processes are impossible**: `Part.Edge` and `Part.Face`
+are not picklable, so no geometry can cross a process boundary. Feeding a pool would mean
+redesigning the generators around plain coordinates — a large change, on the code that produces
+what burns wood, to save seconds on a job that engraves for hours.
+
+`tessellate` and the calligraphy skeleton are the only two that scale, and neither is worth it:
+tessellate is 0,58 s of 9,35 (and OCC is not fully thread-safe — a crash in the user's session
+costs incomparably more), and nothing in the workbench ever asks for several skeletons at once —
+there is one text to engrave.
+
+**Two traps this investigation walked into, both worth remembering:**
+
+- **A warm cache faked a ×4,2.** Measuring font contrast over 24 fonts, sequential *then*
+  parallel, showed ×4,2. Run in FRESH PROCESSES the parallel pass is **slower** (1,28 s against
+  0,89 s). Whenever a parallel measurement runs second, it inherits the first one's caches.
+- **A 2× faster face was broken.** Trying to shrink the 7,9 s boolean by passing the 36
+  non-overlapping holes as ordinary wires and cutting only the 4 that overlap gave the SAME area
+  (5632,80 vs 5632,81 mm²) in half the time — and **2 hatch edges for 0 mm of trace**. Area and
+  wall-clock both said yes; the hatching said no. Judge a face by what consumes it.
+
+Where the 32 cores do pay is the test suite (see `tests-headless.md`): 1 min 54 s → 22 s.
+
 ## Face construction & fill-geometry memo (perf, v1.79.3)
 
 `FaceMakerBullseye`'s O(n²) nesting sort costs ~10.5 s on a 179-wire imported SVG trace, **twice** per
