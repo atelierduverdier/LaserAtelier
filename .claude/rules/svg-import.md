@@ -65,3 +65,30 @@ test suite asserts the call count explicitly.
 `<use>`, gradients, `<clipPath>`/`<mask>`/`<filter>`, embedded raster `<image>`, and CSS
 class-selector cascading. Each produces one collected `FreeCAD.Console.PrintWarning`, never a hard
 failure.
+
+## LightBurn files: convert, don't import (2026-08-06)
+
+Christophe was sent a `.lbrn2` instead of an SVG. `outils/lbrn2_vers_svg.py` translates it;
+`svg_import.py` then does what it already does well. **No 21st mode for an interchange format.**
+
+The format, decoded on his 267-shape file — it is plain XML:
+
+- `<Shape Type="Path">` carries `<XForm>` (an affine matrix, exactly SVG's `matrix()`),
+  `<VertList>` (`V<x> <y>` then optional `c0x`/`c0y` outgoing and `c1x`/`c1y` incoming control
+  points) and `<PrimList>` (`L<i> <j>` a segment, `B<i> <j>` a cubic).
+- **An absent control point is written `c0x1` with no `c0y`.** The `1` is a marker, not a
+  coordinate — keep a control point only when BOTH components are present.
+- **`<PrimList>` is OPTIONAL**: 110 of his 267 paths have none, and the contour is then implicit
+  (vertices in order, loop closed). Skipping them lost 41 % of the drawing.
+- `Rx`/`Ry` on ellipses are CAPITALISED; looking for `rx` finds nothing.
+- LightBurn works **Y up**, SVG Y down — everything is wrapped in a vertical mirror.
+
+**The file carries its own PNG thumbnail** (`<Thumbnail Source="base64…">`), and that is what
+verifies a conversion: rendering the produced SVG beside it showed the same clock face, numerals
+and tick marks. Nothing else in the chain proves the geometry is right.
+
+Layer colours are **deliberately NOT LightBurn's**: its palette wasn't read, so reproducing it
+from memory would be a fabricated table. Hues are spread by the golden ratio (a 0.137 step put
+layers 2, 9 and 10 in the same green), one `<g id="calque_N">` per `CutIndex`, and
+`resolve_fill_color`'s stroke fallback carries the colour onto each imported object.
+
