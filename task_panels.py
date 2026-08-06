@@ -10112,17 +10112,45 @@ class TaskPanelProject:
         self._refresh_status()
 
     def _classify(self):
-        """(motifs 2D, surface 3D, message) de la sélection courante."""
+        """(motifs 2D, surface 3D, message) de la sélection courante.
+
+        LA SURFACE N'A PLUS À ÊTRE SÉLECTIONNÉE. Christophe, 06/08/2026,
+        capture d'un « Sélectionne au moins un motif 2D et une surface 3D
+        de référence » à l'appui : « la projection n'a pas besoin de la
+        boîte avec l'aide et tout le reste, juste un menu déroulant pour
+        sélectionner l'objet 3D, ou s'il n'y en a qu'un le prendre par
+        défaut ». Marquage et Découpe courbe le font depuis la v2.99.26 ;
+        la projection, qui est l'étape D'AVANT, l'exigeait encore.
+
+        Le solide sélectionné garde la priorité -- c'est un choix, il ne
+        se devine pas. `self._surface_auto` retient ce qui a été trouvé,
+        pour que la ligne d'état le dise au lieu de le taire."""
         selection = Gui.Selection.getSelectionEx()
+        self._surface_auto = None
         if not selection:
             return [], None, "Aucun objet sélectionné."
         motifs, reference = core.split_projection_selection(selection)
-        if not motifs or reference is None:
-            return None, None, (
-                "Sélection ambiguë : il faut EXACTEMENT une surface 3D\n"
-                "(un seul objet d'épaisseur significative) et au moins un\n"
-                "motif 2D plat.")
-        return motifs, reference, None
+        if motifs and reference is not None:
+            return motifs, reference, None
+        # Rien de 3D dans la sélection : tout ce qui est plat est un motif,
+        # et la surface se cherche dans le document.
+        plats = [s.Object for s in selection
+                 if getattr(getattr(s, "Object", None), "Shape", None) is not None
+                 and s.Object.Shape.BoundBox.ZLength < 0.1
+                 and s.Object.Shape.Edges]
+        if not plats:
+            return None, None, ("Sélection ambiguë : il faut au moins un "
+                                "motif 2D plat.")
+        solides = _solides_du_document()
+        if not solides:
+            return None, None, ("Aucune surface 3D dans le document : "
+                                "rien sur quoi projeter.")
+        if len(solides) > 1:
+            solides = sorted(
+                solides,
+                key=lambda s: -_recouvrement_xy(plats[0].Shape, s.Shape))
+        self._surface_auto = solides[0]
+        return plats, solides[0], None
 
     def _refresh_status(self):
         motifs, reference, err = self._classify()
@@ -10130,13 +10158,45 @@ class TaskPanelProject:
             self.lbl_status.setText("⏳ " + err)
             self.lbl_status.setStyleSheet("color: #b0740a;")
             return
+        auto = getattr(self, "_surface_auto", None)
         self.lbl_status.setText(
-            "✅ {} motif(s) 2D + surface « {} » -- prêt à projeter.".format(
-                len(motifs), reference.Label))
+            "✅ {} motif(s) 2D + surface « {} »{} -- prêt à projeter.".format(
+                len(motifs), reference.Label,
+                " (trouvée seule)" if auto is not None else ""))
         self.lbl_status.setStyleSheet("color: #2e7d32; font-weight: bold;")
 
     def accept(self):
-        selection = Gui.Selection.getSelectionEx()
+        selection = list(Gui.Selection.getSelectionEx())
+        motifs, reference, err = self._classify()
+        if err:
+            QtWidgets.QMessageBox.critical(self.form, "Erreur", err)
+            return False
+        auto = getattr(self, "_surface_auto", None)
+        if auto is not None:
+            # Plusieurs solides : on demande AVANT de projeter -- c'est le
+            # menu déroulant qu'il réclamait, et le classement met en tête
+            # celui qui est sous le motif (la projection est un raycast
+            # vertical : ailleurs, elle ne rencontrerait rien).
+            solides = _solides_du_document()
+            if len(solides) > 1:
+                solides = sorted(
+                    solides,
+                    key=lambda s: -_recouvrement_xy(motifs[0].Shape, s.Shape))
+                libelles = ["{} ({:.0f} % sous le motif)".format(
+                    s.Label, 100.0 * _recouvrement_xy(motifs[0].Shape, s.Shape))
+                    for s in solides]
+                choix, ok = QtWidgets.QInputDialog.getItem(
+                    self.form, "Projeter sur surface 3D",
+                    "Sur quelle surface projeter ?", libelles, 0, False)
+                if not ok:
+                    return False
+                auto = solides[libelles.index(choix)]
+
+            class _Sel(object):
+                def __init__(self, o):
+                    self.Object = o
+
+            selection = [_Sel(m) for m in motifs] + [_Sel(auto)]
         obj, err = core.run_projection(selection)
         if obj is not None:
             # Import LOCAL : `laser_jobs` n'est jamais tiré au niveau module

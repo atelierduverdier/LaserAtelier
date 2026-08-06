@@ -163,6 +163,34 @@ assert "mémoris" in p._origine_reference, (
 
 print()
 print("=" * 62)
+print("§5bis  La PROJECTION aussi trouve sa surface toute seule")
+print("=" * 62)
+
+# C'est l'étape D'AVANT le marquage, et elle exigeait encore la surface
+# dans la sélection : « Sélectionne au moins un motif 2D et une surface 3D
+# de référence », capture à l'appui.
+_sel_projection = [_Sel(nu)]
+_vraie = tp.Gui.Selection.getSelectionEx
+tp.Gui.Selection.getSelectionEx = lambda *a, **k: list(_sel_projection)
+try:
+    panneau_proj = tp.TaskPanelProject()
+    motifs, ref, err = panneau_proj._classify()
+    print("   motif SEUL sélectionné -> erreur=%r, surface=%s"
+          % (err, getattr(ref, "Label", None)))
+    assert err is None, (
+        "la projection refuse encore un motif seul : %r" % err)
+    assert ref is not None, "aucune surface trouvée"
+    assert getattr(panneau_proj, "_surface_auto", None) is not None, (
+        "la surface n'est pas signalée comme trouvée seule")
+    # Et c'est bien celle SOUS le motif, pas la lointaine.
+    assert abs(ref.Shape.BoundBox.XMin - socle.Shape.BoundBox.XMin) < 1e-6, (
+        "la projection a retenu le solide lointain")
+    print("   surface retenue : « %s » (trouvée seule)" % ref.Label)
+finally:
+    tp.Gui.Selection.getSelectionEx = _vraie
+
+print()
+print("=" * 62)
 print("§6  Plus aucun texte ne réclame les DEUX objets")
 print("=" * 62)
 
