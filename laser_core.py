@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.18"
+VERSION = "2.99.19"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2908,6 +2908,53 @@ def ecart_au_plan(shape):
 def forme_est_plane(shape, tol=ECART_PLAN_MAXI_MM):
     """La forme tient-elle dans un plan, à `tol` près ?"""
     return ecart_au_plan(shape) <= tol
+
+
+def largeurs_typiques_faces(faces):
+    """Largeur typique de chaque face, en mm : `2 x aire / perimetre`.
+
+    Exact pour une bande longue et fine, et c'est précisément le cas qui
+    nous occupe. Renvoie la liste triée, vide si rien à mesurer."""
+    larg = []
+    for f in faces or ():
+        try:
+            per = float(f.Length)
+            if per > 1e-9:
+                larg.append(2.0 * float(f.Area) / per)
+        except Exception:
+            continue
+    return sorted(larg)
+
+
+def dessin_au_trait(faces, pas):
+    """Le hachurage a-t-il seulement de quoi mordre ?
+
+    Renvoie `(mediane, n_plus_fines, n_total)` ou None si on ne sait pas.
+
+    UN DESSIN AU TRAIT NE SE HACHURE PAS, ET IL N'EN A PAS BESOIN.
+    Christophe, 06/08/2026 : « les hachures sur ma forme ne se font pas,
+    mais cela doit être dû aux épaisseurs de traits ». C'était exactement
+    ça, et son dessin le chiffre : 96 faces dont la largeur médiane vaut
+    **0,104 mm** (la plus large 0,745), pour 272 mm2 d'encre. Au pas de
+    1 mm, les 96 faces sur 96 sont plus fines que le pas.
+
+    Le hachurage ne rend pourtant pas zéro -- il rend pire : 561 segments
+    de **0,25 mm de long en médiane**, espacés d'un pas ENTIER le long de
+    rubans larges d'un dixième de millimètre. Il pointille le trait au
+    lieu de le remplir, et la longueur de segment ne bouge pas quand on
+    resserre le pas (0,251 mm à pas 1,0 ; 0,253 à pas 0,08) : ce sont des
+    traversées, pas des remplissages.
+
+    Ce qui noircit ces rubans, c'est le CONTOUR. Ses deux lignes sont
+    distantes de 0,104 mm, et la brûlure mesurée sur le hêtre fait 0,12 à
+    0,20 mm : elles se rejoignent, le ruban sort plein. 1 738 mm de
+    contour contre 3 401 mm de hachures au pas 0,08 pour le même noir --
+    le contour est aussi le plus économe."""
+    larg = largeurs_typiques_faces(faces)
+    if not larg or pas <= 0:
+        return None
+    milieu = larg[len(larg) // 2]
+    return milieu, sum(1 for w in larg if w < pas), len(larg)
 
 
 def _faces_from_any_shape(shape, label="?"):

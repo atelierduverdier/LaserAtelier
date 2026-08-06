@@ -8608,6 +8608,20 @@ class TaskPanelFilledEngraving:
         _mise_en_page_energie.addWidget(self.btn_alleger, 0)
         form.addRow(_ligne_energie)
 
+        # Troisième verdict, et il ne parle pas du réglage mais du DESSIN :
+        # un tracé au trait n'a pas de surface à hachurer. Muet tant que le
+        # cas ne se présente pas -- un avertissement permanent ne se lit
+        # plus (même règle que les grilles de mesure).
+        self.lbl_finesse = _WrapLabel("")
+        self.lbl_finesse.setVisible(False)
+        self.lbl_finesse.setToolTip(
+            "Compare la largeur RÉELLE de tes formes (2 x aire / périmètre,\n"
+            "exact pour une bande fine) au pas de hachure. Sur un dessin au\n"
+            "trait, les rubans font quelques dixièmes de millimètre : le\n"
+            "hachurage les traverse au lieu de les remplir, et c'est le\n"
+            "contour qui les noircit.")
+        form.addRow(self.lbl_finesse)
+
         _section(form, "Contour", "sect_contour.svg")
         self.chk_contour = QtWidgets.QCheckBox("Graver le contour (repassé après le remplissage)")
         self.chk_contour.setChecked(True)
@@ -8792,6 +8806,7 @@ class TaskPanelFilledEngraving:
                 # Sans défocus calculable, pas de pas de hachure fiable à
                 # comparer : on masque plutôt que de laisser un verdict périmé.
                 self._maj_recouvrement(None, None, 0.0, decoratif=True)
+                self._maj_finesse(self.spn_spacing.value(), None)
             else:
                 spot = core.spot_diameter_at_defocus(defocus, core.SPOT_FOCUS_MM, half_angle)
                 # Retour de la correction par la planche (largeur brûlée
@@ -8805,8 +8820,10 @@ class TaskPanelFilledEngraving:
                     if burn:
                         fill_width = min(spot, burn)
                     self._maj_recouvrement(burn, power, spacing, defocus)
+                    self._maj_finesse(spacing, burn)
                 else:
                     self._maj_recouvrement(None, None, spacing, decoratif=True)
+                    self._maj_finesse(spacing, None)
                 inset = self._fill_inset(fill_width, half_angle)
                 self.lbl_defocus_result.setText(
                     "Défocus calculé : {:.2f} mm (bec remonté d'autant) -- point\n"
@@ -9117,6 +9134,43 @@ class TaskPanelFilledEngraving:
         # pas de currentText() ici, un libellé ne doit pas passer pour un
         # nom de matériau.
         return picker["mat"].currentData() or None
+
+    def _maj_finesse(self, spacing, burn):
+        """Dit quand le dessin est TROP FIN pour être hachuré.
+
+        Christophe a passé une soirée à chercher pourquoi « les hachures
+        sur ma forme ne se font pas ». La réponse était dans son dessin et
+        nulle part à l'écran : des rubans de 0,104 mm de large, un pas de
+        1 mm. Le programme le savait -- `inset_face_robuste` saute déjà les
+        traits trop fins « le contour les noircit » -- mais en silence."""
+        lbl = getattr(self, "lbl_finesse", None)
+        if lbl is None:
+            return
+        faces = _MEMO_REMPLISSAGE.get("faces") or []
+        infos = core.dessin_au_trait(faces, spacing) if faces else None
+        if not infos:
+            lbl.setVisible(False)
+            return
+        milieu, fines, total = infos
+        if fines < 0.5 * total:
+            lbl.setVisible(False)
+            return
+        message = (
+            "Dessin AU TRAIT : {} formes sur {} sont plus fines que le pas "
+            "(largeur médiane {:.2f} mm contre un pas de {:.2f} mm). Le "
+            "hachurage les traverse au lieu de les remplir."
+            .format(fines, total, milieu, spacing))
+        if burn and burn >= milieu:
+            message += (" Rien à faire : le CONTOUR seul les noircit, "
+                        "son trait brûlé de {:.2f} mm couvre des rubans de "
+                        "{:.2f} mm. Coche « Graver le contour » et laisse "
+                        "le remplissage tranquille.".format(burn, milieu))
+        else:
+            message += (" Pour les noircir il faut un pas plus fin que "
+                        "{:.2f} mm, ou compter sur le contour.".format(milieu))
+        lbl.setText(message)
+        lbl.setStyleSheet("color: #b0740a;")
+        lbl.setVisible(True)
 
     def _maj_recouvrement(self, burn, power, spacing, defocus=0.0, decoratif=False):
         """Met à jour le verdict « le remplissage sera-t-il PLEIN ? » --
