@@ -8463,6 +8463,103 @@ def _masquer_sources(objets):
     return caches
 
 
+def _solides_du_document(doc=None):
+    """Les objets qui peuvent servir de surface 3D.
+
+    Une forme avec des faces et une épaisseur -- en écartant les axes
+    d'origine (démesurés, cf. TAILLE_MOTIF_MAXI_MM) et tout ce que
+    l'atelier a lui-même posé dans le document."""
+    doc = doc or FreeCAD.ActiveDocument
+    if doc is None:
+        return []
+    sortie = []
+    for obj in doc.Objects:
+        forme = getattr(obj, "Shape", None)
+        if forme is None or not getattr(forme, "Faces", None):
+            continue
+        try:
+            bb = forme.BoundBox
+        except Exception:
+            continue
+        if bb.ZLength < 0.1:
+            continue
+        if max(bb.XLength, bb.YLength, bb.ZLength) > core.TAILLE_MOTIF_MAXI_MM:
+            continue
+        if getattr(obj, "Name", "").startswith(("AtelierLaser", "Calque_",
+                                                "Motif_Projete")):
+            continue
+        sortie.append(obj)
+    # UN SOLIDE, PAS SES MORCEAUX. Un Body PartDesign et son Pad sont le
+    # MÊME volume : tous deux ont des faces et une épaisseur, donc tous
+    # deux passaient, et le bouton croyait voir « plusieurs surfaces ».
+    # Christophe, 06/08/2026, en majuscules : « J'ESSAYE TA PROCÉDURE
+    # MAIS ÇA NE FONCTIONNE PAS » -- il avait cliqué deux fois, deux
+    # dépôts posés, et aucune projection. Le Pad est dans l'InList du
+    # Body : on écarte donc tout candidat contenu dans un autre.
+    noms = set(o.Name for o in sortie)
+    return [o for o in sortie
+            if not any(getattr(p, "Name", None) in noms
+                       for p in (getattr(o, "InList", None) or []))]
+
+
+def _aretes_et_surface(selection, panneau=None):
+    """(arêtes à graver, surface 3D à sonder) — LA SURFACE SE TROUVE SEULE.
+
+    Christophe, 06/08/2026 : « au lieu de sélectionner le Pad ET
+    Motif_Projete, le même système que pour la projection : une boîte
+    déroulante, ou s'il n'y en a qu'un le prendre par défaut ». Trois
+    temps, dont DEUX EXISTAIENT DÉJÀ sans que rien ne le dise :
+
+    1. un solide EXPLICITEMENT sélectionné gagne toujours — c'est un
+       choix, il ne se devine pas ;
+    2. sinon celui que `run_projection` a mémorisé sur le motif
+       (`LaserAtelierSurfaceRef`). Vérifié sur son document : sélectionner
+       le SEUL « Motif_Projete » retrouvait déjà la bonne surface. Il
+       sélectionnait les deux depuis le début, faute qu'on le lui dise ;
+    3. sinon on cherche dans le document — un seul solide, on le prend ;
+       plusieurs, on demande, le plus recouvrant en tête.
+
+    Partagé par Marquage et Découpe courbe : les deux gravent sur du
+    relief et avaient le même code."""
+    edge_sel, reference_shape = core.split_selection(selection)
+    aretes = core.get_all_edges_from_selection(edge_sel)
+    origine = None
+    if reference_shape is not None:
+        origine = ("sélectionnée" if len(selection or []) > 1
+                   else "mémorisée sur le motif projeté")
+    else:
+        solides = _solides_du_document()
+        forme = None
+        for sel in (selection or []):
+            f = getattr(getattr(sel, "Object", None), "Shape", None)
+            if f is not None:
+                forme = f
+                break
+        if len(solides) == 1:
+            reference_shape = solides[0].Shape
+            origine = "seul solide du document : « {} »".format(solides[0].Label)
+        elif len(solides) > 1:
+            if forme is not None:
+                solides = sorted(
+                    solides, key=lambda s: -_recouvrement_xy(forme, s.Shape))
+            libelles = [
+                ("{} ({:.0f} % sous le motif)".format(
+                    s.Label, 100.0 * _recouvrement_xy(forme, s.Shape))
+                 if forme is not None else s.Label) for s in solides]
+            choix, ok = QtWidgets.QInputDialog.getItem(
+                None, "Surface 3D",
+                "Sur quelle surface ce motif est-il posé ?\n"
+                "(annuler : le relief sera lu sur le motif lui-même)",
+                libelles, 0, False)
+            if ok:
+                reference_shape = solides[libelles.index(choix)].Shape
+                origine = "choisie : « {} »".format(
+                    solides[libelles.index(choix)].Label)
+    if panneau is not None:
+        panneau._origine_reference = origine
+    return aretes, reference_shape
+
+
 def _recouvrement_xy(motif, surface):
     """Part du motif (en XY) qui tombe sur cette surface, de 0 à 1.
 
@@ -9693,42 +9790,8 @@ class TaskPanelFilledEngraving:
         _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_gravure_remplie.ngc")
 
     def _candidats_3d(self):
-        """Les objets qui peuvent servir de surface de projection.
+        return _solides_du_document()
 
-        Une forme avec des faces et une épaisseur -- en écartant les axes
-        d'origine (démesurés, cf. TAILLE_MOTIF_MAXI_MM) et tout ce que
-        l'atelier a lui-même posé dans le document."""
-        doc = FreeCAD.ActiveDocument
-        if doc is None:
-            return []
-        sortie = []
-        for obj in doc.Objects:
-            forme = getattr(obj, "Shape", None)
-            if forme is None or not getattr(forme, "Faces", None):
-                continue
-            try:
-                bb = forme.BoundBox
-            except Exception:
-                continue
-            if bb.ZLength < 0.1:
-                continue
-            if max(bb.XLength, bb.YLength, bb.ZLength) > core.TAILLE_MOTIF_MAXI_MM:
-                continue
-            if getattr(obj, "Name", "").startswith(("AtelierLaser", "Calque_",
-                                                    "Motif_Projete")):
-                continue
-            sortie.append(obj)
-        # UN SOLIDE, PAS SES MORCEAUX. Un Body PartDesign et son Pad sont le
-        # MÊME volume : tous deux ont des faces et une épaisseur, donc tous
-        # deux passaient, et le bouton croyait voir « plusieurs surfaces ».
-        # Christophe, 06/08/2026, en majuscules : « J'ESSAYE TA PROCÉDURE
-        # MAIS ÇA NE FONCTIONNE PAS » -- il avait cliqué deux fois, deux
-        # dépôts posés, et aucune projection. Le Pad est dans l'InList du
-        # Body : on écarte donc tout candidat contenu dans un autre.
-        noms = set(o.Name for o in sortie)
-        return [o for o in sortie
-                if not any(getattr(p, "Name", None) in noms
-                           for p in (getattr(o, "InList", None) or []))]
 
     def _on_deposer_hachures(self):
         """Dépose le remplissage COMPLET, puis propose de le projeter.
@@ -9845,9 +9908,10 @@ class TaskPanelFilledEngraving:
                 "d'un clic dans l'arbre si besoin.\n\n".format(
                     ", ".join(caches)) if caches else "") +
              "DERNIÈRE ÉTAPE : "
-            "sélectionne « {} » ET « {} », puis ouvre « Marquage de motif » "
-            "— c'est ce mode qui grave un motif posé sur du relief, et "
-             "c'est là que se trouve « Ajouter au job combiné ».")
+             "sélectionne « {} » — LUI SEUL SUFFIT, il a retenu « {} » "
+             "comme surface — puis ouvre « Marquage de motif ». C'est ce "
+             "mode qui grave un motif posé sur du relief, et c'est là que "
+             "se trouve « Ajouter au job combiné ».")
             .format(projete.Label, cible.Label, projete.Label, cible.Label))
 
     def _on_toolpath_preview(self):
@@ -17155,9 +17219,7 @@ class TaskPanelCurved:
         self._update_duration_preview()
 
     def _get_edges(self):
-        edge_sel, reference_shape = core.split_selection(self.selection)
-        edges = core.get_all_edges_from_selection(edge_sel)
-        return edges, reference_shape
+        return _aretes_et_surface(self.selection, self)
 
     def _on_style_sampler(self):
         sk = self._style_kwargs()["style_params"]
@@ -18613,9 +18675,7 @@ class TaskPanelCurvedCut:
         self._update_duration_preview()
 
     def _get_edges(self):
-        edge_sel, reference_shape = core.split_selection(self.selection)
-        edges = core.get_all_edges_from_selection(edge_sel)
-        return edges, reference_shape
+        return _aretes_et_surface(self.selection, self)
 
     def _build_gcode_kwargs(self):
         finish_feed = self.spn_finish_feed.value() if self.chk_finish.isChecked() else None
