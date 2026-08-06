@@ -4,6 +4,12 @@
 <p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v2.99.18</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
 <p align="center"><a href="https://ko-fi.com/atelierduverdier"><b>☕ L'atelier vous est utile ? Soutenez-le sur Ko-fi</b></a></p>
 
+> **≈ 210 heures pour en arriver là**, du 15/07/2026 au 06/08/2026 : ≈ 181 h de développement (549 commits, 259 versions) et ≈ 29 h d'atelier, dont **11.5 h de laser** chronométrées sur les 70 fichiers gravés — 497 m de trait brûlé et 283 mesures relevées sur le bois.
+>
+> Le code est écrit par Claude (Anthropic). Christophe Le Verdier décide, éprouve chaque version sur le bois et tranche : la plupart des défauts corrigés ici ont été trouvés en regardant une planche, pas en relisant du code.
+>
+> <sub>Chiffres recalculés par `python3 outils/chiffrer_effort.py` — jamais recopiés à la main.</sub>
+
 Workbench [FreeCAD](https://www.freecad.org/) pour la génération de G-code de marquage/découpe laser : gravure noir plein de textes/formes, suivi de surfaces 3D courbes, découpe multi-passes, grilles de test et de calibration, et jobs combinant plusieurs opérations en une seule passe.
 
 > 📖 **Documentation complète** : une page web autonome présente tout l'atelier (présentation, installation, flux de travail, les 20 modes en images, calibration, préférences, G-code, FAQ) dans [`docs/index.html`](docs/index.html). Elle est prête pour **GitHub Pages** : dans les réglages du dépôt, activer *Pages* → source *Deploy from a branch* → branche `main`, dossier `/docs` ; la doc est alors publiée à l'adresse `https://atelierduverdier.github.io/LaserAtelier/`. Le fichier fonctionne aussi tel quel si on l'ouvre en local ou qu'on copie le dossier `docs/` sur un autre site.

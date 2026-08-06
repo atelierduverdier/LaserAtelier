@@ -88,6 +88,14 @@ the first line of every written G-code. Bump it **together, in ONE commit**, wit
 
 Tag releases `v<version>` on `main`. **A purely documentary change does NOT bump the version.**
 
+**Effort figures are RECOMPUTED, never retyped.** The hero of `docs/index.html`, the top of
+`README.md` and the manual's cover carry "≈ N heures pour en arriver là" — Christophe asked for it
+up front (06/08/2026: *"les gens ne s'imaginent pas le temps qu'il faut"*), and a number copied by
+hand into three files is the same trap as the VERSION line that went 44 releases out of date. Run
+`python3 outils/chiffrer_effort.py` at each **minor** release and paste its `--html` / `--md`
+output; the tool reads git, the produced `.ngc` files (timed with the workbench's own estimator)
+and the config's bench measurements, and prints its estimating assumptions alongside.
+
 ## Verifying changes
 
 ```bash
