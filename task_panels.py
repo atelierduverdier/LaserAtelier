@@ -8411,6 +8411,32 @@ _MEMO_REMPLISSAGE = {"cle_faces": None, "faces": None,
                      "cle_edges": None, "edges": None}
 
 
+def _sources_a_masquer(depot, selection, doc):
+    """Tout ce qui doit s'effacer une fois la projection posée.
+
+    Le dépôt, les formes sélectionnées... ET LES CALQUES D'APERÇU. Ceux-ci
+    manquaient : Christophe, 06/08/2026, capture à l'appui, « j'ai toujours
+    un calque de visible dans Aperçus de remplissage ». Ils sont plats,
+    posés 0,05 mm sous le motif, et se voient donc en travers du relief --
+    exactement ce qu'on cherchait à retirer de la vue."""
+    objets = [depot]
+    for sel in (selection or []):
+        obj = getattr(sel, "Object", None)
+        if obj is not None:
+            objets.append(obj)
+    for obj in (getattr(doc, "Objects", None) or []):
+        if getattr(obj, "Name", "").startswith("Calque_"):
+            objets.append(obj)
+    vus, sortie = set(), []
+    for obj in objets:
+        nom = getattr(obj, "Name", None)
+        if obj is None or nom in vus:
+            continue
+        vus.add(nom)
+        sortie.append(obj)
+    return sortie
+
+
 def _masquer_sources(objets):
     """Masque les formes à plat qui ont servi à fabriquer une projection.
     Renvoie les libellés effectivement masqués.
@@ -9802,10 +9828,17 @@ class TaskPanelFilledEngraving:
         # qu'il faut sélectionner ». Rien n'est supprimé -- la visibilité
         # se rend d'un clic dans l'arbre.
         caches = _masquer_sources(
-            [obj] + [getattr(s, "Object", None) for s in (self.selection or [])])
+            _sources_a_masquer(obj, self.selection, doc))
         doc.recompute()
+        # LE PANNEAU A FINI SON TRAVAIL : on le ferme. Christophe : « après
+        # le message de ce qu'il faut faire, il serait bien de fermer la
+        # boîte, car là on doit cliquer sur OK ». Fermer AVANT d'afficher,
+        # et donner `None` pour parent -- sinon le message s'accroche à un
+        # widget en train d'être détruit. Même geste que « Ajouter au job
+        # combiné ».
+        Gui.Control.closeDialog()
         QtWidgets.QMessageBox.information(
-            self.form, "Projeter ce remplissage",
+            None, "Projeter ce remplissage",
             ("Fait : « {} » est posé sur « {} ».\n\n" + (
                 "Les formes à plat qui ont servi sont masquées ({}) — "
                 "il ne reste que le motif sur le relief. Rends-les visibles "

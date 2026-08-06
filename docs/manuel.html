@@ -209,7 +209,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.24</span><br>
+      <span class="ver">Version 2.99.25</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -260,7 +260,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.24</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.25</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1145,7 +1145,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.24 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.25 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1161,7 +1161,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 52 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 53 entrées</span></h3>
+  <p><b>Le calque d'aperçu restait, et le panneau aussi (v2.99.25).</b> Christophe, capture à l'appui&nbsp;: «&nbsp;j'ai toujours un calque de visible dans Aperçus de remplissage&nbsp;», et «&nbsp;après le message de ce qu'il faut faire, il serait bien de fermer la boîte, car là on doit cliquer sur OK&nbsp;». Le masquage d'après-projection ne couvrait que le dépôt et les formes sélectionnées&nbsp;; le <b>calque d'aperçu</b> — plat, posé 0,05&nbsp;mm sous le motif — se voyait donc en travers du relief, exactement ce qu'on cherchait à retirer. Il part avec les autres. Et le panneau <b>se ferme</b> une fois son travail fait&nbsp;: fermeture <em>avant</em> l'affichage, message sans parent — même geste que «&nbsp;Ajouter au job combiné&nbsp;», qui l'avait déjà réglé de cette façon. La liste de ce qu'on masque est extraite en fonction pour être éprouvée sans interface, et les deux sabotages rougissent.</p>
+
   <p><b>Après la projection, la vue se dégage — et plusieurs solides ne font plus hésiter (v2.99.24).</b> Deux demandes de Christophe une fois la procédure enfin fluide. <b>Un</b>&nbsp;: «&nbsp;passer les compounds 2D en hide afin de garder juste le motif sur la surface 3D, comme cela ça facilite la visualisation de ce qu'il faut sélectionner&nbsp;» — les formes à plat qui ont servi sont masquées après coup, <b>jamais supprimées</b>, et le message dit lesquelles. <b>Deux</b>&nbsp;: «&nbsp;si j'ai plusieurs objets 3D dans le document, comment ça se comporte&nbsp;?&nbsp;» — la projection étant un raycast <em>vertical</em>, une surface qui ne recouvre pas le motif vu de dessus ne peut rien recevoir. Les candidats sont donc classés par recouvrement en XY et proposés avec leur pourcentage, le plus probable en tête. <b>Deux pièges de test au passage</b>, tous deux du même genre — un contrôle incapable d'échouer. Sans interface, un <code>Part::Feature</code> n'a pas de <code>ViewObject</code>&nbsp;: vérifier le masquage sur les vrais objets ne prouvait rien, la fonction est donc éprouvée sur des doublures qui en ont un. Et le balayage anti-pièges a signalé la <em>docstring</em> qui explique justement le piège du <code>hasattr</code>&nbsp;: un contrôle qui interdit d'écrire la leçon pousse à ne plus l'écrire, il distingue maintenant une citation entre accents graves d'un véritable appel — vérifié dans les deux sens.</p>
 
   <p><b>Un Body PartDesign comptait pour deux surfaces (v2.99.23).</b> Christophe, en majuscules&nbsp;: «&nbsp;J'ESSAYE TA PROCÉDURE MAIS ÇA NE FONCTIONNE PAS&nbsp;». Lu dans sa session&nbsp;: deux «&nbsp;Remplissage à projeter&nbsp;» de 17&nbsp;288 arêtes — il avait donc cliqué <b>deux fois</b> — et <b>aucun Motif_Projete</b>. La cause&nbsp;: son «&nbsp;Corps&nbsp;» (Body PartDesign) et son «&nbsp;Pad&nbsp;» sont le <b>même volume</b>, mais tous deux ont des faces et une épaisseur. Le bouton en comptait deux, concluait «&nbsp;plusieurs surfaces possibles&nbsp;» et renonçait à projeter — en le renvoyant à la manœuvre manuelle, c'est-à-dire exactement la complication qu'il venait de signaler. Un candidat contenu dans un autre (le Pad est dans l'InList du Body) est désormais écarté&nbsp;; vérifié sur son document&nbsp;: «&nbsp;Corps, Pad&nbsp;» devient «&nbsp;Corps&nbsp;». Et s'il reste vraiment plusieurs surfaces, le bouton <b>demande laquelle</b> au lieu de renvoyer l'utilisateur à la main — répondre «&nbsp;débrouille-toi&nbsp;» était le défaut de fond.</p>

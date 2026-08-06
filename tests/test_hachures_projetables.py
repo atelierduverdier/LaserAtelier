@@ -94,6 +94,19 @@ assert "surface 3D" in panneau.btn_deposer_hachures.text(), (
     "le bouton ne dit pas à quoi il sert : %r"
     % panneau.btn_deposer_hachures.text())
 
+# Un calque d'aperçu, comme en fabrique le système de jobs : c'est LUI qui
+# restait visible en travers du relief sur la capture de Christophe.
+calque = doc.addObject("Part::Feature", "Calque_essai")
+calque.Shape = Part.Compound(list(motif.Shape.Edges))
+doc.recompute()
+
+# On espionne la fermeture du panneau : elle fait partie du geste.
+_fermetures = []
+import FreeCADGui as _Gui
+if not hasattr(_Gui, "Control"):
+    _Gui.Control = type("C", (), {})()
+_Gui.Control.closeDialog = lambda *a, **k: _fermetures.append(1)
+
 avant = set(o.Name for o in doc.Objects)
 del dialogues[:]
 # ON PILOTE LE BOUTON, pas la fonction d'à côté : c'est le chemin que
@@ -214,6 +227,27 @@ print("   un objet sans interface et un None ne font pas tomber : ✓")
 assert doc.getObject(depose.Name) is not None, "le dépôt a été SUPPRIMÉ"
 assert doc.getObject(motif.Name) is not None, "le motif source a été SUPPRIMÉ"
 print("   les objets du document existent toujours : ✓")
+
+print()
+print("=" * 62)
+print("§1quater-bis  Le calque d'aperçu part aussi, et le panneau se ferme")
+print("=" * 62)
+
+# Le dépôt et la forme source ne suffisaient pas : le CALQUE D'APERÇU est
+# plat, posé 0,05 mm sous le motif, et se voyait en travers du relief.
+a_masquer = tp._sources_a_masquer(depose, [_SelEx(motif)], doc)
+noms = [o.Name for o in a_masquer]
+print("   objets à masquer : %s" % noms)
+assert calque.Name in noms, (
+    "le calque d'aperçu n'est pas masqué : il reste visible en travers "
+    "du relief")
+assert depose.Name in noms and motif.Name in noms, "le dépôt ou la source manque"
+assert len(noms) == len(set(noms)), "doublons dans la liste : %s" % noms
+
+print("   fermetures du panneau demandées : %d" % len(_fermetures))
+assert _fermetures, (
+    "le panneau reste ouvert après avoir tout fait : il faut cliquer OK "
+    "puis fermer à la main")
 
 print()
 print("=" * 62)
