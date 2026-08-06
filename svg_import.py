@@ -732,3 +732,274 @@ def import_svg_file(filepath):
             count += 1
     doc.recompute()
     return count, warnings
+
+
+# ==========================================================================
+# LIGHTBURN (.lbrn / .lbrn2) -- traduit, pas réimplémenté
+# ==========================================================================
+#
+# Christophe, 06/08/2026 : « on m'a envoyé un fichier LightBurn au lieu
+# d'un SVG », puis « sur la même icône on peut choisir un fichier soit SVG
+# soit LightBurn, le programme faisant la distinction suivant l'extension ».
+#
+# La conversion vit ICI et non dans `outils/` : c'est de la logique
+# d'import, l'atelier doit pouvoir l'appeler, et une copie dans un script
+# à part aurait divergé au premier correctif. `outils/lbrn2_vers_svg.py`
+# n'est plus qu'une ligne de commande par-dessus.
+#
+# LE FORMAT, décodé sur son fichier de 267 formes -- du XML :
+#   <Shape Type="Path"> porte <XForm> (matrice affine, comme `matrix()`),
+#   <VertList> (`V<x> <y>` puis c0x/c0y sortant et c1x/c1y entrant) et
+#   <PrimList> (`L<i> <j>` segment, `B<i> <j>` cubique).
+#
+# TROIS PIÈGES, tous payés :
+#   - un point de contrôle ABSENT s'écrit `c0x1` SANS `c0y` : le 1 est un
+#     marqueur, pas une coordonnée. On ne retient un point que si ses DEUX
+#     composantes sont là ;
+#   - <PrimList> est FACULTATIF -- 110 chemins sur 267 n'en ont pas, le
+#     contour est alors implicite (sommets dans l'ordre, boucle fermée).
+#     Les ignorer perdait 41 % du dessin ;
+#   - `Rx`/`Ry` des ellipses sont en CAPITALE.
+#
+# LightBurn travaille en Y VERS LE HAUT, le SVG en Y vers le bas : miroir.
+#
+# VÉRIFIÉ CONTRE LA VIGNETTE que le fichier embarque : rendu côte à côte,
+# la conversion et la vignette de LightBurn montrent le même cadran.
+
+# `V x y` puis les points de contrôle éventuels, dans l'ordre où LightBurn
+# les écrit. Tout est collé, sans séparateur : d'où les lookahead.
+_NOMBRE = r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?"
+_SOMMET = re.compile(
+    r"V(?P<x>{n})\s+(?P<y>{n})"
+    r"(?:c0x(?P<c0x>{n}))?(?:c0y(?P<c0y>{n}))?"
+    r"(?:c1x(?P<c1x>{n}))?(?:c1y(?P<c1y>{n}))?".format(n=_NOMBRE))
+_PRIMITIVE = re.compile(r"(?P<t>[LB])(?P<a>\d+)\s+(?P<b>\d+)")
+
+IDENTITE = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+def _composer(m, n):
+    """m ∘ n : on applique n, puis m (convention SVG `matrix`)."""
+    a1, b1, c1, d1, e1, f1 = m
+    a2, b2, c2, d2, e2, f2 = n
+    return (a1 * a2 + c1 * b2, b1 * a2 + d1 * b2,
+            a1 * c2 + c1 * d2, b1 * c2 + d1 * d2,
+            a1 * e2 + c1 * f2 + e1, b1 * e2 + d1 * f2 + f1)
+
+
+def _appliquer(m, x, y):
+    a, b, c, d, e, f = m
+    return a * x + c * y + e, b * x + d * y + f
+
+
+def _xform(forme):
+    txt = (forme.findtext("XForm") or "").strip()
+    if not txt:
+        return IDENTITE
+    bouts = [float(v) for v in txt.split()]
+    return tuple(bouts[:6]) if len(bouts) >= 6 else IDENTITE
+
+
+def _sommets(texte):
+    """[(x, y, sortant|None, entrant|None), ...] d'un <VertList>."""
+    out = []
+    for m in _SOMMET.finditer(texte or ""):
+        g = m.groupdict()
+        # Les DEUX composantes, ou rien : cf. le piège `c0x1` ci-dessus.
+        sortant = ((float(g["c0x"]), float(g["c0y"]))
+                   if g["c0x"] is not None and g["c0y"] is not None else None)
+        entrant = ((float(g["c1x"]), float(g["c1y"]))
+                   if g["c1x"] is not None and g["c1y"] is not None else None)
+        out.append((float(g["x"]), float(g["y"]), sortant, entrant))
+    return out
+
+
+def _chemin(forme, matrice):
+    """Le `d` d'un <Shape Type="Path">, déjà transformé."""
+    sommets = _sommets(forme.findtext("VertList"))
+    if not sommets:
+        return None
+    brut = forme.findtext("PrimList")
+    prims = [(m.group("t"), int(m.group("a")), int(m.group("b")))
+             for m in _PRIMITIVE.finditer(brut or "")]
+    if not prims:
+        # PAS DE PrimList : LE CONTOUR EST IMPLICITE. Sur le fichier de
+        # Christophe, 110 chemins sur 267 sont dans ce cas -- les ignorer
+        # en perdait 41 %, et le dessin sortait troué. Les sommets se
+        # suivent alors dans l'ordre et la boucle se referme ; chaque
+        # segment est une cubique si un point de contrôle existe de part
+        # ou d'autre, un simple trait sinon.
+        n = len(sommets)
+        if n < 2:
+            return None
+        for i in range(n):
+            j = (i + 1) % n
+            courbe = sommets[i][2] is not None or sommets[j][3] is not None
+            prims.append(("B" if courbe else "L", i, j))
+
+    def pt(i):
+        return _appliquer(matrice, sommets[i][0], sommets[i][1])
+
+    morceaux = []
+    precedent = None
+    for genre, i, j in prims:
+        if i >= len(sommets) or j >= len(sommets):
+            continue
+        if precedent != i:
+            x, y = pt(i)
+            morceaux.append("M{:.4f} {:.4f}".format(x, y))
+        x, y = pt(j)
+        if genre == "L":
+            morceaux.append("L{:.4f} {:.4f}".format(x, y))
+        else:
+            sortant = sommets[i][2] or (sommets[i][0], sommets[i][1])
+            entrant = sommets[j][3] or (sommets[j][0], sommets[j][1])
+            c1 = _appliquer(matrice, sortant[0], sortant[1])
+            c2 = _appliquer(matrice, entrant[0], entrant[1])
+            morceaux.append("C{:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f}"
+                            .format(c1[0], c1[1], c2[0], c2[1], x, y))
+        precedent = j
+    if not morceaux:
+        return None
+    # Boucle fermée : la dernière primitive revient au premier sommet.
+    if prims[-1][2] == prims[0][1]:
+        morceaux.append("Z")
+    return "".join(morceaux)
+
+
+def _ellipse(forme, matrice):
+    """Une ellipse, rendue en deux arcs -- `transform` suffirait, mais un
+    `d` autonome traverse mieux les lecteurs SVG minimalistes."""
+    try:
+        # LightBurn écrit `Rx`/`Ry` en CAPITALE : chercher "rx" ne trouvait
+        # rien et les deux ellipses du fichier passaient à la trappe.
+        rx = float(forme.get("Rx") or forme.get("rx") or 0)
+        ry = float(forme.get("Ry") or forme.get("ry") or 0)
+    except (TypeError, ValueError):
+        return None
+    if rx <= 0 or ry <= 0:
+        return None
+    pts = [_appliquer(matrice, rx, 0.0), _appliquer(matrice, -rx, 0.0)]
+    # Rayons transformés : on mesure ce que devient un rayon unitaire.
+    ox, oy = _appliquer(matrice, 0.0, 0.0)
+    ax, ay = _appliquer(matrice, rx, 0.0)
+    bx, by = _appliquer(matrice, 0.0, ry)
+    rx2 = ((ax - ox) ** 2 + (ay - oy) ** 2) ** 0.5
+    ry2 = ((bx - ox) ** 2 + (by - oy) ** 2) ** 0.5
+    (x1, y1), (x2, y2) = pts
+    return ("M{:.4f} {:.4f}A{:.4f} {:.4f} 0 1 0 {:.4f} {:.4f}"
+            "A{:.4f} {:.4f} 0 1 0 {:.4f} {:.4f}Z"
+            .format(x1, y1, rx2, ry2, x2, y2, rx2, ry2, x1, y1))
+
+
+def _parcourir(noeud, matrice, sortie):
+    for forme in noeud.findall("Shape"):
+        m = _composer(matrice, _xform(forme))
+        genre = forme.get("Type")
+        if genre == "Group":
+            enfants = forme.find("Children")
+            _parcourir(enfants if enfants is not None else forme, m, sortie)
+        elif genre in ("Path", "Ellipse"):
+            d = (_chemin(forme, m) if genre == "Path"
+                 else _ellipse(forme, m))
+            if d:
+                sortie.append((forme.get("CutIndex") or "0", d))
+
+
+def convertir_lightburn(chemin_lbrn):
+    """Renvoie (liste des `d`, (xmin, ymin, xmax, ymax))."""
+    racine = ET.parse(chemin_lbrn).getroot()
+    chemins = []
+    _parcourir(racine, IDENTITE, chemins)
+    xs, ys = [], []
+    for _calque, d in chemins:
+        for m in re.finditer(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", d):
+            xs.append(float(m.group(1)))
+            ys.append(float(m.group(2)))
+    if not xs:
+        return chemins, (0.0, 0.0, 1.0, 1.0)
+    return chemins, (min(xs), min(ys), max(xs), max(ys))
+
+
+def couleur_calque(index):
+    """Une couleur DISTINCTE par calque LightBurn, pas la sienne.
+
+    LightBurn colore ses calques selon une palette qui lui est propre ;
+    la recopier de mémoire serait inventer une table -- le travers que ce
+    dépôt traque depuis qu'une colonne de largeurs fabriquée a faussé deux
+    recettes. On répartit donc les teintes régulièrement : les calques
+    restent SÉPARABLES, ce qui est le but, sans prétendre reproduire des
+    couleurs qu'on n'a pas lues.
+
+    `svg_import.resolve_fill_color` retombe sur le `stroke` faute de
+    `fill` : chaque objet importé portera donc la couleur de son calque."""
+    try:
+        i = int(index)
+    except (TypeError, ValueError):
+        i = 0
+    import colorsys
+    # NOMBRE D'OR pour espacer les teintes : un pas de 0,137 rapprochait
+    # les calques 2, 9 et 10 dans le même vert -- séparables sur le papier,
+    # indiscernables à l'œil, donc inutiles. 0,618 les écarte au maximum.
+    r, v, b = colorsys.hsv_to_rgb((i * 0.61803) % 1.0, 0.85, 0.65)
+    return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(v * 255), int(b * 255))
+
+
+def ecrire_svg_lightburn(chemins, bornes, destination, marge=1.0):
+    xmin, ymin, xmax, ymax = bornes
+    larg = (xmax - xmin) + 2 * marge
+    haut = (ymax - ymin) + 2 * marge
+    # Y VERS LE HAUT chez LightBurn, vers le bas en SVG : un miroir, calé
+    # sur l'emprise réelle pour que le dessin retombe dans la vue.
+    tr = ("translate({:.4f} {:.4f}) scale(1 -1)"
+          .format(marge - xmin, haut - marge + ymin))
+    with open(destination, "w", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write('<svg xmlns="http://www.w3.org/2000/svg" '
+                 'width="{0:.4f}mm" height="{1:.4f}mm" '
+                 'viewBox="0 0 {0:.4f} {1:.4f}">\n'.format(larg, haut))
+        # Trait proportionnel au dessin : 0,1 mm sur 367 mm ne se voit pas.
+        # L'import de l'atelier ignore l'épaisseur, mais le fichier doit
+        # rester lisible dans un navigateur ou un éditeur.
+        epaisseur = max(0.1, max(larg, haut) / 1200.0)
+        fh.write('<g transform="{}" fill="none" '
+                 'stroke-width="{:.3f}">\n'.format(tr, epaisseur))
+        # UN GROUPE PAR CALQUE : c'est l'organisation que le dessinateur a
+        # voulue dans LightBurn, et la perdre en traduisant obligerait à la
+        # refaire à la main.
+        par_calque = {}
+        for calque, d in chemins:
+            par_calque.setdefault(calque, []).append(d)
+        for calque in sorted(par_calque, key=lambda c: (len(c), c)):
+            teinte = couleur_calque(calque)
+            fh.write('<g id="calque_{0}" stroke="{1}">\n'.format(calque, teinte))
+            for d in par_calque[calque]:
+                # LE `stroke` VA SUR CHAQUE TRACÉ, pas seulement sur le
+                # groupe : `resolve_fill_color` lit le stroke PROPRE de
+                # l'élément et n'hérite pas de son parent. Posé uniquement
+                # sur le <g>, les trois calques d'une pièce d'essai
+                # revenaient de la même couleur -- séparés dans le fichier,
+                # confondus dans le document.
+                fh.write('<path stroke="{}" d="{}"/>\n'.format(teinte, d))
+            fh.write('</g>\n')
+        fh.write('</g>\n</svg>\n')
+    return larg, haut
+
+
+def est_lightburn(chemin):
+    """Un projet LightBurn se reconnaît à son extension."""
+    return os.path.splitext(chemin or "")[1].lower() in (".lbrn", ".lbrn2")
+
+
+def lightburn_vers_svg(chemin_lbrn, destination=None):
+    """Traduit un projet LightBurn en SVG et renvoie le chemin écrit.
+
+    Sans `destination`, le SVG est posé à côté du fichier d'origine : il
+    reste consultable, et un import raté peut être rejoué sans reconvertir."""
+    chemins, bornes = convertir_lightburn(chemin_lbrn)
+    if not chemins:
+        raise ValueError("aucune forme trouvée dans {}".format(
+            os.path.basename(chemin_lbrn)))
+    dest = destination or (os.path.splitext(chemin_lbrn)[0] + ".svg")
+    ecrire_svg_lightburn(chemins, bornes, dest)
+    return dest

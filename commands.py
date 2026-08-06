@@ -263,11 +263,12 @@ class ImportSVGCommand:
     def GetResources(self):
         return {
             "Pixmap": _icon_path("import_svg.svg"),
-            "MenuText": "Importer un dessin SVG",
-            "ToolTip": "Importe un fichier .svg directement en objets géométriques "
-                       "(un par tracé d'origine, couleur de remplissage capturée) -- "
-                       "beaucoup plus rapide et moins fragmenté qu'un détour par un "
-                       "export DXF (aucune sélection requise)",
+            "MenuText": "Importer un dessin (SVG, LightBurn)",
+            "ToolTip": "Importe un fichier .svg -- ou un projet LightBurn "
+                       "(.lbrn/.lbrn2), traduit en SVG au passage -- directement en "
+                       "objets géométriques (un par tracé d'origine, couleur "
+                       "capturée) : beaucoup plus rapide et moins fragmenté qu'un "
+                       "détour par un export DXF (aucune sélection requise)",
         }
 
     def IsActive(self):

@@ -10612,7 +10612,10 @@ class TaskPanelImportSVG:
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
-            "<b>1.</b> Choisis le fichier <b>.svg</b> ci-dessous.",
+            "<b>1.</b> Choisis le fichier ci-dessous&nbsp;: <b>.svg</b>, ou "
+            "un projet <b>LightBurn</b> (<code>.lbrn</code>, "
+            "<code>.lbrn2</code>) — il est traduit en SVG à côté du fichier "
+            "d'origine, puis importé.",
             "<b>2.</b> Clique <b>OK</b>&nbsp;: chaque tracé "
             "<code>&lt;path&gt;</code> d'origine devient UN objet, "
             "sélectionnable individuellement (utile pour appliquer ensuite "
@@ -10631,17 +10634,18 @@ class TaskPanelImportSVG:
         row_layout.setContentsMargins(0, 0, 0, 0)
         row_layout.addWidget(self.edt_path, 1)
         row_layout.addWidget(btn_browse, 0)
-        form.addRow("Fichier SVG :", row)
+        form.addRow("Fichier :", row)
 
         self.form = _scrollable(inner)
-        self.form.setWindowTitle("Importer un dessin SVG")
+        self.form.setWindowTitle("Importer un dessin (SVG ou LightBurn)")
         self.form.setWindowIcon(_icon("import_svg.svg"))
 
     def _on_browse(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self.form, "Choisir un fichier SVG",
+            self.form, "Choisir un dessin",
             self.edt_path.text() or os.path.expanduser("~"),
-            "Fichiers SVG (*.svg);;Tous les fichiers (*)")
+            "Dessins (*.svg *.lbrn *.lbrn2);;Fichiers SVG (*.svg);;"
+            "Projets LightBurn (*.lbrn *.lbrn2);;Tous les fichiers (*)")
         if path:
             self.edt_path.setText(path)
 
@@ -10649,9 +10653,26 @@ class TaskPanelImportSVG:
         path = self.edt_path.text().strip()
         if not path:
             QtWidgets.QMessageBox.warning(
-                self.form, "Import SVG", "Choisis d'abord un fichier .svg.")
+                self.form, "Import",
+                "Choisis d'abord un fichier .svg ou .lbrn2.")
             return False
         import svg_import
+        # UN PROJET LIGHTBURN SE TRADUIT AVANT D'ÊTRE IMPORTÉ. Christophe :
+        # « sur la même icône on peut choisir un fichier soit SVG soit
+        # LightBurn, le programme faisant la distinction suivant
+        # l'extension ». Le SVG produit est posé à côté du fichier
+        # d'origine : il reste consultable, et un import rejoué ne
+        # reconvertit pas.
+        if svg_import.est_lightburn(path):
+            try:
+                path = svg_import.lightburn_vers_svg(path)
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(
+                    self.form, "Import LightBurn",
+                    "Conversion impossible : {}".format(exc))
+                return False
+            FreeCAD.Console.PrintMessage(
+                "LightBurn traduit en SVG : {}\n".format(path))
         count, warnings = svg_import.import_svg_file(path)
         for w in warnings:
             FreeCAD.Console.PrintWarning("Import SVG : {}\n".format(w))
