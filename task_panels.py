@@ -2928,8 +2928,21 @@ def _discretize_edge(edge, dist=0.3):
     return [(p.x, p.y) for p in pts] if pts else []
 
 
+# Côté maximal de l'aperçu photo, en pixels.
+#
+# Il valait 2200, et c'est lui qui bornait la finesse : sur une pièce de
+# 120 x 160 mm il ramenait l'échelle de 24 à 13,2 px/mm, où un trait brûlé
+# de 0,30 mm ne pèse que 4 pixels. À 4000, la même pièce atteint son
+# échelle NATURELLE (24 px/mm, 3024 x 3984 px) et le plafond ne mord plus
+# du tout -- mesuré : au-delà de 4000 l'image ne change plus, c'est
+# `scale` qui décide. Coût de ce passage : 0,59 s -> 1,58 s de rendu et
+# 14 -> 46 Mo. Le plafond reste, et il est là pour la MÉMOIRE : une pièce
+# de 400 mm à 24 px/mm réclamerait 9600 px de côté, soit 350 Mo.
+APERCU_COTE_MAXI_PX = 4000
+
+
 def _render_engraving_photo(strokes, scale=24.0, margin_mm=3.0,
-                            wood=_BOIS_APERCU, max_px=2200,
+                            wood=_BOIS_APERCU, max_px=APERCU_COTE_MAXI_PX,
                             collision_points=None):
     """`strokes` : liste de (points[(x,y)...], largeur_mm, teinte0..1).
     `collision_points` : points (x,y) natifs (mêmes coordonnées que
@@ -3008,25 +3021,145 @@ def _render_engraving_photo(strokes, scale=24.0, margin_mm=3.0,
     return img
 
 
+class _VueImage(QtWidgets.QScrollArea):
+    """Image zoomable : molette pour agrandir, glisser pour déplacer.
+
+    La molette zoome AUTOUR DU POINT SURVOLÉ, pas autour du centre : sur
+    un aperçu de gravure on zoome pour regarder un détail précis, et un
+    zoom centré le fait fuir hors de l'écran à chaque cran."""
+
+    def __init__(self, img):
+        super().__init__()
+        self._img = img
+        self._zoom = 1.0
+        self._etiquette = QtWidgets.QLabel()
+        self._etiquette.setAlignment(QtCore.Qt.AlignCenter)
+        self.setWidget(self._etiquette)
+        self.setWidgetResizable(False)
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.setBackgroundRole(QtGui.QPalette.Dark)
+        self._depart = None
+
+    def zoom(self):
+        return self._zoom
+
+    def poser_zoom(self, facteur, ancre=None):
+        facteur = max(0.05, min(8.0, facteur))
+        if abs(facteur - self._zoom) < 1e-6:
+            return
+        # Où pointait le curseur dans l'IMAGE, avant de changer d'échelle.
+        if ancre is not None:
+            vx = (self.horizontalScrollBar().value() + ancre.x()) / self._zoom
+            vy = (self.verticalScrollBar().value() + ancre.y()) / self._zoom
+        self._zoom = facteur
+        larg = max(1, int(self._img.width() * facteur))
+        haut = max(1, int(self._img.height() * facteur))
+        # FastTransformation en zoom AVANT : on veut voir le pixel, pas une
+        # bouillie interpolée -- c'est justement le grain qu'on inspecte.
+        mode = (QtCore.Qt.FastTransformation if facteur >= 1.0
+                else QtCore.Qt.SmoothTransformation)
+        self._etiquette.setPixmap(QtGui.QPixmap.fromImage(
+            self._img.scaled(larg, haut, QtCore.Qt.IgnoreAspectRatio, mode)))
+        self._etiquette.resize(larg, haut)
+        if ancre is not None:
+            self.horizontalScrollBar().setValue(int(vx * facteur - ancre.x()))
+            self.verticalScrollBar().setValue(int(vy * facteur - ancre.y()))
+
+    def ajuster(self):
+        """Zoom qui fait tenir l'image entière dans la vue."""
+        vp = self.viewport().size()
+        if self._img.width() < 1 or self._img.height() < 1:
+            return
+        self.poser_zoom(min(vp.width() / self._img.width(),
+                            vp.height() / self._img.height()))
+
+    def wheelEvent(self, ev):
+        crans = ev.angleDelta().y()
+        if not crans:
+            return super().wheelEvent(ev)
+        pos = ev.position().toPoint()
+        self.poser_zoom(self._zoom * (1.25 if crans > 0 else 0.8), pos)
+        ev.accept()
+
+    def mousePressEvent(self, ev):
+        if ev.button() == QtCore.Qt.LeftButton:
+            self._depart = ev.position().toPoint()
+            self.setCursor(QtCore.Qt.ClosedHandCursor)
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if self._depart is not None:
+            d = ev.position().toPoint() - self._depart
+            self._depart = ev.position().toPoint()
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - d.x())
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - d.y())
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev):
+        self._depart = None
+        self.unsetCursor()
+        super().mouseReleaseEvent(ev)
+
+
 def _show_image_dialog(img, title):
-    """Affiche une QImage dans une boîte, avec un bouton pour l'enregistrer."""
+    """Affiche une QImage ZOOMABLE, avec un bouton pour l'enregistrer.
+
+    Christophe, 06/08/2026 : « dans la visualisation photo, il est possible
+    d'avoir plus de résolution et zoomer ? ». La boîte réduisait l'image à
+    900 px de côté et s'arrêtait là : sur une pièce de 126 mm cela faisait
+    **7 px/mm**, alors que le rendu en calcule 24. Un trait brûlé de
+    0,30 mm y tenait sur DEUX pixels -- autant dire qu'on ne jugeait rien.
+
+    L'image est désormais montrée à l'échelle « ajustée » à l'ouverture
+    (même première impression qu'avant), et la molette zoome jusqu'à 8x.
+    Le bouton d'enregistrement écrit toujours l'image PLEINE, jamais celle
+    affichée."""
     dlg = QtWidgets.QDialog()
     dlg.setWindowTitle(title)
+    dlg.resize(1000, 800)
     lay = QtWidgets.QVBoxLayout(dlg)
-    lbl = QtWidgets.QLabel()
-    pix = QtGui.QPixmap.fromImage(img)
-    if max(pix.width(), pix.height()) > 900:
-        pix = pix.scaled(900, 900, QtCore.Qt.KeepAspectRatio,
-                         QtCore.Qt.SmoothTransformation)
-    lbl.setPixmap(pix)
-    lay.addWidget(lbl)
+    vue = _VueImage(img)
+    lay.addWidget(vue, 1)
+
+    lbl_info = QtWidgets.QLabel()
+
+    def _maj_info():
+        lbl_info.setText("{} x {} px -- zoom {:.0f} %".format(
+            img.width(), img.height(), 100 * vue.zoom()))
+
     row = QtWidgets.QHBoxLayout()
+    row.addWidget(lbl_info)
     row.addStretch(1)
+    btn_moins = QtWidgets.QPushButton("−")
+    btn_plus = QtWidgets.QPushButton("+")
+    btn_ajuster = QtWidgets.QPushButton("Ajuster")
+    btn_100 = QtWidgets.QPushButton("100 %")
+    for b in (btn_moins, btn_plus):
+        b.setFixedWidth(34)
+    btn_moins.setToolTip("Dézoomer (molette vers le bas)")
+    btn_plus.setToolTip("Zoomer (molette vers le haut, autour du curseur)")
+    btn_ajuster.setToolTip("Faire tenir l'image entière dans la fenêtre")
+    btn_100.setToolTip("Un pixel d'image = un pixel d'écran")
     btn_save = QtWidgets.QPushButton("Enregistrer en PNG…")
+    btn_save.setToolTip("Enregistre l'image PLEINE résolution, pas la vue.")
     btn_close = QtWidgets.QPushButton("Fermer")
-    row.addWidget(btn_save)
-    row.addWidget(btn_close)
+    for b in (btn_moins, btn_plus, btn_ajuster, btn_100, btn_save, btn_close):
+        row.addWidget(b)
     lay.addLayout(row)
+
+    def _zoomer(facteur):
+        vue.poser_zoom(vue.zoom() * facteur)
+        _maj_info()
+
+    def _ajuster():
+        vue.ajuster()
+        _maj_info()
+
+    def _cent():
+        vue.poser_zoom(1.0)
+        _maj_info()
 
     def _save():
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -3036,8 +3169,22 @@ def _show_image_dialog(img, title):
         if path:
             img.save(path, "PNG")
 
+    btn_moins.clicked.connect(lambda: _zoomer(0.8))
+    btn_plus.clicked.connect(lambda: _zoomer(1.25))
+    btn_ajuster.clicked.connect(_ajuster)
+    btn_100.clicked.connect(_cent)
     btn_save.clicked.connect(_save)
     btn_close.clicked.connect(dlg.accept)
+    # La molette agit sur la vue : on rafraîchit l'indicateur derrière elle.
+    _molette = vue.wheelEvent
+
+    def _wheel(ev):
+        _molette(ev)
+        _maj_info()
+
+    vue.wheelEvent = _wheel
+    dlg.show()
+    _ajuster()
     dlg.exec()
 
 
@@ -13666,7 +13813,15 @@ class TaskPanelHalftone:
             return
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
-            img, note = self._render_photo_preview(darkness, largeur_px=900)
+            # 900 px pour une grille de 404 x 608 cases, c'était DEUX
+            # pixels par rangée gravée : on voyait une image, pas un
+            # tramage. À 2400 chaque case en fait quatre, et la boîte
+            # d'aperçu sait désormais zoomer dedans. Mesuré : 0,13 s ->
+            # 0,17 s et 3,9 -> 15,4 Mo. Monter plus haut ne montrerait
+            # rien de neuf -- ce serait grossir les mêmes cases (relever
+            # `_PREVIEW_MAX_CELLS` de 250 000 à un million laisse la
+            # grille inchangée, c'est le pas qui la fixe, pas le plafond).
+            img, note = self._render_photo_preview(darkness, largeur_px=2400)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         if img is None:
