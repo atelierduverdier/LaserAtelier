@@ -6,6 +6,7 @@
     python3 tests/lancer.py lignes am    # ceux dont le nom contient ça
     python3 tests/lancer.py --captures   # régénère les captures de panneaux
     python3 tests/lancer.py --captures curved   # une seule
+    python3 tests/lancer.py --sequentiel # un test à la fois (débogage)
 
 Se lance avec le python SYSTÈME : il ne fait que déléguer chaque test à un
 sous-processus, avec l'interpréteur de FreeCAD et son PYTHONPATH.
@@ -18,6 +19,23 @@ bougé. On le redécouvre donc à chaque exécution.
 Chaque test tourne dans son PROPRE processus : un panneau Qt qui plante ou
 une config globale modifiée ne contamine pas les suivants, et le rapport
 reste lisible.
+
+Et comme ils sont VRAIMENT indépendants -- chacun avec sa propre copie
+jetable de la config, créée par `harness.preparer` dans son propre dossier
+temporaire -- ils tournent EN PARALLÈLE. Mesuré sur la machine de
+Christophe (32 cœurs) : **1 min 54 s en séquentiel, 22,7 s à 16 fronts**,
+soit 5x. Au-delà il n'y a plus rien à prendre : à 32 fronts on mesure
+20,9 s, exactement la durée du test le plus long (`test_plume`) -- c'est
+le plancher.
+
+Le nombre de fronts est plafonné par la MÉMOIRE autant que par les cœurs :
+un test pèse ~252 Mo (pic mesuré à 10,5 Go pour 16 en parallèle, contre
+6,5 Go au repos). Sur une machine plus petite, `--sequentiel` reste là, et
+c'est aussi ce qu'il faut pour lire les `print` d'un test dans l'ordre.
+
+Vérifié avant d'être livré : quatre exécutions parallèles d'affilée, 37
+tests OK à chaque fois. Une suite qui rougirait au hasard apprendrait à
+ignorer le rouge -- c'est le contraire du but.
 """
 import glob
 import shutil
@@ -25,6 +43,7 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 RACINE = os.path.dirname(ICI)
@@ -64,6 +83,40 @@ def _purger_pyc():
                 sous.remove(d)
 
 
+def _BAVARDAGE(ligne):
+    """Vrai pour les lignes de bruit que fontconfig écrit sur stderr.
+
+    Elles n'apprennent rien et il y en a une dizaine par test : les 14
+    dernières lignes d'un échec étaient donc SES AVERTISSEMENTS, pas son
+    message d'assertion. Le rapport nommait le test fautif et cachait la
+    raison -- on lisait la vraie cause en re-lançant à la main."""
+    return ("Fontconfig warning" in ligne
+            or "invalid constant used" in ligne
+            or "invalid attribute" in ligne)
+
+
+def _fronts(n_tests):
+    """Combien de tests lancer de front.
+
+    Borné par les cœurs, par la MÉMOIRE (un test pèse ~252 Mo mesurés, on
+    garde 2 Go au système) et par le nombre de tests. Plafonné à 16 : à 32
+    fronts on ne gagne plus que 1,8 s, le plancher étant la durée du test
+    le plus long."""
+    coeurs = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") \
+        else (os.cpu_count() or 4)
+    limite = 16
+    try:
+        with open("/proc/meminfo") as fh:
+            for ligne in fh:
+                if ligne.startswith("MemAvailable:"):
+                    dispo_mo = int(ligne.split()[1]) / 1024.0
+                    limite = min(limite, max(1, int((dispo_mo - 2048) / 252)))
+                    break
+    except Exception:
+        pass
+    return max(1, min(coeurs, limite, n_tests))
+
+
 def main(filtres):
     exe, lib = python_freecad()
     if exe is None:
@@ -100,6 +153,9 @@ def main(filtres):
                            env=env, cwd=RACINE, timeout=1800)
         return r.returncode
 
+    sequentiel = "--sequentiel" in filtres
+    filtres = [x for x in filtres if x != "--sequentiel"]
+
     fichiers = sorted(glob.glob(os.path.join(ICI, "test_*.py")))
     if filtres:
         fichiers = [f for f in fichiers
@@ -109,22 +165,38 @@ def main(filtres):
         print("aucun test ne correspond.")
         return 1
 
-    ok, rates = [], []
-    for f in fichiers:
+    def lancer_un(f):
         nom = os.path.basename(f)[:-3]
         t0 = time.time()
         r = subprocess.run([exe, f], env=env, cwd=RACINE,
                            capture_output=True, text=True, timeout=1800)
-        dt = time.time() - t0
+        return nom, r, time.time() - t0
+
+    def rapporter(nom, r, dt, ok, rates):
         if r.returncode == 0:
             ok.append(nom)
             print("  OK      {:<32} {:>5.1f} s".format(nom, dt))
         else:
             rates.append(nom)
             print("  ÉCHEC   {:<32} {:>5.1f} s".format(nom, dt))
-            sortie = (r.stdout + r.stderr).strip().split("\n")
+            sortie = [l for l in (r.stdout + r.stderr).strip().split("\n")
+                      if not _BAVARDAGE(l)]
             for l in sortie[-14:]:
                 print("          " + l)
+
+    ok, rates = [], []
+    if sequentiel or len(fichiers) == 1:
+        for f in fichiers:
+            rapporter(*lancer_un(f), ok=ok, rates=rates)
+    else:
+        fronts = _fronts(len(fichiers))
+        print("  ({} tests, {} de front)\n".format(len(fichiers), fronts))
+        # Les résultats sont rapportés DANS L'ORDRE D'ARRIVÉE, pas dans
+        # l'ordre alphabétique : voir défiler les tests finis renseigne
+        # pendant l'attente, et le récapitulatif final ne change pas.
+        with ThreadPoolExecutor(max_workers=fronts) as ex:
+            for nom, r, dt in ex.map(lancer_un, fichiers):
+                rapporter(nom, r, dt, ok, rates)
     print("\n{} test(s) OK, {} échec(s)".format(len(ok), len(rates)))
     if rates:
         print("échecs : " + ", ".join(rates))

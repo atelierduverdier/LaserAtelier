@@ -22,6 +22,28 @@ To run one test by hand (e.g. to see its prints):
 PYTHONPATH=/tmp/.mount_FreeCAxxxxxx/usr/lib:tests:. /tmp/.mount_FreeCAxxxxxx/usr/bin/python tests/test_xxx.py
 ```
 
+## The suite runs in PARALLEL (2026-08-06)
+
+Each test already had its own subprocess and its own throwaway config copy, so they were
+independent in fact as well as in intent — nothing was sharing state. Measured on Christophe's
+32-core machine: **1 min 54 s sequential, 22,7 s at 16 fronts (5×)**. Beyond that there is nothing
+left: 32 fronts give 20,9 s, which *is* the longest single test (`test_plume`) — that's the floor.
+
+`_fronts()` caps by cores, by **memory** (a test weighs ~252 MB measured; peak 10,5 GB for 16 in
+parallel against 6,5 GB at rest, so 2 GB are kept for the system) and by the test count, with a
+hard ceiling of 16. `--sequentiel` forces the old behaviour — needed to read a test's `print`s in
+order, and on a smaller machine.
+
+Verified before shipping: **four consecutive parallel runs, 37 OK each time.** A suite that
+reddens at random teaches you to ignore red, which is the opposite of the point.
+
+### A failure must show its REASON, not its warnings
+
+fontconfig writes ~10 warning lines per test to stderr, so the "last 14 lines" of a failure were
+**its warnings**. The report named the guilty test and hid why — the real cause was only readable
+by re-running that test by hand, which is what happened all through the session of 2026-08-06.
+`_BAVARDAGE()` drops those lines from the report; the assertion message is now the thing you see.
+
 ## The harness
 
 Tests start with `from harness import preparer` → `h = preparer()`, then use `h.core` / `h.tp`. The
