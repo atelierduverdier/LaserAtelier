@@ -43,7 +43,11 @@ _faux_gui = types.ModuleType("FreeCADGui")
 _faux_gui.Workbench = _FauxWorkbench
 _faux_gui.addWorkbench = lambda w: None
 _faux_gui.addIconPath = lambda p: None
-_faux_gui.addCommand = lambda n, c: None
+# ON RETIENT CE QUE `addCommand` REÇOIT, au lieu de le jeter. Bouchonné à
+# vide, il laissait passer le seul défaut que ce fichier ne pouvait pas
+# voir : un nom annoncé au menu sans commande derrière (§6).
+_ENREGISTREES = {}
+_faux_gui.addCommand = lambda n, c: _ENREGISTREES.__setitem__(n, c)
 _faux_gui.getMainWindow = lambda: None
 _vrai_gui = sys.modules.get("FreeCADGui")
 sys.modules["FreeCADGui"] = _faux_gui
@@ -177,3 +181,74 @@ for _m5, _c5 in _lj.COULEURS_MODE.items():
 print("5. une seule roue de {} teintes : les {} barres et les {} calques y "
       "puisent OK".format(len(h.core.TEINTES_ATELIER), len(_ATTENDUS),
                           len(_lj.COULEURS_MODE)))
+
+
+# --- 6. TOUT NOM ANNONCÉ A UNE COMMANDE DERRIÈRE -----------------------
+# Christophe, 06/08/2026 : « je lance l'atelier et ça fonctionne ». C'est
+# vrai, et son redémarrage est un test plus fort que celui-ci -- il fait
+# tourner InitGui dans le VRAI FreeCAD, pas contre des bouchons.
+#
+# Reste ce que ni l'un ni l'autre n'attrapait. §1 compare le menu aux
+# barres : deux listes écrites dans le même fichier, qui peuvent être
+# d'accord entre elles et fausses toutes les deux. Un nom qui ne
+# correspond à aucune commande enregistrée n'empêche RIEN de se charger --
+# le bouton n'est simplement pas là, parmi vingt-quatre.
+#
+# LE PREMIER SABOTAGE ÉCRIT POUR CETTE SECTION NE LA TOUCHAIT PAS : ajouter
+# un nom bidon à la liste du menu, ou retirer un nom d'une barre, déséquilibre
+# les deux listes et c'est §1 qui rougit. La section restait non prouvée.
+# Le vrai défaut -- et le seul sabotage qui vaille ici -- est un RENOMMAGE
+# FAIT D'UN SEUL CÔTÉ : changer le nom passé à `Gui.addCommand` dans
+# `commands.py` laisse menu et barres parfaitement d'accord, et c'est bien
+# §6 qui parle.
+_fantomes = [c for c in _menu if c not in _ENREGISTREES]
+assert not _fantomes, (
+    "ces noms sont annoncés au menu et dans une barre, mais aucune "
+    "commande ne porte ce nom : FreeCAD n'affichera pas le bouton, sans un "
+    "mot, et le mode deviendra inatteignable", _fantomes)
+_jamais_montrees = [n for n in _ENREGISTREES if n not in _menu]
+assert not _jamais_montrees, (
+    "ces commandes sont enregistrées mais n'apparaissent NI au menu NI "
+    "dans une barre : du code livré que personne ne peut atteindre",
+    _jamais_montrees)
+print("6. les {} commandes annoncées sont toutes enregistrées, et aucune "
+      "enregistrée n'est orpheline OK".format(len(_menu)))
+
+
+# --- 7. CHAQUE BOUTON A UNE ICÔNE QUI EXISTE ET QUI SE PARSE -----------
+# QtSvg ne rend RIEN, en silence, si le XML est invalide (le « -- » dans un
+# commentaire, piège que CLAUDE.md documente déjà). Un bouton vide se
+# charge parfaitement : ni le redémarrage de Christophe ni les sections
+# ci-dessus ne le signalent. `xmllint --noout` est le geste manuel ; ici il
+# devient automatique, sur les 24 d'un coup.
+import xml.etree.ElementTree as _ET7                           # noqa: E402
+
+_sans_icone, _absentes, _illisibles = [], [], []
+for _nom7 in sorted(_ENREGISTREES):
+    try:
+        _res7 = _ENREGISTREES[_nom7].GetResources()
+    except Exception as _exc7:
+        _sans_icone.append((_nom7, "GetResources lève : %r" % (_exc7,)))
+        continue
+    _px7 = _res7.get("Pixmap")
+    if not _px7:
+        _sans_icone.append((_nom7, "aucun Pixmap"))
+        continue
+    if not os.path.exists(_px7):
+        _absentes.append((_nom7, _px7))
+        continue
+    try:
+        _ET7.parse(_px7)
+    except Exception as _exc7:
+        _illisibles.append((_nom7, os.path.basename(_px7), str(_exc7)[:70]))
+
+assert not _sans_icone, (
+    "des commandes n'annoncent pas d'icône (ou lèvent en le disant)",
+    _sans_icone)
+assert not _absentes, (
+    "le fichier d'icône n'existe pas : le bouton s'affichera vide",
+    _absentes)
+assert not _illisibles, (
+    "SVG invalide -- QtSvg ne rendra RIEN, en silence, et le bouton "
+    "s'affichera vide sans qu'aucune erreur ne le dise", _illisibles)
+print("7. les {} icônes existent et se parsent OK".format(len(_ENREGISTREES)))
