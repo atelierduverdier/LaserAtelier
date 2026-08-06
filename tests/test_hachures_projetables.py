@@ -15,8 +15,18 @@ le document, donc il n'y avait rien à projeter. Le refus du mode sur une
 forme galbée lui conseillait pourtant de « projeter le résultat » — un
 geste que seul Hachures 2D permettait.
 
-D'où le bouton « Déposer les hachures dans le document ». Le contour, lui,
-n'en a pas besoin : c'est la forme d'origine, déjà projetable.
+D'OÙ LE BOUTON, ET SA SIMPLIFICATION LE MÊME JOUR. Première version : il
+déposait les seules hachures, au motif que le contour est la forme
+d'origine, déjà projetable. Christophe a refait la manœuvre trois fois et
+a conclu : « en résumé je n'y comprends rien, il faut simplifier la
+procédure ». Sa logique était pourtant juste — remplir, sélectionner le
+motif et le Pad, projeter, marquer — mais elle butait sur un fait que
+rien n'annonce : LE REMPLISSAGE N'EST PAS UN OBJET. Ce qu'il projetait
+était la forme d'origine, donc son seul contour.
+
+Le dépôt contient désormais LES HACHURES ET LE CONTOUR : l'objet posé EST
+la gravure. Et le bouton enchaîne la projection quand une seule surface
+3D est présente, pour que trois gestes n'en fassent qu'un.
 """
 import sys
 
@@ -80,6 +90,9 @@ panneau = tp.TaskPanelFilledEngraving([_SelEx(motif)])
 assert hasattr(panneau, "btn_deposer_hachures"), (
     "le bouton de dépôt a disparu : sans lui, aucun aplat ne peut "
     "atteindre une surface 3D")
+assert "surface 3D" in panneau.btn_deposer_hachures.text(), (
+    "le bouton ne dit pas à quoi il sert : %r"
+    % panneau.btn_deposer_hachures.text())
 
 avant = set(o.Name for o in doc.Objects)
 del dialogues[:]
@@ -90,10 +103,53 @@ app.processEvents()
 nouveaux = [o for o in doc.Objects if o.Name not in avant]
 print("   objets créés : %s" % [o.Label for o in nouveaux])
 assert nouveaux, "le clic n'a rien déposé (dialogues : %s)" % dialogues
-depose = nouveaux[0]
+depose = [o for o in nouveaux if o.Name.startswith("Remplissage")][0]
 aretes = list(depose.Shape.Edges)
 print("   « %s » : %d traits" % (depose.Label, len(aretes)))
 assert len(aretes) > 10, "trop peu de traits pour un remplissage : %d" % len(aretes)
+
+# LE DÉPÔT DOIT CONTENIR LE CONTOUR AUSSI. C'est ce manque qui a fait dire
+# trois fois « j'ai juste le contour » : l'objet posé doit ÊTRE la gravure.
+#
+# Le compte est EXACT, pas « plus grand que ». Première version de ce
+# contrôle : « plus d'arêtes que le contour » -- vrai avec les hachures
+# seules (256 contre 8), donc incapable de voir la différence. Un contrôle
+# qui ne peut pas échouer ne prouve rien.
+_fill, _contour, _d, _cz = panneau._build_edges(silent=True)
+contour_attendu = len(_contour or [])
+attendu = len(_fill or []) + contour_attendu
+print("   %d hachures + %d contour = %d attendu ; déposé : %d"
+      % (len(_fill or []), contour_attendu, attendu, len(aretes)))
+assert contour_attendu > 0, "la pièce d'essai n'a pas de contour à vérifier"
+assert len(aretes) == attendu, (
+    "le dépôt ne contient pas hachures ET contour : %d arêtes déposées "
+    "pour %d attendues" % (len(aretes), attendu))
+
+print()
+print("=" * 62)
+print("§1bis  Le même clic PROJETTE, sans rien redemander")
+print("=" * 62)
+
+# La simplification demandée : trois gestes n'en font plus qu'un. Quand une
+# seule surface 3D est présente, le bouton propose de projeter et le fait.
+projetes = [o for o in nouveaux if o.Name.startswith("Motif_Projete")]
+print("   objets projetés créés par le clic : %s" % [o.Label for o in projetes])
+assert projetes, (
+    "le clic n'a pas enchaîné la projection alors qu'UNE seule surface 3D "
+    "est présente : l'utilisateur doit tout refaire à la main")
+resultat = projetes[0]
+zs = [v.Point.z for e in resultat.Shape.Edges for v in e.Vertexes]
+print("   « %s » : %d arêtes, Z de %.2f à %.2f mm"
+      % (resultat.Label, len(resultat.Shape.Edges), min(zs), max(zs)))
+assert max(zs) - min(zs) > 0.5, "la projection n'épouse pas le relief"
+assert len(resultat.Shape.Edges) > contour_attendu, (
+    "la projection ne porte que le contour : %d arêtes" % len(resultat.Shape.Edges))
+
+# Et le dernier mot doit dire QUOI FAIRE ENSUITE, sinon on repart chercher.
+dits = " ".join(x for _g, _t, x in dialogues)
+assert "Marquage de motif" in dits, (
+    "rien ne dit avec quel mode graver la projection : %r" % dits[-160:])
+print("   le message final nomme « Marquage de motif » : ✓")
 
 print()
 print("=" * 62)
@@ -144,9 +200,9 @@ panneau2._build_edges()
 textes = " ".join(t for _g, _t, t in dialogues)
 print("   message : %s" % textes[:120].replace("\n", " "))
 assert textes, "aucun refus : une forme galbée est acceptée en silence"
-assert "Déposer les hachures" in textes, (
-    "le refus ne nomme pas le dépôt : il conseille un geste que ce mode "
-    "ne permet pas")
+assert "Projeter ce remplissage" in textes, (
+    "le refus ne nomme pas le bouton qui dépose : il conseille un geste "
+    "que ce mode ne permet pas")
 # ET il doit parler D'ABORD à celui qui est déjà arrivé au bout : une forme
 # galbée est presque toujours une projection, donc quelqu'un qui en est à la
 # dernière étape. Lui réciter les quatre depuis le début se lit comme un
