@@ -32,6 +32,31 @@ a hard-coded 1000). The emitted `T<n> M6` loads the laser tool itself (no-op if 
 > `subroutines/toolchange.ngc` rewrites it (`G10 L1 P<tool> Z<offset>`) at **every** `M6`. Only X
 > and Y survive. Don't advise editing that Z.
 
+## Crossing a WHITE run — `TRANSIT_BLANC_MINI_MM` (v2.45.0), frozen 2026-08-06
+
+A beam-off move at the *engraving* feed is the single most expensive defect a raster can carry, and
+it is invisible: valid G-code, correct image. Christophe's LightBurn export for his Falcon 2 shows
+what it costs — two parts 101 mm apart, filled in one sweep, **4 359 beam-off moves of a 128 mm
+median = 55.9 % of the path**, close to 4 hours out of 7.
+
+**The workbench does not have it**, and that is measured over the 70 really-engraved `.ngc` files:
+**1.51 %** of the path, against LightBurn's 55.9 %. `TRANSIT_BLANC_MINI_MM = 5.0` makes any white
+run of at least that length traverse at `RAPID_FEED_MM_MIN` — as a `G1` at rapid feed, **not a
+`G0`**: motion stays continuous and the queue is never drained, which also keeps the M67 channel
+happy. Four call sites, and the mechanism was extended twice after its introduction (the spiral in
+v2.52.0, the spindle in v2.56.0 — where it must fire *only where the Z is flat*).
+
+Extended twice and never tested: that is the exact shape of the micro-stroke defect, which shipped
+**twice** because the first generator's fix was never turned into a property over the family.
+`tests/test_transit_blanc.py` closes it — an image with a deliberate 60 mm void, zero slow crossings
+across the raster family, and §1 refuses to run at all if the fixture can no longer see the defect
+(raising the threshold makes §1 fail rather than §2 pass).
+
+Two real files still carry slow crossings — `gravure_photo4.ngc` (4.6 m) and
+`mire_tramages_photo.ngc` (33 mm) — stamped **v1.96.4** and **v1.91.0**, both *before* v2.45.0. That
+is history, not a live defect, so §4 prints rather than asserts: the same rule as for measurements
+that move when Christophe re-measures.
+
 ## Air assist — `assistance_air` (v2.99.37)
 
 Bench engravers drive their air pump with `M8`/`M9`. `ASSISTANCE_AIR` (per-laser) grafts them onto
