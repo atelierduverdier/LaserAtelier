@@ -178,7 +178,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.35"
+VERSION = "2.99.36"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -211,8 +211,14 @@ def sanitize_gcode_for_linuxcnc(text):
        la façon la plus simple de rendre un fichier illisible, et
        l'assainisseur, dont c'est précisément le rôle, la laissait passer.
 
+    4. Machine SANS AXE Z (réglage `machine_sans_axe_z`) : les mots Z sont
+       retirés et les mouvements qui n'étaient QUE du Z disparaissent (cf.
+       `retirer_axe_z`).
+
     Idempotent (ré-assainir un texte déjà propre ne change rien), donc sûr
     à appliquer plusieurs fois (job combiné = corps déjà assainis)."""
+    if MACHINE_SANS_AXE_Z:
+        text = retirer_axe_z(text)
     text = text.translate(_LINUXCNC_FALLBACK)
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
     out = []
@@ -245,6 +251,99 @@ def _gcode_code_part(line):
     """Partie d'une ligne de G-code AVANT un éventuel commentaire."""
     c = line.find("(")
     return line if c == -1 else line[:c]
+
+
+# --------------------------------------------------------------------------
+# MACHINE SANS AXE Z
+# --------------------------------------------------------------------------
+# Christophe, 06/08/2026 : « j'ai un petit laser Creality Falcon 2, mon
+# atelier laser est compatible ? ». Le dialecte GRBL existe et convient ;
+# ce qui bloquait, c'est que TOUT fichier produit ici porte des mots Z --
+# mesuré : même un marquage à plat, Z de travail 0 et survol 0, sort encore
+# un `G0 Z5.0000` (la hauteur de sécurité de début et fin, `+ 5.0` en dur).
+# Sur une machine à mise au point manuelle, GRBL accepte ce mot, croit
+# déplacer un axe absent, y passe du temps, et lève une alarme de limite
+# logicielle si $20=1 (course Z = 0).
+#
+# ON RETIRE À LA SORTIE, PAS DANS CHAQUE GÉNÉRATEUR. `sanitize_gcode_*` est
+# le passage obligé de tous les générateurs (dix familles) et il est
+# idempotent : un seul point à écrire, un seul à tester, et le prochain
+# mode en hérite sans qu'on ait à y penser.
+_RX_MOT_Z = re.compile(r'(?<![A-Za-z0-9.])Z-?\d+\.?\d*')
+# Lettres d'axe qui donnent encore un objet à un mouvement une fois le Z ôté.
+_LETTRES_MOUVEMENT = "XYIJKRABCU"
+# La MARQUE, sans parenthèses : elle sert à reconnaître un texte déjà
+# traité (idempotence) et elle est enveloppée au moment d'écrire la ligne.
+# Première version : la mention d'alerte était collée APRÈS le commentaire
+# fermé -- « (…) -- ATTENTION : 192 … » --, donc lue comme du CODE par
+# l'interpréteur. C'est le piège que ce dépôt documente déjà : un
+# commentaire tient sur sa ligne, et rien ne le suit.
+MARQUE_SANS_AXE_Z = "machine sans axe Z : mots Z retires"
+
+
+def retirer_axe_z(texte):
+    """Ôte tout mot Z du G-code, et les mouvements qui n'étaient que du Z.
+
+    Rend le texte tel quel si le réglage n'a rien trouvé à retirer, ce qui
+    garde `sanitize_gcode_for_linuxcnc` idempotent -- un job combiné
+    réassainit des corps déjà assainis.
+
+    ET ÇA S'ANNONCE QUAND LE Z PORTAIT DE L'INFORMATION. Retirer une
+    hauteur de sécurité ne change rien à ce qui brûle ; retirer un Z qui
+    VARIAIT pendant un `G1`, c'est supprimer le défocus, le fuseau ou le
+    suivi de relief -- l'énergie déposée n'est plus celle qui était
+    calculée, et rien à l'écran ne le dirait. Le fichier le dit donc, et la
+    console aussi."""
+    lignes = []
+    z_courant = None
+    z_utile = 0
+    for ligne in texte.split("\n"):
+        code = _gcode_code_part(ligne)
+        if "Z" not in code and "z" not in code:
+            lignes.append(ligne)
+            continue
+        trouves = _RX_MOT_Z.findall(code)
+        if not trouves:
+            lignes.append(ligne)
+            continue
+        # Le Z portait-il une information ? Seul un mouvement d'AVANCE (G1)
+        # dont la hauteur change grave à une autre hauteur qu'annoncé ; un
+        # G0 vers une hauteur de survol ne brûle rien.
+        try:
+            z_nouveau = float(trouves[-1][1:])
+        except ValueError:
+            z_nouveau = None
+        if ("G1" in code or "G01" in code) and z_nouveau is not None \
+                and z_courant is not None and abs(z_nouveau - z_courant) > 1e-6:
+            z_utile += 1
+        if z_nouveau is not None:
+            z_courant = z_nouveau
+        reste = _RX_MOT_Z.sub("", code)
+        commentaire = ligne[len(code):]
+        # Un mouvement qui ne portait QUE du Z n'a plus d'objet : le garder
+        # laisserait un « G0 » seul, que GRBL lit comme un déplacement vers
+        # la position courante -- inutile, et trompeur à la relecture.
+        if not any(c in reste.upper() for c in _LETTRES_MOUVEMENT):
+            if commentaire.strip():
+                lignes.append(commentaire.strip())
+            continue
+        lignes.append(" ".join(reste.split()) + (" " + commentaire.strip()
+                                                 if commentaire.strip() else ""))
+    sortie = "\n".join(lignes)
+    if sortie == texte:
+        return texte
+    if z_utile:
+        FreeCAD.Console.PrintWarning(
+            "Machine sans axe Z : {} mouvements d'avance changeaient de "
+            "hauteur -- defocus, fuseau ou suivi de relief. Ce job ne "
+            "gravera PAS ce qui etait calcule.\n".format(z_utile))
+        entete = ("({} -- ATTENTION : {} mouvements graves changeaient de "
+                  "hauteur)".format(MARQUE_SANS_AXE_Z, z_utile))
+    else:
+        entete = "({})".format(MARQUE_SANS_AXE_Z)
+    if MARQUE_SANS_AXE_Z not in sortie:
+        sortie = entete + "\n" + sortie
+    return sortie
 
 
 def gcode_bbox_xy(gcode):
@@ -861,6 +960,14 @@ ACCEL_MM_S2 = 600.0                   # accélération machine RÉELLE (mm/s2) p
                                       # n'explique pas tout l'écart. Ça ne change rien au
                                       # correctif (M67 supprime l'arrêt quel que soit a),
                                       # seulement à l'estimation de durée.
+MACHINE_SANS_AXE_Z = False            # machine à mise au point MANUELLE (graveur diode de
+                                      # table type Creality Falcon) : aucun mot Z n'est écrit,
+                                      # et les mouvements qui n'étaient que du Z disparaissent.
+                                      # Sur une telle machine un Z parasite fait croire à GRBL
+                                      # qu'il déplace un axe absent -- du temps perdu, et une
+                                      # alarme de limite logicielle si $20=1. Réglé PAR LASER :
+                                      # un profil = une machine. Cf. `retirer_axe_z`, qui
+                                      # AVERTIT quand le Z retiré portait de l'information.
 CHEMIN_INI_LINUXCNC = ""              # dernier .ini LinuxCNC lu par « Lire les limites dans
                                       # le .ini » (Préférences) -- mémorisé pour que la
                                       # relecture après un changement de config machine soit
@@ -915,6 +1022,7 @@ _USER_SETTINGS = (
     ("z_max_feed_mm_min", "Z_MAX_FEED_MM_MIN", float, lambda v: v > 0),
     ("accel_mm_s2", "ACCEL_MM_S2", float, lambda v: v > 0),
     ("chemin_ini_linuxcnc", "CHEMIN_INI_LINUXCNC", str, lambda v: isinstance(v, str)),
+    ("machine_sans_axe_z", "MACHINE_SANS_AXE_Z", bool, lambda v: isinstance(v, bool)),
     ("z_work_mm", "Z_WORK_MM", float, lambda v: -100 <= v <= 500),
     ("transit_margin_mm", "TRANSIT_MARGIN_MM", float, lambda v: v >= 0),
     ("spot_focus_mm", "SPOT_FOCUS_MM", float, lambda v: v > 0),
@@ -1239,7 +1347,7 @@ def save_nozzle(bottom_diameter_mm, top_diameter_mm, height_mm):
 PER_LASER_KEYS = ("laser_tool", "s_max", "spot_focus_mm", "spot_test_defocus_mm",
                   "spot_test_diameter_mm", "z_work_mm", "frame_power",
                   "label_power", "label_feed", "mire_power", "mire_feed",
-                  "gcode_dialect")
+                  "gcode_dialect", "machine_sans_axe_z")
 
 
 def _laser_slug(name):

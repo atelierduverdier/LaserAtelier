@@ -20120,6 +20120,29 @@ class TaskPanelSettings:
             "  (option N_TOOLS). Le numéro d'outil laser est utilisé.")
         form.addRow("Dialecte G-code :", self.combo_dialect)
 
+        # Réglé PAR LASER, comme le dialecte : un profil = une machine.
+        self.chk_sans_z = QtWidgets.QCheckBox("Machine sans axe Z")
+        self.chk_sans_z.setChecked(bool(settings.get("machine_sans_axe_z", False)))
+        self.chk_sans_z.setToolTip(
+            "Pour un graveur de table à mise au point MANUELLE (Creality\n"
+            "Falcon, Ortur, xTool…) : aucun mot Z n'est écrit, et les\n"
+            "mouvements qui n'étaient que du Z disparaissent.\n"
+            "\n"
+            "POURQUOI : tout fichier d'ici porte des Z, même un marquage à\n"
+            "plat -- au minimum la hauteur de sécurité de début et de fin.\n"
+            "Sans axe Z, le contrôleur accepte le mot, croit déplacer un axe\n"
+            "absent, y passe du temps, et lève une alarme de limite\n"
+            "logicielle si les limites logicielles sont actives (course Z\n"
+            "nulle).\n"
+            "\n"
+            "CE QUE ÇA COÛTE : tout ce qui repose sur le défocus devient\n"
+            "impossible -- calibration défocus, fuseau Z, suivi de surface\n"
+            "courbe, style « vague ». L'atelier ne refuse pas ces modes : il\n"
+            "écrit dans l'en-tête du fichier, et dans la console, combien de\n"
+            "mouvements gravés changeaient de hauteur. Un tel job ne gravera\n"
+            "PAS ce qui a été calculé.")
+        form.addRow("", self.chk_sans_z)
+
         self.chk_m67 = QtWidgets.QCheckBox(
             "Puissance par M67 (sortie analogique synchronisée)")
         self.chk_m67.setChecked(bool(settings.get("puissance_par_m67", False)))
@@ -20593,6 +20616,7 @@ class TaskPanelSettings:
             return False
         core.save_settings({
             "gcode_dialect": self.combo_dialect.currentData(),
+            "machine_sans_axe_z": self.chk_sans_z.isChecked(),
             "puissance_par_m67": self.chk_m67.isChecked(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
             "planches_dir": self.edt_planches_dir.text().strip(),

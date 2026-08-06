@@ -32,6 +32,35 @@ a hard-coded 1000). The emitted `T<n> M6` loads the laser tool itself (no-op if 
 > `subroutines/toolchange.ngc` rewrites it (`G10 L1 P<tool> Z<offset>`) at **every** `M6`. Only X
 > and Y survive. Don't advise editing that Z.
 
+## Machines with NO Z axis — `machine_sans_axe_z` (v2.99.36)
+
+Bench diode engravers (Creality Falcon, Ortur, xTool) focus by hand and have **no Z motor**.
+`MACHINE_SANS_AXE_Z` (per-laser, like the dialect) makes `retirer_axe_z` strip every `Z` word and
+delete the moves that carried nothing else.
+
+It is not optional on such a machine: **every file this workbench produces carries Z words**.
+Measured — a flat marking with work-Z 0 *and* clearance 0 still emits `G0 Z5.0000`, the start/end
+safety height (`z_safe_start_end = … + 5.0`, hardcoded). The controller accepts the word, believes
+it is moving an absent axis, spends time on it, and raises a soft-limit alarm when `$20=1`
+(Z travel = 0).
+
+**Stripping happens in `sanitize_gcode_for_linuxcnc`**, the one path all ten generator families
+return through, and it stays idempotent — a combined job re-sanitises already-sanitised bodies.
+Two independent guards hold that idempotence (the early return when nothing was removed, and the
+"note already present" check); **sabotaging either one alone leaves the property standing**, which
+is noted in the test so nobody later concludes the check is decorative.
+
+**It announces itself when the Z carried information.** Removing a flyover height changes nothing
+about what burns; removing a Z that *varied during a `G1`* removes defocus, the spindle or relief
+following — the job no longer engraves what was computed. `retirer_axe_z` counts those moves,
+writes the count into the file header and warns on the console (192 on a `vague`-style marking).
+A flat marking gets the plain note and no alarm — an alert that cries wolf stops being read.
+
+Trap paid on the way, and it is the one this file already documents: the first version appended
+the alert **after** the closing parenthesis (`(…) -- ATTENTION : 192 …`), so the interpreter would
+have read it as CODE. A comment stays on its own line and nothing follows it. `tests/test_sans_axe_z.py`
+§3 freezes both that and the absence of orphan `G0` lines.
+
 ## Mandatory sanitizer
 
 **An UNCLOSED comment kills the file at LOAD time** (v2.13.3). A `(` with no `)` after it makes

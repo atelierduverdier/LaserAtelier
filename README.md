@@ -1,7 +1,7 @@
 # Atelier Laser
 
 <p align="center"><img src="resources/logo.svg" alt="Atelier Laser — PrintNC" width="360"></p>
-<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v2.99.35</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
+<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v2.99.36</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
 <p align="center"><a href="https://ko-fi.com/atelierduverdier"><b>☕ L'atelier vous est utile ? Soutenez-le sur Ko-fi</b></a></p>
 
 > **≈ 211 heures pour en arriver là**, du 15/07/2026 au 06/08/2026 : ≈ 182 h de développement (553 commits, 262 versions) et ≈ 29 h d'atelier, dont **11,4 h de laser** chronométrées sur les 70 fichiers gravés — 495 m de trait brûlé et 283 mesures relevées sur le bois.
@@ -244,6 +244,23 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
   compensation `T`/`M6` + `G43 H` comme LinuxCNC. Nécessite un firmware
   compilé avec la table d'outils (option `N_TOOLS`) ; le numéro d'outil laser
   des Préférences est alors utilisé.
+- **Graveur de table SANS AXE Z** (Creality Falcon, Ortur, xTool… : mise au
+  point manuelle en tournant la lentille) : cocher **Machine sans axe Z** dans
+  les Préférences (réglé **par profil laser**, comme le dialecte). Aucun mot
+  `Z` n'est alors écrit, et les mouvements qui n'étaient que du Z
+  disparaissent. C'est nécessaire : **tout** fichier produit ici porte des Z,
+  y compris un marquage à plat avec le Z de travail et le survol à zéro — au
+  minimum la hauteur de sécurité de début et de fin. Sans axe Z, le contrôleur
+  accepte le mot, croit déplacer un axe absent, y passe du temps, et lève une
+  alarme de limite logicielle si `$20=1` (course Z nulle).
+  ⚠️ **Ce que ça coûte** : tout ce qui repose sur le défocus devient
+  impossible — calibration défocus (planches 2 et 2b), nuancier aux niveaux de
+  défocus, fuseau Z, suivi de surface courbe, style « vague ». Ces modes ne
+  sont pas refusés : l'atelier écrit dans l'en-tête du fichier **et** dans la
+  console combien de mouvements *gravés* changeaient de hauteur, parce qu'un
+  tel job ne gravera pas ce qui a été calculé. Restent utilisables au foyer :
+  marquage, découpe, gravure remplie, similigravure et les tramages photo,
+  grille de test, polices, import SVG/LightBurn.
 - ⚠️ **Les dialectes GRBL et grblHAL n'ont jamais fait tourner une ligne sur
   une machine réelle** (la machine de développement tourne sous LinuxCNC).
   Ce qui EST garanti, et vérifié à chaque exécution des tests
