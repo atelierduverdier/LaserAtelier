@@ -72,6 +72,7 @@ class LaserAtelierWorkbench(Workbench):
             # ===== BOUTONS DE TRAVAIL =====
             # -- Import de dessins --
             "LaserAtelier_ImporterSVG",
+            "LaserAtelier_FusionnerTraces",
             "Separator",
             # -- Gravure à plat --
             "LaserAtelier_Hatch",
@@ -126,7 +127,8 @@ class LaserAtelierWorkbench(Workbench):
              ["LaserAtelier_Assistant", "LaserAtelier_TestGrid",
               "LaserAtelier_PowerRamp", "LaserAtelier_Nuancier",
               "LaserAtelier_Kerf"]),
-            ("Atelier — Dessins", ["LaserAtelier_ImporterSVG"]),
+            ("Atelier — Dessins",
+             ["LaserAtelier_ImporterSVG", "LaserAtelier_FusionnerTraces"]),
             ("Atelier — Gravure à plat",
              ["LaserAtelier_Hatch", "LaserAtelier_Text",
               "LaserAtelier_Calligraphie", "LaserAtelier_TexteContour",

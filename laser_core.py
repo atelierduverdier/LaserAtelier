@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.30"
+VERSION = "2.99.31"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -3416,6 +3416,83 @@ def inset_face_robuste(face, inset, deflection=0.05):
         except Exception:
             pass
         return []  # trop fin : le contour couvre, pas de remplissage
+
+
+def run_fusion_traces(selection):
+    """Réunit les formes sélectionnées en UN SEUL objet. (objet, erreur).
+
+    Christophe, 06/08/2026, devant les 267 tracés de son dessin importé :
+    « j'ai plein de tracés que j'ai sélectionnés, il me faudrait un bouton
+    pour les regrouper tous en 1 seul ». Un dessin au trait arrive en
+    dizaines ou centaines d'objets -- un par tracé d'origine, ce qui est
+    juste pour un remplissage calculé par tracé, et pénible pour tout le
+    reste : régler la gravure, projeter, marquer, autant de gestes à
+    répéter par objet.
+
+    LES SOURCES SONT MASQUÉES ET RANGÉES, JAMAIS SUPPRIMÉES. Le
+    remplissage se calcule tracé par tracé (règle du pair/impair par
+    <path>, cf. `_faces_from_any_shape`) : celui qui a fusionné doit
+    pouvoir revenir en arrière. L'arbre se replie tout de même, puisque
+    les originaux tiennent désormais dans un seul dossier.
+
+    La couleur du premier objet est reprise -- fusionner ne doit pas
+    repeindre le dessin."""
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        return None, "Ouvre (ou crée) un document d'abord."
+    objets = []
+    for sel in (selection or []):
+        obj = getattr(sel, "Object", sel)
+        forme = getattr(obj, "Shape", None)
+        if forme is None or not forme.Edges:
+            continue
+        if obj not in objets:
+            objets.append(obj)
+    if len(objets) < 2:
+        return None, ("Sélectionne au moins DEUX formes à réunir "
+                      "(tracés importés, hachures, textes...).")
+
+    aretes = []
+    for obj in objets:
+        aretes.extend(obj.Shape.Edges)
+    fusion = doc.addObject("Part::Feature", "Traces_fusionnes")
+    fusion.Label = "Tracés fusionnés ({})".format(len(objets))
+    fusion.Shape = Part.Compound(aretes)
+    vue_source = getattr(objets[0], "ViewObject", None)
+    vue_fusion = getattr(fusion, "ViewObject", None)
+    if vue_source is not None and vue_fusion is not None:
+        try:
+            vue_fusion.LineColor = vue_source.LineColor
+        except Exception:
+            pass
+
+    # Les originaux : masqués, puis rangés dans un dossier unique pour que
+    # l'arbre se replie -- c'était la moitié de la demande.
+    #
+    # UN OBJET NE PEUT ÊTRE QUE DANS UN SEUL DOSSIER, et FreeCAD lève une
+    # RuntimeError sans ménagement. Or l'import range désormais les tracés
+    # par calque : fusionner ce qui vient d'être importé -- le cas de
+    # Christophe, précisément -- tombait dessus. Ceux qui ont déjà un
+    # dossier y restent : c'est le rangement du dessinateur, on n'a pas à
+    # le défaire pour satisfaire le nôtre.
+    sans_dossier = []
+    for obj in objets:
+        vue = getattr(obj, "ViewObject", None)
+        if vue is not None:
+            try:
+                vue.Visibility = False
+            except Exception:
+                pass
+        deja = any(getattr(p, "TypeId", "") == "App::DocumentObjectGroup"
+                   for p in (getattr(obj, "InList", None) or []))
+        if not deja:
+            sans_dossier.append(obj)
+    if sans_dossier:
+        dossier = doc.addObject("App::DocumentObjectGroup", "TracesDOrigine")
+        dossier.Label = "Tracés d'origine ({})".format(len(sans_dossier))
+        dossier.Group = sans_dossier
+    doc.recompute()
+    return fusion, None
 
 
 def run_hatch_generation(selection, spacing, angle, fill_type="paralleles", inset=0.0,

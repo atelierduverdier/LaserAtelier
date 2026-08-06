@@ -259,6 +259,48 @@ class ProjectCommand:
         _show(task_panels.TaskPanelProject())
 
 
+class FusionnerTracesCommand:
+    """Réunit les formes sélectionnées en un seul objet.
+
+    UN BOUTON, PAS UN PANNEAU. Christophe, 06/08/2026, devant les 267
+    tracés de son dessin : « il me faudrait un bouton pour les regrouper
+    tous en 1 seul ». Il n'y a rien à régler -- une boîte de dialogue
+    n'aurait fait qu'ajouter un clic à un geste qui n'a pas de paramètre."""
+
+    def GetResources(self):
+        return {
+            "Pixmap": _icon_path("fusionner.svg"),
+            "MenuText": "Fusionner les tracés sélectionnés",
+            "ToolTip": "Réunit les formes sélectionnées en UN SEUL objet -- "
+                       "pratique après l'import d'un dessin qui arrive en "
+                       "dizaines de tracés. Les originaux sont masqués et "
+                       "rangés dans un dossier, jamais supprimés.",
+        }
+
+    def IsActive(self):
+        return (FreeCAD.ActiveDocument is not None
+                and len(Gui.Selection.getSelection()) > 1)
+
+    def Activated(self):
+        # Import LOCAL, comme partout dans ce fichier : rien n'est tiré au
+        # niveau module en dehors des panneaux.
+        import laser_core
+        selection = _sans_apercus(Gui.Selection.getSelectionEx())
+        obj, err = laser_core.run_fusion_traces(selection)
+        if err:
+            _warn_selection(err)
+            return
+        try:
+            import laser_jobs as _lj
+            _lj.ranger_forme(obj)          # l'atelier range ce qu'il crée
+        except Exception:
+            pass
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(obj)
+        FreeCAD.Console.PrintMessage(
+            "Fusion : « {} » créé.\n".format(obj.Label))
+
+
 class ImportSVGCommand:
     def GetResources(self):
         return {
@@ -545,6 +587,7 @@ def register_commands():
     Gui.addCommand("LaserAtelier_Halftone", HalftoneCommand())
     Gui.addCommand("LaserAtelier_Project", ProjectCommand())
     Gui.addCommand("LaserAtelier_ImporterSVG", ImportSVGCommand())
+    Gui.addCommand("LaserAtelier_FusionnerTraces", FusionnerTracesCommand())
     Gui.addCommand("LaserAtelier_Kerf", KerfCommand())
     Gui.addCommand("LaserAtelier_Assistant", AssistantCommand())
     Gui.addCommand("LaserAtelier_TestGrid", TestGridCommand())
