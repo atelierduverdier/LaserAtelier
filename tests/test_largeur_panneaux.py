@@ -197,3 +197,32 @@ if gueris:
 
 print()
 print("TOUT EST VERT")
+
+# SORTIE EXPLICITE, pour la même raison que `test_panneaux.py`. Ce fichier
+# construit VINGT-DEUX panneaux, chacun avec ses grilles, ses filtres
+# d'événements et ses minuteurs. La destruction de tout cela par Qt rend
+# parfois un code non nul -- tous les contrôles ayant pourtant affiché OK,
+# et sans la moindre trace d'erreur.
+#
+# Constaté le 06/08/2026 : vert en solitaire (9,7 s), rouge environ une
+# exécution sur trois EN PARALLÈLE (25 s, message vide). La pression
+# mémoire des seize fronts rallonge la destruction, c'est tout. Une suite
+# qui rougit au hasard apprend à ignorer le rouge -- pire que pas de suite.
+#
+# Chaque assertion s'exécute AU-DESSUS de cette ligne : un vrai échec lève
+# et sort toujours non nul. (Vérifié en insérant `assert False` juste
+# avant ce bloc -- placé APRÈS, il ne s'exécuterait jamais et ne prouverait
+# rien.)
+import os as _os
+_Qt = QtWidgets
+for _nom_w, _w in list(globals().items()):
+    if _nom_w.startswith("p") and isinstance(_w, _Qt.QWidget):
+        try:
+            _w.setParent(None)
+            _w.deleteLater()
+        except Exception:
+            pass
+_Qt.QApplication.processEvents()
+sys.stdout.flush()
+sys.stderr.flush()
+_os._exit(0)

@@ -165,6 +165,7 @@ import heapq
 import math
 import json
 import os
+import time
 import re
 import unicodedata
 import zipfile
@@ -176,7 +177,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.32"
+VERSION = "2.99.33"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -328,10 +329,77 @@ def load_config():
         return {}
 
 
-def save_config(data):
+# Combien de photographies quotidiennes de la config on garde.
+CONFIG_SAUVEGARDES_JOURS = 10
+
+
+def _sauvegarder_config(chemin):
+    """Copie de sûreté avant d'écraser : la précédente, plus une par jour.
+
+    CE FICHIER EST LA SEULE CHOSE IRREMPLAÇABLE DU PROJET. Il porte des
+    mesures prises au pied à coulisse sur du bois -- 283 points le
+    06/08/2026 -- que rien ne recalcule. Le reste du dépôt se reclone.
+
+    Deux filets, parce qu'ils rattrapent des chutes différentes :
+    `.bak` rend la version d'AVANT le dernier enregistrement (le geste
+    malheureux qu'on vient de faire), la photographie du jour rend l'état
+    d'un jour précédent (la dégradation lente qu'on n'a pas vue passer).
+
+    Constaté à l'audit : les seules sauvegardes existantes dataient du
+    29 juillet, prises à la main avant des opérations risquées. La config
+    avait grossi de 42 à 78 Ko depuis -- huit jours sans filet."""
+    import shutil
+    if not os.path.exists(chemin):
+        return
     try:
-        with open(CONFIG_FILE, "w") as f:
+        shutil.copy2(chemin, chemin + ".bak")
+    except Exception:
+        pass
+    jour = time.strftime("%Y%m%d")
+    photo = "{}.{}".format(chemin, jour)
+    if not os.path.exists(photo):
+        try:
+            shutil.copy2(chemin, photo)
+        except Exception:
+            pass
+    # On ne laisse pas les photographies s'accumuler indéfiniment.
+    try:
+        import glob as _glob
+        anciennes = sorted(_glob.glob(chemin + ".2*"))
+        for vieux_fichier in anciennes[:-CONFIG_SAUVEGARDES_JOURS]:
+            os.remove(vieux_fichier)
+    except Exception:
+        pass
+
+
+def save_config(data):
+    """Enregistre la config SANS JAMAIS la tronquer.
+
+    `open(chemin, "w")` vide le fichier AVANT d'écrire : une coupure à cet
+    instant -- FreeCAD qui segfaute, ce dont ce dépôt garde la trace -- et
+    des heures d'établi disparaissent. On écrit donc à côté, on force sur
+    le disque, puis on remplace d'un seul geste : `os.replace` est ATOMIQUE
+    sur le système de fichiers. À tout instant, le fichier en place est
+    soit l'ancien complet, soit le nouveau complet, jamais un moignon."""
+    # LA SAUVEGARDE NE DOIT JAMAIS EMPÊCHER L'ENREGISTREMENT, et ça vient
+    # d'arriver : un `import time` oublié dans la copie de sûreté a fait
+    # échouer tout `save_config`, EN SILENCE -- l'avertissement part dans
+    # la vue Rapport que personne ne regarde, et l'utilisateur croit ses
+    # mesures enregistrées. Le filet est un confort ; l'écriture est le
+    # devoir. On les sépare donc, et le filet passe en premier.
+    try:
+        _sauvegarder_config(CONFIG_FILE)
+    except Exception as exc:
+        FreeCAD.Console.PrintWarning(
+            "Sauvegarde de la config impossible ({}) -- l'enregistrement "
+            "continue.\n".format(exc))
+    try:
+        temporaire = CONFIG_FILE + ".tmp"
+        with open(temporaire, "w") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporaire, CONFIG_FILE)
     except Exception as exc:
         FreeCAD.Console.PrintWarning("Impossible de sauvegarder la config : {}\n".format(exc))
 
