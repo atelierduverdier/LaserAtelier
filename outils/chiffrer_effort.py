@@ -253,9 +253,12 @@ def main():
         return ("{:.%df}" % dec).format(x).replace(".", ",")
 
     if args.html:
-        # Le bandeau sort volontairement du conteneur `.wrap` : il occupe
-        # toute la largeur de la fenêtre, sous la rangée de boutons.
-        print('  <div class="effort">\n'
+        # Le bandeau se pose SOUS la rangée de boutons et prend toute la
+        # largeur de la COLONNE DE CONTENU -- d'où le `.wrap` qui l'enserre.
+        # Pleine fenêtre a été essayé et refusé : « on voit le texte
+        # s'étaler à droite et à gauche » du reste de la page.
+        print('  <div class="wrap">\n'
+              '  <div class="effort">\n'
               '    <b>≈ {tot:.0f} heures</b> pour en arriver là, du {d1} au '
               '{d2} :\n'
               '    <b>≈ {dev:.0f} h</b> de développement ({com} commits, '
@@ -272,6 +275,7 @@ def main():
               '    plupart des défauts corrigés ici ont été trouvés en '
               'regardant une\n'
               '    planche, pas en relisant du code.</span>\n'
+              '  </div>\n'
               '  </div>'.format(tot=total, dev=dev_h, com=commits, ver=versions,
                                 d1=premier, d2=dernier,
                                 ate=a["machine_h"] + a["estime_h"],

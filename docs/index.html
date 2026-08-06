@@ -95,11 +95,12 @@
   .hero h1{font-size:2.7rem; letter-spacing:-.02em; margin:.1em 0 .1em}
   @media(max-width:820px){ .hero h1{font-size:2.1rem} }
   .hero .lede{font-size:1.16rem; color:var(--fg-2); max-width:46ch; margin:.5em 0 1.3em}
-  /* Bandeau PLEINE LARGEUR, sous les boutons : il sort volontairement du
-     conteneur `.wrap` pour occuper toute la fenêtre. */
-  .effort{margin:30px 0 0; padding:11px 32px; border-top:1px solid var(--line);
-          background:var(--card); font-size:.8rem; line-height:1.5;
-          color:var(--fg-2)}
+  /* Sous les boutons, sur toute la largeur de la COLONNE DE CONTENU --
+     pas de la fenêtre : aligné sur les sections qui suivent, sinon le
+     texte s'étale à droite et à gauche du reste de la page. */
+  .effort{margin:26px 0 0; padding:11px 15px; border-radius:10px;
+          border:1px solid var(--line); background:var(--card);
+          font-size:.8rem; line-height:1.5; color:var(--fg-2)}
   .effort b{color:var(--fg)}
   .effort .qui{display:block; margin-top:.35em; font-size:.79rem; opacity:.9}
   .badges{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px}
@@ -300,9 +301,10 @@
       <img src="assets/logo.svg" alt="Atelier Laser — PrintNC">
     </div>
   </div>
+  <div class="wrap">
   <div class="effort">
     <b>≈ 211 heures</b> pour en arriver là, du 15/07/2026 au 06/08/2026 :
-    <b>≈ 182 h</b> de développement (553 commits, 262 versions) et
+    <b>≈ 182 h</b> de développement (554 commits, 262 versions) et
     <b>≈ 29 h</b> d'atelier, dont <b>11,4 h</b> de laser chronométrées sur
     les 70 fichiers gravés — 495 m de trait brûlé et 283 mesures relevées
     sur le bois.
@@ -310,6 +312,7 @@
     Le Verdier décide, éprouve chaque version sur le bois et tranche : la
     plupart des défauts corrigés ici ont été trouvés en regardant une
     planche, pas en relisant du code.</span>
+  </div>
   </div>
 </div>
 
