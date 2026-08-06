@@ -9647,7 +9647,17 @@ class TaskPanelFilledEngraving:
                                                     "Motif_Projete")):
                 continue
             sortie.append(obj)
-        return sortie
+        # UN SOLIDE, PAS SES MORCEAUX. Un Body PartDesign et son Pad sont le
+        # MÊME volume : tous deux ont des faces et une épaisseur, donc tous
+        # deux passaient, et le bouton croyait voir « plusieurs surfaces ».
+        # Christophe, 06/08/2026, en majuscules : « J'ESSAYE TA PROCÉDURE
+        # MAIS ÇA NE FONCTIONNE PAS » -- il avait cliqué deux fois, deux
+        # dépôts posés, et aucune projection. Le Pad est dans l'InList du
+        # Body : on écarte donc tout candidat contenu dans un autre.
+        noms = set(o.Name for o in sortie)
+        return [o for o in sortie
+                if not any(getattr(p, "Name", None) in noms
+                           for p in (getattr(o, "InList", None) or []))]
 
     def _on_deposer_hachures(self):
         """Dépose le remplissage COMPLET, puis propose de le projeter.
@@ -9687,28 +9697,36 @@ class TaskPanelFilledEngraving:
             obj.Label, len(fill_edges or []), len(contour_edges or []))
 
         surfaces = self._candidats_3d()
-        if len(surfaces) != 1:
+        if not surfaces:
             QtWidgets.QMessageBox.information(
                 self.form, "Projeter ce remplissage",
-                resume + "\n\n" + (
-                    "Aucune surface 3D trouvée dans le document."
-                    if not surfaces else
-                    "Plusieurs surfaces 3D possibles ({}).".format(
-                        ", ".join(s.Label for s in surfaces[:6]))) +
-                "\n\nSélectionne ce dépôt AVEC ta surface, puis « Projeter "
-                "sur surface 3D » ; grave ensuite la projection avec "
+                resume + "\n\nAucune surface 3D dans le document. "
+                "Sélectionne ce dépôt AVEC ta surface, puis « Projeter sur "
+                "surface 3D » ; grave ensuite la projection avec "
                 "« Marquage de motif ».")
             return
-
-        cible = surfaces[0]
-        reponse = QtWidgets.QMessageBox.question(
-            self.form, "Projeter ce remplissage",
-            resume + "\n\nLe projeter tout de suite sur « {} » ?".format(
-                cible.Label),
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.Yes)
-        if reponse != QtWidgets.QMessageBox.Yes:
-            return
+        if len(surfaces) == 1:
+            cible = surfaces[0]
+            reponse = QtWidgets.QMessageBox.question(
+                self.form, "Projeter ce remplissage",
+                resume + "\n\nLe projeter tout de suite sur « {} » ?".format(
+                    cible.Label),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes)
+            if reponse != QtWidgets.QMessageBox.Yes:
+                return
+        else:
+            # ON DEMANDE, ON NE RENVOIE PAS À LA MAIN. Répondre « plusieurs
+            # surfaces possibles, débrouille-toi » est précisément la
+            # complication qu'on essaie de retirer.
+            libelles = [s.Label for s in surfaces]
+            choix, ok = QtWidgets.QInputDialog.getItem(
+                self.form, "Projeter ce remplissage",
+                resume + "\n\nSur quelle surface le projeter ?",
+                libelles, 0, False)
+            if not ok:
+                return
+            cible = surfaces[libelles.index(choix)]
 
         class _Sel(object):
             def __init__(self, o):

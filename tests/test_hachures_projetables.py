@@ -153,6 +153,37 @@ print("   le message final nomme « Marquage de motif » : ✓")
 
 print()
 print("=" * 62)
+print("§1ter  Un solide compte UNE FOIS, pas une par morceau")
+print("=" * 62)
+
+# LE DÉFAUT QUI A FAIT ÉCHOUER LA PROCÉDURE CHEZ CHRISTOPHE. Un Body
+# PartDesign et son Pad sont le MÊME volume : tous deux ont des faces et
+# une épaisseur, donc le bouton croyait voir « plusieurs surfaces » et
+# renonçait à projeter. Il a cliqué deux fois, obtenu deux dépôts et
+# aucune projection -- « J'ESSAYE TA PROCÉDURE MAIS ÇA NE FONCTIONNE PAS ».
+morceau = doc.addObject("Part::Feature", "MorceauDuSocle")
+morceau.Shape = socle.Shape.copy()
+# On le déclare CONTENU dans le socle, comme un Pad l'est dans son Body.
+socle.addProperty("App::PropertyLink", "Fonction", "Essai", "")
+socle.Fonction = morceau
+doc.recompute()
+
+vus = panneau._candidats_3d()
+print("   objets 3D du document : %s"
+      % [o.Label for o in doc.Objects
+         if getattr(o, "Shape", None) is not None
+         and getattr(o.Shape, "Faces", None)])
+print("   retenus par le bouton : %s" % [o.Label for o in vus])
+assert len(vus) == 1, (
+    "%d surfaces retenues alors qu'il n'y a qu'un solide : le bouton "
+    "renoncera à projeter" % len(vus))
+assert vus[0] is socle, "c'est le morceau qui a été retenu, pas le solide"
+
+doc.removeObject(morceau.Name)
+doc.recompute()
+
+print()
+print("=" * 62)
 print("§2  Ce dépôt est PLAT, donc acceptable comme motif à projeter")
 print("=" * 62)
 
