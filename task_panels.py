@@ -18592,11 +18592,6 @@ class TaskPanelAssistant:
 # boîte d'ajout) : un job combiné sert avant tout à enchaîner plusieurs
 # opérations déjà calibrées séparément, pas à explorer tous les réglages
 # fins en même temps.
-# Mémo à une case de la durée du job combiné (cf.
-# TaskPanelCombined._update_duration_preview).
-_MEMO_DUREE_COMBINE = {}
-
-
 def _empreinte_geometrie(valeur):
     """Empreinte de CONTENU d'une géométrie : (nombre d'éléments, longueur
     cumulée, premier et dernier point). None si l'objet n'a pas de
@@ -18660,29 +18655,52 @@ def _empreinte_valeur(valeur, profondeur=0):
     return ("id", id(valeur))
 
 
-# Mémo à une case de la durée du job combiné (cf.
-# TaskPanelCombined._update_duration_preview).
-_MEMO_DUREE_COMBINE = {}
+# Durée estimée de chaque opération, retenue par SIGNATURE (cf.
+# TaskPanelCombined._update_duration_preview). Borné : au-delà, on oublie
+# les plus anciennes -- une session peut brasser beaucoup d'opérations.
+_MEMO_DUREE_OPS = {}
+_MEMO_DUREE_MAX = 48
+
+
+def _signature_operation(op):
+    """Ce dont la durée d'UNE opération dépend : son type, son matériau et
+    tous ses paramètres, pris par leur CONTENU via `_empreinte_valeur`.
+
+    Le LIBELLÉ n'y est pas : renommer un Job ne change pas le temps de
+    gravure, et le faire entrer ferait tout recalculer pour rien."""
+    params = op.get("params") or {}
+    try:
+        cles = sorted(params)
+    except Exception:
+        cles = list(params)
+    return (op.get("type"), op.get("materiau"),
+            tuple((c, _empreinte_valeur(params[c])) for c in cles))
 
 
 def _signature_combine(operations):
-    """Ce dont la durée du job combiné dépend.
+    """Signature de la LISTE entière, ordre compris."""
+    return tuple(_signature_operation(op) for op in operations)
 
-    L'ORDRE compte (les transits d'une opération à l'autre en dépendent),
-    le type et le libellé aussi, et tous les paramètres -- réglages
-    scalaires, dictionnaires de style et géométrie -- pris par leur
-    CONTENU via `_empreinte_valeur`."""
-    signature = []
-    for op in operations:
-        params = op.get("params") or {}
-        try:
-            cles = sorted(params)
-        except Exception:
-            cles = list(params)
-        signature.append((
-            op.get("type"), op.get("label"), op.get("materiau"),
-            tuple((c, _empreinte_valeur(params[c])) for c in cles)))
-    return tuple(signature)
+
+def _duree_operation(op):
+    """Durée estimée d'une opération seule, en secondes, ou None.
+
+    Mémorisée : c'est le seul calcul cher du panneau. Générer l'opération
+    isolément coûte ce qu'elle coûte (5,14 s de corps pour 1 687 611
+    lignes sur un remplissage de 150 x 200 mm au pas 0,06), mais on ne le
+    paie qu'UNE fois par réglage."""
+    signature = _signature_operation(op)
+    if signature in _MEMO_DUREE_OPS:
+        return _MEMO_DUREE_OPS[signature]
+    try:
+        gcode = core.generate_gcode_combined([op], quiet=True)
+        secondes = core.estimate_job_time_seconds(gcode) if gcode else None
+    except Exception:
+        secondes = None
+    if len(_MEMO_DUREE_OPS) >= _MEMO_DUREE_MAX:
+        _MEMO_DUREE_OPS.clear()
+    _MEMO_DUREE_OPS[signature] = secondes
+    return secondes
 
 
 class TaskPanelCombined:
@@ -18877,42 +18895,53 @@ class TaskPanelCombined:
         self._refresh_list()
 
     def _update_duration_preview(self):
-        """Durée estimée -- MÉMORISÉE d'une ouverture à l'autre.
+        """Durée estimée = SOMME des durées de chaque opération, chacune
+        mémorisée par sa signature.
 
-        Pour afficher une ligne de texte, cette méthode générait le job
-        ENTIER. Christophe, 05/08/2026 : « à chaque fois que je vais dans
-        les job combiné, l'ordinateur souffle, il recalcule tout ? » --
-        oui. Mesuré sur un remplissage de 150 x 200 mm au pas 0,2 :
-        **507 877 lignes de G-code produites en 2,13 s**, puis relues en
-        0,51 s pour en tirer un nombre. Et cela à CHAQUE ouverture du
-        panneau, plus un `_refresh_list` par montée, descente ou
-        suppression dans la liste.
+        Christophe, 05/08/2026 : « à chaque fois que je vais dans les job
+        combiné, l'ordinateur souffle, il recalcule tout ? ». La v2.99.14
+        a supprimé le recalcul à l'OUVERTURE (mémo sur la liste entière),
+        mais un ajout, un déplacement ou une suppression régénérait
+        toujours tout le fichier. Mesuré sur un remplissage de 150 x 200
+        mm au pas 0,06 : 1 687 611 lignes, 5,14 s de corps + 1,89 s
+        d'assemblage + 1,58 s de relecture.
 
-        Le mémo est à une seule case, au niveau du module : `_COMBINED_OPS`
-        survit à la fermeture du panneau, donc rouvrir sans rien changer
-        doit être gratuit. `_signature_combine` décide, et elle porte les
-        RÉGLAGES SCALAIRES, pas seulement la géométrie : `_reprendre_reglages`
-        rafraîchit les opérations depuis les Jobs à l'ouverture, et un mémo
-        aveugle à cela rejouerait le défaut que la v2.99.10 a corrigé --
-        un aperçu qui ne montre pas ce qu'on va obtenir est pire que pas
-        d'aperçu. En cas de doute la signature change, donc on régénère :
-        l'erreur possible coûte du temps, jamais un chiffre faux."""
+        Mémoriser les CORPS aurait laissé 3,46 s par clic -- encore le
+        ventilateur. Mémoriser les DURÉES ne laisse rien : déplacer une
+        opération ne recalcule plus rien du tout, en ajouter une ne
+        calcule QUE celle-là.
+
+        LE PRIX EST UNE APPROXIMATION, ET IL EST MESURÉ. Le fichier
+        entier n'est pas tout à fait la somme de ses parties : le transit
+        d'une opération à la suivante dépend de l'ordre. Écarts relevés
+        entre la somme et le fichier complet : +0,03 % (2 petites formes),
+        +0,19 % (2 formes à 1 080 mm l'une de l'autre), -0,59 % (4 formes
+        aux quatre coins), +0,01 % (une grosse et une minuscule),
+        **+0,71 % au pire** (6 opérations en ligne, soit 10,6 s sur 25
+        minutes). L'ordre lui-même ne pèse que 0,268 % entre le meilleur
+        et le pire enchaînement -- c'est pourquoi la somme peut l'ignorer.
+
+        Le nombre EXACT reste calculé au moment où le fichier est écrit
+        (`_write_gcode_with_dialog` l'affiche dans la console) : ici c'est
+        un aperçu, et il est annoncé comme estimé."""
         if not self.operations:
             self.lbl_duration.setText("Durée estimée : -- (aucune opération)")
             return
-        signature = _signature_combine(self.operations)
-        connue = _MEMO_DUREE_COMBINE.get("signature")
-        if connue is not None and connue == signature:
-            self.lbl_duration.setText(_MEMO_DUREE_COMBINE["texte"])
+        total = 0.0
+        connues = 0
+        for op in self.operations:
+            secondes = _duree_operation(op)
+            if secondes is not None:
+                total += secondes
+                connues += 1
+        if not connues:
+            self.lbl_duration.setText(
+                "Durée estimée : -- (aucune géométrie dans les opérations)")
             return
-        gcode = core.generate_gcode_combined(self.operations, quiet=True)
-        if not gcode:
-            texte = "Durée estimée : -- (aucune géométrie dans les opérations)"
-        else:
-            seconds = core.estimate_job_time_seconds(gcode)
-            texte = "Durée estimée : {}".format(core.format_duration(seconds))
-        _MEMO_DUREE_COMBINE["signature"] = signature
-        _MEMO_DUREE_COMBINE["texte"] = texte
+        texte = "Durée estimée : {}".format(core.format_duration(total))
+        if connues < len(self.operations):
+            texte += " ({} opération(s) sans géométrie)".format(
+                len(self.operations) - connues)
         self.lbl_duration.setText(texte)
 
     def _on_frame_preview(self):
