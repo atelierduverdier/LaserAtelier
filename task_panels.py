@@ -8460,6 +8460,12 @@ class TaskPanelFilledEngraving:
             "<b>7. Génère</b>&nbsp;: «&nbsp;Générer et sauvegarder le "
             "G-code…&nbsp;» (ou «&nbsp;Ajouter au job combiné&nbsp;»). Relis le "
             "<code>G0&nbsp;Z…</code> en tête du .ngc avant de lancer.",
+            "<b>Pour graver cet aplat sur une surface 3D&nbsp;:</b> ce mode "
+            "travaille forcément <b>à plat</b>. Règle le remplissage ici, "
+            "clique «&nbsp;<b>Déposer les hachures dans le document</b>&nbsp;», "
+            "projette ces hachures sur la surface, puis grave la projection "
+            "avec <b>Marquage de motif</b>. Projeter le seul contour ne "
+            "graverait qu'un pourtour.",
         ])
 
         _section(form, "Préréglage matériau", "sect_preset.svg")
@@ -8910,6 +8916,34 @@ class TaskPanelFilledEngraving:
         self.btn_frame_preview.clicked.connect(self._on_frame_preview)
         form.addRow(self.btn_frame_preview)
 
+        # LE MAILLON QUI MANQUAIT POUR LE RELIEF. Ce mode calcule ses
+        # hachures et les envoie droit dans le G-code : rien n'atterrit dans
+        # le document, donc il n'y a RIEN à projeter sur une surface 3D.
+        # Christophe, 06/08/2026 : « il y a un souci sur la projection de
+        # surface remplie sur une surface 3d, ça ne fonctionne pas ». Lu dans
+        # sa session : il avait projeté « MotifSVG001 » (10 491 arêtes ->
+        # 10 564 projetées, la correspondance est exacte), c'est-à-dire le
+        # CONTOUR seul -- le Marquage gravait donc un pourtour, jamais un
+        # aplat. Et le refus de ce mode sur une forme galbée lui disait
+        # « remplis à plat PUIS projette le résultat » : un conseil qui
+        # n'était applicable qu'avec Hachures 2D, le seul mode qui dépose sa
+        # géométrie.
+        #
+        # Le contour, lui, n'a pas besoin de ce bouton : c'est la forme
+        # d'origine, déjà projetable telle quelle.
+        self.btn_deposer_hachures = QtWidgets.QPushButton(
+            "Déposer les hachures dans le document (pour projeter)")
+        self.btn_deposer_hachures.setToolTip(
+            "Pose les hachures calculées ici comme OBJET du document, avec\n"
+            "leur rentrée de bord et leur espacement -- pour pouvoir les\n"
+            "projeter sur une surface 3D, puis les graver avec Marquage de\n"
+            "motif.\n\n"
+            "Sans lui, ce mode n'écrit que du G-code : il n'y a rien à\n"
+            "projeter, et une projection du seul contour ne grave qu'un\n"
+            "pourtour.")
+        self.btn_deposer_hachures.clicked.connect(self._on_deposer_hachures)
+        form.addRow(self.btn_deposer_hachures)
+
         self.btn_toolpath_preview = QtWidgets.QPushButton()
         self.btn_toolpath_preview.setToolTip(
             "Aperçu du trajet (vue 3D) : gris fin = transit éteint, rouge =\n"
@@ -9330,9 +9364,16 @@ class TaskPanelFilledEngraving:
                         "remplissage en 2D — sur une forme galbée il ne "
                         "trouve presque aucune surface, et la gravure "
                         "sortirait quasi blanche.\n\nL'ORDRE À SUIVRE est "
-                        "l'inverse : remplis (ou hachure) la forme À PLAT, "
-                        "puis PROJETTE le résultat sur la surface 3D, et "
-                        "grave-le avec Marquage de motif."
+                        "l'inverse :\n"
+                        "1. sélectionne la forme À PLAT et règle le "
+                        "remplissage ici ;\n"
+                        "2. clique « Déposer les hachures dans le document "
+                        "(pour projeter) » — sans ce dépôt il n'y a RIEN à "
+                        "projeter, ce mode n'écrivant que du G-code ;\n"
+                        "3. projette ces hachures sur la surface 3D ;\n"
+                        "4. grave la projection avec Marquage de motif.\n\n"
+                        "Projeter le seul contour ne grave qu'un pourtour, "
+                        "jamais un aplat."
                         .format(getattr(_so.Object, "Label", "?"), _creux))
                 return None, None, None, None
         cle_faces = _cle_geometrie_selection(self.selection)
@@ -9502,6 +9543,43 @@ class TaskPanelFilledEngraving:
             QtWidgets.QMessageBox.critical(self.form, "Erreur", "Aucun G-code d'aperçu généré.")
             return
         _write_gcode_with_dialog(self.form, gcode, "/tmp/apercu_cadrage_gravure_remplie.ngc")
+
+    def _on_deposer_hachures(self):
+        """Dépose les hachures du remplissage comme objet du document.
+
+        C'est la seule façon de porter un APLAT sur une surface 3D : le
+        remplissage se calcule à plat (le constructeur de faces ne sait pas
+        travailler autrement), puis on projette CES lignes-là et on les
+        grave avec Marquage de motif."""
+        fill_edges, _contour, _defocus, _cz = self._build_edges()
+        if not fill_edges:
+            QtWidgets.QMessageBox.warning(
+                self.form, "Déposer les hachures",
+                "Aucune hachure à déposer : vérifie la sélection et "
+                "l'espacement.")
+            return
+        # Import LOCAL, comme partout dans ce fichier : `Part` n'est pas tiré
+        # au niveau module (démarrage de FreeCAD).
+        import Part
+        doc = FreeCAD.ActiveDocument or FreeCAD.newDocument()
+        obj = doc.addObject("Part::Feature", "Hachures_remplissage")
+        obj.Label = "Hachures remplissage"
+        obj.Shape = Part.Compound(list(fill_edges))
+        try:
+            import laser_jobs as _lj
+            _lj.ranger_forme(obj)          # l'atelier range ce qu'il crée
+        except Exception:
+            pass
+        doc.recompute()
+        QtWidgets.QMessageBox.information(
+            self.form, "Déposer les hachures",
+            "« {} » posé dans le document : {} traits.\n\n"
+            "Pour graver cet aplat sur une surface 3D :\n"
+            "1. sélectionne-le AVEC la surface, puis « Projeter sur "
+            "surface 3D » ;\n"
+            "2. grave la projection avec « Marquage de motif ».\n\n"
+            "Le contour, lui, est la forme d'origine : projette-la de la "
+            "même façon si tu le veux.".format(obj.Label, len(fill_edges)))
 
     def _on_toolpath_preview(self):
         fill_edges, contour_edges, defocus, contour_z_offset = self._build_edges()
