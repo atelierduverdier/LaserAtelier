@@ -209,7 +209,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.31</span><br>
+      <span class="ver">Version 2.99.32</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -260,7 +260,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.31</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.32</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1145,7 +1145,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.31 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.32 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1161,7 +1161,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 59 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 60 entrées</span></h3>
+  <p><b>Une face invalide gravait blanc, en silence (v2.99.32, trouvé à l'audit).</b> Audit complet demandé par Christophe. Un seul défaut de gravure en est sorti, mais il est du genre le plus coûteux&nbsp;: <code>Part.Face([contour, trou])</code> sans orienter le trou rend une aire de <b>400,196&nbsp;mm²</b> là où 399,804 était attendu — le trou s'<em>ajoute</em> — et <code>isValid()</code> répond False. Le hachurage l'acceptait et rendait <b>UN segment de 0,5&nbsp;mm</b> pour une pièce de 20&nbsp;×&nbsp;20&nbsp;mm. C'était atteignable&nbsp;: les faces d'un objet sélectionné étaient renvoyées telles quelles, d'où qu'elles viennent — autre atelier, macro, import. Le constructeur de l'atelier, lui, oriente correctement&nbsp;; il n'était pas consulté quand la forme portait déjà des faces. Elles sont désormais rebâties depuis leurs contours&nbsp;: <b>96 hachures et 1&nbsp;333&nbsp;mm de trait</b> au lieu de 1 et 0,5. <b>Le piège du piège</b>&nbsp;: cette face <em>se tessellise</em> (124 triangles), donc le contrôle habituel de cette maison ne la voyait pas — c'est <code>isValid()</code> qui parle, et uniquement sur les faces venues du dehors&nbsp;; celles que l'atelier bâtit lui-même restent jugées à la tessellation, une face sur fils tangents pouvant rester invalide sans gêner.</p>
+
   <p><b>Un bouton pour réunir des dizaines de tracés en un seul (v2.99.31).</b> Christophe, devant les 267 tracés de son dessin&nbsp;: «&nbsp;j'ai plein de tracés que j'ai sélectionnés, il me faudrait un bouton pour les regrouper tous en 1 seul&nbsp;». Un dessin au trait arrive en autant d'objets que de tracés — ce qui est <em>juste</em> pour un remplissage calculé tracé par tracé, et pénible pour tout le reste. «&nbsp;Fusionner les tracés sélectionnés&nbsp;» rejoint la barre «&nbsp;Dessins&nbsp;», à côté de l'import&nbsp;: <b>un bouton, pas un panneau</b> — il n'y a rien à régler, une boîte n'aurait ajouté qu'un clic. Les originaux sont <b>masqués et rangés, jamais supprimés</b>&nbsp;: le remplissage se calcule par tracé, qui a fusionné doit pouvoir revenir en arrière — et l'arbre se replie quand même. <b>Le test a trouvé un plantage avant l'usage</b>&nbsp;: FreeCAD lève une <code>RuntimeError</code> si un objet entre dans DEUX dossiers, or l'import range désormais par calque — fusionner ce qu'on vient d'importer, le cas exact de Christophe, tombait dessus. Un tracé déjà rangé reste où il est. <b>Et un piège de test documenté ailleurs a resurgi</b>&nbsp;: <code>import InitGui</code> attrape celui d'un AUTRE workbench, FreeCAD mettant chaque <code>Mod/&lt;wb&gt;/</code> sur <code>sys.path</code> — le fichier se lit par son chemin.</p>
 
   <p><b>L'import range par calque, ou à défaut par couleur (v2.99.30).</b> Christophe&nbsp;: «&nbsp;si dans le fichier SVG ou LightBurn il y a des couleurs, pourrais-tu importer les objets dans des dossiers séparés par couleur&nbsp;? là j'ai une longue liste d'objets&nbsp;». Son fichier en produit <b>267</b> — l'arbre devient illisible et rien ne dit ce qui va ensemble. Le parcours du SVG retient désormais le <code>&lt;g&gt;</code> qui contient chaque tracé, et l'import crée un dossier par lot&nbsp;: le <b>calque d'abord</b>, parce qu'il porte l'intention du dessinateur (un LightBurn traduit le nomme <code>calque_9</code>), la <b>couleur ensuite</b>, seule séparation disponible sur un SVG quelconque. Vérifié sur son dessin&nbsp;: 267 objets en 4 dossiers — Calque 9 (244), Calque 10 (21), Calque 2 et Calque 21 — et <b>rien à la racine</b>. <b>Aucun dossier quand il n'y a qu'un lot</b>&nbsp;: ce serait un clic de plus pour retrouver exactement la même liste. Le test vérifie aussi que le rangement ne perd ni ne duplique un tracé, et ses trois sabotages rougissent.</p>

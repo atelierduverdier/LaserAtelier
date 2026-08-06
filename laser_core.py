@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.31"
+VERSION = "2.99.32"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2992,6 +2992,69 @@ def analyse_finesse(faces, pas, brulure=None):
             "faces": len(paires)}
 
 
+def _faces_utilisables(faces, label="?"):
+    """Écarte les faces qu'on ne saura pas hachurer, et REBÂTIT ce qui peut
+    l'être depuis leurs fils.
+
+    UNE FACE INVALIDE NE DIT RIEN ET GRAVE BLANC. Trouvé à l'audit du
+    06/08/2026 : `Part.Face([contour, trou])` sans orienter le trou rend
+    une face d'aire 400,196 mm2 là où 399,804 était attendu -- le trou
+    s'AJOUTE au lieu de se soustraire -- et `isValid()` répond False. Le
+    hachurage l'accepte pourtant et rend **1 seul segment de 0,5 mm** pour
+    une pièce de 20 x 20 mm : la gravure sort quasi blanche, sans un mot.
+
+    C'est atteignable par l'utilisateur : les faces d'un objet sélectionné
+    étaient renvoyées TELLES QUELLES, sans contrôle, d'où qu'elles
+    viennent (un autre atelier, une macro, un import). Le constructeur de
+    l'atelier, lui, oriente correctement -- il n'était simplement pas
+    consulté quand la forme portait déjà des faces.
+
+    LA TESSELLATION NE SUFFIT PAS ICI, et c'est le piège : cette face
+    invalide se tessellise très bien (124 triangles) tout en ne rendant
+    qu'une hachure. Le signal qui la démasque est `isValid()`.
+
+    Ailleurs dans ce fichier, `isValid()` est explicitement écarté comme
+    juge -- une face bâtie sur des fils tangents peut rester invalide sans
+    gêner. La différence : ici on juge des faces VENUES DU DEHORS, jamais
+    celles que l'atelier vient de construire. Et on ne rejette rien : on
+    tente une reconstruction, qu'on ne garde que si elle tessellise."""
+    bonnes, a_rebatir = [], []
+    for f in faces or ():
+        try:
+            ok = len(f.tessellate(0.05)[1]) > 0 and f.isValid()
+        except Exception:
+            ok = False
+        (bonnes if ok else a_rebatir).append(f)
+    if not a_rebatir:
+        return bonnes
+    for f in a_rebatir:
+        refaites = []
+        try:
+            fils = [w for w in getattr(f, "Wires", []) if w.isClosed()]
+            if fils:
+                refaites = _faces_rapides_depuis_fils(fils) or []
+                if not refaites:
+                    refaites = list(Part.makeFace(
+                        fils, "Part::FaceMakerBullseye").Faces)
+        except Exception:
+            refaites = []
+        # On ne garde la reconstruction que si elle tessellise : sinon on
+        # rendrait le remède pire que le mal, et la face d'origine, même
+        # invalide, grave peut-être quelque chose.
+        if refaites and all(len(x.tessellate(0.05)[1]) > 0 for x in refaites):
+            bonnes.extend(refaites)
+            FreeCAD.Console.PrintWarning(
+                "« {} » : une face inexploitable (trou mal orienté ?) a été "
+                "REBÂTIE depuis ses contours -- sans quoi la gravure "
+                "serait sortie presque blanche.\n".format(label))
+        else:
+            bonnes.append(f)
+            FreeCAD.Console.PrintWarning(
+                "« {} » : face invalide NON reconstructible -- gravée telle "
+                "quelle, vérifie le résultat.\n".format(label))
+    return bonnes
+
+
 def _faces_from_any_shape(shape, label="?"):
     """Faces planes fermées d'une forme QUELCONQUE : faces existantes,
     fils fermés (Sketch/Draft), ou ARÊTES LIBRES chaînées en fils
@@ -3003,7 +3066,7 @@ def _faces_from_any_shape(shape, label="?"):
     if shape is None:
         return []
     if getattr(shape, "Faces", None):
-        return list(shape.Faces)
+        return _faces_utilisables(list(shape.Faces), label)
     # Compound de compounds (Motif_Projete depuis v1.79.5) : chaque
     # sous-compound est UN motif d'origine -- ses faces se reconstruisent
     # INDÉPENDAMMENT, sinon le pair/impair global sur l'ensemble des fils
