@@ -9136,38 +9136,47 @@ class TaskPanelFilledEngraving:
         return picker["mat"].currentData() or None
 
     def _maj_finesse(self, spacing, burn):
-        """Dit quand le dessin est TROP FIN pour être hachuré.
+        """Dit quand le pas ne fera que TRAVERSER le dessin.
 
-        Christophe a passé une soirée à chercher pourquoi « les hachures
-        sur ma forme ne se font pas ». La réponse était dans son dessin et
-        nulle part à l'écran : des rubans de 0,104 mm de large, un pas de
-        1 mm. Le programme le savait -- `inset_face_robuste` saute déjà les
-        traits trop fins « le contour les noircit » -- mais en silence."""
+        Le verdict est pondéré par l'AIRE, pas par le nombre de faces : un
+        dessin au trait compte des dizaines de rubans minuscules dont la
+        médiane ne dit rien de la surface qu'on veut noire. Sur la pin-up
+        de Christophe, la médiane vaut 0,104 mm mais 97,4 % de l'encre vit
+        dans des rubans de 0,12 mm ou plus -- conseiller « le contour
+        suffit » sur la foi de la médiane était un contresens, et trois
+        rendus côte à côte l'ont montré avant qu'une planche ne le paie."""
         lbl = getattr(self, "lbl_finesse", None)
         if lbl is None:
             return
         faces = _MEMO_REMPLISSAGE.get("faces") or []
-        infos = core.dessin_au_trait(faces, spacing) if faces else None
-        if not infos:
+        infos = core.analyse_finesse(faces, spacing, burn) if faces else None
+        if not infos or infos["part_pointee"] < 0.5:
             lbl.setVisible(False)
             return
-        milieu, fines, total = infos
-        if fines < 0.5 * total:
-            lbl.setVisible(False)
-            return
-        message = (
-            "Dessin AU TRAIT : {} formes sur {} sont plus fines que le pas "
-            "(largeur médiane {:.2f} mm contre un pas de {:.2f} mm). Le "
-            "hachurage les traverse au lieu de les remplir."
-            .format(fines, total, milieu, spacing))
-        if burn and burn >= milieu:
-            message += (" Rien à faire : le CONTOUR seul les noircit, "
-                        "son trait brûlé de {:.2f} mm couvre des rubans de "
-                        "{:.2f} mm. Coche « Graver le contour » et laisse "
-                        "le remplissage tranquille.".format(burn, milieu))
+        pointee = 100.0 * infos["part_pointee"]
+        if infos["part_contour"] >= 0.5:
+            # Le gros de l'encre tient dans des rubans que la brûlure
+            # couvre : le contour EST le remplissage, inutile d'insister.
+            message = (
+                "Dessin AU TRAIT : {:.0f} % de l'encre est dans des rubans "
+                "plus fins que le pas de {:.2f} mm — le hachurage les "
+                "traverse au lieu de les remplir. Mais {:.0f} % tient dans "
+                "des rubans plus fins que ta brûlure ({:.2f} mm) : le "
+                "CONTOUR seul les noircit. Coche « Graver le contour » et "
+                "laisse le remplissage tranquille."
+                .format(pointee, spacing, 100.0 * infos["part_contour"], burn))
         else:
-            message += (" Pour les noircir il faut un pas plus fin que "
-                        "{:.2f} mm, ou compter sur le contour.".format(milieu))
+            conseil = max(infos["pas_utile"] / 2.0, 0.02)
+            message = (
+                "Le pas de {:.2f} mm ne fera que TRAVERSER ce dessin : "
+                "{:.0f} % de l'encre est dans des rubans plus fins que lui. "
+                "Descends vers {:.2f} mm pour deux passes par ruban — "
+                "sinon tu obtiendras des tirets, pas un aplat."
+                .format(spacing, pointee, conseil))
+            if burn:
+                message += (" Le contour ne suffira pas non plus : il ne "
+                            "noircit que {:.0f} % de l'encre à {:.2f} mm de "
+                            "brûlure.".format(100.0 * infos["part_contour"], burn))
         lbl.setText(message)
         lbl.setStyleSheet("color: #b0740a;")
         lbl.setVisible(True)

@@ -176,7 +176,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.19"
+VERSION = "2.99.20"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -2926,35 +2926,70 @@ def largeurs_typiques_faces(faces):
     return sorted(larg)
 
 
-def dessin_au_trait(faces, pas):
-    """Le hachurage a-t-il seulement de quoi mordre ?
+def analyse_finesse(faces, pas, brulure=None):
+    """Le hachurage a-t-il de quoi mordre ? Réponse PONDÉRÉE PAR L'AIRE.
 
-    Renvoie `(mediane, n_plus_fines, n_total)` ou None si on ne sait pas.
+    Renvoie un dict, ou None si on ne sait pas :
+      `aire`          surface totale à noircir, mm2
+      `part_pointee`  part de l'AIRE que le pas ne fera que traverser
+      `part_contour`  part de l'AIRE qu'un contour brûlé suffit à noircir
+      `pas_utile`     largeur MÉDIANE EN AIRE : la moitié de l'encre vit
+                    dans des rubans plus fins, l'autre moitié plus larges
+      `mediane`       largeur médiane, pour mémoire
 
-    UN DESSIN AU TRAIT NE SE HACHURE PAS, ET IL N'EN A PAS BESOIN.
-    Christophe, 06/08/2026 : « les hachures sur ma forme ne se font pas,
-    mais cela doit être dû aux épaisseurs de traits ». C'était exactement
-    ça, et son dessin le chiffre : 96 faces dont la largeur médiane vaut
-    **0,104 mm** (la plus large 0,745), pour 272 mm2 d'encre. Au pas de
-    1 mm, les 96 faces sur 96 sont plus fines que le pas.
+    COMPTER LES FACES DONNE LE MAUVAIS CONSEIL, et une image l'a prouvé.
+    Christophe, 06/08/2026, après « je viens de remplir ma forme, je veux
+    la projeter » : trois rendus côte à côte — hachures seules au pas
+    1 mm, contour seul, contour + hachures fines. Le premier ne montre que
+    des tirets épars. Le deuxième donne un DESSIN AU TRAIT propre. Seul le
+    troisième donne le noir massif qu'il cherchait, cheveux, robe et
+    lettrage compris.
 
-    Le hachurage ne rend pourtant pas zéro -- il rend pire : 561 segments
-    de **0,25 mm de long en médiane**, espacés d'un pas ENTIER le long de
-    rubans larges d'un dixième de millimètre. Il pointille le trait au
-    lieu de le remplir, et la longueur de segment ne bouge pas quand on
-    resserre le pas (0,251 mm à pas 1,0 ; 0,253 à pas 0,08) : ce sont des
-    traversées, pas des remplissages.
+    Or la version précédente de ce verdict raisonnait sur la MÉDIANE des
+    largeurs et concluait « le contour seul les noircit ». Faux, et la
+    mesure le dit : sur son dessin, la médiane vaut 0,104 mm mais
+    **97,4 % de l'aire** vit dans des rubans de 0,12 mm ou plus, et
+    **deux faces à elles seules en portent 85 %** (0,29 et 0,35 mm de
+    large). La médiane décrit le NOMBRE de faces — un dessin au trait en
+    compte des dizaines de minuscules —, pas la surface qu'on veut noire.
 
-    Ce qui noircit ces rubans, c'est le CONTOUR. Ses deux lignes sont
-    distantes de 0,104 mm, et la brûlure mesurée sur le hêtre fait 0,12 à
-    0,20 mm : elles se rejoignent, le ruban sort plein. 1 738 mm de
-    contour contre 3 401 mm de hachures au pas 0,08 pour le même noir --
-    le contour est aussi le plus économe."""
-    larg = largeurs_typiques_faces(faces)
-    if not larg or pas <= 0:
+    `pas_utile` est la médiane PONDÉRÉE PAR L'AIRE, et non un centile bas :
+    un dessin au trait traîne toujours quelques poussières de face, et un
+    seuil à 10 % se laisse tirer par elles (0,02 mm conseillé sur une
+    pièce d'essai, un pas que personne ne veut graver). La médiane en aire
+    décrit les rubans qui FONT le dessin. Viser sa moitié garantit deux
+    passes dedans."""
+    if not faces or pas <= 0:
         return None
-    milieu = larg[len(larg) // 2]
-    return milieu, sum(1 for w in larg if w < pas), len(larg)
+    paires = []
+    for f in faces:
+        try:
+            per = float(f.Length)
+            aire = float(f.Area)
+        except Exception:
+            continue
+        if per > 1e-9 and aire > 0:
+            paires.append((2.0 * aire / per, aire))
+    if not paires:
+        return None
+    paires.sort()
+    total = sum(a for _w, a in paires)
+    if total <= 0:
+        return None
+    pointee = sum(a for w, a in paires if w < pas) / total
+    contour = (sum(a for w, a in paires if brulure and w <= brulure) / total
+               if brulure else 0.0)
+    cumul = 0.0
+    utile = paires[-1][0]
+    for w, a in paires:
+        cumul += a
+        if cumul >= 0.50 * total:
+            utile = w
+            break
+    larg = [w for w, _a in paires]
+    return {"aire": total, "part_pointee": pointee, "part_contour": contour,
+            "pas_utile": utile, "mediane": larg[len(larg) // 2],
+            "faces": len(paires)}
 
 
 def _faces_from_any_shape(shape, label="?"):

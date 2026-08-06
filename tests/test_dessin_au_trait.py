@@ -21,6 +21,16 @@ hachures au pas 0,08 pour le même noir.
 Le programme le savait déjà (`inset_face_robuste` saute les traits fins
 « le contour les noircit ») mais en silence, et Christophe a cherché une
 soirée. D'où ce verdict.
+
+CORRIGÉ LE JOUR MÊME, et c'est la leçon principale de ce fichier : la
+première version raisonnait sur la MÉDIANE des largeurs et concluait « le
+contour seul suffit ». Trois rendus côte à côte l'ont démentie — hachures
+seules au pas 1 mm : des tirets épars ; contour seul : un dessin au trait
+propre ; contour + hachures fines : le noir massif qu'il cherchait. La
+mesure a suivi : médiane 0,104 mm, mais **97,4 % de l'aire** vit dans des
+rubans de 0,12 mm ou plus, et DEUX faces en portent 85 %. La médiane
+décrit le nombre de faces, pas la surface qu'on veut noire. Le verdict
+pèse désormais par l'AIRE (§5 gèle exactement ce piège).
 """
 import sys
 
@@ -70,20 +80,21 @@ print("=" * 62)
 trait = [ruban(i * 3.0, 0.10, 20.0) for i in range(12)]
 aplat = [ruban(0.0, 25.0, 25.0)]
 
-milieu, fines, total = core.dessin_au_trait(trait, 1.0)
-print("   12 rubans de 0,10 mm, pas 1,00 : %d/%d plus fines, médiane %.3f mm"
-      % (fines, total, milieu))
-assert fines == total, "les rubans fins ne sont pas repérés"
+a = core.analyse_finesse(trait, 1.0, 0.12)
+print("   12 rubans de 0,10 mm, pas 1,00 : %.0f %% de l'aire pointillée"
+      % (100 * a["part_pointee"]))
+assert a["part_pointee"] > 0.99, "les rubans fins ne sont pas repérés"
 
-milieu_a, fines_a, total_a = core.dessin_au_trait(aplat, 1.0)
-print("   un aplat de 25 mm, pas 1,00   : %d/%d plus fines, médiane %.1f mm"
-      % (fines_a, total_a, milieu_a))
-assert fines_a == 0, "un aplat est pris pour un dessin au trait"
+b = core.analyse_finesse(aplat, 1.0, 0.12)
+print("   un aplat de 25 mm, pas 1,00   : %.0f %% pointillée"
+      % (100 * b["part_pointee"]))
+assert b["part_pointee"] == 0, "un aplat est pris pour un dessin au trait"
 
 # Et le seuil se déplace avec le pas : à 0,05 mm le hachurage mord.
-_m, fines_fin, _t = core.dessin_au_trait(trait, 0.05)
-print("   les mêmes rubans au pas 0,05  : %d/%d plus fines" % (fines_fin, total))
-assert fines_fin == 0, "au pas 0,05 mm un ruban de 0,10 n'est plus 'trop fin'"
+c = core.analyse_finesse(trait, 0.05, 0.12)
+print("   les mêmes rubans au pas 0,05  : %.0f %% pointillée"
+      % (100 * c["part_pointee"]))
+assert c["part_pointee"] == 0, "au pas 0,05 mm un ruban de 0,10 n'est plus traversé"
 
 print()
 print("=" * 62)
@@ -103,7 +114,7 @@ print("   dessin au trait, pas 1,00, brûlure 0,12 : %s"
       % ("PARLE" if visible else "muet"))
 print("   « %s »" % texte[:96])
 assert visible, "le panneau reste muet sur un dessin qu'il ne peut pas hachurer"
-assert "0.10" in texte or "0,10" in texte, "la largeur mesurée n'est pas dite"
+assert "%" in texte, "la part d'encre concernée n'est pas dite"
 # La brûlure couvre le ruban : le message doit nommer le CONTOUR, sinon il
 # décrit un problème sans donner l'issue.
 assert "CONTOUR" in texte.upper(), (
@@ -130,10 +141,44 @@ panneau._maj_finesse(1.0, 0.12)
 texte2 = panneau.lbl_finesse.text()
 print("   rubans 0,60 mm, brûlure 0,12 : « %s »" % texte2[-88:])
 assert not panneau.lbl_finesse.isHidden()
-assert "CONTOUR" not in texte2.upper() or "pas plus fin" in texte2, (
-    "le message conseille le contour alors que la brûlure ne couvre pas "
-    "le ruban : %r" % texte2)
-assert "pas plus fin" in texte2, "aucune issue proposée : %r" % texte2
+assert "Descends vers" in texte2, "aucun pas conseillé : %r" % texte2
+
+print()
+print("=" * 62)
+print("§5  L'AIRE décide, pas le nombre de faces")
+print("=" * 62)
+
+# LE PIÈGE, gelé ici. Un dessin au trait compte des dizaines de rubans
+# minuscules et quelques formes qui portent tout le noir. Sur la pin-up de
+# Christophe : médiane 0,104 mm, mais 97,4 % de l'aire dans des rubans
+# >= 0,12 mm, dont 85 % dans DEUX faces. Raisonner sur la médiane conseille
+# « le contour suffit » ; l'image dit le contraire.
+melange = ([ruban(i * 1.0, 0.04, 4.0) for i in range(40)]      # 40 broutilles
+           + [ruban(60.0, 0.35, 60.0), ruban(70.0, 0.35, 60.0)])  # 2 vraies masses
+larg = core.largeurs_typiques_faces(melange)
+mediane = larg[len(larg) // 2]
+a5 = core.analyse_finesse(melange, 1.0, 0.12)
+part_grosses = 100.0 * (1.0 - a5["part_contour"])
+print("   %d faces, médiane %.3f mm -- mais %.0f %% de l'aire est HORS "
+      "de portée du contour" % (len(melange), mediane, part_grosses))
+assert mediane < 0.12, "la médiane devrait être minuscule (c'est le piège)"
+assert a5["part_contour"] < 0.5, (
+    "le contour est crédité de %.0f %% de l'aire : le verdict compte les "
+    "faces au lieu de peser l'encre" % (100 * a5["part_contour"]))
+
+tp._MEMO_REMPLISSAGE["faces"] = melange
+panneau._maj_finesse(1.0, 0.12)
+texte5 = panneau.lbl_finesse.text()
+print("   « %s »" % texte5[:110])
+assert not panneau.lbl_finesse.isHidden()
+assert "Descends vers" in texte5, (
+    "le verdict conseille le contour sur un dessin dont l'encre est dans "
+    "les grosses formes -- exactement le contresens de la première "
+    "version : %r" % texte5)
+conseil = a5["pas_utile"] / 2.0
+print("   pas conseillé : %.2f mm (les masses font %.2f mm)"
+      % (conseil, 0.35))
+assert conseil < 0.35, "le pas conseillé ne mord pas dans les masses"
 
 FreeCAD.closeDocument("dessin_au_trait")
 print()
