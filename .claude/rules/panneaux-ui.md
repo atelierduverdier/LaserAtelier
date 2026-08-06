@@ -286,6 +286,48 @@ of truth. `VueJobLaser.doubleClicked` re-selects the sources and reopens the mod
 (`ouvrir_job`). Proxies carry no state (dumps/loads return None); regenerating updates the existing
 Job (user-renamed Labels are preserved).
 
+## A panel must fit the 573 px task view — three causes, none obvious (2026-08-06)
+
+`tests/test_largeur_panneaux.py` measures every panel's `minimumSizeHint().width()` at **13 pt**
+against `LARGEUR_VUE = 573` (the defect does not exist below ~11 pt, which is why nobody saw it).
+`DEJA_TROP_LARGES` is **empty** and may only shrink — never add a name to make a panel pass.
+
+The four that used to overflow (Calligraphie 861, Assistant 781, Text 712, TexteContour 670) had
+three causes, and **not one was the one you would guess**:
+
+- **A QComboBox demands its longest entry as MINIMUM width** — 588 px for the 45-font picker — and
+  `setSizeAdjustPolicy` does nothing about it: it only moves `sizeHint` (588 → 190) while the layout
+  reads `minimumSizeHint`. `_combo_compact` / `_compacter_listes` (called from `_scrollable`, so
+  every panel gets it) caps the **closed** box at `COMBO_CARACTERES_MAXI` characters via
+  `QSizePolicy.Ignored` + an explicit `setMinimumWidth`. **The popup keeps its full width** —
+  clipping the dropdown itself would make font names unreadable at the moment you choose.
+- **A QCheckBox never wraps**, so a sentence-length label *is* the panel's minimum width (565 and
+  595 px for two of them). Shortened, explanation moved into the tooltip. A generic sweep can't fix
+  this — clipping a checkbox loses the meaning — so it stays a hand edit guarded by the test.
+- **Seven QDoubleSpinBox columns at 91 px** = 749 px of `_GrilleResultats`. Cells lost their arrows
+  (nobody clicks 36 times to enter 0.36; the wheel is already neutralised) and are sized on the
+  widest value they can display, computed from the current font.
+
+**Two false leads, both the same shape, both worth remembering:**
+
+1. **The first two rounds of measurement returned identical numbers to the pixel** for every remedy
+   — which looks like "the lead is wrong" and was actually **layout caching**. A `QLayout` caches
+   its minimum from build time, and the update does not descend by itself into **nested** layouts
+   (those added by `form.addRow(label, hbox)`, which have no widget of their own). `_compacter_listes`
+   therefore ends with an explicit `invalidate()` sweep; without it the fix was in place and removed
+   zero pixels. When a remedy changes *nothing at all*, suspect the instrument before the theory —
+   the null test is to hide every child and check the width collapses (712 → 18).
+2. **The cell width reserved one digit too many** before the decimal point, leaving the grid at 644
+   of 749. Compute the reservation from the value the widget will actually print
+   (`"{:.{}f}".format(maxi, decimals)`), never from a digit count.
+
+**Do not tighten further.** Qt itself asks 88 px for those spin boxes; 66 is already below it, with
+"10.00" (50 px of text) inside 54 px of usable space. §6 freezes that a truncated measurement can
+never ship — a measurement you cannot re-read on screen is worse than a panel that overflows.
+
+At 15 pt seven panels still overflow. That is a different (and much older) question: nothing here
+was ever designed for that size, and the reference measurement is Christophe's own 573 px view.
+
 ## Multithreading buys NOTHING here — measured end to end (2026-08-06)
 
 Christophe has 32 cores and asked. The answer is no, and it was measured rather than argued, so

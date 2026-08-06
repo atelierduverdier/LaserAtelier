@@ -151,17 +151,22 @@ print("=" * 62)
 print("§4  Aucun AUTRE panneau ne doit se mettre à déborder")
 print("=" * 62)
 
-# Quatre panneaux dépassent encore, pour des raisons qui leur sont propres
-# (un tableau de mesures dans l'Assistant, des rangées étiquette + champ
-# ailleurs). Ce sont des chantiers distincts, et on les NOMME plutôt que
-# de baisser le seuil : cette liste ne peut que rétrécir. Y ajouter un nom
-# doit être un geste conscient.
-DEJA_TROP_LARGES = {
-    "TaskPanelCalligraphie",        # 861 px
-    "TaskPanelAssistant",           # 781 px (grille de mesures)
-    "TaskPanelText",                # 712 px
-    "TaskPanelTexteContour",        # 670 px
-}
+# CETTE LISTE EST VIDE DEPUIS LE 06/08/2026, et elle ne peut que le
+# rester : y ajouter un nom doit être un geste conscient, jamais la façon
+# de faire passer un panneau.
+#
+# Les quatre qui y figuraient (Calligraphie 861, Assistant 781, Texte 712,
+# Texte contour 670) sont tombés à 538 / 568 / 333 / 504 pour trois causes
+# mesurées, aucune de celles qu'on aurait devinées :
+#
+#   - une QComboBox exige son entrée la plus longue comme largeur MINIMALE
+#     (588 px pour le sélecteur de police) et `setSizeAdjustPolicy` n'y
+#     change rien -- elle ne touche que `sizeHint` (`_combo_compact`) ;
+#   - une QCheckBox ne se replie pas : deux libellés-phrases valaient 565
+#     et 595 px à eux seuls, raccourcis, l'explication passée en bulle ;
+#   - sept colonnes de QDoubleSpinBox à 91 px faisaient 749 px de grille
+#     de mesures dans l'Assistant.
+DEJA_TROP_LARGES = set()
 
 trop_larges = set()
 mesures = []
@@ -194,6 +199,67 @@ gueris = DEJA_TROP_LARGES - trop_larges
 if gueris:
     print("   (guéris depuis, à retirer de la liste : %s)"
           % ", ".join(sorted(gueris)))
+
+print()
+print("=" * 62)
+print("§5  Une liste déroulante n'impose plus son entrée la plus longue")
+print("=" * 62)
+
+# LA PROPRIÉTÉ, PAS LE PANNEAU. §4 mesure des totaux, qui peuvent tomber
+# juste pour une autre raison ; ici on vérifie le mécanisme. Le sélecteur
+# de police porte 45 entrées dont « Verdier -- la police de l'atelier
+# (chapeau sur ¤) », 588 px à 13 pt.
+pt = construire("TaskPanelText")
+combo = pt.combo_font
+naturel = combo.minimumSizeHint().width()
+print("   %d entrées, la plus longue vaut %d px" % (combo.count(), naturel))
+assert naturel > LARGEUR_VUE / 2, (
+    "la liste des polices n'est plus assez longue pour que ce test prouve "
+    "quoi que ce soit (%d px) : lui trouver un autre cas" % naturel)
+assert (combo.sizePolicy().horizontalPolicy()
+        == QtWidgets.QSizePolicy.Ignored), (
+    "la liste dicte à nouveau la largeur du panneau : _combo_compact ne "
+    "l'a pas traitée")
+print("   plafonnée à %d px, politique %s"
+      % (combo.minimumWidth(), combo.sizePolicy().horizontalPolicy().name))
+assert combo.minimumWidth() < naturel, (
+    "le plafond (%d) ne réduit rien face au naturel (%d)"
+    % (combo.minimumWidth(), naturel))
+
+# ET LA LISTE DÉROULÉE GARDE SA LARGEUR : on rogne la boîte fermée, qui
+# n'affiche que la sélection courante, jamais le choix lui-même.
+assert combo.view().minimumWidth() >= naturel, (
+    "la popup a été rognée elle aussi (%d < %d) : les noms de police "
+    "deviendraient illisibles au moment de choisir"
+    % (combo.view().minimumWidth(), naturel))
+print("   la liste déroulée garde ses %d px : ✓" % combo.view().minimumWidth())
+
+print()
+print("=" * 62)
+print("§6  Une case de mesure reste lisible en entier")
+print("=" * 62)
+
+# Le revers du resserrage : la grille de l'Assistant est passée de 749 à
+# ~530 px en réduisant ses cases de 91 à 66. Un cran de plus et « 10.00 »
+# serait tronqué à l'écran -- une mesure au pied à coulisse qu'on ne peut
+# plus relire est pire qu'un panneau trop large.
+pa = construire("TaskPanelAssistant")
+grilles = pa.form.widget().findChildren(tp._GrilleResultats)
+assert grilles, "aucune grille de mesures dans l'Assistant"
+grille = grilles[0]
+case = grille.findChildren(QtWidgets.QDoubleSpinBox)[0]
+case.setValue(case.maximum())
+metrique = QtGui.QFontMetrics(case.font())
+texte = metrique.horizontalAdvance(case.text())
+# ~12 px de cadre et de marges internes, mesurés sur ce style.
+utile = case.minimumWidth() - 12
+print("   case de %d px, valeur maxi %r large de %d px (utile %d)"
+      % (case.minimumWidth(), case.text(), texte, utile))
+assert texte <= utile, (
+    "la valeur maximale (%s) ne tient pas dans la case (%d px de texte "
+    "pour %d utiles) : une mesure serait tronquée à l'écran"
+    % (case.text(), texte, utile))
+print("   la grille entière fait %d px" % grille.minimumSizeHint().width())
 
 print()
 print("TOUT EST VERT")

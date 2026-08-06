@@ -511,6 +511,26 @@ class _GrilleResultats(QtWidgets.QGroupBox):
         self._cols = [float(c) for c in cols]
         self._cells = {}
         g = QtWidgets.QGridLayout(self)
+        # SEPT COLONNES DE VITESSES DOIVENT TENIR DANS 573 px. Mesuré le
+        # 06/08/2026 : une QDoubleSpinBox par défaut exige 91 px, donc la
+        # grille du foyer réclamait 50 + 7 x 91 = 749 px et le panneau
+        # Assistant 781 -- deux cents de trop, tout ce qui dépassait à
+        # droite était rogné. On serre donc les colonnes sur ce qu'un
+        # nombre occupe VRAIMENT, calculé sur la police en cours.
+        # Les 13 derniers pixels se prennent sur les ESPACEMENTS, jamais
+        # sur les cases : Qt réclame 88 px par QDoubleSpinBox et on est
+        # déjà descendu à 66, où « 10.00 » (50 px de texte) tient dans les
+        # 54 px utiles. Serrer encore tronquerait une mesure à l'écran.
+        g.setHorizontalSpacing(2)
+        g.setContentsMargins(4, 4, 4, 4)
+        _fm = self.fontMetrics()
+        # La valeur la plus large que ces cases puissent afficher, écrite
+        # telle qu'elles l'écriront : « 10.00 ». Une première version
+        # réservait un chiffre de plus avant la virgule et la grille
+        # gardait 644 px sur les 749 -- le correctif était en place et
+        # l'Assistant débordait toujours.
+        self._largeur_case = _fm.horizontalAdvance(
+            "{:.{}f}".format(float(maxi), decimals)) + 16
         # Barre de titre pleine largeur (même teinte orange que les sections
         # d'étape _SectionHeader._etape) : dans « ② Entrer les mesures »,
         # plusieurs grilles se suivent (foyer, défocus 15/36 mm) et doivent
@@ -533,6 +553,14 @@ class _GrilleResultats(QtWidgets.QGroupBox):
                 sp.setDecimals(decimals)
                 sp.setSingleStep(pas)
                 sp.setSpecialValueText("—")
+                # PAS DE FLÈCHES : elles coûtent ~18 px par colonne, sept
+                # fois, et personne ne clique 36 fois sur une flèche pour
+                # entrer 0,36 -- on tape ce que le pied à coulisse a lu.
+                # La molette est déjà neutralisée (_neutraliser_molette),
+                # donc ces boutons n'étaient qu'une largeur.
+                sp.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+                sp.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+                sp.setFixedWidth(self._largeur_case)
                 sp.installEventFilter(self)
                 g.addWidget(sp, i + 2, j + 1)
                 self._cells[(r, c)] = sp
@@ -682,10 +710,15 @@ class _BlocMesure(QtWidgets.QWidget):
             "toute la planche.")
         self.btn_image.clicked.connect(lambda: on_mesure_image(self))
         v.addWidget(self.btn_image)
-        self.chk_perp = QtWidgets.QCheckBox(
-            "Mesurer en travers du trait (ignorer le décalage latéral)")
+        # LIBELLÉ COURT, EXPLICATION DANS L'INFO-BULLE. Une QCheckBox ne
+        # revient jamais à la ligne : son texte devient la largeur minimale
+        # du panneau. Celui-ci exigeait 595 px à lui seul -- il redevenait
+        # le mur de l'Assistant dès la grille resserrée.
+        self.chk_perp = QtWidgets.QCheckBox("Mesurer en travers du trait")
         self.chk_perp.setChecked(True)
         self.chk_perp.setToolTip(
+            "Ignore le décalage latéral entre les deux clics.\n"
+            "\n"
             "COCHÉ (recommandé) : seule la composante PERPENDICULAIRE au trait\n"
             "est retenue -- la plus grande de dx et dy. Un trait horizontal se\n"
             "mesure en dy, un trait vertical en dx.\n"
@@ -2801,6 +2834,67 @@ class _ScrollArea(QtWidgets.QScrollArea):
             pass  # widget C++ déjà détruit
 
 
+# --- UNE LISTE DÉROULANTE NE DOIT PAS DICTER LA LARGEUR DU PANNEAU -----
+# Une QComboBox exige comme largeur MINIMALE celle de son entrée la plus
+# longue, et rien ne l'en fait démordre : `setSizeAdjustPolicy` ne touche
+# que `sizeHint`. Mesuré le 06/08/2026 sur le sélecteur de police (45
+# entrées, la plus longue « Verdier -- la police de l'atelier (chapeau sur
+# ¤) ») : `sizeHint` tombe de 588 à 190 px, `minimumSizeHint` reste à 588
+# -- et c'est `minimumSizeHint` que le layout consulte. Trois panneaux
+# débordaient de la vue des tâches pour cette seule raison.
+#
+# LA POPUP, ELLE, GARDE SA PLEINE LARGEUR : on ne rogne que la boîte
+# fermée, qui n'affiche que la sélection courante -- « Hershey Script1 »,
+# soit largement de quoi. Rien n'est perdu, la liste s'ouvre entière.
+COMBO_CARACTERES_MAXI = 22
+
+
+def _combo_compact(combo, caracteres=COMBO_CARACTERES_MAXI):
+    """Empêche `combo` d'imposer son entrée la plus longue comme largeur
+    minimale du panneau. Sans effet si elle est déjà courte."""
+    try:
+        naturel = combo.minimumSizeHint().width()
+        fm = combo.fontMetrics()
+        # +44 : la flèche, le cadre et les marges internes. Le plafond est
+        # calculé en CARACTÈRES et non en pixels, pour suivre la police de
+        # l'utilisateur -- le défaut ne se voyait qu'au-delà de 11 pt.
+        plafond = fm.averageCharWidth() * caracteres + 44
+        if naturel <= plafond:
+            return
+        vue = combo.view()
+        if vue is not None:
+            vue.setMinimumWidth(naturel)
+        combo.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
+                            combo.sizePolicy().verticalPolicy())
+        combo.setMinimumWidth(int(plafond))
+    except RuntimeError:
+        pass  # widget C++ déjà détruit
+
+
+def _compacter_listes(inner):
+    """Applique `_combo_compact` à toutes les listes du panneau.
+
+    Fait ici, dans `_scrollable`, plutôt qu'à chaque construction : le
+    défaut a touché trois panneaux d'un coup et toucherait le prochain qui
+    remplirait une liste avec des libellés longs. Un seul point de passage
+    vaut mieux qu'une consigne à retenir.
+
+    ET ON INVALIDE LES LAYOUTS APRÈS, sans quoi rien ne change. Un QLayout
+    met sa taille minimale en cache dès la construction du panneau ; on
+    passe ici APRÈS, et la mise à jour ne redescend pas d'elle-même dans
+    les mises en page IMBRIQUÉES (celles ajoutées par `form.addRow(label,
+    hbox)`, qui n'ont pas de widget à elles). Mesuré : la rangée « Police »
+    de Texte gravé continuait d'annoncer 674 px alors que ses deux éléments
+    n'en réclamaient plus que 340 -- le correctif était en place et
+    n'ôtait pas un pixel."""
+    for combo in inner.findChildren(QtWidgets.QComboBox):
+        _combo_compact(combo)
+    for lay in inner.findChildren(QtWidgets.QLayout):
+        lay.invalidate()
+    if inner.layout() is not None:
+        inner.layout().invalidate()
+
+
 def _scrollable(inner):
     # setWidgetResizable(True) + une hauteur minimale forcée sur le
     # QScrollArea (voir plus bas) étirent "inner" pour remplir tout
@@ -2814,6 +2908,7 @@ def _scrollable(inner):
     # le reste du contenu compact et ancré en haut.
     _activer_sections(inner)
     _neutraliser_molette(inner)
+    _compacter_listes(inner)
     # Boutons assortis aux barres de section : coins arrondis, bord qui
     # passe au orange de la maison au survol, léger retour au clic. Ciblé
     # sur les QPushButton DE `inner` -> n'affecte pas OK/Annuler du panneau
@@ -12098,9 +12193,13 @@ class TaskPanelCalligraphie:
         # core.chaines_plume), et sans les déviations aux croisements que
         # coûte un squelette tramé. Ça vaut pour les 45 polices, pas
         # seulement pour « Verdier ».
-        self.chk_plume = QtWidgets.QCheckBox(
-            "Police MONO-TRAIT, pleins et déliés simulés à la plume")
+        # Libellé court : voir la note sur `chk_perp` -- une case à cocher
+        # ne se replie pas, son texte EST la largeur minimale du panneau.
+        # Celui-ci en réclamait 565, sur un panneau qui exigeait 861 px.
+        self.chk_plume = QtWidgets.QCheckBox("Pleins et déliés à la plume")
         self.chk_plume.setToolTip(
+            "Sur une police MONO-TRAIT (trait simple).\n"
+            "\n"
             "Au lieu d'extraire les pleins d'une police calligraphique,\n"
             "on les CALCULE : un bec de plume large et incliné dépose un\n"
             "trait épais quand il avance en travers, fin quand il avance\n"
