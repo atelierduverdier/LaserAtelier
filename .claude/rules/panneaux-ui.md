@@ -331,6 +331,38 @@ there is one text to engrave.
 
 Where the 32 cores do pay is the test suite (see `tests-headless.md`): 1 min 54 s → 22 s.
 
+### And a C / Rust extension? Same answer, same reason (2026-08-06)
+
+The natural follow-up. Measured on the same heavy job (150 × 200 mm fill, 1 687 611 lines of
+G-code, 57 Mo of text):
+
+| | |
+|---|---|
+| `Part.Shape.cut` and friends | **already C++** — nothing to rewrite |
+| G-code emission (Python) | 5,14 s |
+| assembly + sanitizer | 1,89 s |
+| duration estimate | 1,54 s |
+
+So a *perfect* rewrite of every Python line in the hot path saves **about 8 s** — on a job the
+machine then engraves for two to three hours.
+
+Against that: the repo IS the workbench directory (`git clone` into `Mod/`, restart FreeCAD).
+A compiled extension ends that — a compiler on every machine, rebuilt for each FreeCAD/Python
+version — and it would put the code that produces *what burns wood* behind a binary, in a
+project whose whole method is reading the emitted G-code and measuring it.
+
+Two numbers that settle it before the trade-off is even reached:
+
+- **Pure Python still has room, and it isn't much.** The estimator's floor was measured by
+  stripping it down: iterating 1,69 M lines costs 0,14 s, detecting G0/G1 by slicing 0,27 s,
+  splitting the tokens 0,58 s — against 1,59 s for the real function. A careful Python rewrite
+  would reach ~1 s (×1,6). C would reach perhaps 0,2 s. That is the size of the prize.
+- **Doing LESS work already beat what any rewrite could give.** The memos of v2.99.14/15 took a
+  combined-job click from 3,59 s to 0,00 s. No language change can beat not computing.
+
+`numpy` is already a dependency (it is C, and needs no compiler), but the hot loops are string
+formatting and text parsing, which it does not accelerate.
+
 ## Face construction & fill-geometry memo (perf, v1.79.3)
 
 `FaceMakerBullseye`'s O(n²) nesting sort costs ~10.5 s on a 179-wire imported SVG trace, **twice** per
