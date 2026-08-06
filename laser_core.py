@@ -178,7 +178,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.37"
+VERSION = "2.99.38"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -359,6 +359,61 @@ def gcode_bbox_xy(gcode):
         return None
     return (min(xs) if xs else 0.0, max(xs) if xs else 0.0,
             min(ys) if ys else 0.0, max(ys) if ys else 0.0)
+
+
+def job_hors_surface(gcode, surface_x=None, surface_y=None):
+    """Le job tient-il dans la course de la machine ? None si oui.
+
+    Christophe, 06/08/2026, à propos de son Creality Falcon2 : « elle a une
+    petite surface de gravure, ce n'est pas ma table de 120 x 120 cm ». La
+    PrintNC fait 1200 x 1200, le Falcon2 **400 x 415** : un motif dessiné
+    pour l'une part droit dans les butées de l'autre. Le contrôleur lève
+    alors une alarme de limite logicielle EN PLEIN JOB, ou va taper dans le
+    cadre -- et ça se découvre la pièce en place et le bois entamé.
+
+    ON JUGE SUR LE G-CODE TEL QU'IL SERA ÉCRIT, jamais sur le dessin : le
+    recadrage au zéro pièce a déjà eu lieu, le cadrage et les marges de
+    survol sont dedans. C'est la seule emprise qui décrit ce que la machine
+    va parcourir.
+
+    Rend None quand la surface n'est pas renseignée (0 = inconnue, le
+    défaut) : personne ne doit hériter d'un refus pour un réglage qu'il n'a
+    jamais vu."""
+    sx = SURFACE_TRAVAIL_X_MM if surface_x is None else float(surface_x)
+    sy = SURFACE_TRAVAIL_Y_MM if surface_y is None else float(surface_y)
+    if sx <= 0 and sy <= 0:
+        return None
+    bornes = gcode_bbox_xy(gcode)
+    if not bornes:
+        return None
+    min_x, max_x, min_y, max_y = bornes
+    larg, haut = max_x - min_x, max_y - min_y
+    raisons = []
+    # 1. LA TAILLE : trop grand pour la machine où qu'on le pose.
+    if sx > 0 and larg > sx:
+        raisons.append("large de {:.1f} mm pour une course X de {:.0f}"
+                       .format(larg, sx))
+    if sy > 0 and haut > sy:
+        raisons.append("haut de {:.1f} mm pour une course Y de {:.0f}"
+                       .format(haut, sy))
+    # 2. LA POSITION : il tiendrait, mais pas là où il est posé.
+    if not raisons:
+        if sx > 0 and max_x > sx:
+            raisons.append("va jusqu'à X{:.1f}, au-delà de la course "
+                           "de {:.0f}".format(max_x, sx))
+        if sy > 0 and max_y > sy:
+            raisons.append("va jusqu'à Y{:.1f}, au-delà de la course "
+                           "de {:.0f}".format(max_y, sy))
+        if min_x < -1e-6 or min_y < -1e-6:
+            raisons.append("commence en X{:.1f} Y{:.1f}, donc en négatif"
+                           .format(min_x, min_y))
+    if not raisons:
+        return None
+    return ("Ce job {}.\n\nEmprise du parcours : {:.1f} x {:.1f} mm "
+            "(X {:.1f} a {:.1f}, Y {:.1f} a {:.1f}).\n"
+            "Surface declaree pour ce laser : {:.0f} x {:.0f} mm."
+            .format(" et ".join(raisons), larg, haut,
+                    min_x, max_x, min_y, max_y, sx, sy))
 
 
 def shift_gcode_xy(gcode, dx, dy):
@@ -960,6 +1015,14 @@ ACCEL_MM_S2 = 600.0                   # accélération machine RÉELLE (mm/s2) p
                                       # n'explique pas tout l'écart. Ça ne change rien au
                                       # correctif (M67 supprime l'arrêt quel que soit a),
                                       # seulement à l'estimation de durée.
+SURFACE_TRAVAIL_X_MM = 0.0            # course utile de la machine en X (mm). 0 = inconnue,
+SURFACE_TRAVAIL_Y_MM = 0.0            # aucun contrôle -- c'est le défaut, pour que rien ne
+                                      # change chez qui ne l'a pas renseignée. Réglé PAR LASER :
+                                      # un profil = une machine, et l'écart est énorme d'une à
+                                      # l'autre (PrintNC 1200 x 1200, Creality Falcon2
+                                      # 400 x 415). Cf. `job_hors_surface`, appelé À L'ÉCRITURE
+                                      # sur le G-code tel qu'il sera écrit -- après recadrage
+                                      # au zéro pièce, donc sur les vraies coordonnées.
 ASSISTANCE_AIR = False                # émettre M8 à l'armement et M9 au désarmement. Les
                                       # graveurs de table pilotent leur pompe à air par M8/M9 ;
                                       # LightBurn les pose systématiquement. Réglé PAR LASER.
@@ -1032,6 +1095,8 @@ _USER_SETTINGS = (
     ("chemin_ini_linuxcnc", "CHEMIN_INI_LINUXCNC", str, lambda v: isinstance(v, str)),
     ("machine_sans_axe_z", "MACHINE_SANS_AXE_Z", bool, lambda v: isinstance(v, bool)),
     ("assistance_air", "ASSISTANCE_AIR", bool, lambda v: isinstance(v, bool)),
+    ("surface_travail_x_mm", "SURFACE_TRAVAIL_X_MM", float, lambda v: v >= 0),
+    ("surface_travail_y_mm", "SURFACE_TRAVAIL_Y_MM", float, lambda v: v >= 0),
     ("z_work_mm", "Z_WORK_MM", float, lambda v: -100 <= v <= 500),
     ("transit_margin_mm", "TRANSIT_MARGIN_MM", float, lambda v: v >= 0),
     ("spot_focus_mm", "SPOT_FOCUS_MM", float, lambda v: v > 0),
@@ -1370,7 +1435,8 @@ def save_nozzle(bottom_diameter_mm, top_diameter_mm, height_mm):
 PER_LASER_KEYS = ("laser_tool", "s_max", "spot_focus_mm", "spot_test_defocus_mm",
                   "spot_test_diameter_mm", "z_work_mm", "frame_power",
                   "label_power", "label_feed", "mire_power", "mire_feed",
-                  "gcode_dialect", "machine_sans_axe_z", "assistance_air")
+                  "gcode_dialect", "machine_sans_axe_z", "assistance_air",
+                  "surface_travail_x_mm", "surface_travail_y_mm")
 
 
 def _laser_slug(name):

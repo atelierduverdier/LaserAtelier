@@ -4855,6 +4855,26 @@ def _write_gcode_with_dialog(parent_widget, gcode, default_path, recadrer_origin
         gcode = core.translate_gcode_origin(gcode)
     # Dossier par défaut : GCODE_DIR (Préférences) ; repli sur le chemin
     # d'origine si le dossier (partage réseau...) n'est pas accessible.
+    # LA MACHINE PEUT-ELLE SEULEMENT L'ATTEINDRE ? Contrôlé ICI, après le
+    # recadrage au zéro pièce : c'est le parcours réel, cadrage et marges
+    # de survol compris, et non l'emprise du dessin. Avant le dialogue de
+    # fichier, pour qu'on renonce sans avoir nommé un fichier.
+    #
+    # ON AVERTIT, ON NE REFUSE PAS. La course déclarée est un réglage, pas
+    # une mesure : l'utilisateur peut connaître sa machine mieux qu'elle,
+    # et un refus sec jetterait un G-code qui n'existe nulle part ailleurs.
+    # Même politique que l'avertissement d'épaisseur.
+    _souci = core.job_hors_surface(gcode)
+    if _souci:
+        if QtWidgets.QMessageBox.warning(
+                parent_widget, "Plus grand que la machine",
+                _souci + "\n\nEnregistrer quand même ?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
+            FreeCAD.Console.PrintMessage(
+                "Sauvegarde abandonnee : le job depasse la surface de "
+                "travail declaree.\n")
+            return False
     if os.path.isdir(core.GCODE_DIR):
         default_path = os.path.join(core.GCODE_DIR, os.path.basename(default_path))
     estimated_seconds = core.estimate_job_time_seconds(gcode)
@@ -20143,6 +20163,45 @@ class TaskPanelSettings:
             "PAS ce qui a été calculé.")
         form.addRow("", self.chk_sans_z)
 
+        # SURFACE DE TRAVAIL : par laser, puisqu'un profil est une machine.
+        # 0 = inconnue, aucun contrôle -- personne n'hérite d'un refus pour
+        # un réglage qu'il n'a jamais vu.
+        self.spn_surface_x = QtWidgets.QDoubleSpinBox()
+        self.spn_surface_x.setRange(0.0, 10000.0)
+        self.spn_surface_x.setDecimals(0)
+        self.spn_surface_x.setSuffix(" mm")
+        self.spn_surface_x.setSpecialValueText("inconnue")
+        self.spn_surface_x.setValue(settings.get("surface_travail_x_mm", 0.0))
+        self.spn_surface_y = QtWidgets.QDoubleSpinBox()
+        self.spn_surface_y.setRange(0.0, 10000.0)
+        self.spn_surface_y.setDecimals(0)
+        self.spn_surface_y.setSuffix(" mm")
+        self.spn_surface_y.setSpecialValueText("inconnue")
+        self.spn_surface_y.setValue(settings.get("surface_travail_y_mm", 0.0))
+        _bulle_surface = (
+            "Course utile de CETTE machine. À l'écriture d'un fichier,\n"
+            "l'atelier compare l'emprise réelle du parcours -- cadrage et\n"
+            "marges de survol compris, après recadrage au zéro pièce -- et\n"
+            "prévient si ça ne tient pas.\n"
+            "\n"
+            "POURQUOI : un motif dessiné pour une grande table part droit\n"
+            "dans les butées d'une petite. Le contrôleur lève alors une\n"
+            "alarme de limite logicielle EN PLEIN JOB, ou tape dans le\n"
+            "cadre -- et on le découvre la pièce en place, le bois entamé.\n"
+            "PrintNC : 1200 x 1200. Creality Falcon2 : 400 x 415.\n"
+            "\n"
+            "Laisser sur « inconnue » (0) désactive le contrôle.\n"
+            "Sur une machine GRBL, $130 et $131 donnent la course exacte.")
+        self.spn_surface_x.setToolTip(_bulle_surface)
+        self.spn_surface_y.setToolTip(_bulle_surface)
+        _rang_surface = QtWidgets.QWidget()
+        _l_surface = QtWidgets.QHBoxLayout(_rang_surface)
+        _l_surface.setContentsMargins(0, 0, 0, 0)
+        _l_surface.addWidget(self.spn_surface_x, 1)
+        _l_surface.addWidget(QtWidgets.QLabel("×"), 0)
+        _l_surface.addWidget(self.spn_surface_y, 1)
+        form.addRow("Surface de travail :", _rang_surface)
+
         self.chk_air = QtWidgets.QCheckBox("Assistance d'air (M8 / M9)")
         self.chk_air.setChecked(bool(settings.get("assistance_air", False)))
         self.chk_air.setToolTip(
@@ -20635,6 +20694,8 @@ class TaskPanelSettings:
             "gcode_dialect": self.combo_dialect.currentData(),
             "machine_sans_axe_z": self.chk_sans_z.isChecked(),
             "assistance_air": self.chk_air.isChecked(),
+            "surface_travail_x_mm": self.spn_surface_x.value(),
+            "surface_travail_y_mm": self.spn_surface_y.value(),
             "puissance_par_m67": self.chk_m67.isChecked(),
             "gcode_dir": self.edt_gcode_dir.text().strip(),
             "planches_dir": self.edt_planches_dir.text().strip(),

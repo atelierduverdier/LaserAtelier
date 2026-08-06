@@ -77,6 +77,39 @@ Machine constants live here rather than in panels (`Z_WORK_MM`, `TRANSIT_MARGIN_
 `SPOT_FOCUS_MM`…): panels read them instead of exposing their own Z fields. Cutting modes keep a
 per-job Z because nozzle height is thickness-dependent safety.
 
+### The machine's WORK AREA — `surface_travail_x/y_mm` (v2.99.38)
+
+Christophe, reading his Falcon2 spec sheet: *"elle a une petite surface de gravure, ce n'est pas ma
+table de 120 x 120 cm"*. PrintNC **1200 × 1200**, Falcon2 **400 × 415**. A pattern drawn for one runs
+straight into the other's limits — soft-limit alarm mid-job, or the head into the frame, discovered
+with the workpiece clamped and the wood already cut.
+
+**The workbench had no notion of it.** `gcode_bbox_xy` existed, but only to re-origin at piece zero
+and to assemble combined jobs; nothing ever compared it to a machine envelope.
+
+`job_hors_surface(gcode, sx, sy)` returns `None` or a message, and is called from
+`_write_gcode_with_dialog` **after `translate_gcode_origin`, before the file dialog** — so it judges
+the path as it will be written (framing and flyover margins included), and you abandon without having
+named a file.
+
+Three design points, each earned:
+
+- **Position counts as much as size.** A 100 × 100 job fits 400 × 415 easily — but not placed at
+  X350. A check reading only the extents would let through exactly the case worth catching.
+- **Warn, never refuse.** The declared travel is a *setting*, not a measurement; the user may know
+  their machine better than the number, and a hard refusal would throw away a G-code that exists
+  nowhere else. Same policy as `MAX_THICKNESS_WARNING_MM`.
+- **0 = unknown, no check at all** — the default, so nobody inherits a refusal for a setting they
+  have never seen.
+
+**Three defects were found in the TEST, not the code**, and two are worth carrying:
+the "message says the numbers" check looked for `500` and `400` *anywhere* in the message, but the
+"Emprise du parcours" block contains both regardless — a message whose reason had been emptied passed.
+And the fake file dialog returned an empty string, which `_write_gcode_with_dialog` reads as *Cancel*,
+so it re-offers, `sans_dialogues` answers *yes*, **and it looped forever**: the sabotage did not redden
+the test, it *froze* it — the "no output at all" signature this repo already documents. A fake dialog
+must return a real path.
+
 ### The three GUESSED settings, and why they are read from the machine (v2.99.34)
 
 `RAPID_FEED_MM_MIN`, `Z_MAX_FEED_MM_MIN` and `ACCEL_MM_S2` were the only settings neither measured

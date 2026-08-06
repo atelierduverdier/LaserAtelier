@@ -1,7 +1,7 @@
 # Atelier Laser
 
 <p align="center"><img src="resources/logo.svg" alt="Atelier Laser — PrintNC" width="360"></p>
-<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v2.99.37</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
+<p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v2.99.38</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
 <p align="center"><a href="https://ko-fi.com/atelierduverdier"><b>☕ L'atelier vous est utile ? Soutenez-le sur Ko-fi</b></a></p>
 
 > **≈ 211 heures pour en arriver là**, du 15/07/2026 au 06/08/2026 : ≈ 182 h de développement (553 commits, 262 versions) et ≈ 29 h d'atelier, dont **11,4 h de laser** chronométrées sur les 70 fichiers gravés — 495 m de trait brûlé et 283 mesures relevées sur le bois.
@@ -244,6 +244,12 @@ Une configuration incohérente (diamètre bas > haut, valeurs négatives) est ig
   compensation `T`/`M6` + `G43 H` comme LinuxCNC. Nécessite un firmware
   compilé avec la table d'outils (option `N_TOOLS`) ; le numéro d'outil laser
   des Préférences est alors utilisé.
+- **Surface de travail de la machine** : renseigner **« Surface de travail (X × Y) »** dans les
+  Préférences (par profil laser). À l'écriture d'un fichier, l'atelier compare l'emprise réelle du
+  parcours — cadrage et marges de survol compris, après recadrage au zéro pièce — et **prévient** si
+  ça ne tient pas, en donnant les cotes. La position compte autant que la taille : un motif de
+  100 × 100 tient dans 400 × 415, pas s'il est posé à X350. Laisser sur « inconnue » (0) désactive
+  le contrôle. Sur une machine GRBL, `$130`/`$131` donnent la course exacte.
 - **Graveur de table SANS AXE Z** (Creality Falcon, Ortur, xTool… : mise au
   point manuelle en tournant la lentille) : cocher **Machine sans axe Z** dans
   les Préférences (réglé **par profil laser**, comme le dialecte). Aucun mot
