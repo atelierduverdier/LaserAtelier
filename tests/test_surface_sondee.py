@@ -161,6 +161,31 @@ assert "mémoris" in p._origine_reference, (
     "l'origine ne dit pas que la surface venait du motif : %r"
     % p._origine_reference)
 
+print()
+print("=" * 62)
+print("§6  Plus aucun texte ne réclame les DEUX objets")
+print("=" * 62)
+
+# Le mécanisme était en place, et trois textes continuaient d'enseigner
+# l'ancien geste : l'avertissement de la commande, son infobulle, et le
+# mode d'emploi du panneau. Christophe les a suivis -- « il m'a dit que je
+# devais sélectionner la forme aussi. Je veux le menu ». Un correctif que
+# la documentation contredit n'est pas livré.
+import io as _io
+_fautifs = []
+for _nom in ("commands.py", "task_panels.py"):
+    _src = _io.open("/home/christophe/.local/share/FreeCAD/v1-1/Mod/"
+                    "LaserAtelier/" + _nom, encoding="utf-8").read()
+    for _motif in ("TOUS LES DEUX EN MÊME TEMPS",
+                   "les deux en même temps",
+                   "les deux ensemble"):
+        if _motif in _src:
+            _fautifs.append("%s : %r" % (_nom, _motif))
+print("   textes réclamant encore les deux objets : %s" % (_fautifs or "aucun"))
+assert not _fautifs, (
+    "ces textes enseignent encore l'ancien geste alors que la surface se "
+    "trouve seule : %s" % ", ".join(_fautifs))
+
 FreeCAD.closeDocument("surface_sondee")
 print()
 print("TOUT EST VERT")

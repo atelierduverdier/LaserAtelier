@@ -16630,10 +16630,11 @@ class TaskPanelCurved:
         form.setRowWrapPolicy(QtWidgets.QFormLayout.WrapLongRows)
 
         _intro(form,
-               "Grave un motif filaire (hachures, tracés...). Pièce PLATE : "
-               "sélectionne juste le motif 2D. Surface COURBE : sélectionne "
-               "le motif projeté (Motif_Projete) ET le modèle 3D d'origine, "
-               "les deux en même temps.",
+               "Grave un motif filaire (hachures, tracés...). Sélectionne le "
+               "motif, LUI SEUL : la surface 3D qui sert de sonde est "
+               "retrouvée toute seule -- celle mémorisée sur un motif "
+               "projeté, sinon le seul solide du document, sinon l'atelier "
+               "demande lequel.",
                "Le modèle 3D permet une sonde exacte du relief pendant le "
                "marquage (sans lui, le Z n'est qu'interpolé entre les points "
                "déjà projetés). Cinq styles de trait : plein, tirets, "
@@ -16646,9 +16647,11 @@ class TaskPanelCurved:
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
-            "<b>1.</b> Sélectionne le <b>motif</b>. Pièce PLATE&nbsp;: le motif "
-            "2D seul. Surface COURBE&nbsp;: le motif projeté (<code>Motif_Projete"
-            "</code>) <b>ET</b> le modèle 3D d'origine, les deux ensemble.",
+            "<b>1.</b> Sélectionne le <b>motif</b>, <b>lui seul</b> — motif 2D "
+            "à plat, ou <code>Motif_Projete</code> sur du relief. La surface "
+            "qui sert de sonde est retrouvée toute seule&nbsp;; la ligne "
+            "ci-dessous dit laquelle et d'où elle vient. Tu peux toujours "
+            "sélectionner un solide en plus pour l'imposer.",
             "<b>2.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin de "
             "référence, Z sur le point haut de la surface. Avec le modèle 3D le "
             "relief est sondé exactement&nbsp;; sans lui le Z est seulement "
@@ -18453,8 +18456,9 @@ class TaskPanelCurvedCut:
                          lambda: self.selection)
         _intro(form,
                "Découpe en plusieurs passes EN SUIVANT LE RELIEF d'une "
-               "surface courbe. Sélectionne le motif projeté (Motif_Projete) "
-               "ET le modèle 3D d'origine, les deux en même temps.",
+               "surface courbe. Sélectionne le motif projeté "
+               "(Motif_Projete), LUI SEUL : la surface qui sert de sonde "
+               "est retrouvée toute seule.",
                "Le modèle 3D permet une sonde exacte du relief. Chaque passe "
                "recule le foyer un peu plus DANS la matière (comme la découpe "
                "à plat : épaisseur / nombre de passes), tout en suivant le "
@@ -18466,8 +18470,10 @@ class TaskPanelCurvedCut:
 
         _section(form, "Mode d'emploi", "sect_guide.svg")
         _bullet_list(form, [
-            "<b>1.</b> Sélectionne le motif projeté (<code>Motif_Projete</code>) "
-            "<b>ET</b> le modèle 3D d'origine, les deux en même temps.",
+            "<b>1.</b> Sélectionne le motif projeté "
+            "(<code>Motif_Projete</code>), <b>lui seul</b> — la surface qui "
+            "sert de sonde est retrouvée toute seule&nbsp;; sélectionne un "
+            "solide en plus seulement pour l'imposer.",
             "<b>2.</b> Pose le <b>zéro machine</b>&nbsp;: X/Y au coin de "
             "référence, Z sur le point haut de la surface&nbsp;— le relief est "
             "sondé exactement à chaque point pendant la découpe.",

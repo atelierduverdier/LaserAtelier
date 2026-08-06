@@ -400,9 +400,9 @@ class CurvedCommand:
             "Pixmap": _icon_path("curved.svg"),
             "MenuText": "Marquage de motif (plat ou courbe)",
             "ToolTip": "Génère le G-code de marquage d'un motif filaire (hachures, tracés), avec styles de "
-                       "trait (plein/tirets/pointillé/vague défocus). Pièce plate : sélectionne juste le motif "
-                       "2D. Surface courbe : sélectionne le motif projeté ET le modèle 3D ensemble pour que la "
-                       "gravure suive fidèlement ses courbes.",
+                       "trait (plein/tirets/pointillé/vague défocus). Sélectionne le motif, lui seul : la "
+                       "surface 3D qui sert de sonde est retrouvée toute seule (mémorisée sur un motif "
+                       "projeté, seul solide du document, ou demandée s'il y en a plusieurs).",
         }
 
     def IsActive(self):
@@ -411,14 +411,17 @@ class CurvedCommand:
     def Activated(self):
         selection = _sans_apercus(Gui.Selection.getSelectionEx())
         if not selection:
+            # LE MOTIF SUFFIT, DEPUIS LA v2.99.26. La surface 3D est
+            # retrouvée seule : mémorisée sur un motif projeté, sinon le
+            # seul solide du document, sinon on demande lequel. Ce message
+            # réclamait encore les deux -- Christophe l'a suivi, puis :
+            # « je veux le menu ».
             _warn_selection(
-                "Pièce PLATE : sélectionne juste le motif 2D (hachures,\n"
-                "tracés...).\n"
-                "Surface COURBE : sélectionne le Motif_Projete\n"
-                "ET le modèle 3D d'origine, TOUS LES DEUX EN MÊME TEMPS -- le\n"
-                "modèle 3D permet une sonde exacte du relief pour que la\n"
-                "gravure suive fidèlement ses courbes (sans lui, le Z n'est\n"
-                "qu'interpolé entre les points déjà projetés).")
+                "Sélectionne le motif à graver (hachures, tracés,\n"
+                "Motif_Projete...) -- lui seul suffit.\n\n"
+                "La surface 3D qui sert de sonde est retrouvée toute\n"
+                "seule : celle mémorisée sur un motif projeté, sinon le\n"
+                "seul solide du document, sinon l'atelier demande lequel.")
             return
         _show(task_panels.TaskPanelCurved(selection))
 
@@ -440,10 +443,10 @@ class CurvedCutCommand:
         selection = _sans_apercus(Gui.Selection.getSelectionEx())
         if not selection:
             _warn_selection(
-                "Sélectionne le Motif_Projete ET le modèle 3D\n"
-                "d'origine, TOUS LES DEUX EN MÊME TEMPS -- le modèle 3D permet\n"
-                "une sonde exacte du relief pour que la découpe suive\n"
-                "fidèlement ses courbes.")
+                "Sélectionne le Motif_Projete -- lui seul suffit.\n\n"
+                "La surface 3D qui sert de sonde est retrouvée toute\n"
+                "seule : celle mémorisée sur le motif projeté, sinon le\n"
+                "seul solide du document, sinon l'atelier demande lequel.")
             return
         _show(task_panels.TaskPanelCurvedCut(selection))
 
