@@ -209,7 +209,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.29</span><br>
+      <span class="ver">Version 2.99.30</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -260,7 +260,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.29</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.30</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1145,7 +1145,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.29 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.30 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1161,7 +1161,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 57 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 58 entrées</span></h3>
+  <p><b>L'import range par calque, ou à défaut par couleur (v2.99.30).</b> Christophe&nbsp;: «&nbsp;si dans le fichier SVG ou LightBurn il y a des couleurs, pourrais-tu importer les objets dans des dossiers séparés par couleur&nbsp;? là j'ai une longue liste d'objets&nbsp;». Son fichier en produit <b>267</b> — l'arbre devient illisible et rien ne dit ce qui va ensemble. Le parcours du SVG retient désormais le <code>&lt;g&gt;</code> qui contient chaque tracé, et l'import crée un dossier par lot&nbsp;: le <b>calque d'abord</b>, parce qu'il porte l'intention du dessinateur (un LightBurn traduit le nomme <code>calque_9</code>), la <b>couleur ensuite</b>, seule séparation disponible sur un SVG quelconque. Vérifié sur son dessin&nbsp;: 267 objets en 4 dossiers — Calque 9 (244), Calque 10 (21), Calque 2 et Calque 21 — et <b>rien à la racine</b>. <b>Aucun dossier quand il n'y a qu'un lot</b>&nbsp;: ce serait un clic de plus pour retrouver exactement la même liste. Le test vérifie aussi que le rangement ne perd ni ne duplique un tracé, et ses trois sabotages rougissent.</p>
+
   <p><b>Les projets LightBurn s'importent par la même icône (v2.99.29).</b> Christophe&nbsp;: «&nbsp;sur la même icône on peut choisir un fichier soit SVG soit LightBurn, le programme faisant la distinction suivant l'extension&nbsp;». C'est fait&nbsp;: <code>.lbrn</code> et <code>.lbrn2</code> sont traduits en SVG à côté du fichier d'origine — il reste consultable, et un import rejoué ne reconvertit pas — puis importés par le lecteur existant. <b>Aucun mode de plus</b> pour un format d'échange. La conversion a quitté <code>outils/</code> pour <code>svg_import.py</code>&nbsp;: l'atelier doit pouvoir l'appeler, et une copie dans un script à part aurait divergé au premier correctif — le script n'est plus qu'une façade, et sa sortie a été comparée octet pour octet avant/après le déplacement. <b>Le test a rattrapé une couleur perdue</b>&nbsp;: le <code>stroke</code> était posé sur le groupe de calque, or <code>resolve_fill_color</code> lit le stroke PROPRE de l'élément et n'hérite pas — les trois calques revenaient de la même couleur, séparés dans le fichier et confondus dans le document. Et un contrôle s'est révélé incapable d'échouer&nbsp;: il examinait le chemin à <code>PrimList</code> explicite, dont les primitives restent des segments quoi qu'il arrive&nbsp;; c'est le contour implicite qui bascule quand le marqueur <code>c0x1</code> est pris pour une coordonnée.</p>
 
   <p><b>La projection non plus n'a plus besoin qu'on lui désigne la surface (v2.99.28).</b> Christophe, capture d'un «&nbsp;Sélectionne au moins un motif 2D et une surface 3D de référence&nbsp;»&nbsp;: «&nbsp;la projection n'a pas besoin de la boîte avec l'aide et tout le reste, juste un menu déroulant pour sélectionner l'objet 3D, ou s'il n'y en a qu'un le prendre par défaut&nbsp;». Marquage et Découpe courbe le faisaient depuis la v2.99.26&nbsp;; la projection, qui est l'étape <em>d'avant</em>, l'exigeait encore — l'incohérence sautait aux yeux à l'usage et à personne en relisant le code. Le motif seul suffit désormais&nbsp;: un solide sélectionné garde la priorité, sinon le seul du document est pris, sinon une liste classée par recouvrement en XY demande lequel. La ligne d'état dit «&nbsp;trouvée seule&nbsp;» plutôt que de le taire. <b>Le panneau reste</b>, contrairement à ce qui était suggéré&nbsp;: il sert à projeter PLUSIEURS motifs d'un coup, et son aide est déjà repliée — c'était l'exigence qui gênait, pas le texte.</p>

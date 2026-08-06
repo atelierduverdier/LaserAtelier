@@ -599,7 +599,8 @@ def _local_tag(elem):
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
-def _walk(elem, matrix, inherited_fill, tol, records, skipped):
+def _walk(elem, matrix, inherited_fill, tol, records, skipped,
+          groupe=None):
     for child in elem:
         tag = _local_tag(child)
         if tag in _SKIP_DESCEND:
@@ -621,13 +622,19 @@ def _walk(elem, matrix, inherited_fill, tol, records, skipped):
                     "subpaths": transformed,
                     "fill_rgb": resolve_fill_color(child, inherited_fill),
                     "svg_id": child.get("id"),
+                    # Le <g> qui le contient : un fichier LightBurn traduit
+                    # y met « calque_9 », un SVG d'illustrateur y met le nom
+                    # de son calque. C'est le rangement voulu par celui qui
+                    # a dessiné -- le perdre oblige à le refaire à la main.
+                    "groupe": groupe,
                 })
         else:
             # <g>, <svg> imbriqué (traité comme un simple groupe), ou
             # balise inconnue mais inoffensive : on descend toujours,
             # pour ne jamais perdre de géométrie par excès de rigueur.
             child_fill = own_fill_string(child) or inherited_fill
-            _walk(child, child_matrix, child_fill, tol, records, skipped)
+            _walk(child, child_matrix, child_fill, tol, records, skipped,
+                  child.get("id") or groupe)
 
 
 def parse_svg_root(root):
@@ -727,11 +734,53 @@ def import_svg_file(filepath):
     if not records:
         return 0, warnings + ["Aucun tracé <path> exploitable dans ce fichier."]
     count = 0
+    par_lot = {}
     for i, rec in enumerate(records, start=1):
-        if _record_to_object(doc, rec, i) is not None:
-            count += 1
+        obj = _record_to_object(doc, rec, i)
+        if obj is None:
+            continue
+        count += 1
+        par_lot.setdefault(_nom_de_lot(rec), []).append(obj)
+    _ranger_par_lot(doc, par_lot)
     doc.recompute()
     return count, warnings
+
+
+def _nom_de_lot(record):
+    """Sous quel dossier ranger ce tracé : son calque, sinon sa couleur.
+
+    Le calque d'abord parce qu'il porte l'intention du dessinateur (un
+    fichier LightBurn traduit dit « calque_9 ») ; la couleur ensuite,
+    parce que sur un SVG quelconque c'est la seule séparation qui existe."""
+    groupe = record.get("groupe")
+    if groupe:
+        propre = str(groupe).replace("calque_", "")
+        return "Calque {}".format(propre)
+    r, v, b = record.get("fill_rgb") or (0.0, 0.0, 0.0)
+    return "Couleur #{:02X}{:02X}{:02X}".format(
+        int(round(r * 255)), int(round(v * 255)), int(round(b * 255)))
+
+
+def _ranger_par_lot(doc, par_lot):
+    """Un dossier par calque/couleur — MAIS SEULEMENT S'IL Y EN A PLUSIEURS.
+
+    Christophe, 06/08/2026 : « si dans le fichier SVG ou LightBurn il y a
+    des couleurs, pourrais-tu importer les objets dans des dossiers séparés
+    par couleur ? là j'ai une longue liste d'objets ». Son fichier en fait
+    267 -- l'arbre devient illisible et rien ne dit ce qui va ensemble.
+
+    Un seul lot ne gagne rien à être enfermé : ce serait un dossier de plus
+    à ouvrir pour retrouver exactement la même liste. On ne range donc qu'à
+    partir de deux."""
+    if len(par_lot) < 2:
+        return []
+    dossiers = []
+    for nom in sorted(par_lot):
+        groupe = doc.addObject("App::DocumentObjectGroup", "LotSVG")
+        groupe.Label = nom
+        groupe.Group = par_lot[nom]
+        dossiers.append(groupe)
+    return dossiers
 
 
 # ==========================================================================
