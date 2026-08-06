@@ -8411,6 +8411,51 @@ _MEMO_REMPLISSAGE = {"cle_faces": None, "faces": None,
                      "cle_edges": None, "edges": None}
 
 
+def _masquer_sources(objets):
+    """Masque les formes à plat qui ont servi à fabriquer une projection.
+    Renvoie les libellés effectivement masqués.
+
+    MASQUER, JAMAIS SUPPRIMER : la visibilité se rend d'un clic dans
+    l'arbre, un objet supprimé ne revient pas. Christophe, 06/08/2026 :
+    « passer les compounds 2D en hide afin de garder juste le motif sur la
+    surface 3D, comme cela ça facilite la visualisation de ce qu'il faut
+    sélectionner ».
+
+    `hasattr(obj, "ViewObject")` est vrai ET INUTILE sans interface :
+    l'attribut existe et vaut None, si bien que la ligne suivante meurt
+    sur `None.Visibility`. C'est `is not None` qui décide."""
+    caches = []
+    for src in objets:
+        vue = getattr(src, "ViewObject", None)
+        if vue is None:
+            continue
+        try:
+            vue.Visibility = False
+            caches.append(getattr(src, "Label", "?"))
+        except Exception:
+            pass
+    return caches
+
+
+def _recouvrement_xy(motif, surface):
+    """Part du motif (en XY) qui tombe sur cette surface, de 0 à 1.
+
+    La projection est un raycast VERTICAL : une surface qui ne recouvre
+    pas le motif vu de dessus ne peut rien recevoir. Quand le document
+    contient plusieurs solides, c'est ce chiffre qui désigne le bon --
+    et le proposer d'abord évite de choisir au hasard dans une liste."""
+    try:
+        a, b = motif.BoundBox, surface.BoundBox
+    except Exception:
+        return 0.0
+    large = max(0.0, min(a.XMax, b.XMax) - max(a.XMin, b.XMin))
+    haut = max(0.0, min(a.YMax, b.YMax) - max(a.YMin, b.YMin))
+    aire = a.XLength * a.YLength
+    if aire <= 1e-9:
+        return 0.0
+    return min(1.0, (large * haut) / aire)
+
+
 class TaskPanelFilledEngraving:
     def __init__(self, selection):
         self.selection = selection
@@ -9718,8 +9763,16 @@ class TaskPanelFilledEngraving:
         else:
             # ON DEMANDE, ON NE RENVOIE PAS À LA MAIN. Répondre « plusieurs
             # surfaces possibles, débrouille-toi » est précisément la
-            # complication qu'on essaie de retirer.
-            libelles = [s.Label for s in surfaces]
+            # complication qu'on essaie de retirer. Et on propose D'ABORD
+            # celle qui est SOUS le motif : la projection étant un raycast
+            # vertical, une surface qui ne recouvre pas le motif en XY ne
+            # peut rien recevoir.
+            surfaces = sorted(
+                surfaces,
+                key=lambda s: -_recouvrement_xy(obj.Shape, s.Shape))
+            libelles = ["{} ({:.0f} % sous le motif)".format(
+                s.Label, 100.0 * _recouvrement_xy(obj.Shape, s.Shape))
+                for s in surfaces]
             choix, ok = QtWidgets.QInputDialog.getItem(
                 self.form, "Projeter ce remplissage",
                 resume + "\n\nSur quelle surface le projeter ?",
@@ -9743,13 +9796,25 @@ class TaskPanelFilledEngraving:
             _lj.ranger_forme(projete)
         except Exception:
             pass
+        # ON CACHE CE QUI A SERVI À LA FABRIQUER. Christophe, 06/08/2026 :
+        # « passer les compounds 2D en hide afin de garder juste le motif
+        # sur la surface 3D, comme cela ça facilite la visualisation de ce
+        # qu'il faut sélectionner ». Rien n'est supprimé -- la visibilité
+        # se rend d'un clic dans l'arbre.
+        caches = _masquer_sources(
+            [obj] + [getattr(s, "Object", None) for s in (self.selection or [])])
         doc.recompute()
         QtWidgets.QMessageBox.information(
             self.form, "Projeter ce remplissage",
-            "Fait : « {} » est posé sur « {} ».\n\nDERNIÈRE ÉTAPE : "
+            ("Fait : « {} » est posé sur « {} ».\n\n" + (
+                "Les formes à plat qui ont servi sont masquées ({}) — "
+                "il ne reste que le motif sur le relief. Rends-les visibles "
+                "d'un clic dans l'arbre si besoin.\n\n".format(
+                    ", ".join(caches)) if caches else "") +
+             "DERNIÈRE ÉTAPE : "
             "sélectionne « {} » ET « {} », puis ouvre « Marquage de motif » "
             "— c'est ce mode qui grave un motif posé sur du relief, et "
-            "c'est là que se trouve « Ajouter au job combiné »."
+             "c'est là que se trouve « Ajouter au job combiné ».")
             .format(projete.Label, cible.Label, projete.Label, cible.Label))
 
     def _on_toolpath_preview(self):

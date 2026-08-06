@@ -184,6 +184,65 @@ doc.recompute()
 
 print()
 print("=" * 62)
+print("§1quater  Ce qui a servi est MASQUÉ, pas supprimé")
+print("=" * 62)
+
+# Christophe : « passer les compounds 2D en hide afin de garder juste le
+# motif sur la surface 3D, comme cela ça facilite la visualisation de ce
+# qu'il faut sélectionner ». Masqué, donc : rien ne disparaît.
+# Sans interface, un Part::Feature n'a PAS de ViewObject : le vérifier sur
+# les vrais objets donnerait un contrôle incapable d'échouer. On éprouve
+# donc la fonction elle-même, avec des doublures qui en ont un.
+class _Doublure:
+    def __init__(self, label, avec_vue=True):
+        self.Label = label
+        self.ViewObject = (type("V", (), {"Visibility": True})()
+                           if avec_vue else None)
+
+
+d1, d2, sans = (_Doublure("dépôt"), _Doublure("motif"),
+                _Doublure("sans interface", avec_vue=False))
+caches = tp._masquer_sources([d1, d2, sans, None])
+print("   masqués : %s" % caches)
+assert not d1.ViewObject.Visibility and not d2.ViewObject.Visibility, (
+    "les formes à plat restent visibles : la vue 3D reste encombrée")
+assert caches == ["dépôt", "motif"], (
+    "la liste des masqués est fausse : %r" % caches)
+print("   un objet sans interface et un None ne font pas tomber : ✓")
+
+# Et rien n'a été supprimé du document par le vrai clic.
+assert doc.getObject(depose.Name) is not None, "le dépôt a été SUPPRIMÉ"
+assert doc.getObject(motif.Name) is not None, "le motif source a été SUPPRIMÉ"
+print("   les objets du document existent toujours : ✓")
+
+print()
+print("=" * 62)
+print("§1quinquies  Plusieurs solides : c'est celui SOUS le motif qui mène")
+print("=" * 62)
+
+# La question de Christophe : « si j'ai plusieurs objets 3D dans le
+# document, comment ça se comporte ? ». La projection est un raycast
+# VERTICAL : une surface qui ne recouvre pas le motif vu de dessus ne peut
+# rien recevoir. C'est donc le recouvrement en XY qui désigne la bonne.
+loin = doc.addObject("Part::Feature", "SocleLoin")
+loin.Shape = Part.makeBox(30, 30, 10, FreeCAD.Vector(300, 300, 0))
+doc.recompute()
+sous = tp._recouvrement_xy(depose.Shape, socle.Shape)
+ailleurs = tp._recouvrement_xy(depose.Shape, loin.Shape)
+print("   « %s » recouvre %.0f %% du motif" % (socle.Label, 100 * sous))
+print("   « %s » recouvre %.0f %% du motif" % (loin.Label, 100 * ailleurs))
+assert sous > 0.5, "le socle sous le motif devrait le recouvrir largement"
+assert ailleurs == 0.0, "un solide à 300 mm de là ne recouvre rien"
+assert sous > ailleurs, "le classement proposerait le mauvais solide"
+
+vus = panneau._candidats_3d()
+print("   candidats vus : %s" % [o.Label for o in vus])
+assert len(vus) == 2, "les deux solides doivent être proposés, pas un seul"
+doc.removeObject(loin.Name)
+doc.recompute()
+
+print()
+print("=" * 62)
 print("§2  Ce dépôt est PLAT, donc acceptable comme motif à projeter")
 print("=" * 62)
 

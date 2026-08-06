@@ -38,10 +38,22 @@ def _lire(nom):
 # sur `None.LineColor`. La règle des panneaux annonçait « corrigé aux 8
 # sites » ; il en restait trois le 05/08/2026 (hachures, découpe et gravure
 # de la planche d'ajustement). C'est ce mensonge-là que ce contrôle empêche.
+# UNE CITATION N'EST PAS UN APPEL. Le 06/08/2026, ce balayage a signalé
+# `task_panels.py:8424` -- une DOCSTRING qui expliquait justement le piège,
+# en citant le motif fautif. Un contrôle qui interdit d'écrire la leçon
+# pousse à ne plus l'écrire ; or c'est la leçon qui fait tenir la règle.
+# Dans tout ce dépôt, le code cité en prose vit entre accents graves : on
+# s'en sert pour distinguer les deux.
+_MOTIF_VIEWOBJECT = re.compile(r"hasattr\([^,]+,\s*['\"]ViewObject['\"]\)")
 _coupables = []
 for _nom in SOURCES:
     for _n, _l in enumerate(_lire(_nom).splitlines(), 1):
-        if re.search(r"hasattr\([^,]+,\s*['\"]ViewObject['\"]\)", _l):
+        _m = _MOTIF_VIEWOBJECT.search(_l)
+        if not _m:
+            continue
+        _cite = (_l[:_m.start()].rstrip().endswith("`")
+                 and _l[_m.end():].lstrip().startswith("`"))
+        if not _cite:
             _coupables.append("{}:{}".format(_nom, _n))
 assert not _coupables, (
     "hasattr sur ViewObject : VRAI et INUTILE en headless -- l'attribut "
