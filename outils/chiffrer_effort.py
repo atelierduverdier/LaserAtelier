@@ -268,13 +268,17 @@ def main():
               '    les {fic} fichiers gravés — {gra:.0f} m de trait brûlé et '
               '{mes} mesures relevées\n'
               '    sur le bois.\n'
+              # PREMIÈRE PERSONNE SUR LE SITE : c'est la page de
+              # Christophe, il y parle en son nom. Demandé le 06/08/2026.
+              # Le README et le manuel gardent la troisième personne, où
+              # l'auteur n'est pas forcément le lecteur.
               '    <span class="qui">Le code est écrit par Claude '
-              '(Anthropic). Christophe\n'
-              '    Le Verdier décide, éprouve chaque version sur le bois et '
-              'tranche : la\n'
-              '    plupart des défauts corrigés ici ont été trouvés en '
-              'regardant une\n'
-              '    planche, pas en relisant du code.</span>\n'
+              '(Anthropic). JE décide,\n'
+              '    éprouve chaque version sur le bois et tranche : la '
+              'plupart des défauts\n'
+              '    corrigés ici ont été trouvés en regardant une planche, '
+              'pas en relisant\n'
+              '    du code.</span>\n'
               '  </div>\n'
               '  </div>'.format(tot=total, dev=dev_h, com=commits, ver=versions,
                                 d1=premier, d2=dernier,
