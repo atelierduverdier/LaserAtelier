@@ -165,6 +165,7 @@ import heapq
 import math
 import json
 import os
+import glob
 import time
 import re
 import unicodedata
@@ -177,7 +178,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.33"
+VERSION = "2.99.34"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -860,6 +861,10 @@ ACCEL_MM_S2 = 600.0                   # accélération machine RÉELLE (mm/s2) p
                                       # n'explique pas tout l'écart. Ça ne change rien au
                                       # correctif (M67 supprime l'arrêt quel que soit a),
                                       # seulement à l'estimation de durée.
+CHEMIN_INI_LINUXCNC = ""              # dernier .ini LinuxCNC lu par « Lire les limites dans
+                                      # le .ini » (Préférences) -- mémorisé pour que la
+                                      # relecture après un changement de config machine soit
+                                      # deux clics et non une navigation (cf. limites_depuis_ini)
 Z_WORK_MM = 8.0                       # Z de travail (foyer) proposé par défaut dans les
                                       # panneaux -- propriété machine (focale du nez avec le
                                       # zéro Z sur la surface), une seule valeur à entretenir
@@ -909,6 +914,7 @@ _USER_SETTINGS = (
     ("frame_feed_mm_min", "FRAME_FEED_MM_MIN", float, lambda v: v > 0),
     ("z_max_feed_mm_min", "Z_MAX_FEED_MM_MIN", float, lambda v: v > 0),
     ("accel_mm_s2", "ACCEL_MM_S2", float, lambda v: v > 0),
+    ("chemin_ini_linuxcnc", "CHEMIN_INI_LINUXCNC", str, lambda v: isinstance(v, str)),
     ("z_work_mm", "Z_WORK_MM", float, lambda v: -100 <= v <= 500),
     ("transit_margin_mm", "TRANSIT_MARGIN_MM", float, lambda v: v >= 0),
     ("spot_focus_mm", "SPOT_FOCUS_MM", float, lambda v: v > 0),
@@ -973,6 +979,200 @@ def current_settings():
     """Valeurs effectives des réglages utilisateur ({clé JSON: valeur}) --
     pour préremplir le panneau Préférences."""
     return {key: globals()[global_name] for key, global_name, _, _ in _USER_SETTINGS}
+
+
+# --------------------------------------------------------------------------
+# LIRE LES LIMITES DE LA MACHINE DANS SON PROPRE .ini
+# --------------------------------------------------------------------------
+# Trois réglages décrivent la MÉCANIQUE et non le laser : la vitesse rapide,
+# la vitesse max de l'axe Z et l'accélération. Ce sont les seuls de la liste
+# qui ne soient ni mesurés au bois ni choisis -- ils étaient SUPPOSÉS, avec
+# des valeurs d'usine prudentes, et rien ne disait qu'ils l'étaient.
+#
+# Ce n'est pas anodin sur Z : `pente_z_max` en dépend, donc le fuseau.
+# Mesuré le 06/08/2026, défaut 1500 contre 3000 réels sur la PrintNC : la
+# pente autorisée est divisée par deux, donc la longueur de trace nécessaire
+# à un fuseau complet DOUBLE (F200 : 5,3 mm au lieu de 2,7 ; F400 : 10,7 au
+# lieu de 5,3). Moitié moins de motifs sur la même image, sans un mot.
+#
+# Monter le défaut à l'aveugle serait le MAUVAIS sens. Trop bas ne coûte que
+# du détail ; trop haut, le générateur autorise une pente que l'axe ne suit
+# pas, LinuxCNC ralentit alors tout le mouvement pour que le Z suive, le
+# temps de pose change, donc la noirceur -- en silence (cf. `pente_z_max`).
+# Écrire ici la machine de Christophe remplacerait une supposition par une
+# autre, et livrerait ce piège à qui a un Z lent. D'où ceci : la machine se
+# DÉCRIT elle-même dans son .ini, on cesse de la deviner.
+#
+# La vitesse rapide, elle, ne mérite pas d'être poursuivie : mesurée sur les
+# 70 fichiers gravés de l'atelier, l'écart 6000 contre 8000 vaut +0,4 % de
+# durée annoncée (+2 % au pire). À 600 mm/s2 un rapide de quelques
+# millimètres n'atteint jamais sa vitesse de pointe -- c'est l'accélération
+# qui gouverne. Elle est lue quand même : c'est le même fichier.
+
+LIMITES_INI_CLES = ("rapid_feed_mm_min", "z_max_feed_mm_min", "accel_mm_s2")
+
+
+def _lire_ini(chemin):
+    """{SECTION: {CLÉ: [valeurs]}} d'un .ini LinuxCNC.
+
+    Écrit à la main plutôt qu'avec `configparser` : un .ini LinuxCNC répète
+    légitimement des clés dans une même section (HALFILE, APP, USER_COMMAND)
+    et le module standard les refuse ou les écrase selon la version."""
+    sections = {}
+    courante = None
+    with open(chemin, "r", encoding="utf-8", errors="replace") as fh:
+        for ligne in fh:
+            ligne = ligne.split("#")[0].split(";")[0].strip()
+            if not ligne:
+                continue
+            if ligne.startswith("[") and ligne.endswith("]"):
+                courante = ligne[1:-1].strip().upper()
+                sections.setdefault(courante, {})
+                continue
+            if courante is None or "=" not in ligne:
+                continue
+            cle, _, val = ligne.partition("=")
+            sections[courante].setdefault(cle.strip().upper(), []).append(val.strip())
+    return sections
+
+
+def _nombre_ini(sections, nom_section, cle):
+    """Première valeur numérique de `[nom_section] cle`, ou None."""
+    for brut in sections.get(nom_section, {}).get(cle, []):
+        try:
+            return float(brut)
+        except ValueError:
+            continue
+    return None
+
+
+def limites_depuis_ini(chemin):
+    """Limites mécaniques déclarées par LinuxCNC dans son fichier de config.
+
+    Rend `(reglages, lignes)` : le dict des clés de `_USER_SETTINGS` prêt
+    pour `save_settings`, et les lignes qui DISENT d'où vient chaque nombre
+    -- un chiffre qui tombe du ciel se retape à la main six mois plus tard.
+    En cas d'échec, `({}, [raison])` : on ne remplace jamais un réglage en
+    place par un défaut de secours.
+
+    Deux conversions, et elles sont les deux pièges du format :
+
+    - les vitesses d'un .ini sont en unités PAR SECONDE, l'atelier travaille
+      en mm/min (d'où le x60) ;
+    - `LINEAR_UNITS` de [TRAJ] peut valoir `inch`, auquel cas tout le
+      fichier est en pouces.
+
+    Les sections [AXIS_*] priment sur les [JOINT_*] : sur un portique le
+    nombre de joints ne suit plus celui des axes (la PrintNC a 4 joints pour
+    3 axes, Y étant en tandem), et c'est l'axe qui décrit la limite dans le
+    repère où le G-code est écrit."""
+    lignes = []
+    try:
+        sections = _lire_ini(chemin)
+    except Exception as exc:
+        return {}, ["Lecture impossible : {}".format(exc)]
+    if not sections:
+        return {}, ["Ce fichier ne contient aucune section [...] : "
+                    "ce n'est pas un .ini LinuxCNC."]
+
+    unites = ""
+    for brut in sections.get("TRAJ", {}).get("LINEAR_UNITS", []):
+        unites = brut.strip().lower()
+        break
+    if unites.startswith("in"):
+        vers_mm = 25.4
+        lignes.append("[TRAJ] LINEAR_UNITS = {} -- tout est converti en mm."
+                      .format(unites))
+    else:
+        vers_mm = 1.0
+
+    def vitesse(axe, joint):
+        v = _nombre_ini(sections, "AXIS_" + axe, "MAX_VELOCITY")
+        if v is not None:
+            return v, "[AXIS_{}]".format(axe)
+        v = _nombre_ini(sections, "JOINT_{}".format(joint), "MAX_VELOCITY")
+        if v is not None:
+            return v, "[JOINT_{}] (faute de [AXIS_{}])".format(joint, axe)
+        return None, None
+
+    def acceleration(axe, joint):
+        a = _nombre_ini(sections, "AXIS_" + axe, "MAX_ACCELERATION")
+        if a is not None:
+            return a, "[AXIS_{}]".format(axe)
+        a = _nombre_ini(sections, "JOINT_{}".format(joint), "MAX_ACCELERATION")
+        if a is not None:
+            return a, "[JOINT_{}] (faute de [AXIS_{}])".format(joint, axe)
+        return None, None
+
+    reglages = {}
+
+    # LA VITESSE RAPIDE EST CELLE QUI TIENT DANS TOUTES LES DIRECTIONS. Un
+    # G0 quelconque est borné par chacun des axes qu'il fait bouger ET par
+    # la limite de trajectoire ; l'estimation ne manie qu'un seul nombre, on
+    # prend donc le plus contraignant plutôt que le plus flatteur.
+    bornes = []
+    for axe, joint in (("X", 0), ("Y", 1)):
+        v, ou = vitesse(axe, joint)
+        if v is not None:
+            bornes.append((v, ou))
+    v_traj = _nombre_ini(sections, "TRAJ", "MAX_LINEAR_VELOCITY")
+    if v_traj is not None:
+        bornes.append((v_traj, "[TRAJ] MAX_LINEAR_VELOCITY"))
+    if bornes:
+        v, ou = min(bornes, key=lambda c: c[0])
+        rapide = round(v * vers_mm * 60.0)
+        reglages["rapid_feed_mm_min"] = float(rapide)
+        lignes.append("Vitesse rapide : {:.0f} mm/min -- {} MAX_VELOCITY = {:g}"
+                      .format(rapide, ou, v))
+    else:
+        lignes.append("Vitesse rapide : introuvable ([AXIS_X]/[AXIS_Y]/[TRAJ]) "
+                      "-- réglage inchangé.")
+
+    v, ou = vitesse("Z", 2)
+    if v is not None:
+        z = round(v * vers_mm * 60.0)
+        reglages["z_max_feed_mm_min"] = float(z)
+        lignes.append("Vitesse Z max : {:.0f} mm/min -- {} MAX_VELOCITY = {:g}"
+                      .format(z, ou, v))
+    else:
+        lignes.append("Vitesse Z max : introuvable ([AXIS_Z]) "
+                      "-- réglage inchangé.")
+
+    accels = []
+    for axe, joint in (("X", 0), ("Y", 1)):
+        a, ou = acceleration(axe, joint)
+        if a is not None:
+            accels.append((a, ou))
+    if accels:
+        a, ou = min(accels, key=lambda c: c[0])
+        acc = round(a * vers_mm)
+        reglages["accel_mm_s2"] = float(acc)
+        lignes.append("Accélération : {:.0f} mm/s2 -- {} MAX_ACCELERATION = {:g}"
+                      .format(acc, ou, a))
+    else:
+        lignes.append("Accélération : introuvable ([AXIS_X]/[AXIS_Y]) "
+                      "-- réglage inchangé.")
+
+    if not reglages:
+        return {}, ["Aucune limite lisible dans ce fichier."] + lignes
+    return reglages, lignes
+
+
+def chemins_ini_probables():
+    """Où un .ini LinuxCNC se trouve d'ordinaire sur cette machine, pour
+    ouvrir le sélecteur au bon endroit plutôt qu'à la racine. Le dernier
+    fichier lu vient en tête : c'est le bon dans la quasi-totalité des cas
+    (on relit son .ini quand on a changé la config de la machine)."""
+    trouves = []
+    for motif in (CHEMIN_INI_LINUXCNC,
+                  os.path.expanduser("~/linuxcnc/configs/*/*.ini"),
+                  "/etc/linuxcnc/*.ini"):
+        if not motif:
+            continue
+        for chemin in sorted(glob.glob(motif)):
+            if chemin not in trouves and os.path.isfile(chemin):
+                trouves.append(chemin)
+    return trouves
 
 
 def save_settings(new_settings):

@@ -77,6 +77,39 @@ Machine constants live here rather than in panels (`Z_WORK_MM`, `TRANSIT_MARGIN_
 `SPOT_FOCUS_MM`…): panels read them instead of exposing their own Z fields. Cutting modes keep a
 per-job Z because nozzle height is thickness-dependent safety.
 
+### The three GUESSED settings, and why they are read from the machine (v2.99.34)
+
+`RAPID_FEED_MM_MIN`, `Z_MAX_FEED_MM_MIN` and `ACCEL_MM_S2` were the only settings neither measured
+on wood nor chosen — they were **supposed**, with conservative factory values nothing flagged as
+such. `limites_depuis_ini(chemin)` reads them from the machine's own LinuxCNC `.ini`
+(`chemins_ini_probables()` + the remembered `chemin_ini_linuxcnc`); the Preferences button fills the
+three fields and **says which section and key each number came from**. On the workshop's PrintNC it
+yields 8000 / 3000 / 600 — exactly what Christophe had typed by hand, which is the proof the reader
+is worth having.
+
+**The two are not the same size of problem, and the measurement says so:**
+
+- `RAPID_FEED` is nearly cosmetic. Measured over the 70 real `.ngc` files, 6000 against 8000 moves
+  the announced duration by **+0.4 %** (+2 % worst case): at 600 mm/s² a rapid of a few millimetres
+  never reaches its top speed, so the acceleration governs. Don't chase it.
+- `Z_MAX_FEED` is **not** an estimate — `pente_z_max` reads it, so it sets the Z slope the spindle
+  allows. At 1500 instead of 3000 the slope halves and `longueur_mini_fuseau` **doubles** (5.3 mm
+  instead of 2.7 at F200): half as many motifs across the same image. Lost engraving detail, not a
+  wrong number on screen.
+
+**Do NOT raise the shipped default to match a real machine.** Too low only costs detail; too high
+lets the generator authorise a slope the axis cannot follow, LinuxCNC then slows the *whole* move so
+Z can keep up, the dwell time changes and therefore the darkness — silently, the exact failure mode
+`pente_z_max`'s docstring exists to prevent. Writing Christophe's machine into the code would swap
+one guess for another and hand that trap to anyone with a slow Z.
+
+Parsing traps, all covered by `tests/test_limites_ini.py`: velocities are **units per SECOND**
+(hence ×60), `[TRAJ] LINEAR_UNITS` may be `inch`, `[AXIS_*]` beats `[JOINT_*]` (a gantry has more
+joints than axes — the PrintNC has 4 for 3), the rapid takes the **most constraining** of X/Y/TRAJ
+rather than the flattering maximum, and an unreadable file replaces **nothing** — a fallback default
+would silently overwrite a correct value. Written by hand rather than with `configparser`, which
+rejects or collapses the duplicate keys a LinuxCNC `.ini` legitimately carries.
+
 ## Laser profiles (multi-module)
 
 `lasers = {"<id>": {"name", "settings", "nozzle"}}` + `active_laser` let the workbench carry a

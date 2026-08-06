@@ -20075,11 +20075,17 @@ class TaskPanelSettings:
         self.spn_z_max_feed.setValue(settings["z_max_feed_mm_min"])
         self.spn_z_max_feed.setSuffix(" mm/min")
         self.spn_z_max_feed.setToolTip(
-            "Vitesse max supposée de l'axe Z (MAX_VELOCITY de l'axe dans\n"
-            "LinuxCNC). Sert uniquement à AVERTIR quand un trait en Vague\n"
-            "défocus demanderait plus vite (le trajet serait alors ralenti\n"
-            "par la machine). N'affecte jamais le G-code.")
-        form.addRow("Vitesse Z max (avertissement) :", self.spn_z_max_feed)
+            "Vitesse max de l'axe Z (MAX_VELOCITY de [AXIS_Z] dans LinuxCNC).\n"
+            "CELUI-CI CHANGE LA GRAVURE, contrairement aux deux autres : il\n"
+            "fixe la pente Z que le fuseau s'autorise, donc la finesse du\n"
+            "motif. Mesuré : à 1500 au lieu de 3000, un fuseau complet exige\n"
+            "deux fois plus de trace (5,3 mm au lieu de 2,7 à F200), soit\n"
+            "moitié moins de motifs sur la même image.\n"
+            "Trop bas ne coûte que du détail ; trop haut fait ralentir tout\n"
+            "le mouvement par LinuxCNC pour que le Z suive -- le temps de\n"
+            "pose change, donc la noirceur, sans rien afficher. Dans le\n"
+            "doute, lis-le dans le .ini plutôt que de le deviner.")
+        form.addRow("Vitesse Z max (pente du fuseau) :", self.spn_z_max_feed)
 
         self.spn_accel = QtWidgets.QDoubleSpinBox()
         self.spn_accel.setRange(10.0, 20000.0)
@@ -20093,6 +20099,29 @@ class TaskPanelSettings:
             "de traits courts). Mettre la MAX_ACCELERATION des axes X/Y de\n"
             "ton LinuxCNC. N'affecte jamais le G-code.")
         form.addRow("Accélération (estimation) :", self.spn_accel)
+
+        # CES TROIS CHIFFRES DÉCRIVENT LA MÉCANIQUE, ET ILS ÉTAIENT DEVINÉS.
+        # Seuls réglages de l'atelier ni mesurés au bois ni choisis : la
+        # machine les DÉCLARE dans son .ini, autant les y lire. Cf.
+        # `core.limites_depuis_ini` pour ce que le défaut prudent coûtait au
+        # fuseau, et pourquoi on ne relève pas ce défaut à l'aveugle.
+        btn_ini = QtWidgets.QPushButton(
+            "Lire les limites dans le .ini LinuxCNC…")
+        btn_ini.setToolTip(
+            "Remplit les trois champs ci-dessus (vitesse rapide, vitesse Z\n"
+            "max, accélération) avec ce que ta machine déclare dans son\n"
+            "fichier de configuration LinuxCNC. Les valeurs d'usine sont des\n"
+            "suppositions prudentes ; celles-ci sont les tiennes.\n"
+            "Rien n'est enregistré avant que tu valides par OK.")
+        # Lambda et non la méthode directement : `clicked` passe son état
+        # `checked` en premier argument, qui atterrirait dans `chemin`.
+        btn_ini.clicked.connect(lambda: self._on_lire_ini())
+        form.addRow("", btn_ini)
+
+        self.lbl_ini = _WrapLabel("")
+        self.lbl_ini.setVisible(False)
+        form.addRow("", self.lbl_ini)
+        self._chemin_ini = settings.get("chemin_ini_linuxcnc", "") or ""
 
         self.chk_origin_bbox = QtWidgets.QCheckBox(
             "Recadrer au zéro pièce (coin bas-gauche à 0,0)")
@@ -20310,6 +20339,40 @@ class TaskPanelSettings:
         self.spn_nozzle_top.setValue(n["top_diameter_mm"])
         self.spn_nozzle_height.setValue(n["height_mm"])
 
+    def _on_lire_ini(self, chemin=None):
+        """Remplit les trois champs mécaniques depuis le .ini de LinuxCNC.
+
+        Les champs sont REMPLIS, pas enregistrés : c'est OK qui écrit, comme
+        pour tout le reste du panneau. Et ce qui a été lu est affiché avec sa
+        provenance -- un chiffre dont on ignore l'origine finit retapé à la
+        main six mois plus tard, ce qui est exactement le problème que ce
+        bouton existe pour clore."""
+        if not chemin:
+            candidats = core.chemins_ini_probables()
+            depart = candidats[0] if candidats else os.path.expanduser("~")
+            chemin, _f = QtWidgets.QFileDialog.getOpenFileName(
+                self.form, "Fichier de configuration LinuxCNC", depart,
+                "Config LinuxCNC (*.ini);;Tous les fichiers (*)")
+        if not chemin:
+            return
+        reglages, lignes = core.limites_depuis_ini(chemin)
+        champs = {"rapid_feed_mm_min": self.spn_rapid,
+                  "z_max_feed_mm_min": self.spn_z_max_feed,
+                  "accel_mm_s2": self.spn_accel}
+        for cle, valeur in reglages.items():
+            if cle in champs:
+                champs[cle].setValue(valeur)
+        if reglages:
+            self._chemin_ini = chemin
+        entete = ("Lu dans {} :".format(os.path.basename(chemin)) if reglages
+                  else "Rien lu dans {} :".format(os.path.basename(chemin)))
+        self.lbl_ini.setText(
+            "<b>{}</b><br>{}{}".format(
+                entete, "<br>".join(lignes),
+                "<br><i>Valide par OK pour les enregistrer.</i>"
+                if reglages else ""))
+        self.lbl_ini.setVisible(True)
+
     def _on_export_all(self):
         """Exporte tous les réglages + photos dans une archive .zip choisie
         par l'utilisateur (sauvegarde à ranger en lieu sûr)."""
@@ -20445,6 +20508,7 @@ class TaskPanelSettings:
             "rapid_feed_mm_min": self.spn_rapid.value(),
             "z_max_feed_mm_min": self.spn_z_max_feed.value(),
             "accel_mm_s2": self.spn_accel.value(),
+            "chemin_ini_linuxcnc": self._chemin_ini,
             "spot_focus_mm": self.spn_spot_focus.value(),
             "spot_test_defocus_mm": self.spn_spot_zdefocus.value(),
             "spot_test_diameter_mm": self.spn_spot_dtest.value(),
