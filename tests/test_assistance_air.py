@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""L'assistance d'air : allumée avant le premier trait, coupée UNE fois.
+"""L'assistance d'air : M7 ou M8 avant le premier trait, M9 une fois.
 
 Christophe, 06/08/2026, après avoir envoyé un fichier LightBurn qui a
 vraiment tourné sur son Creality Falcon 2 : « fais une case dédiée ».
@@ -36,7 +36,10 @@ MAT = u"Hêtre"
 
 
 def poser(air, dialecte="grbl", m67=False):
-    """Par la config JETABLE et le vrai `_apply_settings_config`."""
+    """Par la config JETABLE et le vrai `_apply_settings_config`.
+
+    `air` vaut "" (rien), "M7" ou "M8" -- et un booléen est accepté, cf.
+    §7 sur la reprise des configs de v2.99.37."""
     cfg = core.load_config()
     s = cfg.setdefault("settings", {})
     s["assistance_air"] = air
@@ -90,7 +93,7 @@ print("=" * 62)
 print("§1  Décochée, AUCUN M8 ni M9 -- les fichiers d'avant sont intacts")
 print("=" * 62)
 
-poser(False)
+poser("")
 sans = familles()
 for nom, g in sorted(sans.items()):
     print("   %-20s M8=%d  M9=%d" % (nom, mots(g, "M8"), mots(g, "M9")))
@@ -110,7 +113,7 @@ print("=" * 62)
 # donc deux M8, et ils sont justes : un M8 sur une pompe déjà en marche ne
 # fait rien. Ce qui doit être unique, c'est la COUPURE : un M9 de trop, et
 # la fin du job grave sans air, sans qu'un mot le dise.
-poser(True)
+poser("M8")
 avec = familles()
 assert set(avec) == set(sans), "des familles ont disparu"
 for nom, g in sorted(avec.items()):
@@ -201,7 +204,7 @@ print("=" * 62)
 
 for dialecte, m67 in (("linuxcnc", False), ("linuxcnc", True),
                       ("grbl", True), ("grblhal", False)):
-    poser(True, dialecte, m67)
+    poser("M8", dialecte, m67)
     g2 = core.generate_gcode_planche_defocus(z_focus=core.Z_WORK_MM,
                                              quiet=True)
     n8, n9 = mots(g2, "M8"), mots(g2, "M9")
@@ -214,7 +217,7 @@ for dialecte, m67 in (("linuxcnc", False), ("linuxcnc", True),
 
 print()
 print("=" * 62)
-print("§6  Le réglage est PAR LASER, et la case existe")
+print("§6  Le réglage est PAR LASER, et le choix existe")
 print("=" * 62)
 
 assert "assistance_air" in core.PER_LASER_KEYS, (
@@ -223,10 +226,59 @@ assert "assistance_air" in core.PER_LASER_KEYS, (
 import io as _io                                              # noqa: E402
 _src = _io.open("/home/christophe/.local/share/FreeCAD/v1-1/Mod/"
                 "LaserAtelier/task_panels.py", encoding="utf-8").read()
-assert "chk_air" in _src and '"assistance_air": self.chk_air' in _src, (
-    "les Préférences n'offrent pas la case, ou ne l'enregistrent pas")
+assert "combo_air" in _src and '"assistance_air": self.combo_air' in _src, (
+    "les Préférences n'offrent pas le choix, ou ne l'enregistrent pas")
+for _cmd in core.COMMANDES_AIR:
+    assert '"%s"' % _cmd in _src, (
+        "le choix %s n'est pas proposé dans les Préférences : le réglage "
+        "existe et reste inatteignable" % _cmd)
 print("   par laser : ✓   case dans les Préférences : ✓")
 
-poser(False)
+poser("")
+
+print()
+print("=" * 62)
+print("§7  M7 ou M8 : c'est le CÂBLAGE qui tranche")
+print("=" * 62)
+
+# Christophe, 07/08/2026 : « je viens de monter la pompe et connecté en
+# mist M7 [...] je suis sur ma linuxcnc, M8 cela doit être pour LightBurn
+# Falcon ». RS274 distingue M7 (brouillard) de M8 (arrosage) : deux
+# sorties, deux broches HAL, et celle qui n'est pas câblée NE FAIT RIEN --
+# le fichier reste parfaitement valide et grave sans air. Livrer M8 en dur
+# aurait donc donné un G-code irréprochable et une gravure sans assistance.
+for commande in core.COMMANDES_AIR:
+    poser(commande, "linuxcnc", True)
+    g = core.generate_gcode_planche_defocus(z_focus=core.Z_WORK_MM, quiet=True)
+    autre = [c for c in core.COMMANDES_AIR if c != commande][0]
+    print("   réglage %s -> %s=%d, %s=%d, M9=%d"
+          % (commande, commande, mots(g, commande), autre, mots(g, autre),
+             mots(g, "M9")))
+    assert mots(g, commande) >= 1, "« %s » n'est pas émis" % commande
+    assert mots(g, autre) == 0, (
+        "« %s » sort alors que le réglage demande %s : la pompe câblée sur "
+        "l'autre sortie ne s'ouvrira pas, et le fichier n'en dira rien"
+        % (autre, commande))
+    assert mots(g, "M9") == 1, "M9 doit rester unique quel que soit l'ouvreur"
+
+print()
+print("=" * 62)
+print("§8  Les configs de v2.99.37 (booléen) se reprennent")
+print("=" * 62)
+
+# v2.99.37 a livré ce réglage en CASE À COCHER. Une config écrite ce
+# jour-là porte `true`/`false` : sans reprise, `_apply_settings_config`
+# aurait vu une valeur invalide, averti dans la console, gardé le défaut --
+# et coupé l'air, sans que personne ne relie la cause à l'effet.
+for ancien, attendu in ((True, "M8"), (False, "")):
+    poser(ancien, "linuxcnc", True)
+    print("   config portant %-5r -> %r" % (ancien, core.ASSISTANCE_AIR))
+    assert core.ASSISTANCE_AIR == attendu, (
+        "un %r d'hier donne %r au lieu de %r"
+        % (ancien, core.ASSISTANCE_AIR, attendu))
+assert core._cast_air("m7") == "M7", "la casse n'est pas normalisée"
+assert core._cast_air("M6") == "", "une commande inconnue doit être ignorée"
+
+poser("")
 print()
 print("TOUT EST VERT")

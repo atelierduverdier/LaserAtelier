@@ -20202,22 +20202,36 @@ class TaskPanelSettings:
         _l_surface.addWidget(self.spn_surface_y, 1)
         form.addRow("Surface de travail :", _rang_surface)
 
-        self.chk_air = QtWidgets.QCheckBox("Assistance d'air (M8 / M9)")
-        self.chk_air.setChecked(bool(settings.get("assistance_air", False)))
-        self.chk_air.setToolTip(
-            "Émet « M8 » avec l'armement du laser et « M9 » à la fin du job.\n"
-            "C'est ainsi que les graveurs de table pilotent leur pompe à air ;\n"
-            "LightBurn les pose systématiquement.\n"
+        # UN CHOIX, PAS UNE CASE : M7 et M8 sont deux sorties DIFFÉRENTES
+        # (brouillard / arrosage), donc deux broches HAL, et celle qui n'est
+        # pas câblée ne fait rien. Christophe a monté sa pompe en M7 sur la
+        # PrintNC ; le LightBurn du Falcon2 pose M8.
+        self.combo_air = QtWidgets.QComboBox()
+        self.combo_air.addItem("Non", "")
+        self.combo_air.addItem("M7 (brouillard / mist)", "M7")
+        self.combo_air.addItem("M8 (arrosage / flood)", "M8")
+        idx_air = self.combo_air.findData(
+            core._cast_air(settings.get("assistance_air", "")))
+        self.combo_air.setCurrentIndex(max(0, idx_air))
+        self.combo_air.setToolTip(
+            "Émet M7 ou M8 avec l'armement du laser, et « M9 » à la fin du\n"
+            "job (M9 coupe les deux, quel que soit celui qui a ouvert).\n"
             "\n"
-            "Une seule paire par fichier, y compris en job combiné : l'air ne\n"
-            "se rallume pas à chaque opération.\n"
+            "LEQUEL ? Celui sur lequel ta pompe est CÂBLÉE. RS274 distingue\n"
+            "M7 (brouillard) de M8 (arrosage) : ce sont deux sorties\n"
+            "différentes, et celle qui n'est pas câblée ne fait rien du tout\n"
+            "-- le fichier reste parfaitement valide et grave sans air.\n"
+            "Réglé par profil laser : une machine, un câblage.\n"
+            "\n"
+            "Une seule ouverture par fichier, y compris en job combiné :\n"
+            "l'air ne se rallume pas à chaque opération.\n"
             "\n"
             "ATTENTION, ÇA CHANGE CE QUI BRÛLE : avec l'air, un halo brun\n"
             "apparaît autour du trait ; sans lui, la coupe est plus propre\n"
             "mais la lentille s'encrasse plus vite. Tes largeurs mesurées et\n"
             "ton nuancier décrivent le régime dans lequel ils ont été gravés :\n"
             "changer ce réglage change ce régime.")
-        form.addRow("", self.chk_air)
+        form.addRow("Assistance d'air :", self.combo_air)
 
         self.chk_m67 = QtWidgets.QCheckBox(
             "Puissance par M67 (sortie analogique synchronisée)")
@@ -20693,7 +20707,7 @@ class TaskPanelSettings:
         core.save_settings({
             "gcode_dialect": self.combo_dialect.currentData(),
             "machine_sans_axe_z": self.chk_sans_z.isChecked(),
-            "assistance_air": self.chk_air.isChecked(),
+            "assistance_air": self.combo_air.currentData(),
             "surface_travail_x_mm": self.spn_surface_x.value(),
             "surface_travail_y_mm": self.spn_surface_y.value(),
             "puissance_par_m67": self.chk_m67.isChecked(),

@@ -178,7 +178,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.38"
+VERSION = "2.99.39"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -1023,14 +1023,39 @@ SURFACE_TRAVAIL_Y_MM = 0.0            # aucun contrôle -- c'est le défaut, pou
                                       # 400 x 415). Cf. `job_hors_surface`, appelé À L'ÉCRITURE
                                       # sur le G-code tel qu'il sera écrit -- après recadrage
                                       # au zéro pièce, donc sur les vraies coordonnées.
-ASSISTANCE_AIR = False                # émettre M8 à l'armement et M9 au désarmement. Les
-                                      # graveurs de table pilotent leur pompe à air par M8/M9 ;
-                                      # LightBurn les pose systématiquement. Réglé PAR LASER.
-                                      # L'air change la BRÛLURE (halo brun avec, propre sans) :
-                                      # c'est la variable cachée que les planches de mesure de
-                                      # l'atelier n'enregistrent nulle part -- si tu changes ce
-                                      # réglage, tes largeurs mesurées ne décrivent plus le même
-                                      # régime.
+ASSISTANCE_AIR = ""                   # commande d'assistance d'air : "" (aucune), "M7" ou "M8".
+                                      # M9 coupe les deux, quel que soit celui qui a ouvert.
+                                      #
+                                      # DEUX SORTIES, ET C'EST LE CÂBLAGE QUI TRANCHE. RS274
+                                      # distingue M7 (brouillard, « mist ») de M8 (arrosage,
+                                      # « flood ») : ce sont deux broches HAL différentes, et
+                                      # celle qui n'est pas câblée ne fait rien du tout. Le
+                                      # LightBurn du Falcon2 pose M8 ; Christophe a monté sa
+                                      # pompe sur la PrintNC en M7 le 07/08/2026. D'où un choix
+                                      # plutôt qu'une case : livrer M8 en dur aurait donné un
+                                      # fichier parfaitement valide qui grave sans air.
+                                      #
+                                      # Réglé PAR LASER. L'air change la BRÛLURE (halo brun
+                                      # avec, propre sans) : c'est la variable cachée que les
+                                      # planches de mesure n'enregistrent nulle part -- si tu
+                                      # changes ce réglage, tes largeurs mesurées ne décrivent
+                                      # plus le même régime.
+COMMANDES_AIR = ("M7", "M8")
+
+
+def _cast_air(v):
+    """Normalise le réglage d'air en "" / "M7" / "M8".
+
+    ACCEPTE AUSSI UN BOOLÉEN : v2.99.37 a livré ce réglage en case à
+    cocher, et une config écrite ce jour-là porte `true`/`false`. Sans
+    cette reprise, `_apply_settings_config` aurait vu une valeur invalide,
+    averti, gardé le défaut -- et coupé l'air sans que personne ne relie la
+    cause à l'effet. Un `true` d'hier voulait dire M8."""
+    if isinstance(v, bool):
+        return "M8" if v else ""
+    t = str(v).strip().upper()
+    return t if t in COMMANDES_AIR else ""
+
 MACHINE_SANS_AXE_Z = False            # machine à mise au point MANUELLE (graveur diode de
                                       # table type Creality Falcon) : aucun mot Z n'est écrit,
                                       # et les mouvements qui n'étaient que du Z disparaissent.
@@ -1094,7 +1119,8 @@ _USER_SETTINGS = (
     ("accel_mm_s2", "ACCEL_MM_S2", float, lambda v: v > 0),
     ("chemin_ini_linuxcnc", "CHEMIN_INI_LINUXCNC", str, lambda v: isinstance(v, str)),
     ("machine_sans_axe_z", "MACHINE_SANS_AXE_Z", bool, lambda v: isinstance(v, bool)),
-    ("assistance_air", "ASSISTANCE_AIR", bool, lambda v: isinstance(v, bool)),
+    ("assistance_air", "ASSISTANCE_AIR", _cast_air,
+     lambda v: v == "" or v in COMMANDES_AIR),
     ("surface_travail_x_mm", "SURFACE_TRAVAIL_X_MM", float, lambda v: v >= 0),
     ("surface_travail_y_mm", "SURFACE_TRAVAIL_Y_MM", float, lambda v: v >= 0),
     ("z_work_mm", "Z_WORK_MM", float, lambda v: -100 <= v <= 500),
@@ -1155,7 +1181,8 @@ def _apply_settings_config():
         CMD_BEAM_ON = _CMD_BEAM_ON_M67
         CMD_BEAM_OFF = _CMD_BEAM_OFF_M67
         CMD_DISARM = _CMD_DISARM_M67
-    # ASSISTANCE D'AIR : M8 avec l'armement, M9 avec le désarmement.
+    # ASSISTANCE D'AIR : M7 ou M8 avec l'armement, M9 avec le désarmement
+    # (M9 coupe les deux, quel que soit celui qui a ouvert).
     #
     # Greffé sur CMD_ARM / CMD_DISARM et NON dans chaque générateur : ces
     # deux modèles sont émis par les dix familles (35 et 50 points d'appel),
@@ -1167,7 +1194,7 @@ def _apply_settings_config():
     # LightBurn de Christophe pour son Falcon 2 pose M8 juste après M4, et
     # M9 AVANT le S0/M5 final. On le reproduit tel quel.
     if ASSISTANCE_AIR:
-        CMD_ARM = CMD_ARM + "\nM8 (assistance d'air)"
+        CMD_ARM = CMD_ARM + "\n{} (assistance d'air)".format(ASSISTANCE_AIR)
         CMD_DISARM = "M9 (arret assistance d'air)\n" + CMD_DISARM
 
 

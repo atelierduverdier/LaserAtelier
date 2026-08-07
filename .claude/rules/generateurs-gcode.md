@@ -57,13 +57,25 @@ Two real files still carry slow crossings — `gravure_photo4.ngc` (4.6 m) and
 is history, not a live defect, so §4 prints rather than asserts: the same rule as for measurements
 that move when Christophe re-measures.
 
-## Air assist — `assistance_air` (v2.99.37)
+## Air assist — `assistance_air` (v2.99.37, M7/M8 in v2.99.39)
 
 Bench engravers drive their air pump with `M8`/`M9`. `ASSISTANCE_AIR` (per-laser) grafts them onto
 **`CMD_ARM` / `CMD_DISARM` in `_apply_settings_config`, last, after the dialect rewrites them** —
 those two templates are what the ten generator families emit (35 and 50 call sites), and `body_only`
 strips them from a combined job's bodies, so the wrapper arms once. An `M8` written into each
 generator would have re-lit an already-running pump once per operation.
+
+**M7 or M8 — the WIRING decides, and shipping M8 hardcoded was a defect.** RS274 separates `M7`
+(mist) from `M8` (flood): two outputs, two HAL pins, and **the one that isn't wired does nothing at
+all**. Christophe mounted his pump on M7 on the PrintNC the day after v2.99.37 shipped; LightBurn's
+Falcon2 export uses M8. Hardcoding M8 would have produced a perfectly valid file that engraves
+**without air**, and nothing in it would have said so — the quietest kind of defect. So the setting
+is a choice (`""` / `"M7"` / `"M8"`), per-laser, which is exactly right since a profile *is* a
+machine. `M9` is unchanged: it closes both, whichever opened.
+
+`_cast_air` **accepts a bool** so configs written by v2.99.37 migrate (`true` → `"M8"`). Without it
+`_apply_settings_config` would have seen an invalid value, warned to the console, kept the default —
+and cut the air, with nobody connecting cause to effect.
 
 **The order comes from a file that actually ran**, not from reasoning: Christophe's LightBurn 1.3.01
 export for his Falcon 2 puts `M8` right after `M4` and `M9` **before** the final `M5`. Reproduced
