@@ -539,3 +539,89 @@ finally:
     FreeCAD.closeDocument("EssaiOrigine")
 print("11. un axe d'origine (2e100 mm) est écarté sans être discrétisé, la "
       "projection aboutit, et une planche de 2 m passe encore OK")
+
+
+# --- 12. MOVETO À PAIRES MULTIPLES : DES LINETO, PAS DES DÉPLACEMENTS ----
+# Norme SVG : `m x,y dx,dy dx,dy` = UN déplacement puis des LINETO implicites.
+# `_iter_path_tokens` ré-émettait la lettre `m` pour chaque groupe répété, donc
+# le parseur y voyait des déplacements successifs : le premier segment du
+# sous-tracé était perdu ET `subpath_start` prenait la valeur du DEUXIÈME
+# point. Le retour du `Z` visait alors le mauvais endroit, et le `m` relatif du
+# sous-tracé suivant en héritait -- l'erreur s'ADDITIONNE de glyphe en glyphe.
+#
+# Payé le 10/08/2026 sur le traceur Graphtec : le cartouche d'une planche
+# TechDraw sortait en diagonale, dernier glyphe à 5,8 mm en X et 15,3 mm en Y
+# de sa place. Inkscape écrit exactement cette forme dès qu'on convertit du
+# texte en chemins (Chemin > Objet en chemin), donc tout logo ou lettrage
+# importé pour gravure était concerné, sans que rien ne le signale.
+#
+# On teste la PROPRIÉTÉ sur une famille, pas le glyphe rapporté : la dérive
+# doit rester nulle quel que soit le nombre de sous-tracés enchaînés, et la
+# comparaison se fait contre un interpréteur INDÉPENDANT écrit ici -- un test
+# qui rejouerait la logique de `svg_import` passerait en étant faux avec elle.
+
+def _depart_reference(d):
+    """Points de départ des sous-tracés, sémantique SVG stricte (m/l/h/v/z)."""
+    jetons = re.findall(r"[MmLlHhVvZz]|[-+]?(?:\d+\.\d*|\.\d+|\d+)", d)
+    i, courant, debut, departs, lettre = 0, (0.0, 0.0), (0.0, 0.0), [], None
+    while i < len(jetons):
+        if re.match(r"[A-Za-z]", jetons[i]):
+            lettre = jetons[i]
+            i += 1
+        rel, c = lettre.islower(), lettre.upper()
+        if c == "Z":
+            courant = debut
+            continue
+        if c in ("M", "L"):
+            x, y = float(jetons[i]), float(jetons[i + 1])
+            i += 2
+            courant = (courant[0] + x, courant[1] + y) if rel else (x, y)
+            if c == "M":
+                debut = courant
+                departs.append(courant)
+                lettre = "l" if rel else "L"   # les groupes suivants : LINETO
+        elif c == "H":
+            x = float(jetons[i]); i += 1
+            courant = (courant[0] + x, courant[1]) if rel else (x, courant[1])
+        elif c == "V":
+            y = float(jetons[i]); i += 1
+            courant = (courant[0], courant[1] + y) if rel else (courant[0], y)
+    return departs
+
+
+import svg_import                                            # noqa: E402
+
+# a) le cas minimal, relatif ET absolu
+for _d12, _attendu in (("m 100,100 -10,-20 h 5 z", (100.0, 100.0)),
+                       ("M 100,100 90,80 h 5 z", (100.0, 100.0))):
+    _sp = svg_import.path_d_to_subpaths(_d12)[0]
+    assert _sp[0]["points"][0] == _attendu, (
+        "« {} » démarre en {} au lieu de {} : la 2e paire d'un moveto est "
+        "prise pour un déplacement, pas pour un lineto".format(
+            _d12, _sp[0]["points"][0], _attendu))
+    assert len(_sp[0]["points"]) == 4, (
+        "« {} » ne garde que {} points : le segment de la 2e paire est "
+        "perdu".format(_d12, len(_sp[0]["points"])))
+
+# b) la propriété sur la famille : 60 sous-tracés enchaînés, dérive nulle.
+#    Sous l'ancien code l'écart croissait à chaque `z m`, jusqu'à 118 mm ici.
+_carres = "".join("m {},0 3,-7 h 4 v 6 z ".format(8 if k else 0) for k in range(60))
+_ref12 = _depart_reference(_carres)
+_obt12 = [sp["points"][0] for sp in svg_import.path_d_to_subpaths(_carres)[0]]
+assert len(_ref12) == len(_obt12) == 60, (
+    "60 sous-tracés attendus, {} de référence et {} obtenus".format(
+        len(_ref12), len(_obt12)))
+_pire12 = max(max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+              for a, b in zip(_ref12, _obt12))
+assert _pire12 < 1e-9, (
+    "dérive de {:.3f} mm sur 60 sous-tracés enchaînés : l'erreur du moveto "
+    "s'accumule de glyphe en glyphe".format(_pire12))
+
+# c) non-régression : un moveto à UNE paire ne doit rien changer
+_simple = "M 0,0 h 10 v 10 h -10 z m 20,0 h 10 v 10 h -10 z"
+assert [sp["points"][0] for sp in svg_import.path_d_to_subpaths(_simple)[0]] == \
+    [(0.0, 0.0), (20.0, 0.0)], "le moveto à une seule paire a régressé"
+
+print("12. un moveto à paires multiples produit des lineto implicites : "
+      "premier segment conservé, point de départ juste, et aucune dérive "
+      "cumulée sur 60 sous-tracés enchaînés")

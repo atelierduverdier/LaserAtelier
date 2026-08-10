@@ -106,6 +106,7 @@ def _iter_path_tokens(d):
             i = _skip_sep(d, i)
             continue
         is_arc = letter.upper() == "A"
+        emise = letter
         while True:
             group = []
             for pos in range(arity):
@@ -114,7 +115,16 @@ def _iter_path_tokens(d):
                 else:
                     val, i = _read_number(d, i)
                 group.append(val)
-            yield letter, group
+            yield emise, group
+            # Norme SVG : après le PREMIER groupe d'un M/m, les groupes
+            # répétés sont des LINETO implicites, pas d'autres déplacements.
+            # Les confondre perd le premier segment du sous-tracé ET fausse
+            # son point de départ -- donc le retour du Z, donc le départ du
+            # sous-tracé suivant : l'erreur s'accumule de glyphe en glyphe.
+            # Inkscape écrit systématiquement `m x,y dx,dy …` en convertissant
+            # du texte en chemins.
+            if emise.upper() == "M":
+                emise = "l" if emise.islower() else "L"
             i = _skip_sep(d, i)
             # Répétition implicite : encore des chiffres avant la
             # prochaine lettre ?
