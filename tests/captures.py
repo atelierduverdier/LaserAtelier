@@ -65,6 +65,12 @@ PANNEAUX = [
     # ne pas renuméroter les dix-neuf autres ; sa place dans la galerie est
     # donnée par panneaux.md, pas par le chiffre du fichier.
     ("importsvg",  "TaskPanelImportSVG",       480, "20_import_svg"),
+    # Calligraphie et Texte contour manquaient à ce tableau : leurs captures
+    # 21 et 22 avaient été faites à la main, hors harnais, et sortaient à
+    # 453 px de large au lieu de 430 — seules deux images de la galerie à ne
+    # pas être à la même largeur que les autres. Ajoutées le 12/08/2026.
+    ("calligraphie", "TaskPanelCalligraphie",  760, "21_calligraphie"),
+    ("textecontour", "TaskPanelTexteContour",  480, "22_texte_contour"),
 ]
 
 LARGEUR = 430
