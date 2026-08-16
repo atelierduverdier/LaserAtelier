@@ -10,16 +10,39 @@ python3 tests/lancer.py            # everything
 python3 tests/lancer.py lignes am  # only names containing these
 ```
 
-Run it with the **system** python — the runner only delegates. It rediscovers FreeCAD's own
-interpreter under `/tmp/.mount_FreeCA*` on every run, because **that mount path changes each time
-FreeCAD is relaunched** and a stale path looks exactly like a broken environment. Each test runs in
-its **own subprocess**, so a Qt panel that crashes or a global it mutated can't contaminate the
-next one.
+Run it with the **system** python — the runner only delegates. Each test runs in its **own
+subprocess**, so a Qt panel that crashes or a global it mutated can't contaminate the next one.
 
-To run one test by hand (e.g. to see its prints):
+`python_freecad()` looks for **two** installations, in this order:
+
+1. a mounted **AppImage** under `/tmp/.mount_FreeCA*` (official build) or `/tmp/.mount_freeca*`
+   (appman's — the case differs with the file name). That mount path **changes each time FreeCAD is
+   relaunched**, hence the rediscovery on every run; a stale path looks exactly like a broken
+   environment. The AppImage wins when one is running: it is what Christophe has in front of him,
+   and testing against a *different* install than the one that produced the file proves nothing.
+2. the **system package** (`extra/freecad`), whose modules live in `/usr/lib/freecad/lib` and import
+   from the ordinary `python3`.
+
+The system case became necessary on **2026-08-16**: on the reinstalled machine both 1.1.3 AppImages
+abort at startup (`Could not initialize GLX` — their July-frozen Qt/GL libraries against Mesa 26.2),
+so no AppImage mounts any more and **no test could run at all**, while FreeCAD's core was perfectly
+healthy in console mode.
+
+**The bundled python is not the system python.** The AppImage ships `shapely` and `cv2`; the system
+python does not, unless you install them. `test_texte_contour` §9 fell on exactly that — its message
+("la fusion a échoué là où shapely est disponible") accuses the code while the module is simply
+absent. Worse than a red test: without `shapely`, `calligraphie.fusionner_contours` returns
+"not done" **silently**, and overlapping strokes would only show up on the wood.
+
+```bash
+sudo pacman -S python-shapely python-opencv
+```
+
+To run one test by hand (e.g. to see its prints) — AppImage, then system package:
 
 ```bash
 PYTHONPATH=/tmp/.mount_FreeCAxxxxxx/usr/lib:tests:. /tmp/.mount_FreeCAxxxxxx/usr/bin/python tests/test_xxx.py
+PYTHONPATH=/usr/lib/freecad/lib:tests:. python3 tests/test_xxx.py
 ```
 
 ## The suite runs in PARALLEL (2026-08-06)

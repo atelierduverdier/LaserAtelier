@@ -50,12 +50,39 @@ RACINE = os.path.dirname(ICI)
 
 
 def python_freecad():
-    """(interpréteur, PYTHONPATH) de FreeCAD, ou (None, None)."""
-    for base in sorted(glob.glob("/tmp/.mount_FreeCA*"), reverse=True):
-        exe = os.path.join(base, "usr", "bin", "python")
-        lib = os.path.join(base, "usr", "lib")
-        if os.path.exists(exe) and os.path.exists(os.path.join(lib, "FreeCAD.so")):
-            return exe, lib
+    """(interpréteur, PYTHONPATH) de FreeCAD, ou (None, None).
+
+    Deux installations possibles, cherchées dans cet ordre :
+
+    1. **AppImage montée** sous `/tmp/.mount_FreeCA*` (ou `.mount_freeca*`, la
+       casse dépend du nom du fichier : l'AppImage officielle donne `FreeCA`,
+       celle d'appman `freeca`). Ce chemin CHANGE à chaque relancement de
+       FreeCAD, d'où la redécouverte à chaque exécution.
+    2. **Paquet système** (`extra/freecad`), dont les modules vivent dans
+       `/usr/lib/freecad/lib` et s'importent depuis le python ordinaire.
+
+    L'AppImage passe en premier : si elle tourne, c'est elle que Christophe a
+    sous les yeux, et tester contre une AUTRE installation que celle qui vient
+    de produire le fichier serait une comparaison sans valeur.
+
+    Le cas système est devenu nécessaire le 16/08/2026 : sur le poste
+    réinstallé, les deux AppImages 1.1.3 avortent au démarrage
+    (« Could not initialize GLX » — leurs bibliothèques Qt/GL figées en juillet
+    contre Mesa 26.2). Plus aucune AppImage ne se monte, donc plus aucun test
+    ne pouvait tourner, alors que le cœur de FreeCAD, lui, fonctionne
+    parfaitement en console.
+    """
+    for motif in ("/tmp/.mount_FreeCA*", "/tmp/.mount_freeca*"):
+        for base in sorted(glob.glob(motif), reverse=True):
+            exe = os.path.join(base, "usr", "bin", "python")
+            lib = os.path.join(base, "usr", "lib")
+            if os.path.exists(exe) and os.path.exists(os.path.join(lib, "FreeCAD.so")):
+                return exe, lib
+
+    lib = "/usr/lib/freecad/lib"
+    exe = shutil.which("python3")
+    if exe and os.path.exists(os.path.join(lib, "FreeCAD.so")):
+        return exe, lib
     return None, None
 
 
@@ -120,9 +147,11 @@ def _fronts(n_tests):
 def main(filtres):
     exe, lib = python_freecad()
     if exe is None:
-        print("FreeCAD introuvable : aucune AppImage montée sous "
-              "/tmp/.mount_FreeCA*.\nLance FreeCAD une fois, puis relance "
-              "ces tests (les modules FreeCAD/Part y vivent).")
+        print("FreeCAD introuvable, ni en AppImage ni en paquet système.\n"
+              "  • AppImage : lance FreeCAD une fois (les modules vivent dans "
+              "son montage /tmp/.mount_*), puis relance ces tests ;\n"
+              "  • paquet système : sudo pacman -S freecad "
+              "(attendu dans /usr/lib/freecad/lib).")
         return 2
     print("interpréteur : {}\n".format(exe))
     _purger_pyc()
