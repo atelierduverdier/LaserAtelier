@@ -64,7 +64,8 @@ three call sites go through `dot_micro_stroke`, and a generated file shows zero 
 ### 5. Never test novel OCC/Qt call patterns in the user's live FreeCAD session
 
 A per-wire `makeOffset2D` experiment segfaulted the whole GUI and lost unsaved work. Run risky
-probes with the AppImage python on a copy in the scratchpad.
+probes headless on a copy in the scratchpad — `PYTHONPATH=/usr/lib/freecad/lib python3`, or the
+AppImage's own python when one is mounted.
 
 ### 6. Commits
 
@@ -108,10 +109,21 @@ That syntax check is the only automated gate — run it after every edit. Then t
 python3 tests/lancer.py
 ```
 
-Run the suite with the **system** python; the runner only delegates, rediscovering FreeCAD's own
-interpreter under `/tmp/.mount_FreeCA*` (that mount path **changes every time FreeCAD is
-relaunched**, and a stale path looks exactly like a broken environment). Final visual validation
-is always the user restarting FreeCAD.
+Run the suite with the **system** python; the runner only delegates. It finds FreeCAD in either of
+two places — a mounted AppImage under `/tmp/.mount_FreeCA*` (that path **changes every time FreeCAD
+is relaunched**, and a stale one looks exactly like a broken environment), or the system package in
+`/usr/lib/freecad/lib`. Final visual validation is always the user restarting FreeCAD.
+
+**Since 2026-08-16 this machine runs the SYSTEM package**, `extra/freecad` 1.1.3 — both 1.1.3
+AppImages abort at startup on the reinstalled system (`Could not initialize GLX`: their July-frozen
+Qt/GL libraries against Mesa 26.2). Two consequences that bite:
+
+- It must be **pinned** (`IgnorePkg = freecad` in `/etc/pacman.conf`). A `pacman -Syu` would
+  otherwise carry it to 1.2 and break this workbench — and the AppImage is no longer a fallback.
+- The system python is **not** the AppImage's: `shapely` and `cv2` were bundled there and must be
+  installed here (`python-shapely`, `python-opencv`). Without `shapely`,
+  `calligraphie.fusionner_contours` returns "not done" **silently** and overlapping strokes only
+  show up on the wood. See `.claude/rules/tests-headless.md`.
 
 ## Architecture
 
