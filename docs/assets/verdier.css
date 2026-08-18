@@ -123,7 +123,12 @@ header.topbar{
    est NOIR et porte son propre liseré blanc — c'est ce liseré qui le
    détache du fond sombre. Ne PAS le repeindre en blanc pour le faire
    ressortir : ce n'est plus le logo. */
-.brand .chapeau{height:26px;width:auto;display:block;flex:none}
+/* margin:0 explicite — la page de liens a son propre `.chapeau`, le grand,
+   avec `margin:0 auto 20px`. Sans cette remise à zéro le chapeau de la barre
+   héritait de ses 20 px du bas : `.brand .chapeau` gagne sur `.chapeau` pour
+   la hauteur, mais ne dit rien d'une marge qu'il ne déclare pas. Un composant
+   de charte doit tenir chez l'hôte sans dépendre de ce que l'hôte n'a pas. */
+.brand .chapeau{height:26px;width:auto;display:block;flex:none;margin:0}
 
 /* Le logo complet (chapeau + mot-symbole), collé en ligne par le
    générateur. Son mot-symbole est en `currentColor` : il prend donc la
