@@ -25,9 +25,15 @@
 
 <header class="topbar">
   <div class="wrap">
-    <a class="brand" href="#top">
-      <span class="dot"><img src="assets/icone_atelier.svg" alt=""></span>
-      Atelier Laser
+    <!-- La marque ramène à l'ATELIER, pas en haut de cette page. Elle
+         pointait sur `#top`, qui ne quittait jamais le site laser : relevé
+         le 18/08/2026, cette page ne citait `atelierduverdier.fr` nulle
+         part, alors que la racine sert le portail depuis la bascule du
+         12/08. Le pied de page garde son « Haut de page ↑ ». -->
+    <a class="brand" href="https://atelierduverdier.fr/" aria-label="Atelier du Verdier">
+      <img class="chapeau" src="assets/verdier-chapeau.svg" alt="">
+      Atelier du Verdier
+      <span class="brand-sub">Atelier Laser</span>
     </a>
     <button class="nav-btn" type="button" aria-label="Ouvrir le menu"
             aria-controls="menu-principal">☰</button>

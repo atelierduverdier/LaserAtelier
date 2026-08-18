@@ -103,7 +103,15 @@ header.topbar{
   position:sticky; top:0; z-index:50; background:color-mix(in srgb,var(--bg) 88%, transparent);
   backdrop-filter:saturate(140%) blur(10px); border-bottom:1px solid var(--line);
 }
-.topbar .wrap{display:flex; align-items:center; gap:16px; height:60px}
+/* min-height et non height : `.navlinks` a `flex-wrap:wrap`, donc au-delà
+   d'un certain nombre de liens la rangée passe à deux lignes — et une
+   hauteur FIXE les laissait alors déborder par-dessous, sur le héros.
+   Mesuré au navigateur le 18/08/2026 sur le site laser et ses neuf liens
+   de sections : il débordait sous 1052 px de fenêtre, et le seuil montait
+   à 1143 px une fois la marque élargie du chemin vers le portail. Sous
+   860 px la question ne se pose pas, les liens passent derrière le ☰.
+   Le portail n'en voit rien : ses quatre liens tiennent sur une ligne. */
+.topbar .wrap{display:flex; align-items:center; gap:16px; min-height:60px}
 .brand{display:flex; align-items:center; gap:10px; font-weight:700; color:var(--fg)}
 .brand:hover{text-decoration:none}
 .brand .dot{width:26px;height:26px;border-radius:7px;background:#fff;
