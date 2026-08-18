@@ -112,7 +112,15 @@ header.topbar{
    860 px la question ne se pose pas, les liens passent derrière le ☰.
    Le portail n'en voit rien : ses quatre liens tiennent sur une ligne. */
 .topbar .wrap{display:flex; align-items:center; gap:16px; min-height:60px}
-.brand{display:flex; align-items:center; gap:10px; font-weight:700; color:var(--fg)}
+/* text-decoration:none ÉCRIT ICI, alors que `a{text-decoration:none}` de la
+   section 2 le dit déjà pour tout le site. La section 3 part seule chez les
+   satellites, dans verdier-entete.css : celui qui n'a pas de règle `a` à lui
+   recevait la barre avec tous ses liens soulignés — vu par Christophe sur
+   liens.atelierduverdier.fr le 18/08/2026, en ligne. Le journal PrintNC y
+   échappait par sa propre règle `a`, ce qui rendait le défaut invisible d'un
+   satellite à l'autre. Une section extraite doit tenir sans le reste. */
+.brand{display:flex; align-items:center; gap:10px; font-weight:700;
+  color:var(--fg); text-decoration:none}
 .brand:hover{text-decoration:none}
 .brand .dot{width:26px;height:26px;border-radius:7px;background:#fff;
   border:1px solid var(--line);display:grid;place-items:center;flex:none}
@@ -143,7 +151,8 @@ header.topbar{
 @media(max-width:620px){ .brand-sub{display:none} }
 
 .navlinks{display:flex; gap:4px; margin-left:auto; flex-wrap:wrap}
-.navlinks a{color:var(--fg-2); padding:6px 11px; border-radius:8px; font-size:.92rem; font-weight:500}
+.navlinks a{color:var(--fg-2); padding:6px 11px; border-radius:8px;
+  font-size:.92rem; font-weight:500; text-decoration:none}
 .navlinks a:hover{background:var(--bg-3); color:var(--fg); text-decoration:none}
 .navlinks a[aria-current="page"]{color:var(--orange-d); background:var(--orange-soft)}
 
