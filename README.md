@@ -4,7 +4,7 @@
 <p align="center"><img src="resources/icons/chapeau.svg" alt="" width="56"><br><sub><b>v2.99.40</b> — Le petit chapeau en coin de chaque icône est la signature de l'<a href="https://atelierduverdier.fr">Atelier du Verdier</a>.<br>© Atelier du Verdier — licence <a href="LICENSE">LGPL-2.1-or-later</a>.</sub></p>
 <p align="center"><a href="https://ko-fi.com/atelierduverdier"><b>☕ L'atelier vous est utile ? Soutenez-le sur Ko-fi</b></a></p>
 
-> **≈ 211 heures pour en arriver là**, du 15/07/2026 au 06/08/2026 : ≈ 182 h de développement (553 commits, 262 versions) et ≈ 29 h d'atelier, dont **11,4 h de laser** chronométrées sur les 70 fichiers gravés — 495 m de trait brûlé et 283 mesures relevées sur le bois.
+> **≈ 224 heures pour en arriver là**, du 15/07/2026 au 18/08/2026 : ≈ 193 h de développement (586 commits, 281 versions) et ≈ 31 h d'atelier, dont **12,5 h de laser** chronométrées sur les 70 fichiers gravés — 620 m de trait brûlé et 283 mesures relevées sur le bois.
 >
 > Le code est écrit par Claude (Anthropic). Christophe Le Verdier décide, éprouve chaque version sur le bois et tranche : la plupart des défauts corrigés ici ont été trouvés en regardant une planche, pas en relisant du code.
 >
