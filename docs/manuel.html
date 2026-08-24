@@ -209,7 +209,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.40</span><br>
+      <span class="ver">Version 2.99.41</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -260,7 +260,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : sept modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.40</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : huit modules propres, vingt modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.41</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -387,6 +387,8 @@
 
   <h3>Neuf barres nommées, plutôt qu'une seule</h3>
   <p>Jusqu'à la v2.72, tout tenait dans une barre unique où les groupes n'étaient marqués que par de fins séparateurs — invisibles en pratique. L'atelier déclare désormais <strong>neuf barres distinctes</strong>, chacune portant son nom : <em>Découverte</em>, <em>Calibrer le laser</em>, <em>Ajouter un matériau</em>, <em>Dessins</em>, <em>Gravure à plat</em>, <em>Sur surface 3D</em>, <em>Découpe</em>, <em>Assemblage</em>, <em>Référence et réglages</em>. Une barre nommée se <strong>déplace</strong>, se <strong>masque</strong> et se <strong>replie</strong> séparément — c'est le seul découpage que FreeCAD sait faire nativement. Chacune reçoit en plus un fond légèrement teinté, un renfort visuel qui ne porte jamais l'information à lui seul : le nom reste la référence.</p>
+  <h3>Thème clair, thème sombre</h3>
+  <p>Les icônes de l'atelier sont dessinées en <strong>orange sur ardoise</strong>. Sur un thème sombre, l'ardoise se confond avec le fond : sur le thème PrintNC (fond <code>#1a1e23</code>), le contraste tombe à <b>1,4 fois</b> — il en faut 3 pour qu'une forme se lise, et les boutons se réduisaient à un trait orange sans dessin autour. Depuis la v2.99.41, l'atelier <strong>lit la couleur de fond de FreeCAD au démarrage</strong> et fabrique, si elle est sombre, un jeu d'icônes à l'encre claire (contraste 11:1). Le thème clair, lui, ne change pas. Rien à régler ; <b>changer de thème demande un redémarrage de FreeCAD</b>, comme pour la plupart des réglages d'apparence.</p>
   <p><b>À savoir une fois :</b> FreeCAD mémorise la position d'une barre <b>par son nom</b>. Le passage d'une barre à neuf a donc remis les icônes à l'endroit par défaut, une fois, et il a fallu les replacer à la main. Ces noms ne bougeront plus sans prévenir.</p>
 
   <h3>La barre d'outils</h3>
@@ -1147,7 +1149,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.40 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.41 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>

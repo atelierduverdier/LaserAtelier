@@ -17,8 +17,9 @@ Job existant (sources), il ne s'en crée pas un nouveau à chaque fois.
 Le Label reste modifiable par l'utilisateur (posé à la création
 seulement)."""
 
-import os
 import FreeCAD
+
+import icones
 
 # mode -> (libellé humain, icône, classe de panneau dans task_panels)
 MODES = {
@@ -45,8 +46,6 @@ MODES = {
 # qu'il faut encore savoir nommer, iconifier et rouvrir.
 MODES_GEOMETRIE = ("hatch",)
 
-_ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         "resources", "icons")
 
 # COULEUR PAR MODE -- « le calque de LightBurn ». Christophe, 05/08/2026 :
 # « il y a une sorte de calque pour chaque type de trait ou travail afin de
@@ -474,7 +473,7 @@ class VueJobLaser:
     def getIcon(self):
         mode = getattr(getattr(self, "Object", None), "Mode", "")
         nom = MODES.get(mode, (None, "workbench.svg", None))[1]
-        return os.path.join(_ICON_DIR, nom)
+        return icones.chemin(nom)
 
     def doubleClicked(self, vobj):
         ouvrir_job(vobj.Object)

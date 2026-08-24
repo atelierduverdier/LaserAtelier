@@ -127,7 +127,7 @@ Qt/GL libraries against Mesa 26.2). Two consequences that bite:
 
 ## Architecture
 
-Seven modules, cleanly layered — keep the layering:
+Eight modules, cleanly layered — keep the layering:
 
 | Module | Lines | Role |
 |---|---|---|
@@ -136,6 +136,7 @@ Seven modules, cleanly layered — keep the layering:
 | `laser_jobs.py` | ~300 | Tree "Job" objects — bookmarks, not a second source of truth. |
 | `svg_import.py` | ~730 | Standalone SVG→geometry parser, no Draft/DXF detour. |
 | `calligraphie.py` | ~1 400 | Standalone OTF/TTF → skeleton + local stroke width (numpy/scipy/PIL). No FreeCAD, no Qt. Feeds the Z spindle. |
+| `icones.py` | ~200 | Icon set matched to the Qt theme. On a dark palette it *generates* a light-ink copy of `resources/icons/` in a cache dir; also serves the ink colours panels paint text with. |
 | `commands.py` | ~530 | One `*Command` per mode + `register_commands()`. |
 | `InitGui.py` | ~240 | The `Workbench` class: toolbar/menu order, lazy imports. |
 
@@ -154,8 +155,15 @@ Touches five places: a generator in `laser_core.py`, a panel in `task_panels.py`
 `commands.py` (+ `register_commands`), an entry in `InitGui.py`'s `command_list` (grouped by theme
 with `"Separator"` tokens), and a 64×64 SVG in `resources/icons/` (orange `#ff8a00` + slate
 `#2f3540` house style). A self-contained subsystem may keep its generator-equivalent logic in its
-own sibling module instead of `laser_core.py` — `laser_jobs.py`, `svg_import.py` and
-`calligraphie.py` are the three such exceptions — but it still touches the same panel/command/`InitGui`/icon points.
+own sibling module instead of `laser_core.py` — `laser_jobs.py`, `svg_import.py`, `calligraphie.py` and
+`icones.py` are the four such exceptions — but it still touches the same panel/command/`InitGui`/icon points.
+
+Icons are drawn in orange `#ff8a00` on slate ink `#2f3540`, a pair tuned for a LIGHT
+background — on a dark theme the slate falls to 1.4:1 and the drawing vanishes. Never
+hard-code either colour in a panel: ask `icones.encre()` / `icones.encre_douce()`, and
+reach icons through `icones.chemin()` rather than joining `resources/icons` yourself.
+An icon that paints its own light backplate must be listed in `icones.SANS_RETOUCHE`;
+`tests/test_theme_sombre.py` checks that list against the files.
 
 Every **mode** icon carries the **chapeau signature** (small bowler hat, bottom-right,
 `class="chapeau-verdier"` group — copy it verbatim from any marked icon or from `chapeau.svg`);

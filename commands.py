@@ -14,13 +14,14 @@ import FreeCAD
 import FreeCADGui as Gui
 from PySide6 import QtWidgets
 
+import icones
 import task_panels
-
-_ICON_DIR = os.path.join(os.path.dirname(__file__), "resources", "icons")
 
 
 def _icon_path(name):
-    return os.path.join(_ICON_DIR, name)
+    # Le jeu d'icônes suit le thème de FreeCAD : sur fond sombre, l'encre
+    # ardoise de la charte ne se voit plus (cf. icones.py).
+    return icones.chemin(name)
 
 
 def _warn_selection(message):

@@ -24,13 +24,13 @@ import FreeCAD
 import FreeCADGui as Gui
 from PySide6 import QtWidgets, QtGui, QtCore
 
+import icones
 import laser_core as core
-
-_ICON_DIR = os.path.join(os.path.dirname(__file__), "resources", "icons")
 
 
 def _icon(name):
-    return QtGui.QIcon(os.path.join(_ICON_DIR, name))
+    # Jeu d'icônes accordé au thème clair/sombre (cf. icones.py).
+    return QtGui.QIcon(icones.chemin(name))
 
 
 def _icon_pixmap(name, size):
@@ -211,8 +211,9 @@ def _reselect_button(form, on_reselect, selection_courante=None):
             return
         n = len(vue or [])
         if _signature_selection(vue) == _signature_selection(selection_courante()):
-            lbl.setText("<span style=\"color:#5a626e\">Sélection 3D : "
-                        "identique à celle du panneau.</span>")
+            lbl.setText("<span style=\"color:{}\">Sélection 3D : "
+                        "identique à celle du panneau.</span>"
+                        .format(icones.encre_douce()))
             btn.setEnabled(False)
         else:
             lbl.setText(
@@ -6607,7 +6608,7 @@ def _choisir_police_calligraphie(parent, combo_police, texte_exemple,
                 vb.setContentsMargins(8, 5, 8, 7)
                 vb.setSpacing(1)
                 if c is False:
-                    txt, couleur = libelle, "#2f3540"
+                    txt, couleur = libelle, icones.encre()
                 elif c is None:
                     txt, couleur = "{}  --  illisible".format(libelle), "#a03028"
                 elif c < cal.CONTRASTE_MINI:
@@ -6616,7 +6617,7 @@ def _choisir_police_calligraphie(parent, combo_police, texte_exemple,
                     couleur = "#96601e"
                 else:
                     txt = "{}  --  contraste {:.2f}x".format(libelle, c)
-                    couleur = "#2f3540"
+                    couleur = icones.encre()
                 nom = QtWidgets.QLabel(txt)
                 f = nom.font()
                 f.setPointSizeF(max(7.0, f.pointSizeF() - 1.0))
@@ -6750,7 +6751,8 @@ def _choisir_police_plume(parent, combo_plume, texte_exemple, reglages):
             # Les variantes à fût contourné gravent chaque trait DEUX fois :
             # le libellé le dit, on ne fait que le mettre en couleur.
             nom.setStyleSheet("color: {};".format(
-                "#96601e" if "contourn" in libelle.lower() else "#2f3540"))
+                "#96601e" if "contourn" in libelle.lower()
+                else icones.encre()))
             vb.addWidget(nom)
             try:
                 ch, inf = core.chaines_plume(cle, exemple, largeur_mm=150.0,
@@ -7764,7 +7766,7 @@ def _pixmap_alignement(cle, taille=18):
     p = QtGui.QPainter(pm)
     p.setRenderHint(QtGui.QPainter.Antialiasing)
     p.setPen(QtCore.Qt.NoPen)
-    p.setBrush(QtGui.QColor("#2f3540"))
+    p.setBrush(QtGui.QColor(icones.encre()))
     marge = 2.0
     h_barre = 2.2
     pas = (taille - 2 * marge) / 4.0
