@@ -114,16 +114,36 @@ two places — a mounted AppImage under `/tmp/.mount_FreeCA*` (that path **chang
 is relaunched**, and a stale one looks exactly like a broken environment), or the system package in
 `/usr/lib/freecad/lib`. Final visual validation is always the user restarting FreeCAD.
 
-**Since 2026-08-16 this machine runs the SYSTEM package**, `extra/freecad` 1.1.3 — both 1.1.3
-AppImages abort at startup on the reinstalled system (`Could not initialize GLX`: their July-frozen
-Qt/GL libraries against Mesa 26.2). Two consequences that bite:
+**Since 2026-08-16 this machine runs the SYSTEM package**, `extra/freecad` 1.1.3. Three
+consequences that bite:
 
 - It must be **pinned** (`IgnorePkg = freecad` in `/etc/pacman.conf`). A `pacman -Syu` would
-  otherwise carry it to 1.2 and break this workbench — and the AppImage is no longer a fallback.
+  otherwise carry it to 1.2 and break this workbench.
 - The system python is **not** the AppImage's: `shapely` and `cv2` were bundled there and must be
   installed here (`python-shapely`, `python-opencv`). Without `shapely`,
   `calligraphie.fusionner_contours` returns "not done" **silently** and overlapping strokes only
   show up on the wood. See `.claude/rules/tests-headless.md`.
+- **AppImages start again — the `Could not initialize GLX` abort was cured on 2026-08-24.** This
+  file blamed "July-frozen Qt/GL libraries against Mesa 26.2" for eight days; that guess was wrong.
+  The AppImage bundles `libdrm_amdgpu.so.1` **2.4.125**, while system Mesa 26.2.1 needs
+  `amdgpu_va_manager_init2`, added in **2.4.134**. The bundled lib wins at load time, so
+  `/usr/lib/libgallium-26.2.1-arch3.1.so` fails to resolve, radeonsi disappears, GLX exposes no
+  FBConfig, and the process aborts on signal 6 with no window and no message. The whole cure is one
+  variable: `LD_PRELOAD=/usr/lib/libdrm_amdgpu.so.1:/usr/lib/libdrm.so.2`. Preloading `libdrm.so.2`
+  alone changes nothing — the missing symbol lives in `libdrm_amdgpu.so.1`, a separate library.
+  Reproduce the fault in one second, outside FreeCAD, by mounting the AppImage
+  (`--appimage-mount`) and running `LD_LIBRARY_PATH=<mount>/usr/lib glxinfo -B`; then
+  `python3 -c "import ctypes; ctypes.CDLL('/usr/lib/libGLX_mesa.so.0')"` in that same environment
+  **names the missing symbol**. `LIBGL_DEBUG=verbose` and `MESA_DEBUG=1` print nothing at all here.
+
+`~/.local/bin/freecad-dev` carries that `LD_PRELOAD` and runs the newest weekly AppImage from
+`~/Téléchargements` against an isolated data dir, `~/.local/share/freecad-dev`. It symlinks this
+workbench (and the theme Mods) into that dir, so the dev build runs **these very sources** — but
+`CONFIG_FILE` resolves to `FreeCAD.getUserAppDataDir()`, i.e. the dev dir's **own copy** of
+`laser_atelier_config.json`. The bench measurements in `v1-1` therefore cannot be touched from
+there, and settings changed under the dev build do **not** come back. Verified on 26.3.0dev
+(2026-08-24): workbench activates, all nine `Atelier —` toolbars build, no traceback — which proves
+loading, not that every panel and generator survives the 1.2 API.
 
 ## Architecture
 
