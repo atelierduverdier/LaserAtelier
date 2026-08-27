@@ -194,19 +194,46 @@
   if (!blocs.length) return;
 
   var haut = window.innerHeight || 800;
+
+  /* LE DÉCALAGE SE CALCULE À L'ENTRÉE, PAS AU MARQUAGE. C'était l'inverse,
+     et c'était faux : le rang venait du rang parmi les FRÈRES, ce qui a du
+     sens pour une rangée de cartes et aucun pour un article. Mesuré le
+     27/08/2026 sur le récit du journal PrintNC — quarante paragraphes tous
+     frères, rangs relevés [0,1,2,3,4,5,5,5,5,5] : à partir du sixième,
+     chaque bloc traînait 300 ms de retard sur le moment juste. Un
+     paragraphe qu'on atteint en lisant doit paraître MAINTENANT.
+
+     Ce qui mérite un décalage, ce n'est pas d'être voisin dans le balisage,
+     c'est d'ENTRER EN MÊME TEMPS. L'observateur livre justement par
+     paquets : ce qui a franchi la ligne dans la même image. Une rangée de
+     cartes arrive donc ensemble et ruisselle ; un paragraphe isolé arrive
+     seul, et sans attendre.
+
+     Le paquet est trié de haut en bas — son ordre de livraison ne suit pas
+     l'ordre visuel — pour que le ruissellement descende. */
   var obs = new IntersectionObserver(function(entrees){
+    var lot = [];
     for (var i = 0; i < entrees.length; i++){
-      if (!entrees[i].isIntersecting) continue;
-      var el = entrees[i].target;
-      var rang = +el.getAttribute('data-rang') || 0;
-      el.style.transitionDelay = (rang * 60) + 'ms';
+      if (entrees[i].isIntersecting) lot.push(entrees[i]);
+    }
+    lot.sort(function(a, b){
+      var da = a.boundingClientRect, db = b.boundingClientRect;
+      return (da.top - db.top) || (da.left - db.left);
+    });
+    for (var j = 0; j < lot.length; j++){
+      var el = lot[j].target;
+      el.style.transitionDelay = (Math.min(j, 5) * 60) + 'ms';
       el.classList.add('vu');
       obs.unobserve(el);                     // une fois vu, on n'y revient pas
     }
   }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
 
   function marquer(liste){
-    var precedent = null, rang = 0, poses = 0;
+    var poses = 0;
+    /* On note d'abord TOUS les candidats du lot : le test d'imbrication
+       ci-dessous doit connaître ceux qu'on n'a pas encore atteints, et ceux
+       qu'on va écarter. */
+    for (var k = 0; k < liste.length; k++) liste[k].__candidat = true;
     for (var i = 0; i < liste.length; i++){
       var el = liste[i];
       if (el.classList.contains('js-reveal')) continue;   // deja vu passer
@@ -224,9 +251,33 @@
       if (!boite.width || !boite.height) continue;
 
       if (boite.top < haut * 0.9) continue;                      // déjà à l'écran
-      rang = (el.parentNode === precedent) ? Math.min(rang + 1, 5) : 0;
-      precedent = el.parentNode;
-      el.setAttribute('data-rang', rang);
+
+      /* PAS DE BLOC MARQUÉ DANS UN BLOC DÉJÀ MARQUÉ. Deux raisons, et la
+         seconde est un vrai piège.
+
+         La visible : une carte qui monte pendant que sa rangée de liens
+         monte à son tour, ce sont deux mouvements pour une seule chose.
+
+         L'autre : `.js-reveal` pose un `transform`, et UN ÉLÉMENT
+         TRANSFORMÉ DEVIENT LE BLOC CONTENEUR de ses descendants positionnés
+         en absolu. Relevé le 27/08/2026 sur le portail : le recouvrement
+         qui rend la carte entière cliquable se repliait sur la seule rangée
+         de liens — 319 x 74 au lieu de 365 x 376 — parce que cette rangée
+         portait la classe. Trois quarts de la carte ne cliquaient plus.
+
+         LE TEST PORTE SUR LES CANDIDATS, PAS SUR LES MARQUÉS, et c'est la
+         deuxième version : regarder les seuls ancêtres déjà marqués
+         laissait passer le cas le plus courant. Les trois premières cartes
+         du portail sont AU-DESSUS DU PLI, donc écartées — mais leur rangée
+         de liens, plus bas dans la carte, tombait sous le pli et se faisait
+         marquer. Le piège revenait, sur les cartes les plus en vue. */
+      var p = el.parentElement, dedans = false;
+      while (p && p !== document.body){
+        if (p.__candidat || p.classList.contains('js-reveal')) { dedans = true; break; }
+        p = p.parentElement;
+      }
+      if (dedans) continue;
+
       el.classList.add('js-reveal');
       obs.observe(el);
       poses++;
@@ -322,4 +373,38 @@
       return poses;
     }
   };
+})();
+
+/* ---------- La carte entière emmène au lien -----------------------------
+   Une carte qui se soulève au survol annonce qu'on peut cliquer dessus.
+   Jusqu'ici il fallait viser le lien : l'annonce était fausse.
+
+   POURQUOI ICI ET PAS DANS LE HTML. Le recouvrement est le `::after` d'un
+   vrai lien, et c'est ce qui fait tenir tout le reste — clic du milieu,
+   « ouvrir dans un nouvel onglet », adresse dans la barre d'état, tabulation
+   au clavier. Un `onclick` sur la carte aurait cassé les quatre. Le script
+   ne fait que DÉSIGNER quel lien s'étire ; c'est la feuille de style qui
+   l'étire.
+
+   LE PREMIER LIEN GAGNE. Sur les fiches du portail c'est toujours « Comment
+   il marche », la page d'ici ; les suivants — documentation, manuel, dépôt —
+   partent ailleurs et gardent leur clic propre, en passant DEVANT le
+   recouvrement.
+
+   CE QU'ON NE TOUCHE PAS : une carte qui est déjà un `<a>` ou un `<button>`
+   (le journal PrintNC fait ses quatre cartes d'accueil en boutons), et une
+   carte sans aucun lien. */
+
+(function(){
+  var cartes = document.querySelectorAll('.carte');
+  for (var i = 0; i < cartes.length; i++){
+    var c = cartes[i];
+    if (c.tagName === 'A' || c.tagName === 'BUTTON') continue;
+    if (c.querySelector('.carte-cible')) continue;      // deja fait
+    var liens = c.querySelectorAll('a[href]');
+    if (!liens.length) continue;
+    c.classList.add('carte-cliquable');
+    liens[0].classList.add('carte-cible');
+    for (var j = 1; j < liens.length; j++) liens[j].classList.add('carte-dessus');
+  }
 })();

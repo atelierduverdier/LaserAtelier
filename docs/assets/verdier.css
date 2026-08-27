@@ -590,7 +590,59 @@ section[id],h2[id],h3[id]{ scroll-margin-top:var(--marge-ancre, 84px) }
 
 /* --- Les liens de rubrique et de navigation, en douceur plutot qu'en
    bascule seche. */
-.navlinks a,.liens a{ transition:color .2s ease, opacity .2s ease }
+/* `background-size` EST DANS LA LISTE, sinon le balayage saute ici : cette
+   regle est plus specifique que le `a{}` qui l'installe, et une transition
+   redeclaree REMPLACE la precedente, elle ne s'y ajoute pas. Or tous les
+   liens des cartes vivent dans `.liens` — l'effet aurait manque a l'endroit
+   ou on le regarde le plus. */
+.navlinks a,.liens a{ transition:color .2s ease, opacity .2s ease,
+                                 background-size .35s var(--sortie) }
+
+/* --- LE SOULIGNEMENT SE TIRE, il ne s'allume plus. La charte faisait
+   `a:hover{text-decoration:underline}` : un trait qui apparait d'un coup,
+   sur toute sa longueur. Il se dessine maintenant de gauche a droite.
+
+   Un degrade en fond plutot que `text-decoration` : c'est ce qui permet de
+   l'ANIMER — `text-decoration` ne s'interpole pas. Le trait prend
+   `currentColor`, donc il suit la couleur du lien, y compris au survol et
+   sur les deux themes, sans qu'on ait a le redire nulle part.
+
+   `background-size:0 1px` et non `0%` : une longueur nulle en pourcentage
+   se compare mal a `100%` sur certaines versions, et le trait sautait. */
+a{ background-image:linear-gradient(currentColor,currentColor);
+   background-repeat:no-repeat; background-position:0 100%;
+   background-size:0 1px;
+   transition:background-size .35s var(--sortie), color .2s ease }
+a:hover{ text-decoration:none; background-size:100% 1px }
+
+/* CE QUI N'EST PAS UN LIEN DE TEXTE n'en veut pas : un bouton, la marque,
+   un onglet de navigation ont deja leur reponse au survol, et un trait
+   sous un bouton se lit comme un defaut. */
+.brand,.navlinks a,.btn,.theme-btn,.nav-btn{
+  background-image:none; transition:background-color .2s ease,
+  border-color .2s ease, color .2s ease, transform .18s var(--sortie) }
+
+/* --- LA CARTE ENTIERE EMMENE AU LIEN. Elle se souleve deja au survol :
+   elle a l'air cliquable, donc elle doit l'etre. Le recouvrement est le
+   `::after` du PREMIER lien de la carte — un vrai lien, pas un gestionnaire
+   de clic : le clic du milieu, « ouvrir dans un nouvel onglet », le
+   clavier et la barre d'etat continuent tous de marcher.
+
+   LES AUTRES LIENS DE LA CARTE PASSENT DEVANT (`carte-dessus`) : une fiche
+   logiciel en porte jusqu'a quatre — documentation, manuel, depot — et les
+   noyer sous le recouvrement les rendrait tous inaccessibles.
+
+   Ce que cela coute : on ne peut plus selectionner le texte de la carte a
+   la souris. C'est le prix connu de ce motif ; le texte reste copiable au
+   clavier et lisible par les lecteurs d'ecran.
+
+   `position:relative` est pose par le script sur la carte, PAS ici : le
+   `::after` se cale sur le premier ancetre positionne, et si le lien lui
+   -meme etait positionne, le recouvrement se replierait sur son seul texte. */
+.carte-cliquable{ position:relative; cursor:pointer }
+.carte-cible::after{ content:""; position:absolute; inset:0; z-index:1;
+  border-radius:inherit }
+.carte-dessus{ position:relative; z-index:2 }
 
 /* --- Le heros recoit un halo tres pale, decale vers son coin haut droit :
    assez pour que la page ne commence pas sur du blanc plat, pas assez pour
@@ -607,12 +659,19 @@ section[id],h2[id],h3[id]{ scroll-margin-top:var(--marge-ancre, 84px) }
              color-mix(in srgb,var(--orange) 16%, transparent), transparent 62%);
   z-index:-1; pointer-events:none; filter:blur(18px) }
 
-/* --- La coupure, en bloc, pour la part maison. */
+/* --- La coupure, en bloc, pour la part maison. Le soulignement REVIENT au
+   trait franc : il doit rester visible, c'est ce qui signale un lien. Ce
+   qu'on retire, c'est le mouvement, pas l'information. La carte reste
+   cliquable pour la meme raison — ce n'est pas une animation. */
 @media (prefers-reduced-motion:reduce){
   .carte,.panel,.figure,.plan,.capture,.btn,.plan img,.capture img{
     transition:none }
   .carte:hover,.panel:hover,.btn:hover,.btn:active{ transform:none }
   .plan:hover img,.capture:hover img{ transform:none }
+  a{ background-image:none; transition:none }
+  a:hover{ text-decoration:underline }
+  .brand:hover,.navlinks a:hover,.btn:hover,.theme-btn:hover,.nav-btn:hover{
+    text-decoration:none }
 }
 /* ---------- 14. Impression ---------------------------------------------
    Le manuel laser part en PDF par WeasyPrint ; autant que le kit ne
