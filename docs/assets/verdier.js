@@ -195,6 +195,23 @@
 
   var haut = window.innerHeight || 800;
 
+  /* DEUX LIMITES, ET ELLES NE RÉPONDENT PAS À LA MÊME QUESTION. Les avoir
+     confondues a coûté deux corrections le 27/08/2026 :
+
+     — MARQUER demande « ce bloc est-il hors de l'écran au chargement ? ».
+       La réponse est le PLI lui-même. Un bloc qui affleure, même de dix
+       pixels, ne doit pas être caché : il laisserait une bande vide en bas
+       de l'écran jusqu'au premier défilement. Relevé sur « Documentation »
+       et « Glossaire » du journal PrintNC — un bloc à y=839 pour une
+       fenêtre de 900, soit 61 px de blanc à l'arrivée sur la page.
+
+     — RÉVÉLER demande « est-il assez entré ? ». La réponse est plus haut,
+       à 92 % : un bloc qui pointe d'un pixel n'est pas encore lu.
+
+     `LIGNE` sert donc à l'observateur ET au filet, qui posent bien la même
+     question ; le marquage, lui, compare au pli. */
+  var LIGNE = 0.92;
+
   /* LE DÉCALAGE SE CALCULE À L'ENTRÉE, PAS AU MARQUAGE. C'était l'inverse,
      et c'était faux : le rang venait du rang parmi les FRÈRES, ce qui a du
      sens pour une rangée de cartes et aucun pour un article. Mesuré le
@@ -226,7 +243,8 @@
       el.classList.add('vu');
       obs.unobserve(el);                     // une fois vu, on n'y revient pas
     }
-  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
+  }, { rootMargin: '0px 0px -' + Math.round((1 - LIGNE) * 100) + '% 0px',
+       threshold: 0.06 });
 
   function marquer(liste){
     var poses = 0;
@@ -250,7 +268,7 @@
          est maintenant écrit pour ce qu'il fait. */
       if (!boite.width || !boite.height) continue;
 
-      if (boite.top < haut * 0.9) continue;                      // déjà à l'écran
+      if (boite.top < haut) continue;               // affleure déjà : on n'y touche pas
 
       /* PAS DE BLOC MARQUÉ DANS UN BLOC DÉJÀ MARQUÉ. Deux raisons, et la
          seconde est un vrai piège.
@@ -307,12 +325,11 @@
     var restants = document.querySelectorAll('.js-reveal:not(.vu)');
     for (var i = 0; i < restants.length; i++){
       var b = restants[i].getBoundingClientRect();
-      /* LA MÊME LIGNE QUE L'OBSERVATEUR — son `rootMargin` de -8 % veut
-         dire qu'un bloc n'entre qu'une fois remonté à 92 % de la hauteur.
-         Si le filet se déclenchait plus tôt, il montrerait les blocs AVANT
-         l'observateur, sans le décalage entre voisins : le filet remplacerait
+      /* LA MÊME LIGNE QUE L'OBSERVATEUR, d'où la constante partagée. Si le
+         filet se déclenchait plus tôt, il montrerait les blocs AVANT
+         l'observateur, sans le décalage entre voisins : il remplacerait
          l'effet au lieu de le rattraper. */
-      if (b.top < haut * 0.92 && b.bottom > 0) restants[i].classList.add('vu');
+      if (b.top < haut * LIGNE && b.bottom > 0) restants[i].classList.add('vu');
     }
     return document.querySelector('.js-reveal:not(.vu)') !== null;
   }
