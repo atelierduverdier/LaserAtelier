@@ -7,7 +7,8 @@
    Ne pas l'éditer dans une copie : elle sera écrasée.
    Source : atelierduverdier/site — kit/verdier.js
 
-   Deux choses seulement : la bascule de thème, et la visionneuse d'images.
+   Trois choses seulement : la bascule de thème, la visionneuse d'images,
+   et l'apparition au défilement.
    Tout est défensif — chaque site ne contient pas forcément les deux, et
    un kit partagé qui plante sur une page sans bouton casserait TOUTES les
    pages qui suivent dans le même fichier.
@@ -133,4 +134,192 @@
   lb.addEventListener('click', fermer);
   if (close) close.addEventListener('click', function(e){ e.stopPropagation(); fermer(); });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') fermer(); });
+})();
+
+
+/* ---------- Apparition au défilement -------------------------------------
+   Les blocs montent doucement en entrant dans le champ, au lieu d'être
+   tous là d'emblée.
+
+   LE POINT QUI COMPTE : la classe qui rend un bloc invisible est posée
+   ICI, par le script, et seulement après avoir vérifié que le navigateur
+   sait l'animer. Écrite dans le HTML, elle aurait laissé une page BLANCHE
+   à qui bloque le JavaScript — c'est le piège classique de ce genre
+   d'effet, et il ne pardonne pas sur un site de documentation.
+
+   Rien n'est observé au-dessus de la ligne de flottaison : un bloc déjà
+   visible au chargement doit l'être tout de suite, pas se mettre à bouger
+   sous les yeux du visiteur.
+
+   Le décalage entre voisins (60 ms) donne le petit ruissellement d'une
+   rangée de cartes. Au-delà de six, on arrête de décaler : sur une longue
+   liste, l'attente se verrait. */
+
+(function(){
+  if (!('IntersectionObserver' in window)) return;
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  var SELECTEUR = [
+    'section .sec-tag', 'section > .wrap > h2', 'section > .wrap > .sec-lede',
+    'section > .wrap > p', 'section > .wrap > h3',
+    '.carte', '.panel', '.figure', '.plan', '.capture',
+    '.callout', '.step', '.cols > *', '.liens'
+  ].join(',');
+
+  /* LA PORTE D'ENTRÉE DES SATELLITES. Cette liste ne nomme que des classes
+     du kit — c'est voulu : le kit ne doit RIEN savoir du balisage d'un site
+     hôte. Mesuré le 27/08/2026 en diffusant : le journal PrintNC chargeait
+     bien la feuille et le script, et marquait ZÉRO bloc, parce qu'il a ses
+     propres noms. Il avait la mécanique sans l'effet.
+
+     C'est donc à l'hôte de se déclarer, avec ses noms à lui :
+
+         <meta name="verdier-mouvement" content=".doc-section, .recit-p">
+
+     Ce qu'il déclare s'AJOUTE à la liste du kit, il ne la remplace pas. */
+  var decl = document.querySelector('meta[name="verdier-mouvement"]');
+  var sup = decl ? (decl.getAttribute('content') || '').trim() : '';
+
+  var blocs;
+  try {
+    blocs = [].slice.call(document.querySelectorAll(
+      sup ? SELECTEUR + ',' + sup : SELECTEUR));
+  } catch (e) {
+    /* Un sélecteur mal écrit dans le <meta> ferait tomber TOUT le bloc, et
+       rien ne serait révélé — une panne dont la cause est chez l'hôte et
+       ne se voit pas d'ici. On se rabat sur la seule liste du kit, qui,
+       elle, est connue bonne. */
+    blocs = [].slice.call(document.querySelectorAll(SELECTEUR));
+  }
+  if (!blocs.length) return;
+
+  var haut = window.innerHeight || 800;
+  var obs = new IntersectionObserver(function(entrees){
+    for (var i = 0; i < entrees.length; i++){
+      if (!entrees[i].isIntersecting) continue;
+      var el = entrees[i].target;
+      var rang = +el.getAttribute('data-rang') || 0;
+      el.style.transitionDelay = (rang * 60) + 'ms';
+      el.classList.add('vu');
+      obs.unobserve(el);                     // une fois vu, on n'y revient pas
+    }
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
+
+  function marquer(liste){
+    var precedent = null, rang = 0, poses = 0;
+    for (var i = 0; i < liste.length; i++){
+      var el = liste[i];
+      if (el.classList.contains('js-reveal')) continue;   // deja vu passer
+      var boite = el.getBoundingClientRect();
+
+      /* UN BLOC NON RENDU NE DOIT JAMAIS ÊTRE MARQUÉ. Le journal PrintNC
+         cache 274 éléments derrière ses filtres : `display:none`. Marqué
+         `opacity:0`, un tel bloc ne croise jamais le champ — l'observateur
+         ne se déclenche donc pas — et le jour où le filtre le rouvre, il
+         est INVISIBLE POUR TOUJOURS. Du contenu perdu, sans message.
+
+         Il se trouve qu'un élément non rendu mesure 0 et que son `top` vaut
+         0, donc la ligne suivante l'écartait déjà — par accident. Le test
+         est maintenant écrit pour ce qu'il fait. */
+      if (!boite.width || !boite.height) continue;
+
+      if (boite.top < haut * 0.9) continue;                      // déjà à l'écran
+      rang = (el.parentNode === precedent) ? Math.min(rang + 1, 5) : 0;
+      precedent = el.parentNode;
+      el.setAttribute('data-rang', rang);
+      el.classList.add('js-reveal');
+      obs.observe(el);
+      poses++;
+    }
+    return poses;
+  }
+
+  marquer(blocs);
+
+  /* LE FILET. Tout ce dispositif n'a qu'un seul mauvais dénouement : un
+     bloc marqué `opacity:0` dont l'observateur ne tire jamais, donc du
+     CONTENU INVISIBLE — et invisible sans message, ce qui est pire qu'une
+     page cassée.
+
+     Ce n'est pas une crainte en l'air. Relevé le 27/08/2026 : dans un
+     onglet non affiché, Chrome cesse de délivrer les intersections. Sept à
+     onze blocs sont restés à zéro dans le champ, indéfiniment. Un visiteur
+     qui ouvre le site dans un onglet d'arrière-plan — ce que fait tout clic
+     du milieu — est exactement dans ce cas.
+
+     Le filet balaie donc ce qui est dans le champ et le montre, quelle que
+     soit la raison du silence : onglet caché, retour de bfcache,
+     navigateur qui throttle. Il se déclenche au retour de visibilité et
+     une fois passé un délai. L'observateur reste le chemin normal ; ceci
+     ne fait que borner le pire cas. */
+  function filet(){
+    var restants = document.querySelectorAll('.js-reveal:not(.vu)');
+    for (var i = 0; i < restants.length; i++){
+      var b = restants[i].getBoundingClientRect();
+      /* LA MÊME LIGNE QUE L'OBSERVATEUR — son `rootMargin` de -8 % veut
+         dire qu'un bloc n'entre qu'une fois remonté à 92 % de la hauteur.
+         Si le filet se déclenchait plus tôt, il montrerait les blocs AVANT
+         l'observateur, sans le décalage entre voisins : le filet remplacerait
+         l'effet au lieu de le rattraper. */
+      if (b.top < haut * 0.92 && b.bottom > 0) restants[i].classList.add('vu');
+    }
+    return document.querySelector('.js-reveal:not(.vu)') !== null;
+  }
+
+  /* Le filet suit le défilement, mais de loin : 250 ms de repos entre deux
+     passages, quand l'observateur, lui, répond dans l'instant. Dans un
+     onglet sain c'est donc TOUJOURS l'observateur qui montre le bloc, et le
+     filet ne trouve plus rien à faire. Il se retire dès qu'il ne reste
+     aucun bloc marqué — un site parcouru jusqu'au bout ne garde aucun
+     écouteur. */
+  var dernier = 0;
+  function veiller(){
+    var t = +new Date();
+    if (t - dernier < 250) return;
+    dernier = t;
+    if (!filet()) {
+      window.removeEventListener('scroll', veiller);
+      window.removeEventListener('resize', veiller);
+      document.removeEventListener('visibilitychange', reveil);
+    }
+  }
+  function reveil(){ if (!document.hidden) { dernier = 0; setTimeout(veiller, 200); } }
+  window.addEventListener('scroll', veiller, { passive: true });
+  window.addEventListener('resize', veiller, { passive: true });
+  document.addEventListener('visibilitychange', reveil);
+  setTimeout(function(){ dernier = 0; veiller(); }, 4000);
+
+  /* LE RE-BALAYAGE, pour les pages qui construisent leur vue APRÈS le
+     chargement. Relevé le 27/08/2026 sur le journal PrintNC : au chargement,
+     ZÉRO de ses 112 blocs de récit est rendu — ils vivent derrière quatre
+     cartes, et son propre script les montre au clic. Le kit passe donc trop
+     tôt, et repasser tout seul (MutationObserver) reviendrait à deviner.
+
+     L'hôte appelle :  verdierMouvement.rescanner()
+
+     LÀ OÙ IL NE FAUT PAS L'APPELER : sur un filtre ou une recherche. Faire
+     APPARAÎTRE EN FONDU des résultats que le visiteur vient de demander,
+     c'est lui faire attendre ce qu'il a déjà demandé. Le fondu est fait
+     pour un document qu'on parcourt, pas pour une liste qui répond. */
+  window.verdierMouvement = {
+    rescanner: function(racine){
+      var cible = racine || document;
+      var trouves;
+      try {
+        trouves = [].slice.call(cible.querySelectorAll(
+          sup ? SELECTEUR + ',' + sup : SELECTEUR));
+      } catch (e) {
+        trouves = [].slice.call(cible.querySelectorAll(SELECTEUR));
+      }
+      haut = window.innerHeight || haut;   // la fenêtre a pu changer depuis
+      var poses = marquer(trouves);
+      if (poses) {
+        /* Le filet a pu se retirer si tout était révélé avant ce lot. */
+        window.addEventListener('scroll', veiller, { passive: true });
+        window.addEventListener('resize', veiller, { passive: true });
+        setTimeout(function(){ dernier = 0; veiller(); }, 4000);
+      }
+      return poses;
+    }
+  };
 })();

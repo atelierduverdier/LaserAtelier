@@ -87,7 +87,7 @@ kbd{font:inherit; font-size:.85em; background:var(--bg-3); border:1px solid var(
   border-bottom-width:2px; border-radius:6px; padding:1px 7px}
 ul.clean{margin:.6em 0; padding-left:1.25em}
 ul.clean li{margin:.35em 0}
-img{max-width:100%}
+img,video{max-width:100%}
 .wrap{max-width:var(--maxw); margin:0 auto; padding:0 22px}
 .muted{color:var(--fg-3); font-size:.85rem}
 .pill{display:inline-block; background:var(--bg-3); border:1px solid var(--line);
@@ -217,6 +217,28 @@ header.topbar{
 .btn-ghost:hover{border-color:var(--orange); text-decoration:none}
 .btn-kofi{background:var(--card); color:#ff5e5b; border-color:#ff5e5b; font-weight:600}
 .btn-kofi:hover{background:#ff5e5b; color:#fff; text-decoration:none}
+/* --- Le dépôt, en évidence --------------------------------------------
+   Les liens vers le code étaient noyés : « Dépôt » au bout d'une rangée de
+   quatre liens sur l'accueil, une ligne de texte en bas des fiches.
+   Christophe les a voulus visibles (23/08/2026) — un bouton en tête de
+   chaque fiche, et la marque GitHub sur TOUS les liens de dépôt du site.
+
+   Le bouton n'écrit aucune couleur en dur : `--fg` sur `--bg` donne le noir
+   GitHub en thème clair et son inverse en thème sombre. La marque, elle,
+   est un MASQUE peint en `currentColor` — une image de fond resterait noire
+   sur fond sombre. */
+.btn-github{background:var(--fg); color:var(--bg); border-color:var(--fg)}
+.btn-github:hover{background:var(--orange-d); color:#20160a;
+  border-color:var(--orange-d); text-decoration:none}
+.btn-github svg{width:1.15em; height:1.15em; fill:currentColor; flex:none}
+
+.liens a[href*="github.com"]{font-weight:700}
+.liens a[href*="github.com"]::before{content:""; display:inline-block;
+  width:1em; height:1em; vertical-align:-.14em; margin-right:.38em;
+  background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M8%200C3.58%200%200%203.58%200%208c0%203.54%202.29%206.53%205.47%207.59.4.07.55-.17.55-.38%200-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01%201.08.58%201.23.82.72%201.21%201.87.87%202.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95%200-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12%200%200%20.67-.21%202.2.82.64-.18%201.32-.27%202-.27.68%200%201.36.09%202%20.27%201.53-1.04%202.2-.82%202.2-.82.44%201.1.16%201.92.08%202.12.51.56.82%201.27.82%202.15%200%203.07-1.87%203.75-3.65%203.95.29.25.54.73.54%201.48%200%201.07-.01%201.93-.01%202.2%200%20.21.15.46.55.38A8.013%208.013%200%200%200%2016%208c0-4.42-3.58-8-8-8z%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20d%3D%22M8%200C3.58%200%200%203.58%200%208c0%203.54%202.29%206.53%205.47%207.59.4.07.55-.17.55-.38%200-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01%201.08.58%201.23.82.72%201.21%201.87.87%202.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95%200-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12%200%200%20.67-.21%202.2.82.64-.18%201.32-.27%202-.27.68%200%201.36.09%202%20.27%201.53-1.04%202.2-.82%202.2-.82.44%201.1.16%201.92.08%202.12.51.56.82%201.27.82%202.15%200%203.07-1.87%203.75-3.65%203.95.29.25.54.73.54%201.48%200%201.07-.01%201.93-.01%202.2%200%20.21.15.46.55.38A8.013%208.013%200%200%200%2016%208c0-4.42-3.58-8-8-8z%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat}
+
 
 /* ---------- 6. Sections ------------------------------------------------ */
 
@@ -284,7 +306,8 @@ section{padding:52px 0; border-bottom:1px solid var(--line)}
    coller un dessous ferait un liseré blanc autour d'une interface sombre. */
 .capture{background:var(--bg-2); border:1px solid var(--line); border-radius:12px;
   padding:10px; margin:22px 0; box-shadow:var(--shadow)}
-.capture img{display:block; width:100%; height:auto; border-radius:7px}
+.capture img,.capture video{display:block; width:100%; max-width:100%; height:auto;
+  border-radius:7px}
 .capture figcaption{color:var(--fg-2); font-size:.88rem; margin:12px 6px 4px; line-height:1.55}
 .capture figcaption b{color:var(--fg)}
 
@@ -299,6 +322,17 @@ section{padding:52px 0; border-bottom:1px solid var(--line)}
 .capture.panneau figcaption{text-align:center; font-size:.85rem}
 
 .figure-row{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:22px 0}
+/* Une colonne `1fr` a `min-width:auto` : elle refuse de descendre sous la
+   largeur INTRINSÈQUE de son contenu. Une image a beau être en width:100%,
+   une VIDÉO de 1024 px de large force sa colonne à 1024 — la rangée fait
+   2048 et la page déborde en travers. Vu par Christophe le 23/08/2026, sur
+   le site en ligne. `min-width:0` rend aux colonnes le droit de rétrécir. */
+.figure-row>*{min-width:0}
+/* `.serree` — une rangée qui ne doit pas occuper toute la largeur. Deux
+   vidéos carrées de 14 s en pleine page font deux pavés de 520 px de haut
+   qui écrasent tout le reste ; à 720 de rangée elles retombent à ~350 et
+   redeviennent ce qu'elles sont, deux petites démonstrations. */
+.figure-row.serree{max-width:720px; margin-left:auto; margin-right:auto}
 .figure-row .figure,.figure-row .plan,.figure-row .capture{margin:0}
 @media(max-width:760px){ .figure-row{grid-template-columns:1fr} }
 
@@ -439,6 +473,147 @@ footer{padding:44px 0 60px; color:var(--fg-2)}
 .lightbox .lb-hint{position:absolute; bottom:18px; left:0; right:0; text-align:center;
   color:rgba(255,255,255,.6); font-size:.82rem}
 
+/* ---------- 13bis. Mouvement et profondeur ------------------------------
+   Le site etait juste, mais il n'avait pas de TEMPS : tout y apparaissait
+   d'un bloc et rien ne repondait sous le curseur. Cette section lui en
+   donne, sous trois disciplines :
+
+   1. LA CLASSE QUI CACHE N'EST JAMAIS DANS LE HTML. C'est verdier.js qui
+      pose `.js-reveal`, et seulement s'il sait ensuite l'animer. Script
+      bloque, vieux navigateur, lecteur d'ecran : la page s'affiche
+      entiere. Ecrire `class="js-reveal"` a la main rendrait le contenu
+      invisible chez qui n'execute pas le script — ne jamais le faire.
+   2. `prefers-reduced-motion` COUPE TOUT, ici et dans le script. Ce n'est
+      pas une politesse : une animation qui defile donne la nausee a qui y
+      est sensible. Chaque part se neutralise elle-meme, en bloc.
+   3. RIEN NE BOUGE DE PLUS DE QUELQUES PIXELS. Un site d'atelier n'est pas
+      une demo : le mouvement doit se sentir, pas se voir.
+
+   La courbe est la meme partout — une sortie longue, sans rebond.
+
+   LA SECTION EST COUPEE EN DEUX, et cette coupure est la seule chose qui
+   permet d'en donner un morceau aux satellites : `13bis-a` ne nomme que
+   des classes que le kit ecrit lui-meme, `13bis-b` s'appuie sur toute la
+   mise en page du kit. Voir le bandeau de 13bis-b pour ce que couterait
+   de les confondre. */
+
+:root{
+  --sortie:cubic-bezier(.16,1,.3,1);        /* decelere longuement */
+  --leve:0 2px 4px rgba(20,25,35,.05),0 14px 40px rgba(20,25,35,.10);
+}
+@media (prefers-color-scheme: dark){
+  :root{ --leve:0 2px 6px rgba(0,0,0,.35),0 16px 44px rgba(0,0,0,.45) }
+}
+:root[data-theme="dark"]{ --leve:0 2px 6px rgba(0,0,0,.35),0 16px 44px rgba(0,0,0,.45) }
+:root[data-theme="light"]{ --leve:0 2px 4px rgba(20,25,35,.05),0 14px 40px rgba(20,25,35,.10) }
+
+
+/* ---------- 13bis-a. Portable -------------------------------------------
+   CE QUI SUIT NE SUPPOSE AUCUNE MISE EN PAGE. Les seuls noms cites sont
+   ecrits par le kit lui-meme — `.js-reveal` par verdier.js, `data-agrandir`
+   par la visionneuse — ou sont des elements bruts. Rien ici ne peut entrer
+   en collision avec la feuille d'un site hote.
+
+   C'est pour cela que kit/extraire_mouvement.py en tire
+   verdier-mouvement.css, pose chez les satellites qui gardent leur propre
+   mise en page. Les bornes de cette part sont ses reperes : ne pas
+   renommer ces deux bandeaux sans corriger l'extracteur (il s'arrete au
+   lieu de produire un fichier vide, mais autant ne pas le declencher).
+
+   AJOUTER UNE REGLE ICI, C'EST L'ENVOYER SUR QUATRE SITES. Une regle qui
+   nomme `.carte`, `.hero`, `.btn` ou tout autre classe de mise en page va
+   dans 13bis-b, pas ici. */
+
+/* L'entree dans le champ. Posee par verdier.js, jamais par le HTML. */
+.js-reveal{ opacity:0; transform:translateY(16px);
+  transition:opacity .75s var(--sortie), transform .75s var(--sortie) }
+.js-reveal.vu{ opacity:1; transform:none }
+
+/* Une planche qu'on peut agrandir doit le DIRE avant le clic. */
+[data-agrandir]{ cursor:zoom-in }
+
+/* Une ancre ne doit pas se garer SOUS la barre collante. `scroll-margin`
+   plutot qu'un decalage bricole : le navigateur s'en charge, y compris au
+   clavier et depuis un lien externe.
+
+   84 px = la barre du kit (60) et de quoi respirer. MAIS LE CHIFFRE EST
+   UNE VARIABLE, et ce n'est pas de la coquetterie : chez un hote, les
+   barres collantes n'ont pas cette hauteur-la. Le journal PrintNC empile
+   la barre de l'atelier et sa rangee d'onglets, mesure le total a chaque
+   bascule de vue et le publie dans `--marge-ancre` — 128 px releves le
+   27/08/2026. En lisant cette variable, la regle prend le bon chiffre chez
+   qui le connait, et garde 84 chez qui ne dit rien. */
+html{ scroll-behavior:smooth }
+section[id],h2[id],h3[id]{ scroll-margin-top:var(--marge-ancre, 84px) }
+
+@media (prefers-reduced-motion:reduce){
+  html{ scroll-behavior:auto }
+  .js-reveal,.js-reveal.vu{ opacity:1; transform:none; transition:none }
+}
+
+
+/* ---------- 13bis-b. Maison ---------------------------------------------
+   CE QUI SUIT S'APPUIE SUR LES CLASSES DU KIT et ne part PAS chez un site
+   qui a sa propre mise en page.
+
+   Ce n'est pas de la prudence en l'air, c'est la lecon des 258 px : en
+   posant le kit entier sous le journal PrintNC le 12/08/2026, sa page
+   s'allongeait de 258 px parce que `.hero h1` du kit est plus specifique
+   que son `.hero-titre`. Dix-sept selecteurs se croisent, et la
+   specificite en cree d'autres qui ne se voient pas au nom.
+
+   Le halo du heros ci-dessous est le pire cas : il force `overflow:hidden`
+   sur `.hero`. Chez un hote dont le heros deborde exprès, cela ROGNE son
+   dessin — sans rien dire. */
+
+/* --- Le souleve au survol. La carte gagnait deja un liseré orange ; elle
+   se detache maintenant du fond, ce qui rend le liseré lisible au lieu de
+   le laisser flotter. */
+.carte,.panel,.figure,.plan,.capture{
+  transition:transform .4s var(--sortie), box-shadow .4s var(--sortie),
+             border-color .25s ease }
+.carte:hover,.panel:hover{ transform:translateY(-3px); box-shadow:var(--leve) }
+.figure:hover,.plan:hover,.capture:hover{ box-shadow:var(--leve) }
+
+/* --- La planche respire legerement sous le curseur. Le cadre garde ses
+   coins, d'ou l'overflow. */
+.plan,.capture,.figure{ overflow:hidden }
+.plan img,.capture img{ transition:transform .55s var(--sortie) }
+.plan:hover img,.capture:hover img{ transform:scale(1.012) }
+
+/* --- Les boutons repondent a l'appui. Un bouton qui ne bouge pas laisse
+   douter du clic sur les liaisons lentes. */
+.btn{ transition:transform .18s var(--sortie), background-color .2s ease,
+                 border-color .2s ease, box-shadow .3s var(--sortie) }
+.btn:hover{ transform:translateY(-1px) }
+.btn:active{ transform:translateY(0) scale(.985) }
+
+/* --- Les liens de rubrique et de navigation, en douceur plutot qu'en
+   bascule seche. */
+.navlinks a,.liens a{ transition:color .2s ease, opacity .2s ease }
+
+/* --- Le heros recoit un halo tres pale, decale vers son coin haut droit :
+   assez pour que la page ne commence pas sur du blanc plat, pas assez pour
+   qu'on le remarque. Il est DERRIERE le contenu et ne prend aucun clic. */
+.hero{ position:relative; isolation:isolate; overflow:hidden }
+/* `overflow:hidden` n'est PAS decoratif : sans lui le halo depassait la
+   fenetre de 47 px et ouvrait une barre de defilement HORIZONTALE sur tout
+   le site — mesure au navigateur, pas devinee. Un fond qui fait defiler la
+   page de cote est le genre de defaut qu'on ne voit qu'a la souris. */
+.hero::before{
+  content:""; position:absolute; inset:-18% -8% auto auto;
+  width:min(620px,70%); aspect-ratio:1; border-radius:50%;
+  background:radial-gradient(circle at 60% 40%,
+             color-mix(in srgb,var(--orange) 16%, transparent), transparent 62%);
+  z-index:-1; pointer-events:none; filter:blur(18px) }
+
+/* --- La coupure, en bloc, pour la part maison. */
+@media (prefers-reduced-motion:reduce){
+  .carte,.panel,.figure,.plan,.capture,.btn,.plan img,.capture img{
+    transition:none }
+  .carte:hover,.panel:hover,.btn:hover,.btn:active{ transform:none }
+  .plan:hover img,.capture:hover img{ transform:none }
+}
 /* ---------- 14. Impression ---------------------------------------------
    Le manuel laser part en PDF par WeasyPrint ; autant que le kit ne
    sabote pas l'impression des autres pages. */
