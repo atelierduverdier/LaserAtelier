@@ -396,13 +396,27 @@
    carte sans aucun lien. */
 
 (function(){
-  var cartes = document.querySelectorAll('.carte');
-  for (var i = 0; i < cartes.length; i++){
-    var c = cartes[i];
-    if (c.tagName === 'A' || c.tagName === 'BUTTON') continue;
+  var blocs = document.querySelectorAll('.carte,.panel');
+  for (var i = 0; i < blocs.length; i++){
+    var c = blocs[i];
     if (c.querySelector('.carte-cible')) continue;      // deja fait
+
+    /* DEJA CLIQUABLE DE LUI-MEME : on ne pose pas de recouvrement, mais on
+       le marque quand meme, parce que c'est cette classe qui autorise le
+       souleve. Le journal PrintNC fait ses quatre cartes d'accueil en
+       `<button onclick>` : sans cette branche, elles cesseraient de repondre
+       au survol alors qu'elles mènent bel et bien quelque part. */
+    if (c.tagName === 'A' || c.tagName === 'BUTTON' || c.hasAttribute('onclick')) {
+      c.classList.add('carte-cliquable');
+      continue;
+    }
+
+    /* SANS LIEN, PAS DE SOULEVE. Un bloc qui bouge sous le curseur annonce
+       un clic ; s'il n'en a pas, il ment. Sur ce site, 21 des 25 panneaux
+       sont dans ce cas — ils restent immobiles. */
     var liens = c.querySelectorAll('a[href]');
     if (!liens.length) continue;
+
     c.classList.add('carte-cliquable');
     liens[0].classList.add('carte-cible');
     for (var j = 1; j < liens.length; j++) liens[j].classList.add('carte-dessus');

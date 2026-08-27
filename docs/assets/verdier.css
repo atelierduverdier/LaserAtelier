@@ -568,11 +568,23 @@ section[id],h2[id],h3[id]{ scroll-margin-top:var(--marge-ancre, 84px) }
 
 /* --- Le souleve au survol. La carte gagnait deja un liseré orange ; elle
    se detache maintenant du fond, ce qui rend le liseré lisible au lieu de
-   le laisser flotter. */
+   le laisser flotter.
+
+   SEUL CE QUI EST CLIQUABLE SE SOULEVE. C'etait `.carte:hover,.panel:hover`,
+   et Christophe l'a vu tout de suite sur le panneau « Le changeur d'outil » :
+   il se soulevait, donc il avait l'air de mener quelque part. Compte fait
+   sur le site : 25 panneaux, 4 seulement portent un lien. Vingt-et-une
+   fausses promesses. Un bloc qui bouge sous le curseur ANNONCE un clic ;
+   s'il n'en a pas, il ment.
+
+   `.carte-cliquable` est pose par verdier.js sur ce qui mene reellement
+   quelque part — carte ou panneau porteur d'un lien, ou element deja
+   cliquable de lui-meme. Le reste garde son aspect, immobile. */
 .carte,.panel,.figure,.plan,.capture{
   transition:transform .4s var(--sortie), box-shadow .4s var(--sortie),
              border-color .25s ease }
-.carte:hover,.panel:hover{ transform:translateY(-3px); box-shadow:var(--leve) }
+.carte-cliquable:hover{ transform:translateY(-3px); box-shadow:var(--leve);
+  border-color:var(--orange) }
 .figure:hover,.plan:hover,.capture:hover{ box-shadow:var(--leve) }
 
 /* --- La planche respire legerement sous le curseur. Le cadre garde ses
@@ -666,7 +678,7 @@ a:hover{ text-decoration:none; background-size:100% 1px }
 @media (prefers-reduced-motion:reduce){
   .carte,.panel,.figure,.plan,.capture,.btn,.plan img,.capture img{
     transition:none }
-  .carte:hover,.panel:hover,.btn:hover,.btn:active{ transform:none }
+  .carte-cliquable:hover,.btn:hover,.btn:active{ transform:none }
   .plan:hover img,.capture:hover img{ transform:none }
   a{ background-image:none; transition:none }
   a:hover{ text-decoration:underline }
