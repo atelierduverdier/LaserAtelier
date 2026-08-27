@@ -248,10 +248,6 @@
 
   function marquer(liste){
     var poses = 0;
-    /* On note d'abord TOUS les candidats du lot : le test d'imbrication
-       ci-dessous doit connaître ceux qu'on n'a pas encore atteints, et ceux
-       qu'on va écarter. */
-    for (var k = 0; k < liste.length; k++) liste[k].__candidat = true;
     for (var i = 0; i < liste.length; i++){
       var el = liste[i];
       if (el.classList.contains('js-reveal')) continue;   // deja vu passer
@@ -270,31 +266,32 @@
 
       if (boite.top < haut) continue;               // affleure déjà : on n'y touche pas
 
-      /* PAS DE BLOC MARQUÉ DANS UN BLOC DÉJÀ MARQUÉ. Deux raisons, et la
-         seconde est un vrai piège.
+      /* DEUX INTERDITS, ET ILS NE PROTEGENT PAS LA MEME CHOSE. Les avoir
+         fondus en un seul a coute trois versions le 27/08/2026 : trop
+         etroit, puis trop large.
 
-         La visible : une carte qui monte pendant que sa rangée de liens
-         monte à son tour, ce sont deux mouvements pour une seule chose.
+         1. PAS DANS UN BLOC DEJA MARQUE. Une carte qui monte pendant que
+            sa rangee de liens monte a son tour, ce sont deux mouvements
+            pour une seule chose.
 
-         L'autre : `.js-reveal` pose un `transform`, et UN ÉLÉMENT
-         TRANSFORMÉ DEVIENT LE BLOC CONTENEUR de ses descendants positionnés
-         en absolu. Relevé le 27/08/2026 sur le portail : le recouvrement
-         qui rend la carte entière cliquable se repliait sur la seule rangée
-         de liens — 319 x 74 au lieu de 365 x 376 — parce que cette rangée
-         portait la classe. Trois quarts de la carte ne cliquaient plus.
+         2. PAS DANS UNE CARTE NI UN PANNEAU. Celui-la est le vrai piege :
+            `.js-reveal` pose un `transform`, et UN ELEMENT TRANSFORME
+            DEVIENT LE BLOC CONTENEUR de ses descendants positionnes en
+            absolu. Le recouvrement qui rend une carte entiere cliquable se
+            repliait donc sur sa seule rangee de liens — 319 x 74 au lieu
+            de 365 x 376, trois quarts de carte morts. Et il ne suffit pas
+            de regarder les ancetres MARQUES : les cartes du haut d'une page
+            sont au-dessus du pli, donc ecartees, tandis que leur rangee de
+            liens tombe dessous et se faisait marquer.
 
-         LE TEST PORTE SUR LES CANDIDATS, PAS SUR LES MARQUÉS, et c'est la
-         deuxième version : regarder les seuls ancêtres déjà marqués
-         laissait passer le cas le plus courant. Les trois premières cartes
-         du portail sont AU-DESSUS DU PLI, donc écartées — mais leur rangée
-         de liens, plus bas dans la carte, tombait sous le pli et se faisait
-         marquer. Le piège revenait, sur les cartes les plus en vue. */
-      var p = el.parentElement, dedans = false;
-      while (p && p !== document.body){
-        if (p.__candidat || p.classList.contains('js-reveal')) { dedans = true; break; }
-        p = p.parentElement;
-      }
-      if (dedans) continue;
+         CE QUE LA VERSION PRECEDENTE INTERDISAIT EN TROP. Elle ecartait
+         tout descendant d'un CANDIDAT quelconque. Or `.liens` est dans la
+         liste du kit : sur la page de liens, dont les sept cartes `.lien`
+         vivent dedans, plus rien ne pouvait etre revele — la page avait
+         beau declarer ses classes, elles etaient ecartees en silence. Le
+         second interdit ne nomme donc que ce qui porte un recouvrement. */
+      var pere = el.parentElement;
+      if (pere && (pere.closest('.js-reveal') || pere.closest('.carte,.panel'))) continue;
 
       el.classList.add('js-reveal');
       obs.observe(el);
