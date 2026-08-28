@@ -84,10 +84,16 @@ the first line of every written G-code. Bump it **together, in ONE commit**, wit
 | `package.xml` | `<version>` **and** `<date>` |
 | `docs/index.html` | hero badge |
 | `README.md` | version line under the logo |
-| `docs/manuel.html` | **3 occurrences** |
+| `docs/manuel.html` | **3 occurrences** — couverture, frise, signature de fin. A 4th mention carries a version number in the "Thème clair, thème sombre" section: that one is an ARRIVAL DATE, it does not move. |
 | `docs/Manuel-LaserAtelier.pdf` | regenerate: `weasyprint docs/manuel.html docs/Manuel-LaserAtelier.pdf` |
 
 Tag releases `v<version>` on `main`. **A purely documentary change does NOT bump the version.**
+
+`tests/test_versions_docs.py` now *checks* all of the above instead of trusting the ritual: the six
+stamps must agree with `laser_core.VERSION`, the site must announce as many modes as it shows cards
+for, and the two journal figures the README quotes from the manual (chapter number, total entries)
+must match. It was added on 2026-08-28 after both README figures were found stale — "chapter
+14" for a journal that is chapter 13, and 87 entries against a manual counting 157.
 
 **Effort figures are RECOMPUTED, never retyped.** The hero of `docs/index.html`, the top of
 `README.md` and the manual's cover carry "≈ N heures pour en arriver là" — Christophe asked for it
