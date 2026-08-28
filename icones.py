@@ -37,6 +37,12 @@ CE QUI N'EST PAS RETOUCHÉ, et pourquoi :
   encre doit rester sombre, sinon on éclaircit un dessin posé sur du blanc.
   `tests/test_theme_sombre.py` vérifie qu'aucune autre icône n'a pris ce
   genre de fond depuis.
+- LE CHAPEAU, la signature de l'atelier -- éclairci il devient un melon
+  blanc qui n'est plus celui de la maison, et il n'a pas besoin de l'être :
+  ses deux reflets blancs dessinent sa silhouette. Il est écarté de deux
+  façons parce qu'il se présente de deux façons : par sa marque de groupe
+  `class="chapeau-verdier"` dans les 24 icônes de mode, et par son nom pour
+  `chapeau.svg`, le fichier qui ne contient QUE lui (`SIGNATURE`).
 - Les orangés, jaunes, rouges et verts : ce sont des DONNÉES, pas de l'encre.
   Le dégradé du nuancier (`#ffe3c2` -> `#a85a00`) et les carrés brûlés de la
   grille d'essai (`#ffd400` -> `#3a0509`) racontent une échelle de tons ;
@@ -53,6 +59,7 @@ exception on retombe sur le jeu d'origine (icônes peu lisibles, mais
 présentes), jamais sur une erreur.
 """
 import os
+import re
 
 _DOSSIER_SOURCE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "resources", "icons")
@@ -68,6 +75,14 @@ ENCRE_DOUCE_SOMBRE = "#98a1b0"
 
 # Icônes qui peignent leur propre fond clair : les retoucher les abîmerait.
 SANS_RETOUCHE = ("workbench.svg",)
+
+# Le chapeau seul. C'est la SIGNATURE de l'atelier, pas un trait de dessin :
+# elle garde son ardoise sur les deux thèmes (cf. `_eclaircir`). Ce fichier-ci
+# n'est que le chapeau, sans dessin autour et sans la marque de groupe qui le
+# désigne dans les autres icônes -- il faut donc l'écarter par son nom. Il
+# n'est pas décoratif : `_panel_header` le pose à 22 px dans l'en-tête de
+# CHAQUE panneau de l'atelier.
+SIGNATURE = ("chapeau.svg",)
 
 # Sous ce seuil de luminance relative, le fond est « sombre ». 0,18 tombe
 # vers `#797979`, le gris moyen : au-dessus on dessine à l'encre foncée,
@@ -146,13 +161,66 @@ def _dossier_cache():
         return os.path.join(tempfile.gettempdir(), "laseratelier-icones-sombres")
 
 
+_MARQUE_CHAPEAU = 'class="chapeau-verdier"'
+_BALISE_G = re.compile(r"<g\b[^>]*?(/?)>|</g>")
+
+
+def _bornes_chapeau(svg):
+    """(début, fin) du groupe de signature dans le texte du SVG, ou None.
+
+    On borne le groupe des DEUX côtés au lieu de trancher jusqu'à la fin du
+    fichier. Le chapeau est aujourd'hui le dernier élément des 24 icônes qui
+    le portent -- mesuré -- mais rien ne l'impose : le jour où un dessin
+    passe après lui, une découpe « du chapeau à la fin » laisserait ce
+    dessin à l'ardoise, donc invisible sur fond sombre, sans un mot. Et le
+    test aurait eu le même angle mort que le code, ce qui est la manière
+    connue de fabriquer une mire qui ne peut pas voir le défaut qu'elle
+    surveille.
+    """
+    if _MARQUE_CHAPEAU not in svg:
+        return None
+    debut = svg.rindex("<g", 0, svg.index(_MARQUE_CHAPEAU))
+    profondeur = 0
+    for m in _BALISE_G.finditer(svg, debut):
+        if m.group(0).startswith("</"):
+            profondeur -= 1
+        elif m.group(1):          # <g ... /> : ouvert et refermé d'un coup
+            continue
+        else:
+            profondeur += 1
+        if profondeur == 0:
+            return debut, m.end()
+    return debut, len(svg)        # groupe non refermé : XML cassé de toute façon
+
+
+def _eclaircir(svg):
+    """Passe l'encre en clair — SAUF le chapeau.
+
+    Christophe, 25/08/2026 : « mon petit chapeau sur les icônes est blanc au
+    lieu de noir ». Le chapeau est une SIGNATURE, pas un trait de dessin :
+    éclairci, il devient un melon blanc qui n'est plus celui de l'atelier. Et
+    il n'a pas besoin de l'être — ses deux reflets blancs dessinent sa
+    silhouette, donc il reste parfaitement lisible sur `#1a1e23` en gardant son
+    ardoise d'origine. Vérifié à l'œil sur les trois traitements possibles :
+    éclairci (melon blanc), intact (lisible, retenu), intact sans les reflets
+    (la calotte se noie dans le fond).
+    """
+    bornes = _bornes_chapeau(svg)
+    if bornes is None:
+        return svg.replace(ENCRE_CLAIRE, ENCRE_SOMBRE)
+    debut, fin = bornes
+    return (svg[:debut].replace(ENCRE_CLAIRE, ENCRE_SOMBRE)
+            + svg[debut:fin]
+            + svg[fin:].replace(ENCRE_CLAIRE, ENCRE_SOMBRE))
+
+
 def fabriquer(destination, source=None):
     """Recopie le jeu d'icônes en remplaçant l'encre. Renvoie le dossier écrit.
 
     Un fichier n'est réécrit que s'il manque ou s'il est plus vieux que sa
     source : au démarrage suivant, plus rien à faire. Les icônes de
-    `SANS_RETOUCHE` sont copiées telles quelles -- elles doivent exister dans
-    le jeu sombre aussi, sinon le bouton s'affiche vide."""
+    `SANS_RETOUCHE` et de `SIGNATURE` sont copiées telles quelles -- elles
+    doivent exister dans le jeu sombre aussi, sinon le bouton s'affiche vide."""
     source = source or _DOSSIER_SOURCE
     os.makedirs(destination, exist_ok=True)
     for nom in sorted(os.listdir(source)):
@@ -165,8 +233,8 @@ def fabriquer(destination, source=None):
             continue
         with open(src, "r", encoding="utf-8") as f:
             svg = f.read()
-        if nom not in SANS_RETOUCHE:
-            svg = svg.replace(ENCRE_CLAIRE, ENCRE_SOMBRE)
+        if nom not in SANS_RETOUCHE and nom not in SIGNATURE:
+            svg = _eclaircir(svg)
         # Écriture par fichier temporaire puis renommage : une session
         # FreeCAD qui lit pendant qu'une autre écrit ne doit jamais tomber
         # sur un SVG à moitié posé (QtSvg ne rendrait rien, en silence).

@@ -21,11 +21,14 @@ Ce que ce fichier tient :
 2. le seuil qui décide du thème ;
 3. le jeu sombre est COMPLET (un nom manquant = un bouton vide) et son XML
    se parse -- QtSvg ne rend rien, en silence, sur un XML invalide ;
-4. l'encre ardoise n'y subsiste nulle part, sauf là où c'est voulu ;
-5. la liste des exceptions est à jour : aucune icône n'a pris un fond clair
+4. l'encre ardoise n'y subsiste nulle part, sauf là où c'est voulu -- et
+   la substitution a bien eu lieu, autant de fois qu'il y avait d'ardoise ;
+5. LE CHAPEAU garde son ardoise, encre pour encre, dans les 24 icônes qui le
+   portent comme dans `chapeau.svg` qui n'est que lui ;
+6. la liste des exceptions est à jour : aucune icône n'a pris un fond clair
    plein sans y être inscrite (c'est `workbench.svg` qui l'a, et l'éclaircir
    reviendrait à dessiner en clair sur du blanc) ;
-6. fabriquer le jeu sombre ne touche pas au dépôt.
+7. fabriquer le jeu sombre ne touche pas au dépôt.
 """
 import hashlib
 import os
@@ -97,7 +100,7 @@ for fond, attendu in ((FOND_SOMBRE, True), (FOND_CLAIR, False),
 print("seuil : 4 fonds classés du bon côté, encres assorties OK")
 
 
-# --- 3 & 4 & 6. FABRICATION DU JEU SOMBRE ------------------------------
+# --- 3 & 4 & 5 & 7. FABRICATION DU JEU SOMBRE ------------------------------
 def empreinte(dossier):
     """Empreinte de tout un dossier d'icônes -- contenu ET liste."""
     m = hashlib.md5()
@@ -129,37 +132,140 @@ assert _attendues == _obtenues, (
     "donne un bouton vide",
     sorted(set(_attendues) ^ set(_obtenues)))
 
+def _encres(noeud, couleur, dedans=False):
+    """Combien de fois `couleur` sert d'encre : HORS du chapeau, puis DEDANS.
+
+    ON MARCHE SUR L'ARBRE, PAS SUR LE TEXTE DU FICHIER. Découper la chaîne
+    « du chapeau jusqu'à la fin » aurait donné à ce test exactement l'angle
+    mort du code qu'il surveille : un dessin ajouté APRÈS le groupe de
+    signature resterait à l'ardoise, invisible sur fond sombre, et le
+    contrôle passerait au vert. Ce dépôt a déjà payé une mire porteuse du
+    même défaut que la chaîne qu'elle devait valider.
+    """
+    dedans = dedans or noeud.get("class") == "chapeau-verdier"
+    n = sum(1 for a in ("fill", "stroke", "style")
+            if couleur in (noeud.get(a) or ""))
+    hors, sous = (0, n) if dedans else (n, 0)
+    for fils in noeud:
+        h, d = _encres(fils, couleur, dedans)
+        hors += h
+        sous += d
+    return hors, sous
+
+
+_intactes = tuple(icones.SANS_RETOUCHE) + tuple(icones.SIGNATURE)
 _illisibles, _restees_sombres = [], []
+_chapeaux_touches, _mal_substituees = [], []
 for nom in _obtenues:
     chemin = os.path.join(_sombre, nom)
     try:
-        ET.parse(chemin)
+        racine = ET.parse(chemin).getroot()
     except Exception as exc:
         _illisibles.append((nom, str(exc)[:70]))
         continue
-    with open(chemin, encoding="utf-8") as f:
-        svg = f.read()
-    if icones.ENCRE_CLAIRE in svg and nom not in icones.SANS_RETOUCHE:
-        _restees_sombres.append(nom)
+    if nom in _intactes:
+        continue
+    source = ET.parse(os.path.join(SOURCE, nom)).getroot()
+    ardoise_hors_src, ardoise_sous_src = _encres(source, icones.ENCRE_CLAIRE)
+    ardoise_hors, ardoise_sous = _encres(racine, icones.ENCRE_CLAIRE)
+    clair_hors, clair_sous = _encres(racine, icones.ENCRE_SOMBRE)
+    if ardoise_hors:
+        _restees_sombres.append((nom, ardoise_hors))
+    # La substitution a bien EU LIEU, et exactement autant de fois : une
+    # icône dont plus rien ne serait remplacé passerait le contrôle
+    # ci-dessus sans avoir rien fait.
+    if clair_hors != ardoise_hors_src:
+        _mal_substituees.append((nom, ardoise_hors_src, clair_hors))
+    # ... et l'inverse : le chapeau garde son ardoise, encre pour encre.
+    if (ardoise_sous, clair_sous) != (ardoise_sous_src, 0):
+        _chapeaux_touches.append((nom, ardoise_sous_src, ardoise_sous,
+                                  clair_sous))
 
 assert not _illisibles, (
     "la substitution a cassé un SVG : QtSvg ne rendra RIEN, en silence",
     _illisibles)
 assert not _restees_sombres, (
     "des icônes gardent l'encre ardoise dans le jeu sombre", _restees_sombres)
-print("jeu sombre : {} icônes, toutes présentes, XML valide, plus d'encre "
-      "ardoise OK".format(len(_obtenues)))
+assert not _mal_substituees, (
+    "l'encre n'a pas été remplacée le bon nombre de fois (nom, attendu, obtenu)",
+    _mal_substituees)
+# Christophe, 25/08/2026 : « mon petit chapeau sur les icônes est blanc au lieu
+# de noir ». Le chapeau est une SIGNATURE, pas un trait de dessin : éclairci il
+# devient un melon blanc qui n'est plus celui de l'atelier. Il n'a pas besoin de
+# l'être -- ses deux reflets blancs dessinent sa silhouette, donc il reste
+# lisible sur #1a1e23 en gardant son ardoise. Vérifié à l'œil sur les trois
+# traitements : éclairci (melon blanc), intact (retenu), intact sans reflets
+# (la calotte se noie).
+assert not _chapeaux_touches, (
+    "le chapeau de signature a été retouché : il doit garder son ardoise "
+    "(nom, ardoise attendue, ardoise obtenue, encre claire posée)",
+    _chapeaux_touches)
+_avec_chapeau = sum(1 for n in _obtenues if n not in _intactes
+                    and _encres(ET.parse(os.path.join(SOURCE, n)).getroot(),
+                                icones.ENCRE_CLAIRE)[1])
+assert _avec_chapeau >= 20, (
+    "presque plus aucune icône ne porte le chapeau : le contrôle ci-dessus "
+    "ne contrôle plus rien", _avec_chapeau)
+print("jeu sombre : {} icônes, toutes présentes, XML valide, encre éclaircie "
+      "hors chapeau, chapeau intact sur les {} qui le portent OK"
+      .format(len(_obtenues), _avec_chapeau))
 
 # Les exclues sont recopiées TELLES QUELLES -- présentes, mais intactes.
-for nom in icones.SANS_RETOUCHE:
+# `SIGNATURE` en fait partie : `chapeau.svg` ne contient QUE le chapeau, donc
+# sans le groupe marqué qui le désigne ailleurs -- il faut l'écarter par son
+# nom. Ce n'est pas un fichier décoratif : `_panel_header` le pose à 22 px
+# dans l'en-tête de CHAQUE panneau de l'atelier, et c'est là que le melon
+# blanc se voyait.
+for nom in _intactes:
     a = open(os.path.join(SOURCE, nom), encoding="utf-8").read()
     b = open(os.path.join(_sombre, nom), encoding="utf-8").read()
     assert a == b, ("{} devait être recopiée sans retouche".format(nom))
+# Une exception par son nom n'a de sens que si le fichier porte vraiment de
+# l'ardoise ET pas la marque de groupe : sinon la règle générale suffirait,
+# et cette ligne-ci délave... rien, en silence.
+for nom in icones.SIGNATURE:
+    src = open(os.path.join(SOURCE, nom), encoding="utf-8").read()
+    assert icones.ENCRE_CLAIRE in src, (
+        "{} n'a plus d'encre ardoise : l'écarter ne sert plus à rien"
+        .format(nom))
+    assert 'class="chapeau-verdier"' not in src, (
+        "{} porte désormais la marque de groupe : la retirer de "
+        "icones.SIGNATURE, la règle générale suffit".format(nom))
 print("exceptions : {} recopiée(s) à l'identique OK"
-      .format(", ".join(icones.SANS_RETOUCHE)))
+      .format(", ".join(_intactes)))
 
 
-# --- 5. LA LISTE DES EXCEPTIONS EST À JOUR -----------------------------
+# --- 5b. CE QUI SUIT LE CHAPEAU EST ÉCLAIRCI AUSSI --------------------
+# Dans les 24 icônes d'aujourd'hui le chapeau est le DERNIER élément, si
+# bien qu'une découpe « du chapeau jusqu'à la fin du fichier » donne le bon
+# résultat -- et qu'aucune icône du dépôt ne peut distinguer les deux
+# versions du code. La propriété se gèle donc sur un cas fabriqué : un
+# dessin APRÈS la signature. Sans lui, revenir à la découpe paresseuse ne
+# ferait rougir aucun contrôle, et le premier dessin posé sous le chapeau
+# serait invisible sur fond sombre sans un mot.
+_ESSAI = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    '<path stroke="{ardoise}" d="M0 0 L8 8"/>'
+    '<g class="chapeau-verdier"><g><path fill="{ardoise}" d="M1 1 L2 2"/>'
+    '</g></g>'
+    '<path stroke="{ardoise}" d="M9 9 L16 16"/>'
+    '</svg>').format(ardoise=icones.ENCRE_CLAIRE)
+_rendu = icones._eclaircir(_ESSAI)
+_apres_chapeau = _rendu[_rendu.index("</g></g>") + len("</g></g>"):]
+assert icones.ENCRE_CLAIRE not in _apres_chapeau, (
+    "un dessin placé APRÈS le chapeau garde l'encre ardoise : il sera "
+    "invisible sur fond sombre", _apres_chapeau)
+assert _rendu.count(icones.ENCRE_SOMBRE) == 2, (
+    "les deux traits hors chapeau devaient être éclaircis", _rendu)
+assert _rendu.count(icones.ENCRE_CLAIRE) == 1, (
+    "le chapeau devait garder son unique encre ardoise", _rendu)
+# Et un chapeau qui n'est pas refermé ne doit pas faire tomber la fabrication
+# en marche : à la moindre exception, l'atelier perdrait tout son jeu sombre.
+icones._eclaircir(_ESSAI.replace("</g></g>", ""))
+print("chapeau : ce qui le précède ET ce qui le suit est éclairci, lui non OK")
+
+
+# --- 6. LA LISTE DES EXCEPTIONS EST À JOUR -----------------------------
 # Une icône qui peint SON PROPRE fond clair (un carré plein sous le dessin)
 # doit garder l'encre foncée : l'éclaircir revient à dessiner en clair sur
 # du blanc. `workbench.svg` est dans ce cas. Le jour où une nouvelle icône
@@ -207,7 +313,7 @@ assert not _inutiles, (
 print("exceptions : la liste couvre exactement les icônes à fond clair OK")
 
 
-# --- 7. UN NOM INCONNU NE RENVOIE PAS UN CHEMIN MORT -------------------
+# --- 8. UN NOM INCONNU NE RENVOIE PAS UN CHEMIN MORT -------------------
 assert icones.chemin("workbench.svg") == os.path.join(_sombre, "workbench.svg")
 assert icones.chemin("pas_encore_dessinee.svg") == os.path.join(
     SOURCE, "pas_encore_dessinee.svg"), (
@@ -215,7 +321,7 @@ assert icones.chemin("pas_encore_dessinee.svg") == os.path.join(
 print("repli : une icône absente du cache retombe sur la source OK")
 
 
-# --- 8. LE JEU CLAIR RESTE LE DOSSIER DU DÉPÔT -------------------------
+# --- 9. LE JEU CLAIR RESTE LE DOSSIER DU DÉPÔT -------------------------
 icones.oublier_le_theme()
 icones._fond_du_theme = lambda: FOND_CLAIR
 assert icones.dossier() == SOURCE, (
