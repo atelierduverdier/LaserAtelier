@@ -23,7 +23,10 @@ Ce que ce fichier tient :
 3. le journal du manuel est bien le chapitre que le README annonce, et son
    total d'entrées est celui que le README affiche ;
 4. chaque compteur de groupe du journal compte juste (une entrée = un
-   paragraphe qui nomme sa version).
+   paragraphe qui nomme sa version) ;
+5. le site annonce autant de modes qu'il en présente de fiches -- il en
+   annonçait 20 et en listait 21 depuis l'ajout de « Texte gravé (contour) »,
+   relevé le 28/08/2026.
 
 Aucun besoin de FreeCAD ici : on lit des fichiers. Le test tourne quand même
 par le lanceur commun, pour être dans le rapport avec les autres.
@@ -141,3 +144,24 @@ assert not _ecarts, (
     "compté)", _ecarts)
 print("journal : {} groupes, tous les compteurs justes, {} paragraphes de "
       "suite écartés OK".format(len(_tetes), _suites))
+
+
+# --- 5. LE SITE COMPTE SES PROPRES FICHES ------------------------------
+# « 20 modes » a été juste le 03/08/2026, jour où la page en portait vingt.
+# Une fiche s'est ajoutée depuis, le titre est resté. Un visiteur ne compte
+# pas les cartes, donc personne ne voit l'écart -- sauf ce contrôle.
+_i = INDEX.index("modes, regroupés par thème</h2>")
+_annonce = int(re.search(r"<h2>(\d+) modes, regroupés par thème</h2>",
+                         INDEX).group(1))
+_bloc = INDEX[_i:INDEX.index("<h2>", _i + 10)]
+_fiches = re.findall(r"<h4>([^<]*)</h4>", _bloc)
+assert _annonce == len(_fiches), (
+    "le site annonce {} modes et en présente {} fiches"
+    .format(_annonce, len(_fiches)))
+# La phrase d'introduction de la même section porte le même nombre.
+_lede = re.search(r"ajoute à FreeCAD (\d+) modes regroupés par thème", INDEX)
+assert _lede and int(_lede.group(1)) == _annonce, (
+    "le chapô de la section annonce un autre nombre que son titre",
+    _lede.group(1) if _lede else None, _annonce)
+print("site : {} modes annoncés, {} fiches présentées OK"
+      .format(_annonce, len(_fiches)))

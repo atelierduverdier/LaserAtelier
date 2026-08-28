@@ -4,21 +4,29 @@
 
 Captures d'écran de chaque mode (panneau complet, largeur réelle du panneau des tâches).
 
-Pour les régénérer après une évolution de l'interface, **sans toucher à la session FreeCAD ouverte** :
+Pour les régénérer après une évolution de l'interface, **sans toucher à la session FreeCAD
+ouverte** — une seule commande, qui refait la galerie ci-dessous ET les images du manuel :
 
 ```bash
-FONTCONFIG_PATH=/etc/fonts FONTCONFIG_FILE=/etc/fonts/fonts.conf \
-PYTHONPATH=/tmp/.mount_FreeCAxxxx/usr/lib:tests:. \
-/tmp/.mount_FreeCAxxxx/usr/bin/python outils/capturer_panneau.py \
-    docs/screenshots/panneaux/22_texte_contour.png TaskPanelTexteContour 453
+python3 tests/lancer.py --captures
 ```
 
-Le script instancie le panneau en mode *offscreen*, capture `panel.form.widget()` (le contenu
-entier du `QScrollArea`, sans avoir à faire défiler) et rogne le vide en bas. **Les deux variables
-`FONTCONFIG_*` sont indispensables** — sans elles Qt ne trouve aucune fonte système, retombe sur
-une chasse fixe et les ①②③ des sections sortent en « 0 » : la capture reste lisible mais ne
-ressemble plus aux autres. Largeurs de la maison : **453** px ici, **430** px pour
-`docs/manuel_img/` (le manuel).
+```bash
+python3 tests/lancer.py --captures halftone
+```
+
+La seconde forme n'en refait qu'un. Le lanceur passe par le même harnais que les tests, donc
+la config est redirigée vers une **copie jetable** : capturer ne peut pas écrire dans les
+mesures prises au pied à coulisse. Il impose aussi les fontes du système — sans elles Qt
+retombe sur une chasse fixe et les ①②③ des sections sortent en « 0 », une capture
+lisible mais qui ne ressemble plus aux autres. Chaque panneau est instancié hors écran et
+recadré en bas. Largeurs de la maison : **453** px ici, **430** px pour `docs/manuel_img/`
+(le manuel).
+
+> L'ancienne recette — `outils/capturer_panneau.py` lancé à la main avec le python d'une
+> AppImage montée — pilotait la vraie config et citait un chemin `/tmp/.mount_FreeCA…` qui
+> change à chaque lancement de FreeCAD. Elle ne vaut plus depuis que ce poste tourne le
+> **paquet système** (16/08/2026).
 
 ## Découverte
 
