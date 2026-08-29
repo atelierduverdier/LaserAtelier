@@ -26,6 +26,11 @@
    le bouton ne peut pas contredire le système. */
 
 :root{
+  /* Le navigateur peut peindre son canevas, ses ascenseurs et ses widgets
+     natifs dans les deux livrées — la <meta> d'entete.html le dit déjà
+     avant même cette feuille, celle-ci le confirme pour les copies du kit
+     qui n'auraient pas la balise. */
+  color-scheme: light dark;
   --orange:#ff8a00; --orange-d:#e67a00; --orange-soft:#fff3e2;
   --slate:#2f3540; --slate-2:#3c434f;
   --bg:#ffffff; --bg-2:#f6f7f9; --bg-3:#eef0f3;
@@ -34,6 +39,18 @@
   --card:#ffffff; --shadow:0 1px 2px rgba(20,25,35,.06),0 8px 24px rgba(20,25,35,.06);
   --tip:#eaf6ee; --tip-b:#3f9d5a; --warn:#fdf0e6; --warn-b:#e07a1f; --note:#eaf0fb; --note-b:#3f6fd1;
   --radius:14px; --maxw:1180px;
+  /* LA MESURE : la largeur d'une ligne de TEXTE, qui n'est pas celle de la
+     page. Sans elle, un paragraphe prenait les 1136 px de la colonne, soit
+     154 signes par ligne (mesuré le 29/08/2026 sur la fiche du sabot,
+     caractère moyen 7,17 px). Au-delà de ~80 l'œil rate la ligne suivante
+     en revenant à gauche : on fatigue sans savoir pourquoi. 35rem donne 78
+     signes — juste au-dessus du chapô du héros, qui en fait 73 et que
+     personne n'a jamais trouvé trop étroit.
+     EN REM, JAMAIS EN CH. `ch` mesure le glyphe « 0 », qui fait 11,39 px
+     ici quand le caractère moyen en fait 7,17 : `70ch` ne livre pas 70
+     signes mais 111. Deux règles de cette feuille étaient dans ce piège.
+     Le rem, lui, suit la taille de texte choisie par le visiteur. */
+  --mesure:35rem;
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -81,6 +98,12 @@ h2{font-size:1.75rem; margin:0 0 .2em; letter-spacing:-.01em}
 h3{font-size:1.22rem; margin:1.6em 0 .4em}
 h4{font-size:1.02rem; margin:1.2em 0 .3em}
 p{margin:.7em 0}
+/* Le texte courant se borne ; les tableaux, les figures et les cartes
+   gardent toute la largeur — c'est la mise en page éditoriale ordinaire,
+   prose étroite et illustrations larges. Mesuré sur la fiche du sabot :
+   la page s'allonge de 7 %, pas davantage, parce que l'essentiel de sa
+   hauteur est fait de figures et de tableaux. */
+p, li, figcaption{max-width:var(--mesure)}
 code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:.88em;
   background:var(--bg-3); padding:.12em .4em; border-radius:5px}
 kbd{font:inherit; font-size:.85em; background:var(--bg-3); border:1px solid var(--line-2);
@@ -154,7 +177,12 @@ header.topbar{
 .navlinks a{color:var(--fg-2); padding:6px 11px; border-radius:8px;
   font-size:.92rem; font-weight:500; text-decoration:none}
 .navlinks a:hover{background:var(--bg-3); color:var(--fg); text-decoration:none}
-.navlinks a[aria-current="page"]{color:var(--orange-d); background:var(--orange-soft)}
+/* L'ENTRÉE COURANTE S'ALLUME. Deux valeurs, pas une : `page` quand le lien
+   mène exactement ici, `true` quand il mène à la rubrique qui contient la
+   page — une fiche projet allume « Projets » sans être « Projets ». Le
+   sélecteur ne visait que `="page"`, et rien ne posait l'attribut : la
+   règle a attendu du 12/08 au 29/08/2026 sans jamais s'appliquer une fois. */
+.navlinks a[aria-current]{color:var(--orange-d); background:var(--orange-soft)}
 
 .theme-btn,.nav-btn{border:1px solid var(--line-2); background:var(--card); color:var(--fg-2);
   width:38px;height:38px;border-radius:9px;cursor:pointer;font-size:1.05rem; flex:none}
@@ -189,7 +217,7 @@ header.topbar{
 @media(max-width:820px){ .hero-grid{grid-template-columns:1fr; gap:26px} }
 .hero h1{font-size:2.7rem; letter-spacing:-.02em; margin:.1em 0 .1em}
 @media(max-width:820px){ .hero h1{font-size:2.1rem} }
-.hero .lede{font-size:1.16rem; color:var(--fg-2); max-width:46ch; margin:.5em 0 1.3em}
+.hero .lede{font-size:1.16rem; color:var(--fg-2); max-width:33rem; margin:.5em 0 1.3em}
 .hero-art{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
   box-shadow:var(--shadow); padding:26px; display:grid; place-items:center}
 
@@ -245,7 +273,7 @@ header.topbar{
 section{padding:52px 0; border-bottom:1px solid var(--line)}
 .sec-tag{display:inline-flex; align-items:center; gap:8px; color:var(--orange-d);
   font-weight:700; font-size:.82rem; letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px}
-.sec-lede{color:var(--fg-2); font-size:1.06rem; max-width:70ch; margin:.4em 0 0}
+.sec-lede{color:var(--fg-2); font-size:1.06rem; max-width:var(--mesure); margin:.4em 0 0}
 
 /* ---------- 7. Cartes et panneaux --------------------------------------
    .carte est le composant générique du portail : une fiche logiciel, une

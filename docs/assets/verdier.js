@@ -293,6 +293,18 @@
       var pere = el.parentElement;
       if (pere && (pere.closest('.js-reveal') || pere.closest('.carte,.panel'))) continue;
 
+      /* 3. PAS UN BLOC QUI PORTE UNE VUE 3D. C'est le MEME piege que le
+            recouvrement cliquable ci-dessus, par l'autre bout : `.js-reveal`
+            pose un `transform`, l'element transforme devient le referentiel
+            de ses descendants en position absolue, et <model-viewer> y place
+            justement son canvas WebGL partage. Resultat : le modele
+            s'affiche, mais il ne repond plus a la souris.
+            Mesure du 28/08/2026 sur la page des modeles 3D : cinq cartes sur
+            six etaient mortes, et la seule qui tournait encore etait la
+            premiere — au-dessus du pli, donc ecartee par le test ci-dessus.
+            Le symptome designait la cause. */
+      if (el.querySelector && el.querySelector('model-viewer')) continue;
+
       el.classList.add('js-reveal');
       obs.observe(el);
       poses++;
@@ -424,6 +436,19 @@
       c.classList.add('carte-cliquable');
       continue;
     }
+
+    /* UN CONTENU QUI SE MANIPULE NE SE RECOUVRE PAS. Le recouvrement est
+       un `::after` en `inset:0` : il passe DEVANT tout le contenu de la
+       carte. Sur un bloc de texte c'est le but ; sur une vue 3D, ça avale
+       la souris et le modèle devient un décor.
+       Mesuré le 28/08/2026 sur la page des modèles : seule la carte de
+       l'attache tournait — la seule sans lien, donc la seule sans
+       recouvrement. Le souleve au survol pose en plus un `transform`, et un
+       élément transformé devient le référentiel de ses descendants en
+       position absolue : `<model-viewer>` y place son canvas partagé. Deux
+       raisons de laisser ces cartes tranquilles ; on ne pose donc NI la
+       cible NI la classe. Le lien, lui, reste cliquable normalement. */
+    if (c.querySelector('model-viewer,canvas,iframe,video')) continue;
 
     /* SANS LIEN, PAS DE SOULEVE. Un bloc qui bouge sous le curseur annonce
        un clic ; s'il n'en a pas, il ment. Sur ce site, 21 des 25 panneaux
