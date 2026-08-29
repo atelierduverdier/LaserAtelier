@@ -409,6 +409,13 @@ section{padding:52px 0; border-bottom:1px solid var(--line)}
 .figure .bille{fill:var(--slate); stroke:var(--fg); stroke-width:1.2}
 .figure .zone-ok{fill:var(--orange); opacity:.14}
 .figure .zone-non{fill:var(--warn-b); opacity:.13}
+/* Schémas de TRANCHAGE : une couche déposée, celle qui déborde dans le vide,
+   et le contour que l'on visait. Les couches prennent l'encre du texte —
+   c'est de la matière, pas un trait de construction — donc elles s'inversent
+   avec le thème comme le reste. */
+.figure .couche{fill:var(--fg)}
+.figure .couche-surplomb{fill:var(--warn-b); stroke:var(--warn-b); stroke-width:1}
+.figure .vise{fill:none; stroke:var(--fg-3); stroke-width:1.2; stroke-dasharray:4 4}
 /* Tailles de texte en `em`, pas en px — et c'est le point à ne pas rater.
    Un SVG est étiré à la largeur de sa colonne : une figure au viewBox étroit
    est agrandie davantage qu'une figure large, et le MÊME texte y paraît plus
