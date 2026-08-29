@@ -32,6 +32,20 @@
      qui n'auraient pas la balise. */
   color-scheme: light dark;
   --orange:#ff8a00; --orange-d:#e67a00; --orange-soft:#fff3e2;
+  /* L'ENCRE ORANGE N'EST PAS L'ORANGE DE LA MARQUE, et c'est tout le
+     propos de ce jeton. `--orange-d` tenait DEUX rôles à la fois : encre
+     de texte, et fond de survol des boutons. Les deux tirent en sens
+     contraire — plus on fonce pour que le texte se lise sur blanc, moins
+     le texte foncé du bouton se lit sur le fond. Un seul jeton ne pouvait
+     pas les tenir.
+     Mesuré le 29/08/2026 : #e67a00 sur blanc donne 2,94:1, quand il en
+     faut 4,5 pour du texte courant et 3 pour du gros. Or c'est la couleur
+     des liens, des étiquettes de section, et des 31 GRANDS CHIFFRES qui
+     sont l'argument de ce site : ils étaient l'élément le moins lisible
+     de la page. #ac5b00 est le plus CLAIR qui tienne 4,5 sur les trois
+     fonds où il se pose — blanc 4,94, --orange-soft 4,51, --bg-2 4,61 —
+     à la teinte exacte de la marque (31,8°), qui ne bouge pas. */
+  --orange-encre:#ac5b00;
   --slate:#2f3540; --slate-2:#3c434f;
   --bg:#ffffff; --bg-2:#f6f7f9; --bg-3:#eef0f3;
   --fg:#23272e; --fg-2:#5a626e; --fg-3:#858d99;
@@ -55,6 +69,8 @@
 @media (prefers-color-scheme: dark){
   :root{
     --orange:#ff9a1f; --orange-d:#ffab45; --orange-soft:#3a2b12;
+  /* Sur fond sombre l'encre n'a jamais manqué : 8,79:1 sur --card. */
+  --orange-encre:#ffab45;
     --slate:#0f1215; --slate-2:#191d23;
     --bg:#14171b; --bg-2:#1a1e23; --bg-3:#22272e;
     --fg:#e6e9ee; --fg-2:#a8b0bc; --fg-3:#7c8592;
@@ -65,6 +81,8 @@
 }
 :root[data-theme="dark"]{
   --orange:#ff9a1f; --orange-d:#ffab45; --orange-soft:#3a2b12;
+  /* Sur fond sombre l'encre n'a jamais manqué : 8,79:1 sur --card. */
+  --orange-encre:#ffab45;
   --slate:#0f1215; --slate-2:#191d23;
   --bg:#14171b; --bg-2:#1a1e23; --bg-3:#22272e;
   --fg:#e6e9ee; --fg-2:#a8b0bc; --fg-3:#7c8592;
@@ -74,6 +92,20 @@
 }
 :root[data-theme="light"]{
   --orange:#ff8a00; --orange-d:#e67a00; --orange-soft:#fff3e2;
+  /* L'ENCRE ORANGE N'EST PAS L'ORANGE DE LA MARQUE, et c'est tout le
+     propos de ce jeton. `--orange-d` tenait DEUX rôles à la fois : encre
+     de texte, et fond de survol des boutons. Les deux tirent en sens
+     contraire — plus on fonce pour que le texte se lise sur blanc, moins
+     le texte foncé du bouton se lit sur le fond. Un seul jeton ne pouvait
+     pas les tenir.
+     Mesuré le 29/08/2026 : #e67a00 sur blanc donne 2,94:1, quand il en
+     faut 4,5 pour du texte courant et 3 pour du gros. Or c'est la couleur
+     des liens, des étiquettes de section, et des 31 GRANDS CHIFFRES qui
+     sont l'argument de ce site : ils étaient l'élément le moins lisible
+     de la page. #ac5b00 est le plus CLAIR qui tienne 4,5 sur les trois
+     fonds où il se pose — blanc 4,94, --orange-soft 4,51, --bg-2 4,61 —
+     à la teinte exacte de la marque (31,8°), qui ne bouge pas. */
+  --orange-encre:#ac5b00;
   --slate:#2f3540; --slate-2:#3c434f;
   --bg:#ffffff; --bg-2:#f6f7f9; --bg-3:#eef0f3;
   --fg:#23272e; --fg-2:#5a626e; --fg-3:#858d99;
@@ -91,7 +123,7 @@ body{
   font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased;
 }
-a{color:var(--orange-d); text-decoration:none}
+a{color:var(--orange-encre); text-decoration:none}
 a:hover{text-decoration:underline}
 h1,h2,h3,h4{line-height:1.25; color:var(--fg); font-weight:700}
 h2{font-size:1.75rem; margin:0 0 .2em; letter-spacing:-.01em}
@@ -118,7 +150,10 @@ img,video{max-width:100%}
 
 /* Accessibilité : rendre le focus clavier visible. Absent du site laser,
    ajouté ici — une charte partagée est le bon endroit pour ça. */
-:focus-visible{outline:2px solid var(--orange); outline-offset:2px; border-radius:4px}
+/* L'anneau de focus doit se VOIR : c'est le seul repère de qui navigue au
+   clavier. L'orange de marque donne 2,36:1 sur blanc, sous les 3 exigés
+   pour un indicateur — il prend donc l'encre, à 4,94. */
+:focus-visible{outline:2px solid var(--orange-encre); outline-offset:2px; border-radius:4px}
 
 /* ---------- 3. En-tête ------------------------------------------------- */
 
@@ -182,7 +217,7 @@ header.topbar{
    page — une fiche projet allume « Projets » sans être « Projets ». Le
    sélecteur ne visait que `="page"`, et rien ne posait l'attribut : la
    règle a attendu du 12/08 au 29/08/2026 sans jamais s'appliquer une fois. */
-.navlinks a[aria-current]{color:var(--orange-d); background:var(--orange-soft)}
+.navlinks a[aria-current]{color:var(--orange-encre); background:var(--orange-soft)}
 
 .theme-btn,.nav-btn{border:1px solid var(--line-2); background:var(--card); color:var(--fg-2);
   width:38px;height:38px;border-radius:9px;cursor:pointer;font-size:1.05rem; flex:none}
@@ -224,7 +259,7 @@ header.topbar{
 .badges{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px}
 .badge{font-size:.8rem; font-weight:600; padding:5px 11px; border-radius:20px;
   background:var(--bg-3); color:var(--fg-2); border:1px solid var(--line)}
-.badge b{color:var(--orange-d)}
+.badge b{color:var(--orange-encre)}
 
 /* L'encart « ≈ N heures pour en arriver là ». Le chiffre qu'il contient est
    RECALCULÉ (outils/chiffrer_effort.py côté LaserAtelier), jamais retapé. */
@@ -271,7 +306,7 @@ header.topbar{
 /* ---------- 6. Sections ------------------------------------------------ */
 
 section{padding:52px 0; border-bottom:1px solid var(--line)}
-.sec-tag{display:inline-flex; align-items:center; gap:8px; color:var(--orange-d);
+.sec-tag{display:inline-flex; align-items:center; gap:8px; color:var(--orange-encre);
   font-weight:700; font-size:.82rem; letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px}
 .sec-lede{color:var(--fg-2); font-size:1.06rem; max-width:var(--mesure); margin:.4em 0 0}
 
@@ -384,7 +419,7 @@ section{padding:52px 0; border-bottom:1px solid var(--line)}
 .figure text{fill:var(--fg-2); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   font-weight:400; font-size:1em}
 .figure text.fort{fill:var(--fg); font-weight:700}
-.figure text.orange{fill:var(--orange-d); font-weight:700}
+.figure text.orange{fill:var(--orange-encre); font-weight:700}
 .figure text.petit{font-size:.875em}
 .figure text.gros{font-size:1.1em}
 
@@ -393,7 +428,7 @@ section{padding:52px 0; border-bottom:1px solid var(--line)}
 .formule{background:var(--bg-2); border-left:3px solid var(--orange);
   border-radius:0 10px 10px 0; padding:14px 18px; margin:18px 0;
   font-size:1.02rem; overflow-x:auto}
-.formule .res{color:var(--orange-d); font-weight:700}
+.formule .res{color:var(--orange-encre); font-weight:700}
 .formule .ou{display:block; color:var(--fg-3); font-size:.85rem; margin-top:6px}
 var{font-style:italic; font-family:Georgia,"Times New Roman",serif}
 sub{font-size:.75em}
@@ -403,7 +438,7 @@ sub{font-size:.75em}
   gap:14px; margin:22px 0}
 .chiffre{background:var(--card); border:1px solid var(--line); border-radius:12px;
   padding:16px; text-align:center; box-shadow:var(--shadow)}
-.chiffre .v{display:block; font-size:1.7rem; font-weight:800; color:var(--orange-d);
+.chiffre .v{display:block; font-size:1.7rem; font-weight:800; color:var(--orange-encre);
   line-height:1.1; font-variant-numeric:tabular-nums}
 .chiffre .l{display:block; font-size:.82rem; color:var(--fg-2); margin-top:6px; line-height:1.4}
 
@@ -425,7 +460,7 @@ sub{font-size:.75em}
 .pipe{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:26px}
 .step{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 14px;
   box-shadow:var(--shadow); position:relative}
-.step .n{width:28px;height:28px;border-radius:8px;background:var(--orange-soft);color:var(--orange-d);
+.step .n{width:28px;height:28px;border-radius:8px;background:var(--orange-soft);color:var(--orange-encre);
   display:grid;place-items:center;font-weight:800;font-size:.9rem;margin-bottom:9px}
 .step h4{margin:0 0 3px; font-size:.98rem}
 .step p{margin:0; font-size:.86rem; color:var(--fg-2); line-height:1.5}
@@ -451,9 +486,9 @@ details.faq summary{cursor:pointer; padding:15px 18px; font-weight:600; list-sty
   display:flex; align-items:center; gap:12px}
 details.faq summary::-webkit-details-marker{display:none}
 details.faq summary .q{flex:1}
-details.faq summary .chev{color:var(--orange-d); transition:transform .2s; flex:none; font-size:1.1rem}
+details.faq summary .chev{color:var(--orange-encre); transition:transform .2s; flex:none; font-size:1.1rem}
 details.faq[open] summary .chev{transform:rotate(90deg)}
-details.faq summary:hover{color:var(--orange-d)}
+details.faq summary:hover{color:var(--orange-encre)}
 details.faq .a{padding:0 18px 16px; color:var(--fg-2); font-size:.94rem}
 details.faq .a p:first-child{margin-top:0}
 
@@ -468,12 +503,12 @@ details.pliable{background:var(--card); border:1px solid var(--line); border-rad
 details.pliable>summary{cursor:pointer; padding:16px 20px; list-style:none;
   display:flex; align-items:baseline; gap:12px}
 details.pliable>summary::-webkit-details-marker{display:none}
-details.pliable>summary::before{content:"▸"; color:var(--orange-d); font-size:1.05rem;
+details.pliable>summary::before{content:"▸"; color:var(--orange-encre); font-size:1.05rem;
   transition:transform .2s; flex:none; line-height:1}
 details.pliable[open]>summary::before{transform:rotate(90deg)}
-details.pliable>summary:hover{color:var(--orange-d)}
+details.pliable>summary:hover{color:var(--orange-encre)}
 details.pliable>summary .t{font-weight:700; font-size:1.1rem; color:var(--fg); flex:1}
-details.pliable>summary:hover .t{color:var(--orange-d)}
+details.pliable>summary:hover .t{color:var(--orange-encre)}
 details.pliable>summary .s{color:var(--fg-3); font-size:.86rem; flex:none}
 @media(max-width:620px){ details.pliable>summary .s{display:none} }
 details.pliable .corps{padding:0 20px 18px; border-top:1px solid var(--line); margin-top:2px}
