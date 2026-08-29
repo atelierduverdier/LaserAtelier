@@ -315,7 +315,16 @@ section{padding:52px 0; border-bottom:1px solid var(--line)}
    fiche projet. Le site laser garde ses .mode (capture + icône + « quand »)
    dans sa feuille locale — trop spécifiques pour le kit. */
 
-.cartes{display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:20px; margin-top:26px}
+/* MINMAX BORNÉ PAR `min(…, 100%)`, ET C'EST LA RAISON D'ÊTRE DE CETTE
+   ÉCRITURE. Un `minmax(290px, 1fr)` impose une colonne de 290 px même dans un
+   conteneur de 276 : la grille déborde, et c'est TOUTE LA PAGE qui se met à
+   défiler de gauche à droite. Relevé le 29/08/2026 sur la page des modèles 3D,
+   où un minimum de 420 px faisait 52 px de débordement sur un téléphone de
+   390 — Christophe devait balayer l'écran pour lire une ligne. Les autres
+   grilles y échappaient de justesse : à 320 px de large, une carte de 290
+   dépasse sa grille de 14 px, mais les 22 px de marge du `.wrap` les
+   absorbent. De justesse n'est pas une garantie. */
+.cartes{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr)); gap:20px; margin-top:26px}
 .carte{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
   box-shadow:var(--shadow); padding:20px 22px; display:flex; flex-direction:column}
 .carte:hover{border-color:var(--orange)}
@@ -378,7 +387,7 @@ section{padding:52px 0; border-bottom:1px solid var(--line)}
    c'est leur largeur JUSTE : les étirer à la colonne les rendrait flous.
    D'où une grille qui les pose côte à côte à leur taille, alignés en haut
    puisqu'ils n'ont pas la même hauteur. */
-.panneaux{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,430px));
+.panneaux{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),430px));
   gap:20px; margin:24px 0; justify-content:center; align-items:start}
 .capture.panneau{margin:0}
 .capture.panneau img{max-width:430px; margin:0 auto}
@@ -441,7 +450,7 @@ var{font-style:italic; font-family:Georgia,"Times New Roman",serif}
 sub{font-size:.75em}
 
 /* Le chiffre-clé d'une section, gros et seul. */
-.chiffres{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+.chiffres{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));
   gap:14px; margin:22px 0}
 .chiffre{background:var(--card); border:1px solid var(--line); border-radius:12px;
   padding:16px; text-align:center; box-shadow:var(--shadow)}
@@ -464,7 +473,7 @@ sub{font-size:.75em}
 
 /* ---------- 9. Étapes numérotées --------------------------------------- */
 
-.pipe{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:26px}
+.pipe{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr)); gap:12px; margin-top:26px}
 .step{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 14px;
   box-shadow:var(--shadow); position:relative}
 .step .n{width:28px;height:28px;border-radius:8px;background:var(--orange-soft);color:var(--orange-encre);
