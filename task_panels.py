@@ -1347,6 +1347,34 @@ def _boutons_planches(form, ecrire, apres_redressement=None):
     return b1, b2, b3, b4
 
 
+def _niveau_de_grille(z, niveaux):
+    """Le niveau de grille de défocus qui AFFICHE ce point, ou None.
+
+    UNE SEULE RÈGLE, partagée par les deux éditeurs de largeurs brûlées :
+    les grilles de `_MesuresPlanchesControleur` (Planche 2 / Assistant) et
+    la table LIBRE de la Rampe, qui ne doit montrer QUE ce que les grilles
+    ne savent pas exprimer -- « les rendre modifiables ici aussi ferait
+    deux vérités pour une mesure », dit sa propre page.
+
+    C'est pourtant ce qui arrivait : la table libre demandait si le défocus
+    figure parmi les DEUX niveaux standard (`DEFOCUS_LEVELS_MM`), alors
+    qu'une grille est bâtie pour CHAQUE niveau mesuré. Sur la forme des
+    données de l'établi -- le hêtre porte 40, 55 et 60 mm depuis la
+    Planche 2b, aux puissances et vitesses mêmes des grilles -- les mêmes
+    mesures s'affichaient des deux côtés. Vider une ligne de la table
+    libre en supprimait alors une que la grille possède et continue de
+    montrer."""
+    if not niveaux:
+        return None
+    try:
+        z = float(z or 0.0)
+    except (TypeError, ValueError):
+        return None
+    zk = min(niveaux, key=lambda L: abs(float(L) - z))
+    return (float(zk) if abs(float(zk) - z) <= core.SNAP_DEFOCUS_TOLERANCE_MM
+            else None)
+
+
 class _MesuresPlanchesControleur:
     """Bloc partagé « saisie des mesures des planches » (Grille de test,
     Assistant matériau) : une _GrilleResultats pour le foyer (Planche 1 dans
@@ -1682,10 +1710,14 @@ class _MesuresPlanchesControleur:
         gr = self._grille_de(sp)
         if gr is None:
             return None
-        feeds = self.FEEDS_FOCUS if gr is self.grille_focus else self.FEEDS_DEFOCUS
-        ordre = [gr.cells()[(float(p_), float(f_))]
-                 for f_ in feeds for p_ in self.POWERS
-                 if (float(p_), float(f_)) in gr.cells()]
+        # `_cases_ordonnees` ET NON une deuxième copie. Les deux listes
+        # étaient écrites ici et là-bas, identiques au caractère près --
+        # donc d'accord aujourd'hui, et c'est très exactement ainsi que
+        # deux vérités commencent à diverger dans ce dépôt. Changer
+        # l'ordre du bois (une colonne de vitesse en plus, un tri
+        # différent) n'en aurait corrigé qu'une : la case SUIVANTE ne
+        # serait plus celle que la fenêtre de mesure met en surbrillance.
+        ordre = self._cases_ordonnees(gr)
         for i, w in enumerate(ordre):
             if w is sp:
                 return ordre[i + 1] if i + 1 < len(ordre) else None
@@ -2070,7 +2102,18 @@ class _MesuresPlanchesControleur:
         # La cible est RAPPELÉE ici : c'est le dernier moment où la corriger
         # coûte un clic, et une valeur tombée dans la mauvaise case ne se
         # voit pas -- elle ressemble à une mesure.
-        self.lbl_mesure.setText(
+        #
+        # `_dire` ET NON `lbl_mesure`. Ce dernier est le libellé du bloc du
+        # FOYER, et c'était le seul site de cette classe à l'écrire en dur :
+        # une case visée dans une grille de DÉFOCUS voyait son bouton
+        # changer de texte sur place, pendant que la phrase qui la nomme
+        # partait trois grilles plus haut, son propre bloc restant vide.
+        # C'est mot pour mot ce que `_dire` existe pour empêcher -- « à quoi
+        # bon un bouton près de la grille si sa réponse s'affiche trois
+        # grilles plus bas » -- et le bloc par grille avait justement été
+        # ajouté après une séance de saisie où il fallait faire défiler
+        # entre chaque valeur.
+        self._dire(
             "Cible : <b>{}</b>{}. Pointe A puis B dans la vue 3D. "
             "<b>Zoome</b> avant de pointer.".format(
                 self._nom_case(self._mesure_cible) or "case sélectionnée",
@@ -2186,12 +2229,15 @@ class _MesuresPlanchesControleur:
             z = float(pt.get("z_offset", 0.0) or 0.0)
             if not self._levels:
                 continue
-            zk = min(self._levels, key=lambda L: abs(L - z))
             # BORNÉ : sans cette limite, un point mesuré à un défocus sans
             # grille s'affichait dans la grille du niveau le plus proche,
             # si loin fût-il -- et l'enregistrement le réécrivait ensuite
             # AU NIVEAU DE CETTE GRILLE. Une mesure à 60 mm rangée en 36.
-            if abs(zk - z) > core.SNAP_DEFOCUS_TOLERANCE_MM:
+            # La borne vit maintenant dans `_niveau_possede`, que
+            # l'enregistrement consulte aussi : afficher et posséder ne
+            # peuvent plus répondre différemment.
+            zk = self._niveau_possede(z)
+            if zk is None:
                 continue
             par_niveau[zk][(float(pt.get("power", 0)),
                             float(pt.get("feed", 800)))] = float(pt.get("width", 0.0))
@@ -2218,6 +2264,36 @@ class _MesuresPlanchesControleur:
                     len(dehors),
                     " ; ".join("S{:.0f}/F{:.0f} = {:.2f} mm".format(
                         s_, f_, vals[(s_, f_)]) for s_, f_ in dehors[:6])))
+
+    def _niveau_possede(self, z):
+        """Le niveau de grille qui AFFICHE ce point, ou None.
+
+        UNE SEULE RÈGLE, et c'est tout l'objet de cette méthode. Elle
+        existait en deux exemplaires qui ne disaient pas la même chose :
+        `reload` range un point sur le niveau le plus proche À MOINS DE
+        `SNAP_DEFOCUS_TOLERANCE_MM`, tandis que `_cellules_possedees`
+        exigeait l'ÉGALITÉ EXACTE du niveau. Un point à 15,34 était donc
+        affiché par la grille « 15 mm » sans lui appartenir : à
+        l'enregistrement, la grille écrivait sa valeur à 15,0 pendant que
+        le point d'origine était « conservé » à 15,34.
+
+        Mesuré sur la forme des données de l'établi -- le MDF porte
+        cinq mesures à 15,34, la valeur que la docstring de
+        `load_burn_widths` cite en exemple : un seul clic sur
+        « Enregistrer les mesures » faisait passer la table de 6 à 11
+        points, chaque mesure existant deux fois. Le message annonçait
+        au passage « 5 mesures hors grille conservées » alors que ces
+        cinq-là étaient précisément celles que la grille affichait."""
+        return _niveau_de_grille(z, self._levels)
+
+    def _possede_defocus(self, pt):
+        """Ce point brut est-il occupé par une case d'une de mes grilles ?"""
+        if self._niveau_possede(pt.get("z_offset", 0) or 0) is None:
+            return False
+        return (float(pt.get("power", 0) or 0),
+                float(pt.get("feed", 0) or 0)) in {
+                    (float(s), float(fd))
+                    for s in self.POWERS for fd in self.FEEDS_DEFOCUS}
 
     def _cellules_possedees(self):
         """(cases foyer, cases défocus) que ces grilles OCCUPENT, sous forme
@@ -2250,13 +2326,19 @@ class _MesuresPlanchesControleur:
         # Lecture BRUTE : load_burn_widths range les défocus sur les niveaux
         # standard, et réécrire ces valeurs rangées déplacerait des mesures.
         brut = (core.load_config().get("burn_widths", {}) or {}).get(mat, {}) or {}
-        cases_foyer, cases_defocus = self._cellules_possedees()
+        # Le second rendu ne sert PLUS ici : l'appartenance d'un point en
+        # défocus se tranche par `_possede_defocus`, qui range d'abord le
+        # niveau (cf. `_niveau_possede`). `_cellules_possedees` reste la
+        # description NOMINALE des cases, que les essais interrogent.
+        cases_foyer, _cases_defocus_nominales = self._cellules_possedees()
         conserves_f = [pt for pt in (brut.get("focus") or [])
                        if (float(pt.get("power", 0)), float(pt.get("feed", 0)))
                        not in cases_foyer]
+        # `_possede_defocus` ET NON une comparaison de niveau EXACTE : un
+        # point à 15,34 est affiché par la grille « 15 mm », donc il lui
+        # appartient et doit être remplacé, pas recopié à côté.
         conserves_d = [pt for pt in (brut.get("defocus") or [])
-                       if (float(pt.get("power", 0)), float(pt.get("feed", 0)),
-                           float(pt.get("z_offset", 0) or 0)) not in cases_defocus]
+                       if not self._possede_defocus(pt)]
         focus = [{"power": p, "feed": f, "width": round(w, 2)}
                  for (p, f), w in self.grille_focus.values().items()]
         defocus = [{"power": p, "feed": f, "width": round(w, 2), "z_offset": dz}
@@ -2345,11 +2427,23 @@ def _section_states():
 # Les sections ÉTAPES du parcours guidé, reconnues à leur numéro en tête
 # de titre. Elles ne décrivent pas du détail repliable : elles portent les
 # actions du mode -- dont le bouton « Générer » du panneau.
-_ETAPES = ("\u2460", "\u2461", "\u2462")      # ① ② ③
+#
+# JUSQU'À ⑨, ET C'EST LA MÊME LISTE QUE LE STYLE. Elle s'arrêtait à ③
+# pendant que `_SectionHeader` peignait la carte orange de ① à ⑨ : une
+# section « ④ Déduire (modèle & nuancier) » -- celle de l'Assistant
+# matériau, la dernière du parcours -- avait donc l'APPARENCE d'une étape
+# sans en avoir les règles. Mesuré : ouvrir ② pour saisir une mesure
+# refermait ④ derrière soi, quand ①②③ restaient en place ; et sur une
+# installation neuve elle s'ouvrait REPLIÉE, alors que les trois autres
+# s'ouvrent dépliées. C'est mot pour mot le défaut pour lequel
+# l'exemption d'accordéon a été écrite -- « après avoir touché un champ,
+# l'action principale du panneau avait disparu » -- laissé sur la seule
+# étape qui manquait à la liste.
+_ETAPES = tuple("\u2460\u2461\u2462\u2463\u2464\u2465\u2466\u2467\u2468")
 
 
 def _est_etape(titre):
-    """Le titre est-il celui d'une étape guidée ①②③ ?"""
+    """Le titre est-il celui d'une étape guidée ①…⑨ ?"""
     return (titre or "").lstrip().startswith(_ETAPES)
 
 
@@ -2426,7 +2520,11 @@ class _SectionHeader(QtWidgets.QFrame):
         # avant : fond teinté orange, liseré épais -- c'est la PROCÉDURE, à
         # suivre dans l'ordre ; les autres sections (réglages manuels) restent
         # sobres. Demande terrain : le novice doit voir le fil d'un coup d'œil.
-        self._etape = bool(titre) and titre.lstrip()[:1] in "①②③④⑤⑥⑦⑧⑨"
+        # `_est_etape` ET NON une seconde liste de chiffres cerclés : les
+        # deux existaient, ne couvraient pas la même plage, et c'est le
+        # style qui décidait de l'apparence pendant qu'une autre décidait
+        # des règles (cf. `_ETAPES`).
+        self._etape = _est_etape(titre)
         # Barre « carte » : coins arrondis, liseré orange de la maison à
         # gauche, fond neutre du thème qui s'éclaircit au survol. Tout est
         # peint par la feuille de style, ciblée par objectName pour
@@ -5220,12 +5318,20 @@ def _nuancier_items(source, material, bande=None):
         # Les bornes sont celles du classement (_BANDES_NOIRCEUR de
         # laser_core) -- même découpage à l'écran et sur le bois.
         if bande is not None:
-            bornes = [b for b, _t in core._BANDES_NOIRCEUR]
-            lo = bornes[bande - 1] if bande > 0 else -1.0
-            hi = bornes[bande]
+            # `core._bande` LUI-MÊME, et non les mêmes bornes relues avec un
+            # autre opérateur. Le classement du sélecteur range un ton dans
+            # la bande i quand `valeur < bornes[i]` ; ce filtre écrivait
+            # `lo < valeur <= hi`, donc décalait d'une bande TOUT ton posé
+            # exactement sur une borne. Mesuré : un ton à 90 % est annoncé
+            # « Noir (90-100 %) » dans le sélecteur et gravé sur la planche
+            # « Foncé (60-90 %) » -- et absent de la planche « Noir ». Le
+            # nuancier de l'atelier en compte un, le hêtre S845 à 90 %.
+            #
+            # Le commentaire promettait déjà « même découpage à l'écran et
+            # sur le bois » : il n'y a plus qu'un seul découpage.
             shades = [x for x in shades
-                      if lo < float(x.get("darkness", 0) or 0) <= hi
-                      or (bande == 0 and float(x.get("darkness", 0) or 0) == 0)]
+                      if core._bande(x.get("darkness"),
+                                     core._BANDES_NOIRCEUR, "")[0] == bande]
             if not shades:
                 _titres = [t for _b, t in core._BANDES_NOIRCEUR]
                 return None, ("aucun ton dans la bande « {} » pour « {} »."
@@ -6184,13 +6290,18 @@ class TaskPanelNuancier:
         combo.clear()
         combo.addItem("Toute la palette (un seul fichier)", None)
         if (self.combo_nuancier_source.currentData() or "tons") == "tons":
+            # `core._bande`, LA MÊME QUE LA PLANCHE et que le sélecteur.
+            # C'était la TROISIÈME copie de la règle de bornes, avec le même
+            # `lo < d <= hi` que le filtre de gravure : le compte annoncé
+            # ici aurait continué de décaler d'une bande tout ton posé sur
+            # une borne, donc de promettre une planche qui n'aurait pas ce
+            # ton -- et cette liste existe précisément pour qu'« une bande
+            # vide se voie avant de cliquer ».
             tons = core.load_shades(self.combo_mat.currentText().strip())
-            bornes = [b for b, _t in core._BANDES_NOIRCEUR]
             for i, (_b, titre) in enumerate(core._BANDES_NOIRCEUR):
-                lo = bornes[i - 1] if i > 0 else -1.0
                 n = sum(1 for x in tons
-                        if lo < float(x.get("darkness", 0) or 0) <= bornes[i]
-                        or (i == 0 and float(x.get("darkness", 0) or 0) == 0))
+                        if core._bande(x.get("darkness"),
+                                       core._BANDES_NOIRCEUR, "")[0] == i)
                 combo.addItem("{} — {} ton(s)".format(titre, n), i)
         if courant is not None:
             k = combo.findData(courant)
@@ -7555,10 +7666,20 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
       elle pour fusionner réécrirait les valeurs stockées de Christophe au
       passage. On ne touche que ce qu'on ajoute.
 
-    Et le défocus tapé n'est PAS arrondi en silence : s'il tombe à moins de 5 mm
-    d'un niveau standard, `load_burn_widths` le rangera là (un 40 devient 36).
-    La table le dit avant d'enregistrer -- une valeur saisie à la main est
-    délibérée, elle mérite qu'on prévienne plutôt qu'on corrige."""
+    Et le défocus tapé n'est PAS arrondi en silence : s'il tombe à moins de
+    `core.SNAP_DEFOCUS_TOLERANCE_MM` d'un niveau standard, `load_burn_widths`
+    le rangera là (un 17 devient 15). La table le dit avant d'enregistrer --
+    une valeur saisie à la main est délibérée, elle mérite qu'on prévienne
+    plutôt qu'on corrige.
+
+    LE CHIFFRE SE LIT DANS LA CONSTANTE, il ne se recopie pas. Ce texte et
+    le message ci-dessous annonçaient « 5 mm » et donnaient « un 40 devient
+    36 » en exemple : la tolérance est passée à 2 mm quand les niveaux
+    profonds (40/55/60) sont apparus, précisément pour que 40 NE devienne
+    PAS 36. L'interface a continué d'annoncer l'ancienne règle -- et c'est
+    ce message-ci qui a été réécrit après que Christophe a dit ne pas
+    comprendre le premier. Lui donner le mauvais nombre est pire que la
+    formulation qu'on avait corrigée."""
     form.addRow(_WrapLabel(
         "<b>Largeurs mesurées au pied à coulisse</b> — une ligne par point "
         "relevé. La rampe fait monter la puissance ET la hauteur ensemble : "
@@ -7690,15 +7811,16 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
             # elle avait été faite à telle hauteur.
             msg += (" <b>Attention</b> : {}. L'atelier regroupe les mesures "
                     "en défocus autour de hauteurs de référence ({}) et y "
-                    "rattache tout ce qui en est à moins de 5 mm. La mesure "
-                    "reste juste, mais elle servira comme si elle avait été "
-                    "faite à cette hauteur — saisir cette valeur directement "
-                    "revient au même.".format(
+                    "rattache tout ce qui en est à moins de {:g} mm. La "
+                    "mesure reste juste, mais elle servira comme si elle "
+                    "avait été faite à cette hauteur — saisir cette valeur "
+                    "directement revient au même.".format(
                         ", ".join("le défocus <b>{:.0f} mm</b> comptera comme "
                                   "<b>{:.0f} mm</b>".format(a, b)
                                   for a, b in arrondis),
                         ", ".join("{:.0f}".format(lv)
-                                  for lv in core.DEFOCUS_LEVELS_MM)))
+                                  for lv in core.DEFOCUS_LEVELS_MM),
+                        core.SNAP_DEFOCUS_TOLERANCE_MM))
         garde = msg, couleur
         reload()          # la table remontre l'état RÉEL, pas la saisie
         lbl.setText("<span style=\"color:{}\">{}</span>".format(garde[1],
@@ -7708,13 +7830,17 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
 
     btn.clicked.connect(_on_save)
 
-    def _hors_grille(pt):
-        """Un point que la grille figée ne sait PAS exprimer -- donc que
-        cette table est seule à pouvoir relire et corriger."""
+    def _hors_grille(pt, niveaux):
+        """Un point que les grilles ne savent PAS exprimer -- donc que cette
+        table est seule à pouvoir relire et corriger.
+
+        `niveaux` = ceux pour lesquels une grille EXISTE (tous les niveaux
+        mesurés du matériau), et non les deux niveaux standard : c'est la
+        question que les grilles se posent, cf. `_niveau_de_grille`."""
         G = _MesuresPlanchesControleur
         return (float(pt.get("power", 0)) not in G.POWERS
                 or float(pt.get("feed", 0)) not in G.FEEDS_DEFOCUS
-                or float(pt.get("z_offset", 0) or 0) not in core.DEFOCUS_LEVELS_MM)
+                or _niveau_de_grille(pt.get("z_offset", 0), niveaux) is None)
 
     def reload():
         """Réaffiche les points HORS GRILLE déjà enregistrés.
@@ -7733,8 +7859,9 @@ def _make_largeurs_libres(form, get_material, on_saved=None, lignes=8):
         if mat:
             brut = (core.load_config().get("burn_widths", {}).get(mat, {})
                     or {})
+            niveaux = core.niveaux_defocus_mesures(mat)
             pts = [pt for pt in (brut.get("defocus", []) or [])
-                   if _hors_grille(pt)]
+                   if _hors_grille(pt, niveaux)]
             pts.sort(key=lambda pt: (float(pt.get("z_offset", 0) or 0),
                                      float(pt.get("power", 0))))
         table.clearContents()
@@ -8954,8 +9081,11 @@ class TaskPanelFilledEngraving:
         style_tooltip = (
             "Trait plein : trait continu (comportement historique).\n"
             "Tirets : faisceau pulsé le long du tracé (mouvement continu).\n"
-            "Pointillé : vrais points ronds -- arrêt + pulse à chaque point\n"
-            "(plus lent ; en défocus, gros points doux).\n"
+            "Pointillé : vrais points ronds -- un MICRO-TRAIT par point,\n"
+            "jamais un pulse à l'arrêt (la puissance est asservie à la\n"
+            "vitesse réelle : à l'arrêt elle tombe à zéro et le point ne\n"
+            "grave rien). Plus lent qu'un trait continu -- un déplacement\n"
+            "par point ; en défocus, gros points doux.\n"
             "Vague défocus : le Z oscille entre le foyer et un défocus max,\n"
             "le trait varie continûment en largeur et en intensité (effet\n"
             "calligraphique). Nécessite la calibration du point ci-dessus.")
@@ -9039,9 +9169,11 @@ class TaskPanelFilledEngraving:
         self.spn_dot_dwell.setValue(50.0)
         self.spn_dot_dwell.setSuffix(" ms")
         self.spn_dot_dwell.setToolTip(
-            "Durée du pulse laser sur chaque point (style Pointillé). Plus\n"
-            "long = point plus marqué/profond. La machine s'arrête à chaque\n"
-            "point : le job est nettement plus lent qu'un trait continu.")
+            "Temps de pose de chaque point (style Pointillé) : plus long =\n"
+            "point plus marqué. Il est reproduit par la VITESSE d'un\n"
+            "micro-trait, jamais par un arrêt -- à l'arrêt la puissance\n"
+            "tombe à zéro et le point ne grave rien. Un déplacement par\n"
+            "point : job nettement plus lent qu'un trait continu.")
         form.addRow("Durée du pulse :", self.spn_dot_dwell)
 
         self.spn_wave_period = QtWidgets.QDoubleSpinBox()
@@ -9315,60 +9447,43 @@ class TaskPanelFilledEngraving:
         self.lbl_preset_summary.setVisible(False)
 
     def _preset_values(self):
-        return {
-            "spacing": self.spn_spacing.value(),
-            "angle": self.spn_angle.value(),
-            "fill_power": self.spn_fill_power.value(),
-            "fill_feed": self.spn_fill_feed.value(),
-            "perimeter": self.chk_perimeter.isChecked(),
-            "contour": self.chk_contour.isChecked(),
-            "contour_power": self.spn_contour_power.value(),
-            "contour_feed": self.spn_contour_feed.value(),
-            "contour_width": self.spn_contour_width.value(),
-            "fill_style": self.combo_fill_style.currentIndex(),
-            "contour_style": self.combo_contour_style.currentIndex(),
-            "dash_len": self.spn_dash_len.value(),
-            "gap_len": self.spn_gap_len.value(),
-            "dot_spacing": self.spn_dot_spacing.value(),
-            "dot_dwell_ms": self.spn_dot_dwell.value(),
-            "wave_period": self.spn_wave_period.value(),
-            "fill_wave_width": self.spn_fill_wave_width.value(),
-            "fluence_on": self._fluence["chk"].isChecked(),
-            "ref_power": self._fluence["ref_power"].value(),
-            "ref_feed": self._fluence["ref_feed"].value(),
-            "ref_spot": self._fluence["ref_spot"].value(),
-        }
+        """L'instantané du panneau -- LA MÊME LISTE que la mémorisation de
+        session, jamais une seconde tenue à la main.
+
+        Elles étaient deux, et la seconde avait pris du retard : le
+        dégradé de remplissage (case, puissance de fin, direction) et le
+        décalage de surface figuraient dans `_last_fields` sans jamais
+        entrer dans un préréglage nommé -- quatre réglages sur vingt-cinq.
+        Sauver un matériau réglé en dégradé, le recharger, et le dégradé
+        n'était pas revenu : le préréglage appliquait alors un job
+        différent de celui qu'on avait enregistré, sans un mot, pendant
+        que le bouton promettait « toutes les valeurs du panneau ».
+
+        C'est exactement ce que fait `_PresetController` pour les autres
+        panneaux ; celui-ci recopiait ses vingt et une lignes à la main."""
+        return {cle: _widget_get(w) for cle, w in self._last_fields.items()}
 
     def _on_preset_selected(self, index):
+        """Recharge un préréglage -- MÊME LISTE que `_preset_values`.
+
+        Une clé absente laisse le champ tel quel : les préréglages déjà
+        enregistrés (21 clés) se chargent sans toucher aux quatre qui leur
+        manquent."""
         if index <= 0:
             self.lbl_preset_summary.setVisible(False)
             return
         v = core.load_presets("filled").get(self.combo_preset.currentText())
         if not v:
             return
-        self.spn_spacing.setValue(v.get("spacing", self.spn_spacing.value()))
-        self.spn_angle.setValue(v.get("angle", self.spn_angle.value()))
-        self.spn_fill_power.setValue(v.get("fill_power", self.spn_fill_power.value()))
-        self.spn_fill_feed.setValue(v.get("fill_feed", self.spn_fill_feed.value()))
-        self.chk_perimeter.setChecked(v.get("perimeter", self.chk_perimeter.isChecked()))
-        self.chk_contour.setChecked(v.get("contour", self.chk_contour.isChecked()))
-        self.spn_contour_power.setValue(v.get("contour_power", self.spn_contour_power.value()))
-        self.spn_contour_feed.setValue(v.get("contour_feed", self.spn_contour_feed.value()))
-        self.spn_contour_width.setValue(v.get("contour_width", self.spn_contour_width.value()))
-        self.combo_fill_style.setCurrentIndex(v.get("fill_style", self.combo_fill_style.currentIndex()))
-        self.combo_contour_style.setCurrentIndex(v.get("contour_style", self.combo_contour_style.currentIndex()))
-        self.spn_dash_len.setValue(v.get("dash_len", self.spn_dash_len.value()))
-        self.spn_gap_len.setValue(v.get("gap_len", self.spn_gap_len.value()))
-        self.spn_dot_spacing.setValue(v.get("dot_spacing", self.spn_dot_spacing.value()))
-        self.spn_dot_dwell.setValue(v.get("dot_dwell_ms", self.spn_dot_dwell.value()))
-        self.spn_wave_period.setValue(v.get("wave_period", self.spn_wave_period.value()))
-        self.spn_fill_wave_width.setValue(v.get("fill_wave_width", self.spn_fill_wave_width.value()))
-        self._fluence["chk"].setChecked(v.get("fluence_on", self._fluence["chk"].isChecked()))
-        self._fluence["ref_power"].setValue(v.get("ref_power", self._fluence["ref_power"].value()))
-        self._fluence["ref_feed"].setValue(v.get("ref_feed", self._fluence["ref_feed"].value()))
-        self._fluence["ref_spot"].setValue(v.get("ref_spot", self._fluence["ref_spot"].value()))
+        for cle, w in self._last_fields.items():
+            if cle in v:
+                _widget_set(w, v[cle])
         self.lbl_preset_summary.setText(self._preset_summary(v))
         self.lbl_preset_summary.setVisible(True)
+        # Les verdicts suivent le réglage rechargé : sans ça le panneau
+        # annonce le recouvrement et le style de l'état PRÉCÉDENT.
+        self._update_defocus_preview()
+        self._update_style_preview()
 
     def _on_save_preset(self):
         current = self.combo_preset.currentText() if self.combo_preset.currentIndex() > 0 else ""
@@ -10456,16 +10571,26 @@ class TaskPanelTexteContour:
             "d'échelle&nbsp;: c'est la seule façon de le redimensionner.",
         ])
 
-        # LES PRÉRÉGLAGES, et ils manquaient ici seulement. Cinq panneaux
-        # les portent déjà ; celui-ci est pourtant le plus réglé de tous --
-        # treize champs, dont six pour la seule plume, tous trouvés à l'œil.
-        # Christophe, 05/08/2026 : « peut-être aussi pouvoir sauvegarder ses
-        # réglages ». La dernière session était bien mémorisée, mais UNE
-        # seule : essayer une autre plume effaçait celle qu'on venait de
-        # régler. `_last_fields` porte déjà les treize champs, donc il n'y a
-        # rien à décrire ici -- le bloc en prend un instantané.
+        # LES PRÉRÉGLAGES, sous LEUR PROPRE clé.
+        #
+        # Ce bloc a été recopié depuis la Calligraphie -- catégorie et
+        # commentaire compris -- alors que ce panneau-ci porte TROIS champs
+        # (police, texte, largeur) et l'autre TREIZE, dont six pour la seule
+        # plume. Les deux écrivaient donc dans le MÊME magasin.
+        #
+        # Mesuré : une recette de plume enregistrée sous « Ma plume »
+        # tombait de 13 champs à 3 dès qu'on enregistrait sous ce nom depuis
+        # ici -- `save_preset` remplace. Les dix réglages de plume, tous
+        # trouvés à l'œil, disparaissaient sans un mot, et la recette
+        # rechargée gravait autre chose. C'est exactement ce contre quoi la
+        # Calligraphie avait demandé des préréglages (« essayer une autre
+        # plume effaçait celle qu'on venait de régler »), retourné d'un
+        # panneau à l'autre.
+        #
+        # La clé suit désormais celle de la mémorisation de session, comme
+        # partout ailleurs.
         self._presets = _PresetController(
-            form, inner, "calligraphie", lambda: self._last_fields,
+            form, inner, "texte_contour", lambda: self._last_fields,
             on_loaded=lambda: self._maj_verdict())
         _section(form, "① Police et texte", "sect_labels.svg", ouvert=True)
         self.combo_police = QtWidgets.QComboBox()
@@ -13241,9 +13366,12 @@ class TaskPanelHalftone:
                "Chaque point encode la noirceur locale : soit par sa densité "
                "(tramage par diffusion Floyd-Steinberg, recommandé), soit par "
                "la durée de son pulse. Image posée coin bas-gauche en X0 Y0 ; "
-               "zéro X/Y sur la pièce, zéro Z sur sa surface. La machine "
-               "s'arrête à chaque point : compter ~2-4 points/seconde -- le "
-               "pas de trame pilote directement la durée du job.")
+               "zéro X/Y sur la pièce, zéro Z sur sa surface. Chaque point "
+               "est un MICRO-TRAIT et non un pulse à l'arrêt -- la "
+               "puissance étant asservie à la vitesse réelle, un point tiré "
+               "à l'arrêt ne graverait RIEN. Il reste un déplacement par "
+               "point : compter ~2-4 points/seconde, et le pas de trame "
+               "pilote directement la durée du job.")
 
         _diagram(form, "diag_photo.svg")
 
@@ -13812,7 +13940,9 @@ class TaskPanelHalftone:
         _section(form, "Aperçus & génération", "sect_gcode.svg")
         self.lbl_duration = _duration_row(
             form, self._update_duration_preview,
-            "Dominée par les pulses (G4) et les arrêts à chaque point.")
+            "Dominée par le temps de pose de chaque point et par le\n"
+            "déplacement qui l'y amène. Pas de G4 : la pose se fait par la\n"
+            "vitesse d'un micro-trait (à l'arrêt, la puissance tombe à zéro).")
 
         self.btn_frame_preview = QtWidgets.QPushButton("Générer l'aperçu cadrage (fichier séparé)")
         self.btn_frame_preview.setToolTip(
@@ -14251,7 +14381,7 @@ class TaskPanelHalftone:
                     strokes.append(([pts_f[i], pts_f[i + 1]], table_f[k][2],
                                     teinte(table_f[k][1], feed_l,
                                            table_f[k][2], dz_f[i])))
-            elif True:
+            else:
                 # La largeur vient de la PUISSANCE : une valeur par case,
                 # donc des rangées de segments d'un pas.
                 dz = self._dz_trait()
@@ -14272,7 +14402,11 @@ class TaskPanelHalftone:
                 grille = core.swell_niveaux_grille(
                     darkness, n, self.spn_white.value() / 100.0,
                     self.combo_fond.currentData())
-                t = teinte(puissances[-1], feed_l, w_max, dz)
+                # `ton` ET NON `t` : `t` est le TRAMAGE, lu plus haut par
+                # `t["cle"]`. L'écraser par une teinte ne casse rien
+                # aujourd'hui -- plus rien ne le relit après -- mais c'est
+                # un piège posé pour la ligne suivante qu'on ajoutera ici.
+                ton = teinte(puissances[-1], feed_l, w_max, dz)
                 for row in range(h):
                     y = (h - 1 - row) * pitch
                     col = 0
@@ -14285,7 +14419,7 @@ class TaskPanelHalftone:
                             continue
                         largeur_k = w_min + (w_max - w_min) * k0 / float(n - 1)
                         strokes.append(([(c0 * pitch, y), (col * pitch, y)],
-                                        largeur_k, t))
+                                        largeur_k, ton))
         elif t["cle"] in ("dither", "simili"):
             # Deux tramages BINAIRES balayés : chaque case allumée est
             # brûlée sur un PAS entier, à puissance et vitesse fixes. Seul
@@ -14309,14 +14443,14 @@ class TaskPanelHalftone:
                 binaire = core.floyd_steinberg_dither(darkness)
             if not binaire:
                 return None, "trame impossible à construire"
-            t = teinte(power, feed_l, largeur, z_ref)
+            ton = teinte(power, feed_l, largeur, z_ref)   # cf. ci-dessus
             for row in range(h):
                 y = (h - 1 - row) * pitch
                 for col in range(w):
                     if binaire[row][col]:
                         strokes.append((
                             [(col * pitch, y), ((col + 1) * pitch, y)],
-                            largeur, t))
+                            largeur, ton))
         else:
             # Diffusion : points tous identiques, la densité porte l'image.
             # Durée variable : un point par case, c'est la durée du pulse
@@ -15855,10 +15989,18 @@ class TaskPanelTestGrid:
         def _update_visibility():
             is_gravure = (self.combo_mode.currentIndex() == 0)
             is_defocus = is_gravure and (self.combo_filltype.currentIndex() == 2)
+            # `_set_row_visible` ET NON `setVisible` : ce dernier ne cache
+            # que le CHAMP et laisse son libellé seul dans la colonne de
+            # gauche -- exactement le défaut que ce helper existe pour
+            # empêcher, et que sa page décrit mot pour mot (« lignes vides
+            # "Longueur tiret :" quand un autre style est choisi »).
+            # Mesuré ici : passer en mode Découpe laissait « Type de
+            # remplissage : », « Espacement hachures : » et « Angle
+            # hachures : » suspendus dans le vide.
             for w in self._gravure_widgets:
-                w.setVisible(is_gravure)
+                _set_row_visible(form, w, is_gravure)
             for w in self._defocus_widgets:
-                w.setVisible(is_defocus)
+                _set_row_visible(form, w, is_defocus)
             _update_defocus_preview()
 
         self.combo_mode.currentIndexChanged.connect(lambda _i: _update_visibility())
@@ -16025,7 +16167,23 @@ class TaskPanelTestGrid:
             "hatch_spacing": self.spn_hatch_spacing, "hatch_angle": self.spn_hatch_angle,
             "proximity": self.chk_proximity,
             "mire": self.chk_mire,
-            "labels": self.chk_labels, "border": self.chk_border,
+            # LE DÉFOCUS DES CELLULES MANQUAIT, et c'est le réglage qui
+            # décide de tout le régime. Mesuré : après l'objectif « bande
+            # de tons », rouvrir le panneau rendait le pas de 1,01 mm --
+            # calculé pour un trait de 0,68 à 0,96 mm en défocus 15 -- avec
+            # un défocus retombé à 0. Au foyer le trait fait 0,11 à
+            # 0,20 mm : couverture 11 à 25 % au lieu de 52 à 95 %. C'est
+            # très exactement la planche rayée que `_recalculer_pas`
+            # raconte ; ce correctif-là fermait UNE des deux façons d'y
+            # arriver, celle-ci restait ouverte à chaque réouverture.
+            "cell_defocus": self.spn_cell_defocus,
+            "labels": self.chk_labels,
+            # « border_enabled » ET NON « border » : le préréglage, les
+            # préréglages d'USINE et le résumé emploient tous ce nom-là.
+            # Deux noms pour la même case, c'est ce qui a permis aux deux
+            # listes de diverger. (Une config plus ancienne portait
+            # « border » : la case reprend alors son défaut, coché.)
+            "border_enabled": self.chk_border,
             "border_power": self.spn_border_power,
             "border_feed": self.spn_border_feed,
             # Le matériau se retient d'une session à l'autre : sans ça, le
@@ -16111,54 +16269,34 @@ class TaskPanelTestGrid:
         self.lbl_preset_summary.setVisible(False)
 
     def _preset_values(self):
-        return {
-            "mode": self.combo_mode.currentIndex(),
-            "power_min": self.spn_power_min.value(),
-            "power_max": self.spn_power_max.value(),
-            "power_steps": self.spn_power_steps.value(),
-            "feed_min": self.spn_feed_min.value(),
-            "feed_max": self.spn_feed_max.value(),
-            "feed_steps": self.spn_feed_steps.value(),
-            "cell_size": self.spn_cell_size.value(),
-            "gap": self.spn_gap.value(),
-            "zwork": self.spn_zwork.value(),
-            "filltype": self.combo_filltype.currentIndex(),
-            "hatch_spacing": self.spn_hatch_spacing.value(),
-            "hatch_angle": self.spn_hatch_angle.value(),
-            "proximity": self.chk_proximity.isChecked(),
-            "labels": self.chk_labels.isChecked(),
-            "border_enabled": self.chk_border.isChecked(),
-            "border_power": self.spn_border_power.value(),
-            "border_feed": self.spn_border_feed.value(),
-        }
+        """L'instantané du panneau -- LA MÊME LISTE que la mémorisation de
+        session, jamais une seconde tenue à la main.
+
+        Elles étaient deux, et la seconde avait pris du retard : le style
+        de trait, la mire de mesure et le matériau visé étaient mémorisés
+        d'une session à l'autre sans jamais entrer dans un préréglage
+        nommé, dont le bouton promet pourtant « les valeurs actuelles de
+        TOUT le panneau ». Même divergence que la Gravure remplie."""
+        return {cle: _widget_get(w) for cle, w in self._last_fields.items()}
 
     def _on_preset_selected(self, index):
+        """Recharge un préréglage -- MÊME LISTE que `_preset_values`.
+
+        Une clé absente laisse le champ tel quel : les préréglages d'usine
+        et ceux déjà enregistrés (18 clés) se chargent sans toucher aux
+        trois qui leur manquent."""
         if index <= 0:
             self.lbl_preset_summary.setVisible(False)
             return
         values = core.all_presets("testgrid").get(self.combo_preset.currentData())
         if not values:
             return
-        self.combo_mode.setCurrentIndex(values.get("mode", self.combo_mode.currentIndex()))
-        self.spn_power_min.setValue(values.get("power_min", self.spn_power_min.value()))
-        self.spn_power_max.setValue(values.get("power_max", self.spn_power_max.value()))
-        self.spn_power_steps.setValue(values.get("power_steps", self.spn_power_steps.value()))
-        self.spn_feed_min.setValue(values.get("feed_min", self.spn_feed_min.value()))
-        self.spn_feed_max.setValue(values.get("feed_max", self.spn_feed_max.value()))
-        self.spn_feed_steps.setValue(values.get("feed_steps", self.spn_feed_steps.value()))
-        self.spn_cell_size.setValue(values.get("cell_size", self.spn_cell_size.value()))
-        self.spn_gap.setValue(values.get("gap", self.spn_gap.value()))
-        self.spn_zwork.setValue(values.get("zwork", self.spn_zwork.value()))
-        self.combo_filltype.setCurrentIndex(values.get("filltype", self.combo_filltype.currentIndex()))
-        self.spn_hatch_spacing.setValue(values.get("hatch_spacing", self.spn_hatch_spacing.value()))
-        self.spn_hatch_angle.setValue(values.get("hatch_angle", self.spn_hatch_angle.value()))
-        self.chk_proximity.setChecked(values.get("proximity", self.chk_proximity.isChecked()))
-        self.chk_labels.setChecked(values.get("labels", self.chk_labels.isChecked()))
-        self.chk_border.setChecked(values.get("border_enabled", self.chk_border.isChecked()))
-        self.spn_border_power.setValue(values.get("border_power", self.spn_border_power.value()))
-        self.spn_border_feed.setValue(values.get("border_feed", self.spn_border_feed.value()))
+        for cle, w in self._last_fields.items():
+            if cle in values:
+                _widget_set(w, values[cle])
         self.lbl_preset_summary.setText(self._preset_summary(values))
         self.lbl_preset_summary.setVisible(True)
+
 
     def _on_champ_manuel_modifie(self, *_args):
         """Masque le résumé du préréglage dès qu'un champ qu'il décrit est
@@ -16997,8 +17135,10 @@ class TaskPanelCurved:
         self.combo_style.setToolTip(
             "Trait plein : trait continu net, au foyer.\n"
             "Tirets : faisceau pulsé le long du tracé (mouvement continu).\n"
-            "Pointillé : vrais points ronds -- arrêt + pulse à chaque point\n"
-            "(plus lent). Vague défocus : le Z oscille entre le foyer et\n"
+            "Pointillé : vrais points ronds -- un MICRO-TRAIT par point,\n"
+            "jamais un pulse à l'arrêt (à l'arrêt la puissance tombe à\n"
+            "zéro et rien ne grave). Plus lent qu'un trait continu.\n"
+            "Vague défocus : le Z oscille entre le foyer et\n"
             "l'amplitude ci-dessous AU-DESSUS du suivi de relief -- trait\n"
             "qui varie continûment en largeur et en intensité.\n"
             "Défocus (point élargi) : trait continu gravé plus HAUT que le\n"
@@ -17071,8 +17211,11 @@ class TaskPanelCurved:
         self.spn_dot_dwell.setValue(50.0)
         self.spn_dot_dwell.setSuffix(" ms")
         self.spn_dot_dwell.setToolTip(
-            "Durée du pulse laser sur chaque point (style Pointillé). La\n"
-            "machine s'arrête à chaque point : job nettement plus lent.")
+            "Temps de pose de chaque point (style Pointillé) : il est\n"
+            "reproduit par la VITESSE d'un micro-trait, pas par un arrêt\n"
+            "-- à l'arrêt la puissance tombe à zéro et le point ne grave\n"
+            "rien. Un déplacement par point : job nettement plus lent\n"
+            "qu'un trait continu.")
         form.addRow("Durée du pulse :", self.spn_dot_dwell)
 
         self.spn_wave_period = QtWidgets.QDoubleSpinBox()
@@ -17798,63 +17941,36 @@ class TaskPanelCurved:
         self.combo_preset.blockSignals(False)
 
     def _on_preset_selected(self, index):
+        """Recharge un préréglage -- MÊME LISTE que la mémorisation de
+        session, jamais une seconde tenue à la main.
+
+        Elles étaient deux, et la seconde avait pris du retard : le
+        décalage de surface et les deux champs du « ton sur mesure »
+        étaient mémorisés d'une session à l'autre sans jamais entrer dans
+        un préréglage nommé. Le balayage de la v2.99.2 avait justement
+        trouvé ces deux-là et ne les avait ajoutés qu'à `_last_fields`."""
         if index <= 0:
             return
         values = core.load_presets("curved").get(self.combo_preset.currentText())
         if not values:
             return
-        self.spn_power.setValue(values.get("power", self.spn_power.value()))
-        self.spn_feed.setValue(values.get("feed", self.spn_feed.value()))
-        self.combo_style.setCurrentIndex(values.get("style", self.combo_style.currentIndex()))
-        self.spn_dash_len.setValue(values.get("dash_len", self.spn_dash_len.value()))
-        self.spn_gap_len.setValue(values.get("gap_len", self.spn_gap_len.value()))
-        self.spn_dot_spacing.setValue(values.get("dot_spacing", self.spn_dot_spacing.value()))
-        self.spn_dot_dwell.setValue(values.get("dot_dwell_ms", self.spn_dot_dwell.value()))
-        self.spn_wave_period.setValue(values.get("wave_period", self.spn_wave_period.value()))
-        self.spn_wave_width.setValue(values.get("wave_width", self.spn_wave_width.value()))
-        self.spn_spot_width.setValue(values.get("spot_width", self.spn_spot_width.value()))
-        self.spn_deg_angle.setValue(values.get("deg_angle", self.spn_deg_angle.value()))
-        self.spn_deg_w0.setValue(values.get("deg_w0", self.spn_deg_w0.value()))
-        self.spn_deg_w1.setValue(values.get("deg_w1", self.spn_deg_w1.value()))
-        self.combo_deg_boucle.setCurrentIndex(
-            values.get("deg_boucle", self.combo_deg_boucle.currentIndex()))
-        self.spn_deg_s0.setValue(values.get("deg_s0", self.spn_deg_s0.value()))
-        self.spn_deg_s1.setValue(values.get("deg_s1", self.spn_deg_s1.value()))
-        self.chk_deg_s.setChecked(bool(values.get(
-            "deg_s_rampe", self.chk_deg_s.isChecked())))
-        self._fluence["chk"].setChecked(values.get("fluence_on", self._fluence["chk"].isChecked()))
-        self._fluence["ref_power"].setValue(values.get("ref_power", self._fluence["ref_power"].value()))
-        self._fluence["ref_feed"].setValue(values.get("ref_feed", self._fluence["ref_feed"].value()))
-        self._fluence["ref_spot"].setValue(values.get("ref_spot", self._fluence["ref_spot"].value()))
+        for cle, w in self._last_fields.items():
+            if cle in values:
+                _widget_set(w, values[cle])
+        self._update_style_ui()
+        self._update_duration_preview()
+
 
     def _on_save_preset(self):
         name, ok = QtWidgets.QInputDialog.getText(self.form, "Sauvegarder le préréglage", "Nom du préréglage :")
         name = name.strip()
         if not ok or not name:
             return
-        core.save_preset("curved", name, {
-            "power": self.spn_power.value(),
-            "feed": self.spn_feed.value(),
-            "style": self.combo_style.currentIndex(),
-            "dash_len": self.spn_dash_len.value(),
-            "gap_len": self.spn_gap_len.value(),
-            "dot_spacing": self.spn_dot_spacing.value(),
-            "dot_dwell_ms": self.spn_dot_dwell.value(),
-            "wave_period": self.spn_wave_period.value(),
-            "wave_width": self.spn_wave_width.value(),
-            "spot_width": self.spn_spot_width.value(),
-            "deg_angle": self.spn_deg_angle.value(),
-            "deg_w0": self.spn_deg_w0.value(),
-            "deg_w1": self.spn_deg_w1.value(),
-            "deg_boucle": self.combo_deg_boucle.currentIndex(),
-            "deg_s0": self.spn_deg_s0.value(),
-            "deg_s1": self.spn_deg_s1.value(),
-            "deg_s_rampe": self.chk_deg_s.isChecked(),
-            "fluence_on": self._fluence["chk"].isChecked(),
-            "ref_power": self._fluence["ref_power"].value(),
-            "ref_feed": self._fluence["ref_feed"].value(),
-            "ref_spot": self._fluence["ref_spot"].value(),
-        })
+        # L'instantané vient de `_last_fields` : une seule liste, cf.
+        # `_on_preset_selected`.
+        core.save_preset("curved", name,
+                         {cle: _widget_get(w)
+                          for cle, w in self._last_fields.items()})
         self._populate_preset_combo()
         idx = self.combo_preset.findText(name)
         if idx >= 0:
@@ -18425,7 +18541,12 @@ class TaskPanelFlat:
             "zoverride": self.chk_zoverride, "zstart": self.spn_zstart,
             "use_finish": self.chk_finish, "finish_feed": self.spn_finish_feed,
             "use_power_ramp": self.chk_power_ramp, "power_end": self.spn_power_end,
-            "kerf": self.spn_kerf, "hole_first": self.chk_hole_first,
+            # « kerf_width » ET NON « kerf » : le préréglage et les
+            # préréglages déjà enregistrés emploient ce nom-là. Deux
+            # noms pour une même valeur, c'est ce qui laisse deux
+            # listes diverger. (Une config plus ancienne portait
+            # « kerf » : le champ reprend alors son défaut.)
+            "kerf_width": self.spn_kerf, "hole_first": self.chk_hole_first,
             "proximity": self.chk_proximity,
             "tab_count": self.spn_tab_count, "tab_length": self.spn_tab_length,
             "tab_height": self.spn_tab_height, "lead_in": self.spn_lead_in,
@@ -18450,45 +18571,35 @@ class TaskPanelFlat:
         self.combo_preset.blockSignals(False)
 
     def _on_preset_selected(self, index):
+        """Recharge un préréglage -- MÊME LISTE que la mémorisation de
+        session, jamais une seconde tenue à la main.
+
+        Elles étaient deux, et la seconde avait pris huit réglages de
+        retard : l'ordre « trous d'abord », l'optimisation par proximité,
+        le Z de départ forcé et les quatre champs des copies en matrice
+        étaient mémorisés d'une session à l'autre sans jamais entrer dans
+        un préréglage nommé. Les copies décident du NOMBRE de pièces
+        débitées ; « trous d'abord » décide qu'une pièce ne se détache pas
+        avant que son trou soit percé."""
         if index <= 0:
             return
         values = core.load_presets("flat").get(self.combo_preset.currentText())
         if not values:
             return
-        self.spn_power.setValue(values.get("power", self.spn_power.value()))
-        self.spn_feed.setValue(values.get("feed", self.spn_feed.value()))
-        self.spn_thickness.setValue(values.get("thickness", self.spn_thickness.value()))
-        self.spn_passes.setValue(values.get("n_passes", self.spn_passes.value()))
-        self.chk_finish.setChecked(values.get("use_finish", False))
-        self.spn_finish_feed.setValue(values.get("finish_feed", self.spn_finish_feed.value()))
-        self.chk_power_ramp.setChecked(values.get("use_power_ramp", False))
-        self.spn_power_end.setValue(values.get("power_end", self.spn_power_end.value()))
-        self.spn_kerf.setValue(values.get("kerf_width", self.spn_kerf.value()))
-        self.spn_tab_count.setValue(values.get("tab_count", self.spn_tab_count.value()))
-        self.spn_tab_length.setValue(values.get("tab_length", self.spn_tab_length.value()))
-        self.spn_tab_height.setValue(values.get("tab_height", self.spn_tab_height.value()))
-        self.spn_lead_in.setValue(values.get("lead_in", self.spn_lead_in.value()))
+        for cle, w in self._last_fields.items():
+            if cle in values:
+                _widget_set(w, values[cle])
 
     def _on_save_preset(self):
         name, ok = QtWidgets.QInputDialog.getText(self.form, "Sauvegarder le préréglage", "Nom du préréglage :")
         name = name.strip()
         if not ok or not name:
             return
-        core.save_preset("flat", name, {
-            "power": self.spn_power.value(),
-            "feed": self.spn_feed.value(),
-            "thickness": self.spn_thickness.value(),
-            "n_passes": self.spn_passes.value(),
-            "use_finish": self.chk_finish.isChecked(),
-            "finish_feed": self.spn_finish_feed.value(),
-            "use_power_ramp": self.chk_power_ramp.isChecked(),
-            "power_end": self.spn_power_end.value(),
-            "kerf_width": self.spn_kerf.value(),
-            "tab_count": self.spn_tab_count.value(),
-            "tab_length": self.spn_tab_length.value(),
-            "tab_height": self.spn_tab_height.value(),
-            "lead_in": self.spn_lead_in.value(),
-        })
+        # L'instantané vient de `_last_fields` : une seule liste, cf.
+        # `_on_preset_selected`.
+        core.save_preset("flat", name,
+                         {cle: _widget_get(w)
+                          for cle, w in self._last_fields.items()})
         self._populate_preset_combo()
         idx = self.combo_preset.findText(name)
         if idx >= 0:
@@ -18876,7 +18987,10 @@ class TaskPanelCurvedCut:
             "thickness": self.spn_thickness, "n_passes": self.spn_passes,
             "use_finish": self.chk_finish, "finish_feed": self.spn_finish_feed,
             "use_power_ramp": self.chk_power_ramp, "power_end": self.spn_power_end,
-            "kerf": self.spn_kerf, "hole_first": self.chk_hole_first,
+            # « kerf_width » comme le préréglage et comme la découpe à
+            # plat : deux noms pour une valeur, c'est ce qui laisse deux
+            # listes diverger.
+            "kerf_width": self.spn_kerf, "hole_first": self.chk_hole_first,
             "proximity": self.chk_proximity,
         }
         _restore_last_values("curved_cut", self._last_fields, selection=self.selection)
@@ -18911,41 +19025,30 @@ class TaskPanelCurvedCut:
         self.combo_preset.blockSignals(False)
 
     def _on_preset_selected(self, index):
+        """Recharge un préréglage -- MÊME LISTE que la mémorisation de
+        session. Elle en avait deux, et la seconde oubliait l'ordre
+        « trous d'abord » et l'optimisation par proximité : le premier
+        décide qu'une pièce ne se détache pas avant que son trou soit
+        percé, ce qui n'est pas un détail sur du relief."""
         if index <= 0:
             return
         values = core.load_presets("curved_cut").get(self.combo_preset.currentText())
         if not values:
             return
-        self.spn_power.setValue(values.get("power", self.spn_power.value()))
-        self.spn_feed.setValue(values.get("feed", self.spn_feed.value()))
-        self.spn_zfocus.setValue(values.get("z_focus", self.spn_zfocus.value()))
-        self.spn_marge.setValue(values.get("marge", self.spn_marge.value()))
-        self.spn_thickness.setValue(values.get("thickness", self.spn_thickness.value()))
-        self.spn_passes.setValue(values.get("n_passes", self.spn_passes.value()))
-        self.chk_finish.setChecked(values.get("use_finish", False))
-        self.spn_finish_feed.setValue(values.get("finish_feed", self.spn_finish_feed.value()))
-        self.chk_power_ramp.setChecked(values.get("use_power_ramp", False))
-        self.spn_power_end.setValue(values.get("power_end", self.spn_power_end.value()))
-        self.spn_kerf.setValue(values.get("kerf_width", self.spn_kerf.value()))
+        for cle, w in self._last_fields.items():
+            if cle in values:
+                _widget_set(w, values[cle])
 
     def _on_save_preset(self):
         name, ok = QtWidgets.QInputDialog.getText(self.form, "Sauvegarder le préréglage", "Nom du préréglage :")
         name = name.strip()
         if not ok or not name:
             return
-        core.save_preset("curved_cut", name, {
-            "power": self.spn_power.value(),
-            "feed": self.spn_feed.value(),
-            "z_focus": self.spn_zfocus.value(),
-            "marge": self.spn_marge.value(),
-            "thickness": self.spn_thickness.value(),
-            "n_passes": self.spn_passes.value(),
-            "use_finish": self.chk_finish.isChecked(),
-            "finish_feed": self.spn_finish_feed.value(),
-            "use_power_ramp": self.chk_power_ramp.isChecked(),
-            "power_end": self.spn_power_end.value(),
-            "kerf_width": self.spn_kerf.value(),
-        })
+        # L'instantané vient de `_last_fields` : une seule liste, cf.
+        # `_on_preset_selected`.
+        core.save_preset("curved_cut", name,
+                         {cle: _widget_get(w)
+                          for cle, w in self._last_fields.items()})
         self._populate_preset_combo()
         idx = self.combo_preset.findText(name)
         if idx >= 0:
@@ -20507,6 +20610,41 @@ class TaskPanelSettings:
             "Hauteur du cône (au-dessus : cylindre au diamètre du sommet).")
         form.addRow("Bec : hauteur du cône :", self.spn_nozzle_height)
 
+        # LES CHAMPS QUI APPARTIENNENT AU LASER, nommés UNE fois.
+        #
+        # `_reload_active_laser_fields` tenait sa propre liste, et elle avait
+        # pris du retard : sur les seize clés de `core.PER_LASER_KEYS`, elle
+        # en rejouait neuf. Basculer de laser puis valider écrasait donc le
+        # profil du second par les valeurs du premier -- mesuré : surface de
+        # travail 400 -> 1200 mm, « machine sans axe Z » décoché, air M8 ->
+        # M7, étiquettes S300 -> S600.
+        #
+        # Ce sont précisément les réglages qui décrivent une MACHINE. La
+        # surface sert au garde-fou qui empêche « un motif dessiné pour une
+        # grande table de partir droit dans les butées d'une petite » ; sans
+        # axe Z décoché remet des mots Z sur une machine qui n'en a pas ;
+        # l'air bascule sur la sortie qui n'est pas câblée.
+        #
+        # La carte est parcourue depuis `core.PER_LASER_KEYS` : une clé
+        # ajoutée là-bas ne peut plus être oubliée ici, elle est simplement
+        # sans widget (`mire_power`, `mire_feed`) et sautée.
+        self._champs_laser = {
+            "laser_tool": self.spn_laser_tool,
+            "s_max": self.spn_s_max,
+            "spot_focus_mm": self.spn_spot_focus,
+            "spot_test_defocus_mm": self.spn_spot_zdefocus,
+            "spot_test_diameter_mm": self.spn_spot_dtest,
+            "z_work_mm": self.spn_zwork_default,
+            "frame_power": self.spn_frame_power,
+            "label_power": self.spn_label_power,
+            "label_feed": self.spn_label_feed,
+            "gcode_dialect": self.combo_dialect,
+            "machine_sans_axe_z": self.chk_sans_z,
+            "assistance_air": self.combo_air,
+            "surface_travail_x_mm": self.spn_surface_x,
+            "surface_travail_y_mm": self.spn_surface_y,
+        }
+
         lbl = _WrapLabel(
             "Enregistré dans laser_atelier_config.json et appliqué\n"
             "immédiatement (les panneaux déjà ouverts gardent leurs\n"
@@ -20542,19 +20680,21 @@ class TaskPanelSettings:
         self.combo_laser.blockSignals(False)
 
     def _reload_active_laser_fields(self):
-        """Recharge les champs PAR laser après une bascule de profil."""
+        """Recharge les champs PAR laser après une bascule de profil.
+
+        Parcourt `core.PER_LASER_KEYS`, jamais une liste recopiée : cf.
+        `self._champs_laser`."""
         s = core.current_settings()
         n = core.current_nozzle()
-        idx_d = self.combo_dialect.findData(s.get("gcode_dialect", "linuxcnc"))
-        self.combo_dialect.setCurrentIndex(max(0, idx_d))
+        for cle in core.PER_LASER_KEYS:
+            widget = self._champs_laser.get(cle)
+            if widget is not None and cle in s:
+                _widget_set(widget, s[cle])
+        # `puissance_par_m67` n'est PAS dans PER_LASER_KEYS : c'est un
+        # réglage de machine, commun aux profils. On le relit quand même
+        # pour que le champ reflète la config, mais il ne change pas d'un
+        # laser à l'autre.
         self.chk_m67.setChecked(bool(s.get("puissance_par_m67", False)))
-        self.spn_laser_tool.setValue(int(s["laser_tool"]))
-        self.spn_s_max.setValue(s["s_max"])
-        self.spn_frame_power.setValue(s["frame_power"])
-        self.spn_spot_focus.setValue(s["spot_focus_mm"])
-        self.spn_spot_zdefocus.setValue(s["spot_test_defocus_mm"])
-        self.spn_spot_dtest.setValue(s["spot_test_diameter_mm"])
-        self.spn_zwork_default.setValue(s["z_work_mm"])
         self.spn_nozzle_bottom.setValue(n["bottom_diameter_mm"])
         self.spn_nozzle_top.setValue(n["top_diameter_mm"])
         self.spn_nozzle_height.setValue(n["height_mm"])
