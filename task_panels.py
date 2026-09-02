@@ -19757,9 +19757,14 @@ class TaskPanelCombined:
                 FreeCAD.Console.PrintMessage(
                     "Job combiné : réglages repris depuis {} job(s) -- {}.\n"
                     .format(len(repris), ", ".join(repris)))
-            for motif in laisses:
+            # LES PHRASES ARRIVENT ENTIÈRES DE LA REPRISE.
+            # Les habiller ici d'un « gardée telle quelle » revenait à
+            # décider de leur sens depuis l'endroit qui ne le connaît pas :
+            # une opération reprise après renommage s'affichait « gardée
+            # telle quelle » juste sous l'annonce de sa reprise.
+            for phrase in laisses:
                 FreeCAD.Console.PrintMessage(
-                    "Job combiné : « {} » gardée telle quelle.\n".format(motif))
+                    "Job combiné : {}.\n".format(phrase))
         except Exception as exc:
             FreeCAD.Console.PrintWarning(
                 "Job combiné : réglages non repris ({}) -- les opérations "

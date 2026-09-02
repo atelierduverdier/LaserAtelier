@@ -174,6 +174,17 @@ def rafraichir_calques(doc, ignorer=None):
     if doc is None:
         return {}
     par_forme = {}
+    # LES FORMES DU JOB ÉCARTÉ ENTRENT DANS L'ARBITRAGE, LUI NON. Sans cette
+    # amorce elles n'y entraient QUE si un autre job les visait encore : la
+    # forme d'un job supprimé qui était son SEUL job n'était jamais repeinte
+    # et gardait sa couleur, alors que `onDelete` dit précisément vouloir
+    # empêcher qu'« un calque supprimé continue de s'afficher allumé ».
+    # Mesuré le 02/09/2026 : zéro repeint pour la forme orpheline. Amorcée à
+    # vide, elle n'a plus aucun job coché, donc elle s'éteint -- exactement
+    # comme si on avait décoché le dernier.
+    for src in (getattr(ignorer, "Sources", None) or []):
+        if src is not None:
+            par_forme.setdefault(src, [])
     for o in doc.Objects:
         if not _est_job(o) or o is ignorer:
             continue
@@ -185,6 +196,7 @@ def rafraichir_calques(doc, ignorer=None):
                 par_forme.setdefault(src, []).append(
                     (mode, bool(getattr(o, "Grave", True))))
     partagees = {}
+    ordre = ordre_calques()
     for src, jobs in par_forme.items():
         actifs = [m for m, g in jobs if g]
         if len(jobs) > 1:
@@ -199,18 +211,16 @@ def rafraichir_calques(doc, ignorer=None):
         # Deux canaux, deux jobs : la surface dit ce qu'on noircit, le trait
         # dit ce qu'on parcourt. On les voit ENSEMBLE au lieu de l'un ou
         # l'autre.
-        gagnant = next((m for m in PRIORITE_CALQUE
-                        if m in actifs and m not in MODES_HORS_TRAIT), None)
-        if gagnant is None:
-            # Aucun job de trait : le remplissage ou les hachures reprennent
-            # le contour, faute de quoi la forme paraîtrait éteinte alors
-            # qu'elle sera bel et bien gravée.
-            gagnant = next((m for m in PRIORITE_CALQUE if m in actifs), None)
+        # Aucun job de trait ? le remplissage ou les hachures reprennent le
+        # contour, faute de quoi la forme paraîtrait éteinte alors qu'elle
+        # sera bel et bien gravée -- c'est la queue de `ordre_calques`.
+        gagnant = next((m for m in ordre if m in actifs), None)
         _peindre(src, gagnant)
     # Les surfaces d'aperçu suivent la case : on ne REBÂTIT pas ici (0,17 s
     # par texte), on ne fait que montrer ou cacher.
     for o in doc.Objects:
-        if _est_job(o) and getattr(o, "Mode", "") in MODES_APERCU_PLEIN:
+        if (_est_job(o) and o is not ignorer
+                and getattr(o, "Mode", "") in MODES_APERCU_PLEIN):
             _apercu_calque(o)
     return partagees
 
@@ -266,6 +276,22 @@ MODES_APERCU_PLEIN = ("filled",)
 # Il reste donc au trait ce qui n'existe QUE comme parcours sur la forme :
 # le marquage et les deux découpes.
 MODES_HORS_TRAIT = ("filled", "hatch")
+
+
+def ordre_calques():
+    """L'ordre RÉELLEMENT appliqué quand plusieurs jobs se partagent une
+    forme : les modes de TRAIT d'abord, dans l'ordre de conséquence, puis
+    ceux qui ont leur propre géométrie.
+
+    UNE SEULE LISTE, PARCE QU'ELLES ÉTAIENT DEUX. L'arbitrage se faisait en
+    deux passes sur `PRIORITE_CALQUE` (trait d'abord, le reste ensuite)
+    tandis que `_dire_disputees` annonçait `PRIORITE_CALQUE` telle quelle :
+    sur un texte portant un remplissage ET un marquage, le message promettait
+    la Gravure remplie et l'écran montrait le Marquage. Mesuré le 02/09/2026.
+    Deux endroits répondaient à la même question ; il n'en reste qu'un."""
+    return tuple([m for m in PRIORITE_CALQUE if m not in MODES_HORS_TRAIT]
+                 + [m for m in PRIORITE_CALQUE if m in MODES_HORS_TRAIT])
+
 
 PROP_APERCU = "LaserAtelierApercuCalque"
 TRANSPARENCE_APERCU = 35
@@ -419,6 +445,7 @@ def colorer_sources(job):
                for s in (getattr(job, "Sources", None) or []) if s is not None}
     return sorted(set(partagees) & miennes)
 
+
 class JobLaser:
     """Proxy App::FeaturePython du Job : un signet, rien à recalculer."""
 
@@ -511,6 +538,31 @@ class VueJobLaser:
         return None
 
 
+def _reselectionner(job, sources):
+    """Re-sélectionne les sources du job dans la vue 3D et renvoie la
+    sélection enrichie -- celle que les panneaux lisent à leur construction.
+
+    La source principale part avec ses SOUS-ÉLÉMENTS si le job en porte
+    (plusieurs recettes sur un même sketch/SVG), entière sinon.
+
+    UN SEUL EXEMPLAIRE. Le double-clic et le job combiné faisaient ce geste
+    chacun de son côté, mot pour mot, et l'un des deux le disait déjà en
+    commentaire : « même re-sélection que le double-clic ». Deux copies d'un
+    geste tiennent jusqu'au jour où l'une des deux change."""
+    import FreeCADGui as Gui
+    Gui.Selection.clearSelection()
+    principal = sources[0]
+    sous = list(getattr(job, "SousElements", None) or [])
+    if sous:
+        for sub in sous:
+            Gui.Selection.addSelection(principal, sub)
+    else:
+        Gui.Selection.addSelection(principal)
+    for s in sources[1:]:
+        Gui.Selection.addSelection(s)
+    return Gui.Selection.getSelectionEx()
+
+
 def ouvrir_job(job):
     """Re-sélectionne les sources du Job et rouvre le panneau de son mode,
     pré-rempli avec les réglages portés par la forme (niveau 1)."""
@@ -525,20 +577,7 @@ def ouvrir_job(job):
             "Job « {} » : plus aucune source (forme supprimée ?) -- "
             "impossible de rouvrir le panneau.\n".format(job.Label))
         return
-    import FreeCADGui as Gui
-    Gui.Selection.clearSelection()
-    # Source principale : re-sélectionnée avec ses SOUS-ÉLÉMENTS si le job
-    # en porte (plusieurs recettes sur un même sketch/SVG), entière sinon.
-    principal = sources[0]
-    sous = list(getattr(job, "SousElements", None) or [])
-    if sous:
-        for sub in sous:
-            Gui.Selection.addSelection(principal, sub)
-    else:
-        Gui.Selection.addSelection(principal)
-    for s in sources[1:]:
-        Gui.Selection.addSelection(s)
-    selection = Gui.Selection.getSelectionEx()
+    selection = _reselectionner(job, sources)
     import commands
     import task_panels
     panneau = getattr(task_panels, MODES[mode][2])
@@ -730,28 +769,35 @@ def ajouter_jobs_au_combine(jobs):
         # DÉCOCHÉ = PAS GRAVÉ. `getattr` avec True par défaut : les Jobs
         # d'avant la v2.93 n'ont pas la propriété, et un ancien document
         # doit continuer à tout graver.
+        #
+        # ET ON RETIRE L'OPÉRATION DÉJÀ EMPILÉE. Refuser l'ajout ne suffisait
+        # pas : un job ajouté COCHÉ puis décoché gardait son opération dans
+        # le job combiné, `rafraichir_operations` annonçait « gardée telle
+        # quelle » et le fichier gravait la forme qu'on venait d'exclure.
+        # Mesuré le 02/09/2026. C'est la promesse même de la case -- « Inclure
+        # ce job dans le job combiné » -- et elle ne peut pas valoir à
+        # l'ajout seulement. La règle vit ICI, en un seul endroit, pour que
+        # les deux chemins (bouton « Jobs -> combiné » et reprise des
+        # réglages) l'appliquent forcément pareil.
         if not bool(getattr(job, "Grave", True)):
-            ignores.append("{} (décoché)".format(job.Label))
+            retires = [o for o in task_panels._COMBINED_OPS
+                       if o.get("job") == job.Name]
+            for o in retires:
+                task_panels._COMBINED_OPS.remove(o)
+            ignores.append("{} (décoché{})".format(
+                job.Label,
+                " -- opération retirée du job combiné" if retires else ""))
             continue
         sources = [o for o in (getattr(job, "Sources", None) or [])
                    if o is not None]
         if not sources:
             ignores.append("{} (forme source supprimée)".format(job.Label))
             continue
-        # Même re-sélection que le double-clic : le panneau se pré-remplit
-        # avec la recette de la forme, puis on capture son opération.
-        Gui.Selection.clearSelection()
-        principal = sources[0]
-        sous = list(getattr(job, "SousElements", None) or [])
-        if sous:
-            for sub in sous:
-                Gui.Selection.addSelection(principal, sub)
-        else:
-            Gui.Selection.addSelection(principal)
-        for s in sources[1:]:
-            Gui.Selection.addSelection(s)
+        # Même re-sélection que le double-clic -- la MÊME, désormais : le
+        # panneau se pré-remplit avec la recette de la forme, puis on
+        # capture son opération.
         try:
-            panneau = panneau_cls(Gui.Selection.getSelectionEx())
+            panneau = panneau_cls(_reselectionner(job, sources))
             op = panneau._build_combined_operation()
         except Exception as exc:
             ignores.append("{} ({})".format(job.Label, exc))
@@ -808,40 +854,53 @@ def rafraichir_operations(ops, doc=None):
     combinés, cela ne le prend pas en compte ». Il aurait gravé l'ANCIEN
     réglage -- une planche perdue, découverte sur le bois.
 
-    Renvoie (labels repris, labels laissés tels quels avec la raison)."""
+    Renvoie (labels repris, phrases toutes faites sur le SORT des autres).
+    Des phrases, et non des motifs à habiller : l'appelant les enrobait d'un
+    « gardée telle quelle » qui ne convenait pas à tous -- une opération
+    renommée venait d'être reprise, une opération décochée venait d'être
+    retirée, et l'écran affirmait des deux qu'on n'y avait pas touché."""
     import FreeCAD as _fc
     doc = doc or _fc.ActiveDocument
     if doc is None:
         return [], []
     par_nom = {o.Name: o for o in doc.Objects if _est_job(o)}
     repris, laisses = [], []
-    for i, op in enumerate(list(ops)):
+    for op in list(ops):
         nom = op.get("job")
         if not nom:
-            laisses.append("{} (ajoutée depuis son mode, sans job)"
-                           .format(op.get("label", "?")))
+            laisses.append("« {} » gardée telle quelle (ajoutée depuis son "
+                           "mode, sans job)".format(op.get("label", "?")))
             continue
         job = par_nom.get(nom)
         if job is None:
-            laisses.append("{} (son job a été supprimé)"
-                           .format(op.get("label", "?")))
+            laisses.append("« {} » gardée telle quelle (son job a été "
+                           "supprimé)".format(op.get("label", "?")))
             continue
         avant = len(ops)
         ajoutes, ignores = ajouter_jobs_au_combine([job])
-        # Le job a pu être RENOMMÉ depuis l'ajout : l'opération porte
-        # maintenant l'étiquette du jour, la liste doit le montrer.
-        if ajoutes and op.get("label") != job.Label:
-            laisses.append("{} → renommé « {} »".format(
-                op.get("label", "?"), job.Label))
         if ajoutes:
             repris.append(job.Label)
+            # Le job a pu être RENOMMÉ depuis l'ajout : l'opération porte
+            # maintenant l'étiquette du jour, la liste doit le montrer.
+            if op.get("label") != job.Label:
+                laisses.append("« {} » renommée « {} »".format(
+                    op.get("label", "?"), job.Label))
         else:
-            laisses.append(ignores[0] if ignores else job.Label)
-        # `ajouter_jobs_au_combine` REMPLACE l'opération de même label : la
+            # GARDÉE OU RETIRÉE, ON LE CONSTATE. `ajouter_jobs_au_combine`
+            # retire l'opération d'un job décoché et le dit dans son motif ;
+            # pour tous les autres refus l'opération reste, et c'est cela
+            # qu'il faut annoncer. On regarde la liste plutôt que de rejouer
+            # la règle ici : une règle recopiée finit par diverger.
+            motif = ignores[0] if ignores else job.Label
+            if any(o is op for o in ops):
+                motif += " -- opération gardée telle quelle"
+            laisses.append(motif)
+        # `ajouter_jobs_au_combine` REMPLACE l'opération de même job : la
         # liste ne doit pas avoir grandi, sinon on empilerait des doublons.
         if len(ops) > avant:
             del ops[avant:]
-            laisses.append("{} (remplacement impossible)".format(job.Label))
+            laisses.append("« {} » : doublon retiré (remplacement impossible)"
+                           .format(job.Label))
     return repris, laisses
 
 
@@ -884,7 +943,7 @@ def _dire_disputees(job, labels):
         "et celui d'en dessous apparaît. Tous les jobs cochés sont gravés ; "
         "c'est l'affichage qui ne sait montrer qu'une couleur à la "
         "fois.\n".format(", ".join(labels),
-                          " > ".join(MODES[m][0] for m in PRIORITE_CALQUE
+                          " > ".join(MODES[m][0] for m in ordre_calques()
                                      if m in MODES)))
 
 
