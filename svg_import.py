@@ -458,6 +458,12 @@ def parse_length_mm(s):
     unit = s[m.end():].strip().lower()
     if unit == "%":
         raise SvgParseError("longueur en % non prise en charge")
+    # SANS SUFFIXE, ce sont des unités utilisateur : px CSS à 96 dpi, et
+    # c'est la règle. Avec un suffixe INCONNU (« 10em », « 10qq »), le
+    # repli silencieux sur px inventait une taille : on refuse, et
+    # compute_svg_scale se rabat alors sur l'autre attribut.
+    if unit and unit not in _MM_PER_UNIT:
+        raise SvgParseError("unité de longueur inconnue : {!r}".format(unit))
     return value * _MM_PER_UNIT.get(unit, 25.4 / 96.0)
 
 
@@ -480,13 +486,27 @@ def compute_svg_scale(root):
     if vb is None:
         return default, 0.0, 0.0, None
     minx, miny, vbw, vbh = vb
+    # LE PLUS PETIT DES DEUX RAPPORTS, et non le premier trouvé. Quand
+    # width et height ne concordent pas avec le viewBox, le SVG applique
+    # preserveAspectRatio="xMidYMid meet" par défaut : il RÉDUIT pour
+    # faire tenir. Prendre celui de width -- testé en premier -- rendait
+    # une échelle de 1,000 là où la norme dit 0,500 sur un viewBox 100×100
+    # affiché en 100 × 50 mm : le dessin arrivait DEUX FOIS TROP GRAND, et
+    # se gravait à cette taille sans qu'un mot le signale.
+    rapports = []
     for attr, vb_dim in (("width", vbw), ("height", vbh)):
         raw = root.get(attr)
         if raw:
             try:
-                return parse_length_mm(raw) / vb_dim, minx, miny, vbh
+                rapports.append(parse_length_mm(raw) / vb_dim)
             except SvgParseError:
                 continue
+    # `> 0` N'EST PAS DÉCORATIF : `width="0"` rendait une échelle nulle, et
+    # parse_svg_root divisait par elle -- ZeroDivisionError, tout l'import
+    # perdu sur un seul attribut aberrant. Écarté, on retombe sur le défaut.
+    rapports = [r for r in rapports if r > 0]
+    if rapports:
+        return min(rapports), minx, miny, vbh
     return default, minx, miny, vbh
 
 
@@ -551,8 +571,14 @@ def _style_prop(style_attr, prop):
 
 
 def own_fill_string(elem):
-    """Remplissage propre à l'élément (style= prioritaire sur fill=)."""
-    return _style_prop(elem.get("style"), "fill") or elem.get("fill")
+    """Remplissage propre à l'élément (style= prioritaire sur fill=).
+
+    Une valeur VIDE (`fill=""`) n'est pas une valeur : sans ce filtre,
+    le `or` la confondait avec l'absence et faisait hériter du parent."""
+    for v in (_style_prop(elem.get("style"), "fill"), elem.get("fill")):
+        if v is not None and str(v).strip():
+            return v
+    return None
 
 
 def own_stroke_string(elem):
@@ -576,6 +602,109 @@ def resolve_fill_color(elem, inherited_fill):
             return parse_color(stroke) or (0.0, 0.0, 0.0)
         return (0.0, 0.0, 0.0)
     return parse_color(raw) or (0.0, 0.0, 0.0)
+
+
+# ==========================================================================
+# D bis. LES FORMES QUI NE SONT PAS DES <path>
+# ==========================================================================
+# Seul <path> était lu. Les six autres formes de base du SVG -- rect,
+# circle, ellipse, line, polyline, polygon -- tombaient dans la branche
+# « balise inconnue mais inoffensive » et n'en ressortaient jamais : ni
+# géométrie, ni avertissement. Mesuré sur un fichier portant les sept
+# formes : 1 tracé importé sur 7, zéro avertissement. Un fichier tout en
+# rectangles n'importait RIEN ; un fichier mixte arrivait amputé sans que
+# rien ne le dise -- exactement ce que l'en-tête de ce module promet de ne
+# jamais faire.
+#
+# On les traduit en `d`, plutôt que de les signaler : la grammaire du `d`
+# est déjà là, éprouvée, et un rectangle rendu en quatre segments EST le
+# rectangle. La conversion vit dans la couche pure, donc s'éprouve sans
+# FreeCAD.
+
+
+def _nombre_attr(elem, nom, defaut=0.0):
+    """Un attribut numérique, ou le défaut s'il manque ou se lit mal."""
+    brut = elem.get(nom)
+    if brut is None or not str(brut).strip():
+        return defaut
+    m = _NUMBER_RE.match(str(brut).strip())
+    return float(m.group(0)) if m else defaut
+
+
+def _d_rect(elem):
+    """Un <rect>, coins arrondis compris.
+
+    Les arrondis ne sont pas décoratifs : rendre un rectangle arrondi à
+    angles vifs serait une géométrie FAUSSE, et silencieuse."""
+    x, y = _nombre_attr(elem, "x"), _nombre_attr(elem, "y")
+    w, h = _nombre_attr(elem, "width"), _nombre_attr(elem, "height")
+    if w <= 0 or h <= 0:
+        return None
+    # Règle SVG : rx seul vaut ry, et réciproquement ; chacun est borné à
+    # la moitié du côté correspondant.
+    rx_brut, ry_brut = elem.get("rx"), elem.get("ry")
+    rx = _nombre_attr(elem, "rx", -1.0)
+    ry = _nombre_attr(elem, "ry", -1.0)
+    if rx_brut is None and ry_brut is None:
+        rx = ry = 0.0
+    elif rx < 0:
+        rx = ry
+    elif ry < 0:
+        ry = rx
+    rx, ry = max(0.0, min(rx, w / 2.0)), max(0.0, min(ry, h / 2.0))
+    if rx <= 0 or ry <= 0:
+        return "M{} {}H{}V{}H{}Z".format(x, y, x + w, y + h, x)
+    return ("M{} {}H{}A{} {} 0 0 1 {} {}V{}A{} {} 0 0 1 {} {}"
+            "H{}A{} {} 0 0 1 {} {}V{}A{} {} 0 0 1 {} {}Z").format(
+        x + rx, y, x + w - rx,
+        rx, ry, x + w, y + ry, y + h - ry,
+        rx, ry, x + w - rx, y + h, x + rx,
+        rx, ry, x, y + h - ry, y + ry,
+        rx, ry, x + rx, y)
+
+
+def _d_ellipse(cx, cy, rx, ry):
+    """Une ellipse en deux demi-arcs -- un seul arc de 360° est dégénéré."""
+    if rx <= 0 or ry <= 0:
+        return None
+    return ("M{} {}A{} {} 0 1 0 {} {}A{} {} 0 1 0 {} {}Z"
+            .format(cx - rx, cy, rx, ry, cx + rx, cy, rx, ry, cx - rx, cy))
+
+
+def _points_attr(elem):
+    """La liste `points` d'un <polyline>/<polygon>, en couples."""
+    vals = [float(v) for v in _NUMBER_RE.findall(elem.get("points") or "")]
+    return list(zip(vals[0::2], vals[1::2]))
+
+
+def forme_en_d(tag, elem):
+    """Traduit une forme de base en attribut `d`, ou None.
+
+    Rend None pour tout ce qui n'est pas une forme de base, et pour une
+    forme dégénérée (rayon nul, moins de deux points) -- l'appelant sait
+    alors qu'il n'y a rien à importer, sans avoir à le deviner."""
+    if tag == "rect":
+        return _d_rect(elem)
+    if tag == "circle":
+        r = _nombre_attr(elem, "r")
+        return _d_ellipse(_nombre_attr(elem, "cx"), _nombre_attr(elem, "cy"), r, r)
+    if tag == "ellipse":
+        return _d_ellipse(_nombre_attr(elem, "cx"), _nombre_attr(elem, "cy"),
+                          _nombre_attr(elem, "rx"), _nombre_attr(elem, "ry"))
+    if tag == "line":
+        return "M{} {}L{} {}".format(
+            _nombre_attr(elem, "x1"), _nombre_attr(elem, "y1"),
+            _nombre_attr(elem, "x2"), _nombre_attr(elem, "y2"))
+    if tag in ("polyline", "polygon"):
+        pts = _points_attr(elem)
+        if len(pts) < 2:
+            return None
+        d = "M{} {}".format(*pts[0]) + "".join("L{} {}".format(x, y) for x, y in pts[1:])
+        return d + "Z" if tag == "polygon" else d
+    return None
+
+
+FORMES_DE_BASE = ("rect", "circle", "ellipse", "line", "polyline", "polygon")
 
 
 # ==========================================================================
@@ -619,8 +748,16 @@ def _walk(elem, matrix, inherited_fill, tol, records, skipped,
             skipped[tag] += 1
             continue
         child_matrix = matrix_mul(matrix, parse_transform(child.get("transform")))
-        if tag == "path" and child.get("d"):
-            subpaths, warns = path_d_to_subpaths(child.get("d"), tol)
+        # Les formes de base deviennent un `d` : la grammaire du chemin est
+        # déjà là et éprouvée, et un rectangle rendu en quatre segments EST
+        # le rectangle. Une forme dégénérée (rayon nul, moins de deux
+        # points) rend None -- elle est alors comptée, non perdue en
+        # silence.
+        d_forme = child.get("d") if tag == "path" else forme_en_d(tag, child)
+        if tag in FORMES_DE_BASE and not d_forme:
+            skipped["_degenere"] += 1
+        if d_forme:
+            subpaths, warns = path_d_to_subpaths(d_forme, tol)
             if warns:
                 skipped["_malformed"] += len(warns)
             transformed = []
@@ -654,7 +791,7 @@ def parse_svg_root(root):
     le bas, FreeCAD vers le haut -- sans ce retournement le dessin gravé
     serait en miroir vertical par rapport à ce qu'affiche Inkscape."""
     scale, minx, miny, vbh = compute_svg_scale(root)
-    tol_user_units = FLATTEN_TOL_MM / scale
+    tol_user_units = FLATTEN_TOL_MM / abs(scale)
     if vbh is not None:
         initial = matrix_mul(matrix_scale(scale, -scale),
                              matrix_translate(-minx, -(miny + vbh)))
@@ -669,6 +806,9 @@ def parse_svg_root(root):
         if tag == "_malformed":
             warnings.append(
                 "{} tracé(s) partiellement illisible(s) (donnée malformée)".format(count))
+        elif tag == "_degenere":
+            warnings.append(
+                "{} forme(s) sans géométrie (rayon nul, largeur nulle…)".format(count))
         else:
             warnings.append("{} élément(s) <{}> ignoré(s) : {}".format(
                 count, tag, _UNSUPPORTED_LABELS.get(tag, "non pris en charge")))
@@ -873,8 +1013,16 @@ def _sommets(texte):
     return out
 
 
-def _chemin(forme, matrice):
-    """Le `d` d'un <Shape Type="Path">, déjà transformé."""
+def _chemin(forme, matrice, releve=None):
+    """Le `d` d'un <Shape Type="Path">, déjà transformé.
+
+    `releve` reçoit les points RÉELS du contour. Les bornes du dessin se
+    calculaient jusqu'ici en repêchant les nombres à la regex dans le `d`
+    déjà écrit : rayons et DRAPEAUX d'arc y entraient comme des
+    coordonnées. Sur une ellipse 5×3 centrée en (100, 200), cela donnait
+    x [0, 105] et y [1, 200] au lieu de x [95, 105] et y [197, 203] : le
+    canevas faisait 105 × 200 mm au lieu de 10 × 6, et le dessin partait
+    dans un coin."""
     sommets = _sommets(forme.findtext("VertList"))
     if not sommets:
         return None
@@ -906,8 +1054,12 @@ def _chemin(forme, matrice):
             continue
         if precedent != i:
             x, y = pt(i)
+            if releve is not None:
+                releve.append((x, y))
             morceaux.append("M{:.4f} {:.4f}".format(x, y))
         x, y = pt(j)
+        if releve is not None:
+            releve.append((x, y))
         if genre == "L":
             morceaux.append("L{:.4f} {:.4f}".format(x, y))
         else:
@@ -926,7 +1078,7 @@ def _chemin(forme, matrice):
     return "".join(morceaux)
 
 
-def _ellipse(forme, matrice):
+def _ellipse(forme, matrice, releve=None):
     """Une ellipse, rendue en deux arcs -- `transform` suffirait, mais un
     `d` autonome traverse mieux les lecteurs SVG minimalistes."""
     try:
@@ -946,21 +1098,25 @@ def _ellipse(forme, matrice):
     rx2 = ((ax - ox) ** 2 + (ay - oy) ** 2) ** 0.5
     ry2 = ((bx - ox) ** 2 + (by - oy) ** 2) ** 0.5
     (x1, y1), (x2, y2) = pts
+    if releve is not None:
+        # l'emprise réelle de l'ellipse transformée, pas ses paramètres
+        releve.extend([(ox - rx2, oy - ry2), (ox + rx2, oy + ry2)])
     return ("M{:.4f} {:.4f}A{:.4f} {:.4f} 0 1 0 {:.4f} {:.4f}"
             "A{:.4f} {:.4f} 0 1 0 {:.4f} {:.4f}Z"
             .format(x1, y1, rx2, ry2, x2, y2, rx2, ry2, x1, y1))
 
 
-def _parcourir(noeud, matrice, sortie):
+def _parcourir(noeud, matrice, sortie, releve=None):
     for forme in noeud.findall("Shape"):
         m = _composer(matrice, _xform(forme))
         genre = forme.get("Type")
         if genre == "Group":
             enfants = forme.find("Children")
-            _parcourir(enfants if enfants is not None else forme, m, sortie)
+            _parcourir(enfants if enfants is not None else forme, m, sortie,
+                       releve)
         elif genre in ("Path", "Ellipse"):
-            d = (_chemin(forme, m) if genre == "Path"
-                 else _ellipse(forme, m))
+            d = (_chemin(forme, m, releve) if genre == "Path"
+                 else _ellipse(forme, m, releve))
             if d:
                 sortie.append((forme.get("CutIndex") or "0", d))
 
@@ -969,14 +1125,12 @@ def convertir_lightburn(chemin_lbrn):
     """Renvoie (liste des `d`, (xmin, ymin, xmax, ymax))."""
     racine = ET.parse(chemin_lbrn).getroot()
     chemins = []
-    _parcourir(racine, IDENTITE, chemins)
-    xs, ys = [], []
-    for _calque, d in chemins:
-        for m in re.finditer(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", d):
-            xs.append(float(m.group(1)))
-            ys.append(float(m.group(2)))
-    if not xs:
+    points = []
+    _parcourir(racine, IDENTITE, chemins, points)
+    if not points:
         return chemins, (0.0, 0.0, 1.0, 1.0)
+    xs = [x for x, _ in points]
+    ys = [y for _, y in points]
     return chemins, (min(xs), min(ys), max(xs), max(ys))
 
 
