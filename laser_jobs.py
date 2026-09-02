@@ -148,18 +148,6 @@ def _vue(obj):
     return getattr(obj, "ViewObject", None)
 
 
-def _autres_jobs(doc, job, source):
-    """Les autres Jobs qui visent la même forme, avec un mode différent."""
-    out = []
-    for o in doc.Objects:
-        if o is job or not _est_job(o):
-            continue
-        if source in (getattr(o, "Sources", None) or []):
-            if getattr(o, "Mode", None) != getattr(job, "Mode", None):
-                out.append(o)
-    return out
-
-
 # QUI GAGNE QUAND PLUSIEURS JOBS SE PARTAGENT UNE FORME. Le premier de
 # cette liste qui est COCHÉ donne sa couleur ; décocher un job fait donc
 # apparaître celui d'en dessous, ce qu'on attend d'une pile de calques.
@@ -175,15 +163,19 @@ def _autres_jobs(doc, job, source):
 PRIORITE_CALQUE = ("flat", "curved_cut", "filled", "hatch", "curved")
 
 
-def rafraichir_calques(doc):
+def rafraichir_calques(doc, ignorer=None):
     """Repeint TOUTES les formes du document d'après TOUS les jobs.
+
+    `ignorer` écarte un job du calcul : la suppression s'en sert, puisque
+    `onDelete` s'exécute AVANT que l'objet parte -- sans quoi le job
+    condamné rendrait sa couleur à une forme qu'il ne vise déjà plus.
 
     Renvoie {label de forme: [modes cochés]} pour les formes PARTAGÉES."""
     if doc is None:
         return {}
     par_forme = {}
     for o in doc.Objects:
-        if not _est_job(o):
+        if not _est_job(o) or o is ignorer:
             continue
         mode = getattr(o, "Mode", "")
         if mode not in COULEURS_MODE:
@@ -488,6 +480,20 @@ class VueJobLaser:
             ap = _apercu_existant(doc, job) if doc is not None else None
             if ap is not None:
                 doc.removeObject(ap.Name)
+            # ET ON REPEINT. Sans cela, la forme garde la couleur d'un job
+            # qui n'existe plus : un calque supprimé continue de s'afficher
+            # allumé, et si un autre job la vise encore, sa couleur ne
+            # remonte jamais. C'est exactement le défaut que la v2.93 a
+            # corrigé pour la CASE À COCHER -- Christophe, 05/08/2026 :
+            # « quand je décoche gravure oui / non la couleur du dessous ou
+            # dessus ne s'affiche pas » -- et qui restait entier pour la
+            # suppression. On arbitre sur l'ensemble, le job condamné exclu.
+            # `onDelete` s'exécute AVANT la suppression : le job est
+            # encore là, et un repeint ordinaire lui rendrait sa couleur.
+            # On repeint donc en l'IGNORANT, ce qui donne le document tel
+            # qu'il sera dans un instant.
+            if doc is not None:
+                rafraichir_calques(doc, ignorer=job)
         except Exception:
             pass
         return True
@@ -758,13 +764,31 @@ def ajouter_jobs_au_combine(jobs):
         # de REPRENDRE ses réglages avant de graver : sans ce lien, une
         # opération est un instantané qui vieillit en silence.
         op["job"] = job.Name
-        # Idempotent : si une opération portant le Label de ce Job est déjà
-        # dans le job combiné, on la REMPLACE (rafraîchit ses réglages) au
-        # lieu d'empiler un doublon. Re-cliquer « Jobs -> combiné » ne gonfle
-        # donc plus la liste -- sinon le G-code doublait de taille et l'aperçu
-        # photo peignait chaque forme 2-3x (multiply) jusqu'au noir.
+        # Idempotent : si une opération de CE JOB est déjà dans le job
+        # combiné, on la REMPLACE (rafraîchit ses réglages) au lieu
+        # d'empiler un doublon. Re-cliquer « Jobs -> combiné » ne gonfle
+        # donc plus la liste -- sinon le G-code doublait de taille et
+        # l'aperçu photo peignait chaque forme 2-3x (multiply) jusqu'au noir.
+        #
+        # ON RECONNAÎT LE JOB À SON NOM, PAS À SON ÉTIQUETTE. Le Label est
+        # MODIFIABLE -- le module le promet en toute première page -- et
+        # renommer un job faisait échouer la recherche, donc empiler un
+        # doublon : la forme était gravée DEUX FOIS, ce que ce commentaire
+        # dit précisément vouloir empêcher. Pire, `rafraichir_operations`
+        # ne rafraîchissait ensuite que l'une des deux et annonçait les
+        # deux comme reprises, si bien que l'ancienne recette partait sur
+        # le bois sans un mot. Mesuré : deux opérations pour un seul job,
+        # après un simple renommage.
+        #
+        # Le repli sur le Label ne vaut que pour une opération ajoutée
+        # depuis son mode, qui ne porte aucun job : celles-là gardaient
+        # jusqu'ici ce comportement, on ne le leur retire pas.
         existant = next((i for i, o in enumerate(task_panels._COMBINED_OPS)
-                         if o.get("label") == job.Label), None)
+                         if o.get("job") == job.Name), None)
+        if existant is None:
+            existant = next((i for i, o in enumerate(task_panels._COMBINED_OPS)
+                             if not o.get("job") and o.get("label") == job.Label),
+                            None)
         if existant is None:
             task_panels._COMBINED_OPS.append(op)
         else:
@@ -804,6 +828,11 @@ def rafraichir_operations(ops, doc=None):
             continue
         avant = len(ops)
         ajoutes, ignores = ajouter_jobs_au_combine([job])
+        # Le job a pu être RENOMMÉ depuis l'ajout : l'opération porte
+        # maintenant l'étiquette du jour, la liste doit le montrer.
+        if ajoutes and op.get("label") != job.Label:
+            laisses.append("{} → renommé « {} »".format(
+                op.get("label", "?"), job.Label))
         if ajoutes:
             repris.append(job.Label)
         else:

@@ -481,3 +481,110 @@ try:
               len(lj.COULEURS_MODE), _ig[0]))
 finally:
     FreeCAD.closeDocument("EssaiCalques")
+
+
+# ==========================================================================
+# UN JOB RENOMMÉ RESTE LE MÊME JOB
+# ==========================================================================
+# Trouvé à l'audit du 02/09/2026. `ajouter_jobs_au_combine` cherchait
+# l'opération à remplacer par son ÉTIQUETTE, alors que le module promet en
+# première page que « le Label reste modifiable par l'utilisateur ».
+# Renommer un job faisait donc échouer la recherche et EMPILER un doublon
+# -- exactement ce que le commentaire de cette fonction dit vouloir
+# empêcher : « sinon le G-code doublait de taille et l'aperçu photo
+# peignait chaque forme 2-3x (multiply) jusqu'au noir ».
+#
+# Et `rafraichir_operations` ne reprenait ensuite qu'une des deux, en les
+# annonçant toutes deux comme reprises : l'ancienne recette partait sur le
+# bois sans un mot. C'est la famille du défaut que cette fonction existe
+# pour empêcher (v2.99.9, « une planche perdue, découverte sur le bois »).
+#
+# Le job se reconnaît à son NOM, qui ne change jamais.
+
+import Part                                                  # noqa: E402
+import laser_jobs as _lj2                                    # noqa: E402
+
+_doc2 = FreeCAD.newDocument("EssaiJobRenomme")
+try:
+    _forme2 = _doc2.addObject("Part::Feature", "Carre")
+    _forme2.Shape = Part.makePolygon([
+        FreeCAD.Vector(0, 0, 0), FreeCAD.Vector(20, 0, 0),
+        FreeCAD.Vector(20, 20, 0), FreeCAD.Vector(0, 20, 0),
+        FreeCAD.Vector(0, 0, 0)])
+    _doc2.recompute()
+    _job2 = _lj2.creer_ou_maj_job("curved", [_forme2])
+    assert _job2 is not None, "pas de job créé"
+
+    class _FauxPanneau:
+        def __init__(self, sel):
+            pass
+
+        def _build_combined_operation(self):
+            return {"type": "curved", "label": "x", "params": {"n": 1}}
+
+    _vrai_cls = getattr(tp, _lj2.MODES["curved"][2])
+    setattr(tp, _lj2.MODES["curved"][2], _FauxPanneau)
+    try:
+        tp._COMBINED_OPS.clear()
+        _lj2.ajouter_jobs_au_combine([_job2])
+        _lj2.ajouter_jobs_au_combine([_job2])
+        assert len(tp._COMBINED_OPS) == 1, (
+            "deux ajouts du même job donnent {} opérations"
+            .format(len(tp._COMBINED_OPS)))
+        assert tp._COMBINED_OPS[0].get("job") == _job2.Name, (
+            "l'opération ne retient pas le NOM de son job")
+
+        _ancien = _job2.Label
+        _job2.Label = "Mon découpage à moi"      # geste permis, et documenté
+        _lj2.ajouter_jobs_au_combine([_job2])
+        assert len(tp._COMBINED_OPS) == 1, (
+            "après renommage, {} opérations pour un seul job : la forme "
+            "serait gravée deux fois".format(len(tp._COMBINED_OPS)))
+        assert tp._COMBINED_OPS[0]["label"] == _job2.Label, (
+            "l'opération garde l'ancienne étiquette")
+
+        # Et la reprise des réglages ne doit laisser AUCUNE opération périmée.
+        _rep, _lai = _lj2.rafraichir_operations(tp._COMBINED_OPS, _doc2)
+        assert len(tp._COMBINED_OPS) == 1, (
+            "la reprise laisse {} opérations".format(len(tp._COMBINED_OPS)))
+        assert _rep == [_job2.Label], ("reprise : {} / {}".format(_rep, _lai))
+
+        # Une opération ajoutée depuis son MODE ne porte aucun job : elle
+        # garde le repli sur l'étiquette, on ne le lui retire pas.
+        tp._COMBINED_OPS.clear()
+        tp._COMBINED_OPS.append({"type": "curved", "label": _job2.Label,
+                                 "params": {}})
+        _lj2.ajouter_jobs_au_combine([_job2])
+        assert len(tp._COMBINED_OPS) == 1, (
+            "une opération sans job, de même étiquette, doit encore être "
+            "remplacée -- {} opérations".format(len(tp._COMBINED_OPS)))
+    finally:
+        setattr(tp, _lj2.MODES["curved"][2], _vrai_cls)
+        tp._COMBINED_OPS.clear()
+
+    # SUPPRIMER UN JOB REPEINT LE DOCUMENT. `onDelete` s'exécute AVANT que
+    # l'objet parte : un repeint ordinaire lui rendrait sa couleur, d'où
+    # l'exclusion explicite.
+    # IL FAUT DEUX JOBS SUR LA MÊME FORME pour que l'exclusion se voie :
+    # avec un seul, le rapport des formes partagées est vide dans les deux
+    # cas et l'essai ne prouve rien. Le sabotage l'a montré.
+    _job2b = _lj2.creer_ou_maj_job("flat", [_forme2])
+    assert _job2b is not None and _job2b is not _job2, "second job non créé"
+    _avec = _lj2.rafraichir_calques(_doc2)
+    assert _forme2.Label in _avec and len(_avec[_forme2.Label]) == 2, (
+        "deux jobs sur une forme doivent la déclarer partagée : {}"
+        .format(_avec))
+    _sans = _lj2.rafraichir_calques(_doc2, ignorer=_job2b)
+    assert _sans == {}, (
+        "le job écarté compte encore : {} -- au moment où onDelete repeint, "
+        "il rendrait sa couleur à une forme qu'il ne vise déjà plus"
+        .format(_sans))
+    import inspect as _i2
+    assert "ignorer=job" in _i2.getsource(_lj2.VueJobLaser.onDelete), (
+        "onDelete ne repeint pas en écartant le job condamné : la forme "
+        "gardera la couleur d'un calque qui n'existe plus")
+
+    print("job renommé : une seule opération, reprise sans périmé, "
+          "suppression qui repeint OK")
+finally:
+    FreeCAD.closeDocument("EssaiJobRenomme")

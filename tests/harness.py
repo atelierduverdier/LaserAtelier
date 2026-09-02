@@ -40,9 +40,18 @@ def preparer(config_reelle=True):
     import FreeCAD
     import FreeCADGui
     if not hasattr(FreeCADGui, "Selection"):
+        # `addSelection` MANQUAIT, et son absence tenait tout un chemin
+        # hors de portée : `laser_jobs.ajouter_jobs_au_combine` et
+        # `ouvrir_job` re-sélectionnent les sources avant de bâtir leur
+        # opération, si bien qu'aucun essai ne pouvait les traverser --
+        # seuls leurs retours anticipés (« décoché », « mode inconnu »)
+        # étaient éprouvés. Un bouchon incomplet ne se voit pas : il ne
+        # rougit pas, il rend juste une partie du code inatteignable.
         FreeCADGui.Selection = types.SimpleNamespace(
             getSelectionEx=lambda *a, **k: [],
             getSelection=lambda *a, **k: [],
+            addSelection=lambda *a, **k: None,
+            removeSelection=lambda *a, **k: None,
             clearSelection=lambda *a, **k: None)
 
     from PySide6 import QtWidgets
