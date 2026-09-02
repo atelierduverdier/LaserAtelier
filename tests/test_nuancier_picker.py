@@ -154,3 +154,70 @@ assert _f_mesure is not _f_liste, (
 assert any("Ton sur mesure" in t for t in _titres), (
     "« Ton sur mesure » n'a pas de titre de section", _titres[:12])
 print("4. « Ton sur mesure » dans sa propre section, hors du repli OK")
+
+
+# ==========================================================================
+# 5. UNE NOIRCEUR JUGÉE À 0 % EST UNE MESURE, PAS UNE ABSENCE
+# ==========================================================================
+# Trouvé à la lecture ligne à ligne du 02/09/2026. `_bande` rangeait
+# « absent » sur `if not valeur` : une noirceur jugée 0 -- « à cette
+# puissance le bois est resté INTACT » -- partait donc en « Noirceur non
+# jugée », au milieu des points de grille dont personne n'a jamais jugé la
+# nuance. Or c'est exactement cette mesure-là qui donne le plancher de
+# `puissance_mini_qui_marque`, et `reglages_disponibles` prend soin de
+# garder `None` pour les points de grille afin qu'on ne les confonde pas.
+# La distinction se perdait au dernier pas, à l'affichage.
+#
+# Sur les vraies données de l'établi, deux tons de hêtre étaient concernés :
+# S195 et S235, ceux-là mêmes que la docstring cite en exemple.
+core.save_shades(u"EssaiBandes", [
+    {"power": 195.0, "feed": 2000.0, "z_offset": 15.0, "width": 0.0,
+     "darkness": 0.0, "label": u"rien"},
+    {"power": 500.0, "feed": 2000.0, "z_offset": 15.0, "width": 0.80,
+     "darkness": 55.0, "label": u"moyen"},
+])
+_groupes = dict(core.grouper_reglages(
+    core.reglages_disponibles(u"EssaiBandes"), "noirceur"))
+_ou = {t: [r["power"] for r in e] for t, e in _groupes.items()}
+assert 195.0 in _ou.get("Clair (0-25 %)", []), (
+    u"un ton jugé 0 % doit être un CLAIR, pas une absence : {}".format(_ou))
+assert 195.0 not in _ou.get(u"Noirceur non jugée", []), (
+    u"un ton jugé 0 % est rangé en « non jugée » : {}".format(_ou))
+# ET LA LARGEUR GARDE L'AUTRE SÉMANTIQUE : une case de grille laissée
+# vide vaut 0, et 0 veut bien dire « pas mesurée » -- on ne mesure pas au
+# pied à coulisse un trait qui n'existe pas.
+_ou_l = {t: [r["power"] for r in e] for t, e in core.grouper_reglages(
+    core.reglages_disponibles(u"EssaiBandes"), "largeur")}
+assert 195.0 in _ou_l.get(u"Largeur non mesurée", []), (
+    u"une largeur de 0 doit rester « non mesurée » : {}".format(_ou_l))
+print(u"5. noirceur jugée 0 % = un CLAIR ; largeur 0 = non mesurée OK")
+
+# ==========================================================================
+# 6. UN TON MAL FORMÉ NE DOIT PAS EMPORTER TOUT LE NUANCIER
+# ==========================================================================
+# `darkness_fluence_curve` comparait `s.get("z_offset", 0) > 0` sans
+# garde-fou, là où sa jumelle `darkness_width_points` écrit `... or 0`.
+# Un champ présent mais nul (`"z_offset": null` -- une archive restaurée,
+# un schéma plus ancien) fait lever un TypeError, et cette courbe est ce
+# qui fait marcher la photo calibrée et le « ton sur mesure » : un seul
+# ton mal formé, et c'est tout le matériau qui tombe, pas la ligne fautive.
+core.save_shades(u"EssaiCassé", [
+    {"power": 500.0, "feed": 2000.0, "z_offset": None, "width": 0.80,
+     "darkness": 55.0},
+    {"power": 800.0, "feed": 2000.0, "z_offset": 15.0, "width": 1.00,
+     "darkness": 90.0},
+    {"power": 900.0, "feed": 2000.0, "z_offset": 15.0, "width": 1.20,
+     "darkness": None},
+])
+for _nom, _fn in ((u"load_shades", core.load_shades),
+                  (u"darkness_width_points", core.darkness_width_points),
+                  (u"darkness_fluence_curve", core.darkness_fluence_curve)):
+    try:
+        _fn(u"EssaiCassé")
+    except Exception as exc:
+        raise AssertionError(
+            u"{} tombe sur un ton mal formé : {}: {}".format(
+                _nom, type(exc).__name__, exc))
+# Et les tons SAINS restent exploitables : on n'a pas jeté le matériau.
+assert core.load_shades(u"EssaiCassé"), u"le matériau est devenu vide"
+print(u"6. un ton à champ nul ne fait plus tomber le nuancier entier OK")

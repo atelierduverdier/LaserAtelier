@@ -189,4 +189,56 @@ core.save_config(cfg)
 core._apply_settings_config()
 assert core.POWER_M67 is False
 
+# --- 6. LE DÉGRADÉ DE REMPLISSAGE MARCHE DANS LES DEUX CANAUX -----------
+# Trouvé à la lecture ligne à ligne du 02/09/2026.
+# `apply_fill_power_gradient` réécrit un corps de G-code en y injectant la
+# puissance locale ; pour savoir de quelle puissance partir, il cherchait
+# une ligne d'armement au motif `^S(...)` -- le canal DIRECT et lui seul.
+#
+# En M67 la puissance ne voyage plus sur un mot `S` : aucune ligne
+# d'armement n'était reconnue, la fonction rendait le corps INCHANGÉ, et
+# le dégradé ne faisait rien du tout. En silence, dans le canal que
+# Christophe a mesuré et adopté le 31/07/2026.
+#
+# Mesuré sur un carré de 40 mm au pas 0,5, dégradé S200 -> S900 :
+# 335 puissances distinctes en direct, UNE SEULE en M67.
+import Part as _Part
+import FreeCAD as _App
+
+_carre = _Part.Face(_Part.makePolygon([_App.Vector(*p) for p in
+                    [(0, 0, 0), (40, 0, 0), (40, 40, 0), (0, 40, 0), (0, 0, 0)]]))
+_fill, _cont = core.build_filled_engraving_edges([_carre], 0.5, 0.0,
+                                                 fill_inset=0.0)
+
+
+def _puissances_du_degrade():
+    g = core.generate_gcode_filled_engraving(
+        _fill, _cont, z_focus=8.0, defocus=2.0, fill_power=200.0,
+        fill_feed=1000.0, draw_contour=False, quiet=True,
+        grad_power_fin=900.0, grad_angle_deg=0.0)
+    vals = set()
+    for ligne in g.split("\n"):
+        ligne = ligne.strip()
+        if ligne.startswith("M67"):
+            vals.add(float(ligne.split("Q")[1].split()[0]))
+        elif ligne[:1] == "S" and ligne[1:2].isdigit():
+            vals.add(float(ligne.split()[0][1:]))
+    vals.discard(0.0)
+    return vals
+
+
+canal_puissance(core, m67=False)
+_direct_grad = _puissances_du_degrade()
+canal_puissance(core, m67=True)
+_m67_grad = _puissances_du_degrade()
+canal_puissance(core, m67=False)
+assert len(_direct_grad) > 50, (
+    "le dégradé ne module presque rien en direct : {}".format(
+        sorted(_direct_grad)[:8]))
+assert _m67_grad == _direct_grad, (
+    "le dégradé de remplissage diffère selon le canal : {} valeurs en M67 "
+    "contre {} en direct".format(len(_m67_grad), len(_direct_grad)))
+print("6. dégradé de remplissage : {} puissances distinctes, les MÊMES dans "
+      "les deux canaux OK".format(len(_direct_grad)))
+
 print("\nTOUS LES TESTS puissance_m67 PASSENT")

@@ -213,3 +213,25 @@ print("   par laser : ✓   case dans les Préférences : ✓")
 
 print()
 print("TOUT EST VERT")
+
+
+# --- « Z.5 » EST UN MOT Z, ET IL ÉCHAPPAIT AU MOTIF ---------------------
+# Trouvé à la lecture ligne à ligne du 02/09/2026. RS274 accepte un nombre
+# sans chiffre avant le point ; le motif exigeait `\d+`. Sur une machine
+# sans axe Z, un G-code personnalisé écrit ainsi gardait son mot Z -- que
+# GRBL croit alors exécuter, ce que tout ce réglage existe pour empêcher.
+_vrai_reglage = core.MACHINE_SANS_AXE_Z
+core.MACHINE_SANS_AXE_Z = True
+try:
+    for _ecrit in ("G0 Z5.0", "G0 Z.5", "G0 Z5.", "G0 Z+.25", "G0 Z-.5"):
+        _sorti = core.retirer_axe_z(_ecrit)
+        assert "Z" not in _sorti.split("(")[0], (
+            "le mot Z de {!r} survit : {!r}".format(_ecrit, _sorti))
+    # ET ON NE MANGE PAS CE QUI N'EST PAS UN MOT Z.
+    for _garde in ("G0 X1 Y2", "(Zone de travail)", "G1 X1 Y1 F800"):
+        _sorti = core.retirer_axe_z(_garde)
+        assert _garde in _sorti, (
+            "{!r} a été abîmé : {!r}".format(_garde, _sorti))
+finally:
+    core.MACHINE_SANS_AXE_Z = _vrai_reglage
+print("sans axe Z : « Z.5 », « Z+.25 » et « Z-.5 » sont bien des mots Z OK")

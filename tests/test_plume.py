@@ -1215,3 +1215,32 @@ assert _a24 == _c24, (
 print("24. aperçu vif : l'échelle coûte {} interpolations à froid et {} "
       "ensuite, et la vignette suit l'angle du bec OK".format(
           _n_froid, _n_chaud))
+
+
+# --- UN SOMMET DUPLIQUÉ NE FAIT PAS UN PLEIN ---------------------------
+# Trouvé à la lecture ligne à ligne du 02/09/2026. `largeur_plume` d'un
+# segment de longueur NULLE ne peut pas mesurer d'angle : elle rend le
+# MAXIMUM. Un sommet dupliqué -- il y en a dans les polices monotrait,
+# et l'aplatissement des courbes en produit -- plantait donc un plein
+# isolé au milieu d'un délié.
+_dupli = [(0.0, 0.0), (5.0, 0.0), (5.0, 0.0), (10.0, 0.0)]
+_lg = core._largeurs_du_trait(_dupli, 0.0, 0.1, 1.6, core.PLUME_BEC,
+                              lissage_mm=0.0)
+assert max(_lg) - min(_lg) < 1e-9, (
+    "un sommet dupliqué crée un pic de largeur : {}".format(_lg))
+assert abs(_lg[0] - 0.1) < 1e-9, (
+    "un trait horizontal sous un bec à 0 degré doit être au délié, "
+    "obtenu {}".format(_lg[0]))
+# Le segment nul hérite du PRÉCÉDENT, pas d'une valeur inventée : sur un
+# trait qui change de direction, la largeur reste celle d'avant.
+_coude = [(0.0, 0.0), (5.0, 0.0), (5.0, 0.0), (5.0, 5.0)]
+_lg2 = core._largeurs_du_trait(_coude, 0.0, 0.1, 1.6, core.PLUME_BEC,
+                               lissage_mm=0.0)
+assert abs(_lg2[1] - _lg2[0]) < 1e-9, (
+    "le segment nul devrait hériter de la largeur précédente : "
+    "{}".format(_lg2))
+# Le contrat de `largeur_plume` seule ne change PAS : elle rend toujours
+# le maximum sur un segment nul (c'est son appelant qui doit trancher).
+assert core.largeur_plume((5, 5), (5, 5), 25.0, 0.1, 1.6) == 1.6
+print("25. sommet dupliqué : plus de plein isolé, le segment nul hérite "
+      "de la largeur précédente OK")

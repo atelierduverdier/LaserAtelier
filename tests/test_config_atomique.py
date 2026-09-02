@@ -130,3 +130,63 @@ assert relu.get("_malgre_tout") == 42, (
 
 print()
 print("TOUT EST VERT")
+
+
+# --- L'IMPORT D'UNE CONFIG ÉCRASAIT SANS FILET -------------------------
+# Trouvé à la lecture ligne à ligne du 02/09/2026. `import_all` ouvrait le
+# fichier de configuration en « wb » -- ce qui le VIDE avant d'écrire --
+# sans copie de sûreté. Or on restaure justement quand quelque chose a
+# déjà mal tourné : se tromper d'archive effaçait les mesures au pied à
+# coulisse, des heures d'établi que rien ne recalcule.
+import zipfile
+
+_ancien = json.dumps({"marquage_puissance": 42, "temoin": "avant"})
+with open(core.CONFIG_FILE, "w", encoding="utf-8") as _fh:
+    _fh.write(_ancien)
+_nouveau = json.dumps({"marquage_puissance": 77, "temoin": "apres"})
+_zip = os.path.join(os.path.dirname(core.CONFIG_FILE), "sauvegarde.zip")
+with zipfile.ZipFile(_zip, "w") as _z:
+    _z.writestr("laser_atelier_config.json", _nouveau)
+
+_ok, _msg = core.import_all(_zip)
+assert _ok, "la restauration a échoué : {}".format(_msg)
+with open(core.CONFIG_FILE, encoding="utf-8") as _fh:
+    assert json.load(_fh)["temoin"] == "apres", "la config n'a pas été remplacée"
+_bak = core.CONFIG_FILE + ".bak"
+assert os.path.exists(_bak), "aucun .bak après une restauration"
+with open(_bak, encoding="utf-8") as _fh:
+    assert json.load(_fh)["temoin"] == "avant", (
+        "le .bak ne porte pas la version d'AVANT la restauration")
+assert not os.path.exists(core.CONFIG_FILE + ".tmp"), (
+    "le fichier temporaire de restauration n'a pas été balayé")
+print("import_all : un .bak porte l'état d'avant, la config porte le "
+      "nouveau OK")
+
+# ET SI ÇA CASSE EN PLEIN VOL : l'ancien fichier doit rester ENTIER.
+# On fait échouer la bascule finale ; sans `os.replace`, l'écriture en
+# direct aurait déjà tronqué le fichier à cet instant.
+with open(core.CONFIG_FILE, "w", encoding="utf-8") as _fh:
+    _fh.write(json.dumps({"temoin": "intact", "mesures": list(range(283))}))
+_vrai_replace = os.replace
+
+
+def _replace_qui_casse(a, b):
+    raise OSError(28, "No space left on device")
+
+
+os.replace = _replace_qui_casse
+try:
+    _ok, _msg = core.import_all(_zip)
+finally:
+    os.replace = _vrai_replace
+assert not _ok, "une bascule impossible devrait être signalée en échec"
+with open(core.CONFIG_FILE, encoding="utf-8") as _fh:
+    _reste = json.load(_fh)
+assert _reste["temoin"] == "intact" and len(_reste["mesures"]) == 283, (
+    "une restauration interrompue a abîmé la config : {}".format(_reste))
+try:
+    os.remove(core.CONFIG_FILE + ".tmp")
+except OSError:
+    pass
+print("import_all : une restauration qui casse en plein vol laisse les "
+      "283 mesures intactes OK")

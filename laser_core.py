@@ -178,7 +178,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.46"
+VERSION = "2.99.47"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -187,6 +187,77 @@ _LINUXCNC_FALLBACK = str.maketrans({
     "’": "'", "‘": "'",       # apostrophes typographiques
     "…": "...", "×": "x", "°": "deg", "µ": "u",
 })
+
+
+# CE QUI SÉPARE DEUX COMMENTAIRES EST-IL DU CODE ? Le segment entier doit
+# n'être QUE des mots de G-code -- une lettre d'adresse suivie d'un nombre,
+# rien d'autre. Une simple recherche de « lettre + chiffre » ne suffit pas,
+# et le filet l'a montré tout de suite : le commentaire engendré
+# « (Puissance : rampe S200 (gauche) -> S1000 (droite) sur 60mm, » porte un
+# « S1000 » entre deux parenthèses fermées, et se serait fait découper en
+# trois. Un commentaire parle de puissances et de vitesses ; il parle aussi
+# d'autre chose, et c'est ce « autre chose » qui le trahit.
+_SEGMENT_CODE = re.compile(r'^\s*(?:[A-Za-z][-+]?[.0-9]+\s*)+$')
+
+
+def _assainir_commentaires(line):
+    """Rend une ligne sûre pour RS274, sans avaler de code au passage.
+
+    Le G-code ENGENDRÉ ici ne porte qu'un commentaire par ligne, mais il
+    peut contenir des parenthèses (« passe(s) », « (par bande de Z) ») :
+    RS274 referme au PREMIER « ) » et lit la suite comme du code. On
+    prenait donc du premier « ( » au DERNIER « ) » et l'on neutralisait
+    tout l'intérieur -- ce qui est juste pour un commentaire, et FAUX
+    pour une ligne qui en porte DEUX.
+
+    Or le G-code PERSONNALISÉ des Préférences passe par ici : quelqu'un
+    qui écrit « G0 X10 (aller) Y20 (puis) » voyait son « Y20 » enfermé
+    dans le commentaire -- mesuré, la ligne ressortait
+    « G0 X10 (aller] Y20 [puis) ». Le mouvement ne se faisait plus, sans
+    un mot.
+
+    On tranche donc sur CE QUI SÉPARE les commentaires : un mot de
+    G-code entre deux parenthèses fermées veut dire qu'il y a bien deux
+    commentaires et du code au milieu ; n'importe quoi d'autre est du
+    texte, et l'on garde alors la lecture d'un seul commentaire."""
+    debut = line.find("(")
+    if debut == -1:
+        return line
+    fin = line.rfind(")")
+    if fin <= debut:
+        # Commentaire ouvert et jamais refermé : on le ferme en fin de
+        # ligne. Sans ça LinuxCNC refuse de CHARGER le fichier et le job
+        # ne démarre pas du tout (cf. point 3 du docstring).
+        return line + ")"
+    # Découpe en paires ( … ) et en ce qui les sépare.
+    morceaux, i = [], debut
+    while i < len(line):
+        d = line.find("(", i)
+        if d == -1:
+            morceaux.append(("code", line[i:]))
+            break
+        if d > i:
+            morceaux.append(("code", line[i:d]))
+        ferme = line.find(")", d + 1)
+        if ferme == -1:
+            morceaux.append(("com", line[d + 1:]))
+            i = len(line)
+            break
+        morceaux.append(("com", line[d + 1:ferme]))
+        i = ferme + 1
+    entre = [m for k, m in morceaux[1:] if k == "code"]
+    du_code = any(m.strip() and _SEGMENT_CODE.match(m) for m in entre)
+    if not du_code:
+        # Un seul commentaire, parenthèses internes comprises.
+        contenu = line[debut + 1:fin].replace("(", "[").replace(")", "]")
+        return line[:debut] + "(" + contenu + ")" + line[fin + 1:]
+    rendu = [line[:debut]]
+    for genre, m in morceaux:
+        if genre == "com":
+            rendu.append("(" + m.replace("(", "[").replace(")", "]") + ")")
+        else:
+            rendu.append(m)
+    return "".join(rendu)
 
 
 def sanitize_gcode_for_linuxcnc(text):
@@ -221,24 +292,7 @@ def sanitize_gcode_for_linuxcnc(text):
         text = retirer_axe_z(text)
     text = text.translate(_LINUXCNC_FALLBACK)
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    out = []
-    for line in text.split("\n"):
-        start = line.find("(")
-        if start == -1:
-            out.append(line)
-            continue
-        # Un seul commentaire par ligne dans le G-code généré (au plus
-        # « CODE (commentaire) ») : le contenu va du premier '(' au
-        # DERNIER ')', ses parenthèses internes sont neutralisées.
-        end = line.rfind(")")
-        if end <= start:
-            # Commentaire ouvert et jamais refermé : on le ferme en fin de
-            # ligne. Sans ça LinuxCNC refuse de CHARGER le fichier et le
-            # job ne démarre pas du tout (cf. point 3 du docstring).
-            out.append(line + ")")
-            continue
-        content = line[start + 1:end].replace("(", "[").replace(")", "]")
-        out.append(line[:start] + "(" + content + ")" + line[end + 1:])
+    out = [_assainir_commentaires(l) for l in text.split("\n")]
     # Espaces de fin de ligne : sans effet pour LinuxCNC, mais le dialecte
     # GRBL (sélecteur de broche vide) en laisserait après S/M3/M5.
     return "\n".join(l.rstrip() for l in out)
@@ -269,7 +323,10 @@ def _gcode_code_part(line):
 # le passage obligé de tous les générateurs (dix familles) et il est
 # idempotent : un seul point à écrire, un seul à tester, et le prochain
 # mode en hérite sans qu'on ait à y penser.
-_RX_MOT_Z = re.compile(r'(?<![A-Za-z0-9.])Z-?\d+\.?\d*')
+# « Z.5 » est un mot Z parfaitement valide en RS274, et il échappait au
+# motif : sur une machine sans axe Z, un G-code personnalisé écrit ainsi
+# gardait son mot Z, que GRBL croit alors exécuter.
+_RX_MOT_Z = re.compile(r'(?<![A-Za-z0-9.])Z[-+]?(?:\d+\.?\d*|\.\d+)')
 # Lettres d'axe qui donnent encore un objet à un mouvement une fois le Z ôté.
 _LETTRES_MOUVEMENT = "XYIJKRABCU"
 # La MARQUE, sans parenthèses : elle sert à reconnaître un texte déjà
@@ -657,8 +714,25 @@ def import_all(src_path):
                             dst.write(z.read(n))
                         nph += 1
             if cfg_bytes is not None:
-                with open(CONFIG_FILE, "wb") as dst:
+                # MÊME SOIN QUE `save_config`, et pour la même raison : ce
+                # fichier porte des mesures d'établi que rien ne
+                # recalcule. `open(..., "wb")` le VIDE avant d'écrire, et
+                # sans copie de sûreté préalable -- or restaurer est
+                # précisément le geste qu'on fait quand quelque chose a
+                # déjà mal tourné, et se tromper d'archive effaçait tout
+                # sans laisser de `.bak` où revenir.
+                try:
+                    _sauvegarder_config(CONFIG_FILE)
+                except Exception as exc:
+                    FreeCAD.Console.PrintWarning(
+                        "Sauvegarde avant restauration impossible ({}) -- "
+                        "la restauration continue.\n".format(exc))
+                temporaire = CONFIG_FILE + ".tmp"
+                with open(temporaire, "wb") as dst:
                     dst.write(cfg_bytes)
+                    dst.flush()
+                    os.fsync(dst.fileno())
+                os.replace(temporaire, CONFIG_FILE)
                 _apply_settings_config()                 # applique tout de suite
         return True, "Sauvegarde restaurée : réglages{} + {} photo(s).".format(
             "" if cfg_bytes is not None else " (absents de l'archive)", nph)
@@ -1178,8 +1252,15 @@ def _apply_settings_config():
         # L'armement garde M3 (interlock), mais la puissance passe par M67 :
         # un S0 résiduel serait inoffensif, il serait surtout MENSONGER.
         CMD_ARM = _CMD_ARM_M67
-        CMD_BEAM_ON = _CMD_BEAM_ON_M67
-        CMD_BEAM_OFF = _CMD_BEAM_OFF_M67
+        # LE CANAL EST NOMMÉ UNE FOIS. Les deux modèles portaient « E0 » en
+        # dur alors que `cmd_power_prefix` lit `M67_ANALOG_INDEX` : sur une
+        # machine câblée sur une autre sortie analogique, l'allumage et
+        # l'extinction seraient partis sur E0 pendant que les rampes
+        # pilotaient le bon canal -- un faisceau qui ne s'éteint pas.
+        CMD_BEAM_ON = _CMD_BEAM_ON_M67.replace(
+            "E0", "E{:.0f}".format(M67_ANALOG_INDEX))
+        CMD_BEAM_OFF = _CMD_BEAM_OFF_M67.replace(
+            "E0", "E{:.0f}".format(M67_ANALOG_INDEX))
         CMD_DISARM = _CMD_DISARM_M67
     # ASSISTANCE D'AIR : M7 ou M8 avec l'armement, M9 avec le désarmement
     # (M9 coupe les deux, quel que soit celui qui a ouvert).
@@ -2783,9 +2864,19 @@ def _largeurs_du_trait(pts, angle_deg, mini, maxi, modele=PLUME_BEC,
     donc sur `lissage_mm` de tracé -- par défaut le plein lui-même."""
     if len(pts) < 2:
         return [maxi] * len(pts)
-    par_segment = [largeur_plume(pts[i], pts[i + 1], angle_deg, mini, maxi,
-                                 modele)
-                   for i in range(len(pts) - 1)]
+    # UN SEGMENT DE LONGUEUR NULLE N'A PAS DE DIRECTION, et `largeur_plume`
+    # rend alors le MAXIMUM (contrat gelé par le §1 de test_plume : ne
+    # jamais rendre zéro). Un sommet dupliqué -- il y en a 27 dans les
+    # douze premières polices, sur 47 457 segments -- posait donc un plein
+    # là où la plume ne bouge pas. On reprend la largeur du segment
+    # précédent : la plume n'a pas tourné, elle n'a pas avancé.
+    par_segment = []
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        if abs(b[0] - a[0]) < 1e-12 and abs(b[1] - a[1]) < 1e-12:
+            par_segment.append(par_segment[-1] if par_segment else mini)
+            continue
+        par_segment.append(largeur_plume(a, b, angle_deg, mini, maxi, modele))
     brut = [par_segment[0]]
     for i in range(1, len(pts) - 1):
         brut.append(0.5 * (par_segment[i - 1] + par_segment[i]))
@@ -5950,8 +6041,18 @@ def compute_nesting_depths(chains):
     areas = [_polygon_area(p) for p in polys]
     depths = []
     for i, poly_i in enumerate(polys):
-        cx = sum(p[0] for p in poly_i) / len(poly_i)
-        cy = sum(p[1] for p in poly_i) / len(poly_i)
+        # LE PREMIER SOMMET, ET NON LE CENTROÏDE. Le centroïde d'une
+        # chaîne CONCAVE tombe hors d'elle-même : mesuré sur une pièce en
+        # U dont le trou épouse l'encoche, le centroïde du trou atterrit
+        # DANS l'encoche, donc hors de la pièce -- profondeur 0 au lieu de
+        # 1. Le trou passait alors pour un contour : kerf compensé vers
+        # l'EXTÉRIEUR, donc trou 2x kerf trop petit, et découpé APRÈS le
+        # contour englobant, quand la pièce n'est déjà plus tenue.
+        #
+        # Un sommet appartient toujours à sa chaîne. C'est déjà la
+        # convention de `_faces_rapides_depuis_fils` -- deux réponses à la
+        # même question vivaient dans ce fichier, et l'une était fausse.
+        cx, cy = poly_i[0]
         depth = 0
         for j, poly_j in enumerate(polys):
             if i == j or areas[j] <= areas[i]:
@@ -6757,7 +6858,9 @@ def load_shades(material):
     """Liste des tons du matériau, triée par noirceur croissante."""
     cfg = load_config()
     shades = cfg.get("nuancier", {}).get(material, [])
-    return sorted(shades, key=lambda s: s.get("darkness", 0))
+    # `or 0` : un ton dont la noirceur serait nulle (`null`) ferait lever
+    # le tri lui-même, donc rendrait le matériau entier illisible.
+    return sorted(shades, key=lambda s: s.get("darkness") or 0)
 
 
 def save_shades(material, shades):
@@ -7181,7 +7284,7 @@ def pas_bande_tons(material, feed, defocus, puissances, pas_actuel):
     return pas, (
         "pas {} de {:.2f} à {:.2f} mm : à {:.2f} {} ({:.0f} à {:.0f} %) ; "
         "à {:.2f} l'échelle va de {:.0f} à {:.0f} %".format(
-            verbe, 
+            verbe,
             pas_actuel, pas, pas_actuel, motif,
             100 * min(ws) / pas_actuel, 100 * max(ws) / pas_actuel,
             pas, 100 * min(ws) / pas, 100 * max(ws) / pas))
@@ -8047,8 +8150,21 @@ def reglages_disponibles(material):
 def _bande(valeur, bandes, titre_absent):
     """(rang, titre) de la bande contenant `valeur` ; le groupe « non
     mesuré » est rangé en dernier (rang très grand) plutôt qu'en tête : ce
-    sont les entrées dont on ne sait rien sur le critère demandé."""
-    if not valeur:
+    sont les entrées dont on ne sait rien sur le critère demandé.
+
+    ABSENT VEUT DIRE `None`, PAS ZÉRO. Une noirceur jugée à 0 % est une
+    mesure -- « à cette puissance le bois est resté intact » -- et c'est
+    même celle qui donne le plancher de `puissance_mini_qui_marque`. Le
+    test valait `if not valeur` : les deux tons de hêtre S195 et S235,
+    cités en toutes lettres dans cette même page, partaient en « Noirceur
+    non jugée », au milieu des points de grille dont personne n'a JAMAIS
+    jugé la nuance. `reglages_disponibles` prend soin de garder `None`
+    pour ceux-là précisément afin qu'on ne les confonde pas ; la
+    distinction se perdait au dernier pas, à l'affichage.
+
+    Une largeur de 0, elle, veut bien dire « case laissée vide » : les
+    appelants concernés passent donc `... or None`."""
+    if valeur is None:
         return (len(bandes), titre_absent)
     for i, (borne, titre) in enumerate(bandes):
         if valeur < borne:
@@ -8066,7 +8182,10 @@ def grouper_reglages(reglages, critere="noirceur"):
     groupes = {}
     for r in reglages:
         if critere == "largeur":
-            rang, titre = _bande(r.get("width"), _BANDES_LARGEUR,
+            # `or None` : une largeur de 0 n'est pas une mesure de 0, c'est
+            # une case de la grille laissée vide (on ne mesure pas au pied
+            # à coulisse un trait qui n'existe pas).
+            rang, titre = _bande(r.get("width") or None, _BANDES_LARGEUR,
                                  "Largeur non mesurée")
             tri = r.get("width") or 0.0
         elif critere == "defocus":
@@ -8141,10 +8260,15 @@ def darkness_width_points(material):
     """[(noirceur, largeur mesurée), ...] trié, mêmes tons exploitables que
     `darkness_fluence_curve`. À HISSER hors des boucles de pixels : lire la
     config pour chaque point d'une photo la rendrait inutilisable."""
+    # `darkness is not None` : ce filtre gardait quatre champs sur cinq, et
+    # laissait passer celui qu'il va lire. Un ton sans noirceur jugée --
+    # une archive restaurée, un schéma plus ancien -- faisait donc lever
+    # `float(None)` et emportait tout le matériau, pas la ligne fautive.
     pts = [(float(s["darkness"]), float(s["width"]))
            for s in load_shades(material)
            if (s.get("z_offset", 0) or 0) > 0 and (s.get("width", 0) or 0) > 0
-           and (s.get("feed", 0) or 0) > 0 and (s.get("power", 0) or 0) > 0]
+           and (s.get("feed", 0) or 0) > 0 and (s.get("power", 0) or 0) > 0
+           and s.get("darkness") is not None]
     pts.sort(key=lambda p: p[0])
     return pts if len(pts) >= 2 else []
 
@@ -8174,10 +8298,19 @@ def darkness_fluence_curve(material):
     les voisins en violation sont moyennés) pour garantir une courbe
     croissante. Renvoie [(noirceur, fluence), ...] trié (>= 2 points), ou
     [] si le matériau n'a pas assez de tons exploitables."""
+    # `or 0` COMME DANS SA JUMELLE `darkness_width_points`. Un champ
+    # présent mais nul (`"z_offset": null`) fait lever un TypeError à la
+    # comparaison, et cette courbe est ce qui fait marcher la photo
+    # calibrée et le « ton sur mesure » : un seul ton mal formé -- un
+    # import d'archive, un schéma plus ancien -- et c'est tout le
+    # nuancier qui tombe, pas la ligne fautive. La jumelle se gardait
+    # déjà ; deux réponses à la même question, une seule prudente.
     pts = []
     for s in load_shades(material):
-        if (s.get("z_offset", 0) > 0 and s.get("width", 0) > 0
-                and s.get("feed", 0) > 0 and s.get("power", 0) > 0):
+        if ((s.get("z_offset", 0) or 0) > 0 and (s.get("width", 0) or 0) > 0
+                and (s.get("feed", 0) or 0) > 0
+                and (s.get("power", 0) or 0) > 0
+                and s.get("darkness") is not None):
             pts.append((float(s["darkness"]),
                         line_fluence(s["power"], s["feed"], s["width"])))
     pts.sort(key=lambda p: p[0])
@@ -9882,7 +10015,19 @@ def apply_fill_power_gradient(body, s_debut, s_fin, angle_deg):
     move_re = _re.compile(r"^G[01]\b")
     x_re = _re.compile(r"X(-?\d+\.?\d*)")
     y_re = _re.compile(r"Y(-?\d+\.?\d*)")
-    s_re = _re.compile(r"^S(\d+\.?\d*)(?:\s|$)")
+    # LA PUISSANCE NE VOYAGE PAS TOUJOURS SUR UN MOT « S ». Ce motif ne
+    # reconnaissait que `S<v> <sel>` -- le canal direct. Quand la puissance
+    # passe par la sortie analogique synchronisée (`M67 E0 Q<v>`, Préférences
+    # → « puissance par M67 »), aucune ligne d'armement n'était reconnue,
+    # donc `base_s` restait None et cette fonction rendait le corps
+    # INCHANGÉ : le dégradé ne faisait rien, en silence.
+    #
+    # Mesuré sur un carré de 40 mm rempli au pas 0,5, dégradé S200 -> S900 :
+    # 335 puissances distinctes en S direct, UNE SEULE en M67. Or M67 est le
+    # canal mesuré et adopté le 31/07/2026 (+2 % de blocs pour 56 min
+    # épargnées) : le mode le plus utilisé était celui où la fonctionnalité
+    # ne marchait pas.
+    s_re = _re.compile(r"^(?:S(\d+\.?\d*)(?:\s|$)|M67\s+E\d+\s+Q(\d+\.?\d*)\s*$)")
     lignes = body.split("\n")
 
     # Passe 1 : bornes de la projection sur la direction du dégradé.
@@ -9912,7 +10057,7 @@ def apply_fill_power_gradient(body, s_debut, s_fin, angle_deg):
     for ligne in lignes:
         m = s_re.match(ligne.strip())
         if m:
-            val = float(m.group(1))
+            val = float(m.group(1) or m.group(2))
             if val <= 0:
                 base_s = None
                 dernier_s = None
@@ -9936,7 +10081,17 @@ def apply_fill_power_gradient(body, s_debut, s_fin, angle_deg):
                 s_loc = max(0.0, min(base_s * cible / s0, S_MAX))
                 s_int = int(round(s_loc))
                 if dernier_s is None or s_int != dernier_s:
-                    out.append("S{} {sel}".format(s_int, sel=SPINDLE_SELECT))
+                    # ÉMIS PAR LES MÊMES AIGUILLEURS que tous les autres
+                    # changements de puissance du fichier : une ligne
+                    # `M67 E<n> Q<v>` en canal synchronisé (elle doit
+                    # précéder le bloc, M67 s'applique au suivant), un
+                    # `S<v> <sel>` en direct. Écrire le « S » à la main
+                    # ici, c'était une troisième façon de dire la
+                    # puissance -- et celle qui ignorait le dialecte.
+                    out.extend(cmd_power_prefix(s_int))
+                    suffixe = cmd_power_suffix(s_int)
+                    if suffixe:
+                        out.append(suffixe)
                     dernier_s = s_int
         out.append(ligne)
     return "\n".join(out)
@@ -10326,8 +10481,16 @@ def generate_gcode_combined(operations, pre_gcode="", post_gcode="", frame_only=
         lines.append("G0 Z{:.4f}".format(z_cadrage))
         lines.extend(build_frame_trace(
             min(xs), max(xs), min(ys), max(ys), z_cadrage))
-        lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
-        lines.append("M2")
+        # `if not body_only` COMME CHEZ LES QUATRE AUTRES. Les cadrages de
+        # la découpe à plat, de la découpe courbe, de la gravure remplie et
+        # de la bande de calibration gardent tous leur désarmement et leur
+        # M2 derrière ce test ; celui-ci ne l'avait pas. Un jour où un
+        # ensemble de planches demanderait le cadrage de ses jobs combinés,
+        # le M2 du premier aurait terminé le programme, et les suivantes
+        # ne se seraient jamais tracées -- sans erreur, sans message.
+        if not body_only:
+            lines.append(CMD_DISARM.format(sel=SPINDLE_SELECT))
+            lines.append("M2")
         return sanitize_gcode_for_linuxcnc("\n".join(lines))
 
     if not body_only and pre_gcode.strip():
@@ -10601,7 +10764,8 @@ def _emit_raster_rows(lines, grid, pitch, z_work, z_safe, feed, y0=0.0):
         x_prev = x_entry
         for s, x_fin in plages:
             f_run = feed
-            if s == 0 and abs(x_fin - x_prev) >= TRANSIT_BLANC_MINI_MM                     and transit > feed:
+            if (s == 0 and transit > feed
+                    and abs(x_fin - x_prev) >= TRANSIT_BLANC_MINI_MM):
                 f_run = transit
             lines.extend(cmd_power_prefix(s))
             lines.append("G1 X{:.4f} Y{:.4f} F{:.0f} {}".format(
@@ -11485,7 +11649,13 @@ def _spirale_fuseau_z(darkness_rows, pitch, z_work, feed, material,
         lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}{}".format(
             x, y, z_work + dz[i], avances[i - 1], (" " + suf) if suf else ""))
 
-    lines.extend(cmd_power_prefix(0.0))
+    # Le retrait, faisceau COUPÉ par la commande de dialecte : en S direct
+    # `cmd_power_prefix(0)` ne rend rien, et S étant modal la remontée se
+    # faisait avec la dernière puissance encore commandée. Ces trois
+    # chemins-là finissent hors image, donc à S0 -- mais s'appuyer sur ça
+    # est un accident heureux, pas une règle (cf. la calligraphie, où le
+    # même appel brûlait vraiment).
+    lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")
@@ -11641,7 +11811,13 @@ def generate_gcode_photo_spirale(darkness_rows, pitch, z_work, feed,
                 x, y, f_run, (" " + suf) if suf else ""))
         i = j + 1
 
-    lines.extend(cmd_power_prefix(0.0))
+    # Le retrait, faisceau COUPÉ par la commande de dialecte : en S direct
+    # `cmd_power_prefix(0)` ne rend rien, et S étant modal la remontée se
+    # faisait avec la dernière puissance encore commandée. Ces trois
+    # chemins-là finissent hors image, donc à S0 -- mais s'appuyer sur ça
+    # est un accident heureux, pas une règle (cf. la calligraphie, où le
+    # même appel brûlait vraiment).
+    lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")
@@ -11850,7 +12026,13 @@ def _rangees_fuseau_z(darkness_rows, pitch, z_work, feed, material,
         suf = cmd_power_suffix(pw)
         lines.append("G1 X{:.4f} Y{:.4f} Z{:.4f} F{:.0f}{}".format(
             x, y, z_work + dz[i], avances[i - 1], (" " + suf) if suf else ""))
-    lines.extend(cmd_power_prefix(0.0))
+    # Le retrait, faisceau COUPÉ par la commande de dialecte : en S direct
+    # `cmd_power_prefix(0)` ne rend rien, et S étant modal la remontée se
+    # faisait avec la dernière puissance encore commandée. Ces trois
+    # chemins-là finissent hors image, donc à S0 -- mais s'appuyer sur ça
+    # est un accident heureux, pas une règle (cf. la calligraphie, où le
+    # même appel brûlait vraiment).
+    lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")
@@ -14818,8 +15000,23 @@ def generate_gcode_calligraphie(chaines, z_work, feed, material,
         # Faisceau coupé PENDANT le transit : entre deux gestes il n'y a
         # pas de trait à faire, et le Z change de niveau -- laisser le
         # faisceau brûlerait une liaison qui n'existe pas dans la lettre.
+        #
+        # `CMD_BEAM_OFF` ET NON `cmd_power_prefix(0)`. Ce dernier ne rend
+        # RIEN en canal S direct (la puissance y voyage sur le G1, il n'a
+        # donc pas de préfixe à poser) : la ligne ci-dessous n'écrivait
+        # alors aucune commande, et comme S est modal en RS274, la tête
+        # partait au transit avec la puissance du dernier trait encore
+        # commandée. Mesuré sur deux gestes distants de 50 mm : quatre G0
+        # parcourus à S1000, dont la traversée complète entre les deux
+        # lettres. En M67 le même appel écrivait bien « M67 E0 Q0 » et
+        # coupait -- le défaut ne se voyait donc que dans l'autre canal,
+        # celui du réglage PAR DÉFAUT et celui que GRBL impose.
+        #
+        # `CMD_BEAM_OFF` est la réponse unique de ce fichier à « coupe le
+        # faisceau » -- « S0 <sel> » ou « M67 E0 Q0 » selon le dialecte --
+        # et c'est elle qu'emploient tous les autres générateurs.
         if p_prec != 0.0:
-            lines.extend(cmd_power_prefix(0.0))
+            lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
             p_prec = 0.0
         # DANS CE MODE, PLUS HAUT VEUT DIRE PLUS LOIN DU BOIS : le dz du
         # fuseau ÉLOIGNE la tête pour élargir le point. Remonter au Z de
@@ -14853,7 +15050,13 @@ def generate_gcode_calligraphie(chaines, z_work, feed, material,
                 p.x, p.y, z_work + p.dz, f_bloc, (" " + suf) if suf else ""))
             z_cur = z_work + p.dz
             prec = p
-    lines.extend(cmd_power_prefix(0.0))
+    # Le retrait, faisceau COUPÉ par la commande de dialecte : en S direct
+    # `cmd_power_prefix(0)` ne rend rien, et S étant modal la remontée se
+    # faisait avec la dernière puissance encore commandée. Ces trois
+    # chemins-là finissent hors image, donc à S0 -- mais s'appuyer sur ça
+    # est un accident heureux, pas une règle (cf. la calligraphie, où le
+    # même appel brûlait vraiment).
+    lines.append(CMD_BEAM_OFF.format(sel=SPINDLE_SELECT))
     lines.append("G0 Z{:.4f}".format(z_safe))
     if post_gcode.strip():
         lines.append("(-- G-code personnalisé (après) --)")
