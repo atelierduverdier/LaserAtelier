@@ -532,8 +532,21 @@ def rendre_texte(chemin_police, texte, em_px=EM_PX, marge=None):
 # =======================================================================
 
 def _decale(b, dy, dx):
+    """L'image décalée d'un pixel, le bord rempli de FOND.
+
+    `np.roll` reboucle : le voisin « au-dessus » de la ligne 0 était la
+    DERNIÈRE ligne. Une encre qui touche un bord se croyait donc raccordée
+    au bord opposé — amincissement, transitions et jonctions faussés d'un
+    coup. Aucune police ne le déclenche aujourd'hui (40 essayées, la marge
+    de 15 % de `rendre_texte` suffit), mais `marge` est un paramètre et ces
+    fonctions sont publiques : les essais les appellent sur des tableaux
+    fabriqués à la main, sans marge."""
     np = _numpy()
-    return np.roll(np.roll(b, dy, 0), dx, 1)
+    H, W = b.shape
+    out = np.zeros_like(b)
+    out[max(0, dy):H - max(0, -dy), max(0, dx):W - max(0, -dx)] = \
+        b[max(0, -dy):H - max(0, dy), max(0, -dx):W - max(0, dx)]
+    return out
 
 
 def _huit_voisins(b):
@@ -609,7 +622,15 @@ def largeur_locale(b):
     couverte pour 4 % de débordement ; corde perpendiculaire = 52 à 67 %
     de débordement. Le disque gagne, et de loin."""
     from scipy import ndimage
-    return 2.0 * ndimage.distance_transform_edt(b)
+    np = _numpy()
+    # UNE BORDURE DE FOND AVANT DE MESURER. La transformée de distance ne
+    # connaît que le tableau : une encre qui touche le bord n'a pas de fond
+    # de ce côté-là et se lit plus large qu'elle n'est — mesuré, 6,0 px
+    # pour une barre de 4 collée au bord, soit 50 % de trop sur la largeur
+    # même qui commande le fuseau Z.
+    pad = np.zeros((b.shape[0] + 2, b.shape[1] + 2), dtype=bool)
+    pad[1:-1, 1:-1] = b
+    return 2.0 * ndimage.distance_transform_edt(pad)[1:-1, 1:-1]
 
 
 # =======================================================================
@@ -817,6 +838,10 @@ def fusionner_jonctions(aretes, larg_px, k_largeurs=FUSION_EN_LARGEURS):
                 continue
             lg = sum(math.hypot(q[0] - p[0], q[1] - p[1])
                      for p, q in zip(a, a[1:]))
+            # Même prévenance que `_portee`, qui prévoit explicitement le
+            # cas : sans largeur, on ne fusionne rien plutôt que de lever.
+            if larg_px is None:
+                continue
             rayon = 0.5 * float(larg_px[n1[0], n1[1]])
             if lg <= k_largeurs * rayon:
                 pont = (i, n1, n2, a)
@@ -1294,10 +1319,33 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
 
     b = rendre_texte(chemin_police, texte, em_px=em_px)
     H, W = b.shape
+    # L'ÉCHELLE SE PREND SUR L'ENCRE, PAS SUR L'IMAGE. `rendre_texte` pose
+    # une marge de 15 % de l'em de chaque côté : diviser par la largeur de
+    # l'image faisait sortir tout le texte plus petit que demandé, et
+    # d'autant plus que le texte est court -- mesuré sur AdwaitaMono à
+    # 120 mm demandés : « Atelier du Verdier » sortait à 114,3 mm (-4,7 %),
+    # « Atelier » à 106,0 (-11,7 %), « A » à 47,8 (-60,2 %). En hauteur
+    # c'est pire encore, la boîte couvrant tout l'em jambages compris :
+    # « a » demandé à 50 mm sortait à 25,8.
+    #
+    # Et `infos` annonçait quand même le chiffre demandé, si bien que le
+    # panneau confirmait une taille qui n'allait pas être gravée.
+    #
+    # C'est bien l'ENCRE la référence, et non le squelette : l'axe médian
+    # s'arrête à une demi-largeur des pointes, mais le trait a cette
+    # largeur -- la brûlure retombe sur le bord de l'encre. C'est aussi ce
+    # qui fait coïncider ce mode avec `contours_texte`, qui mesure sur les
+    # contours de la police et tient sa taille à 0,000 % près.
+    _cols = np.nonzero(b.any(axis=0))[0]
+    _lignes = np.nonzero(b.any(axis=1))[0]
+    if not len(_cols) or not len(_lignes):
+        raise ErreurCalligraphie("Rien à graver : le texte rendu est vide.")
+    encre_w = int(_cols.max() - _cols.min() + 1)
+    encre_h = int(_lignes.max() - _lignes.min() + 1)
     if largeur_mm and largeur_mm > 0:
-        mm_px = float(largeur_mm) / float(W)
+        mm_px = float(largeur_mm) / float(encre_w)
     elif hauteur_mm and hauteur_mm > 0:
-        mm_px = float(hauteur_mm) / float(H)
+        mm_px = float(hauteur_mm) / float(encre_h)
     else:
         raise ErreurCalligraphie(
             "Donne une largeur ou une hauteur de texte en mm.")
@@ -1410,9 +1458,17 @@ def chaines_calligraphie(chemin_police, texte, largeur_mm=None,
             w_min = min(w_min, w)
             w_max = max(w_max, w)
         longueur += _longueur_chaine(c)
+    # DEUX CHIFFRES QUI NE SE CONFONDENT PLUS. « largeur/hauteur_mm » est
+    # ce qui sera GRAVÉ -- c'est ce que le panneau annonce. Le repère du
+    # retournement Y, lui, est la hauteur de l'IMAGE : les chaînes valent
+    # (H - 1 - y), donc quiconque revient aux pixels a besoin de (H-1)·mm_px
+    # et de rien d'autre. Les deux vivaient sous la même clé, à une ligne de
+    # pixels près (0,0444 mm mesuré), et l'une des deux était fausse.
     infos = {
-        "largeur_mm": W * mm_px,
-        "hauteur_mm": H * mm_px,
+        "largeur_mm": encre_w * mm_px,
+        "hauteur_mm": encre_h * mm_px,
+        "hauteur_image_mm": hauteur_totale,
+        "largeur_image_mm": W * mm_px,
         "mm_px": mm_px,
         "largeur_trait_min": w_min,
         "largeur_trait_max": w_max,

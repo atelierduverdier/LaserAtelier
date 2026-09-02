@@ -13176,8 +13176,14 @@ def _rendre_calligraphie(chaines, prep, infos, largeur_px=1100):
     # La demi-largeur suffit à CONTENIR l'encre ; le millimètre de plus
     # est de l'air, pour qu'une hampe ne vienne pas lécher le bord.
     marge = demi + max(0.6, 0.008 * infos["largeur_mm"])
-    larg_mm = infos["largeur_mm"] + 2 * marge
-    haut_mm = infos["hauteur_mm"] + 2 * marge
+    # LES DIMENSIONS DE L'IMAGE, pas celles de l'encre. Les chaînes portent
+    # des coordonnées prises dans le repère du rendu, marges comprises :
+    # « largeur/hauteur_mm » dit désormais ce qui sera GRAVÉ, ce qui est le
+    # bon chiffre à annoncer mais pas le bon repère pour retourner l'axe Y.
+    larg_ref = infos.get("largeur_image_mm", infos["largeur_mm"])
+    haut_ref = infos.get("hauteur_image_mm", infos["hauteur_mm"])
+    larg_mm = larg_ref + 2 * marge
+    haut_mm = haut_ref + 2 * marge
 
     ech = largeur_px / max(larg_mm, 1e-9)
     H = int(haut_mm * ech) + 2
@@ -13189,8 +13195,8 @@ def _rendre_calligraphie(chaines, prep, infos, largeur_px=1100):
     p.setBrush(QtGui.QColor(45, 30, 18))
     for suite in suites:
         for (x0, y0, w0), (x1, y1, w1) in zip(suite, suite[1:]):
-            X0, Y0 = (x0 + marge) * ech, (infos["hauteur_mm"] - y0 + marge) * ech
-            X1, Y1 = (x1 + marge) * ech, (infos["hauteur_mm"] - y1 + marge) * ech
+            X0, Y0 = (x0 + marge) * ech, (haut_ref - y0 + marge) * ech
+            X1, Y1 = (x1 + marge) * ech, (haut_ref - y1 + marge) * ech
             r0, r1 = 0.5 * w0 * ech, 0.5 * w1 * ech
             dx, dy = X1 - X0, Y1 - Y0
             n = math.hypot(dx, dy) or 1.0

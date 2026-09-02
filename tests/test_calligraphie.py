@@ -132,7 +132,7 @@ _nom, _chemin = _polices[0]
 _TXT = "Verdier"
 _encre = cal.rendre_texte(_chemin, _TXT)
 _ch, _inf = cal.chaines_calligraphie(_chemin, _TXT, largeur_mm=120.0)
-_couv, _deb = _balayer(_encre, _ch, _inf["mm_px"], _inf["hauteur_mm"])
+_couv, _deb = _balayer(_encre, _ch, _inf["mm_px"], _inf["hauteur_image_mm"])
 assert _couv >= 88.0, ("le tracé ne couvre pas la lettre", _couv, _nom)
 assert _deb <= 8.0, ("le tracé déborde de la lettre", _deb, _nom)
 print("3. « {} » en {} : couvre {:.0f} % de la lettre, déborde {:.0f} % OK"
@@ -285,7 +285,7 @@ _TXT8 = "il a été"
 _encre8 = cal.rendre_texte(_chemin, _TXT8)
 _ch8, _inf8 = cal.chaines_calligraphie(_chemin, _TXT8, largeur_mm=120.0)
 _servies, _total = _taches_servies(_encre8, _ch8, _inf8["mm_px"],
-                                   _inf8["hauteur_mm"])
+                                   _inf8["hauteur_image_mm"])
 assert _total >= 3, ("le texte d'essai n'a pas de tache détachée : il ne "
                      "peut rien prouver", _total)
 assert _servies == _total, (
@@ -308,7 +308,7 @@ for _c in _ch8:
 # insensible à l'échelle -- c'est tout l'intérêt.
 for _lmm in (200.0, 120.0, 60.0, 35.0):
     _c2, _i2 = cal.chaines_calligraphie(_chemin, _TXT8, largeur_mm=_lmm)
-    _s2, _t2 = _taches_servies(_encre8, _c2, _i2["mm_px"], _i2["hauteur_mm"])
+    _s2, _t2 = _taches_servies(_encre8, _c2, _i2["mm_px"], _i2["hauteur_image_mm"])
     assert _s2 == _t2, (
         "à {:.0f} mm de large, {} taches d'encre sur {} ne sont plus gravées : "
         "le critère d'élagage dépend de la taille".format(_lmm, _t2 - _s2, _t2))
@@ -977,3 +977,143 @@ else:
     print("17. contraste : trait plat {:.2f}x, fuseau {:.2f}x, seuil {:.1f}x "
           "OK (pas de mélange perso/système sur cette machine, ordre non "
           "jugeable)".format(_c_plat, _c_fusele, cal.CONTRASTE_MINI))
+
+
+# ==========================================================================
+# 18. LA TAILLE DEMANDÉE EST LA TAILLE GRAVÉE
+# ==========================================================================
+# Défaut trouvé à l'audit du 02/09/2026, et resté invisible parce que TOUS
+# les contrôles de ce fichier mesuraient À TRAVERS `infos["mm_px"]` : ils
+# étaient cohérents entre eux autour d'une échelle fausse, et aucun ne
+# pouvait la juger. C'est la variante, dans un autre costume, de la règle
+# que ce dépôt s'est déjà donnée -- « un balayage lancé sur un pipeline
+# raccourci n'est pas une mesure du pipeline ».
+#
+# L'échelle se prenait sur la largeur de l'IMAGE, marges comprises (15 % de
+# l'em de chaque côté). Empreinte réellement brûlée pour 120 mm demandés,
+# avant → après : « A » 62,7 → 112,8 ; « Ab » 85,2 → 118,7 ; « Atelier »
+# 108,5 → 120,0 ; « Atelier du Verdier » 115,3 → 119,9.
+#
+# ON MESURE CE QUI BRÛLE, pas les points de la chaîne : l'axe médian
+# s'arrête à une demi-largeur des pointes, mais le trait a cette largeur.
+
+
+def _empreinte_mm(chaines, infos, encre):
+    """Largeur et hauteur de ce que les gestes déposeraient, en mm."""
+    couv = cal.couverture(encre, chaines, infos["mm_px"],
+                          infos["hauteur_image_mm"])
+    cols = np.nonzero(couv.any(axis=0))[0]
+    lignes = np.nonzero(couv.any(axis=1))[0]
+    k = cal.ECHELLE_CONTROLE * infos["mm_px"]
+    return ((cols.max() - cols.min() + 1) * k,
+            (lignes.max() - lignes.min() + 1) * k)
+
+
+print()
+print("=" * 62)
+print("§18  La taille demandée est la taille gravée")
+print("=" * 62)
+
+# LES BORNES SE LISENT DANS LA MESURE, et elles ne sont pas symétriques :
+# le disque inscrit DÉBORDE la lettre (4 % en aire, documenté), et ce
+# débordement se voit surtout aux extrémités -- donc sur l'étendue. Mesuré
+# ici : largeur de -6,0 % (un « A » seul, dont l'axe médian s'arrête loin
+# des pointes de ses diagonales) à +0,5 % ; hauteur de +1,4 % à +12,7 %.
+# On borne large, mais assez serré pour rattraper les -48 % d'avant.
+for _txt18, _tol18 in (("Atelier du Verdier", 0.02), ("Atelier", 0.02),
+                       ("Ab", 0.05), ("A", 0.08)):
+    _c18, _i18 = cal.chaines_calligraphie(_chemin, _txt18, largeur_mm=120.0)
+    _e18 = cal.rendre_texte(_chemin, _txt18, em_px=cal.EM_PX)
+    _w18, _h18 = _empreinte_mm(_c18, _i18, _e18)
+    print("   « {:<20} » demandé 120,0 mm → brûlé {:6.1f} mm  ({:+.1f} %)"
+          .format(_txt18, _w18, 100 * (_w18 - 120.0) / 120.0))
+    assert abs(_w18 - 120.0) / 120.0 <= _tol18, (
+        "« {} » : 120 mm demandés, {:.1f} mm brûlés -- l'échelle ne se prend "
+        "pas sur l'encre".format(_txt18, _w18))
+    # et le chiffre annoncé doit être celui-là, pas celui de l'image
+    assert abs(_i18["largeur_mm"] - 120.0) < 0.01, (
+        "infos annonce {:.1f} mm".format(_i18["largeur_mm"]))
+
+# LA HAUTEUR SUIT LE MÊME CHEMIN, et souffrait davantage : la boîte couvre
+# tout l'em, jambages compris, alors qu'un « a » n'a ni hampe ni queue.
+_c18h, _i18h = cal.chaines_calligraphie(_chemin, "Atelier", hauteur_mm=50.0)
+_e18h = cal.rendre_texte(_chemin, "Atelier", em_px=cal.EM_PX)
+_w18h, _h18h = _empreinte_mm(_c18h, _i18h, _e18h)
+print("   hauteur : demandé 50,0 mm → brûlé {:.1f} mm  ({:+.1f} %)"
+      .format(_h18h, 100 * (_h18h - 50.0) / 50.0))
+assert 0.98 <= _h18h / 50.0 <= 1.15, (
+    "50 mm de hauteur demandés, {:.1f} mm brûlés -- la boîte de rendu "
+    "couvre tout l'em, jambages compris, et servait d'échelle".format(_h18h))
+
+# LES DEUX MODES DOIVENT S'ACCORDER. C'est l'argument qui a tranché :
+# `contours_texte` tenait sa taille à 0,000 % près pendant que le squelette
+# perdait jusqu'à 60 %. Deux modes du même atelier, la même demande, deux
+# tailles gravées -- il n'y a pas de lecture où les deux ont raison.
+_cont18, _ic18 = cal.contours_texte(_chemin, "Atelier", largeur_mm=120.0)
+_xs18 = [p[0] for c in _cont18 for p in c]
+_larg_contour = max(_xs18) - min(_xs18)
+_c18b, _i18b = cal.chaines_calligraphie(_chemin, "Atelier", largeur_mm=120.0)
+_w18b, _ = _empreinte_mm(_c18b, _i18b,
+                         cal.rendre_texte(_chemin, "Atelier", em_px=cal.EM_PX))
+print("   même texte, même demande : contour {:.1f} mm, squelette {:.1f} mm"
+      .format(_larg_contour, _w18b))
+assert abs(_larg_contour - _w18b) / 120.0 <= 0.03, (
+    "les deux modes gravent {:.1f} et {:.1f} mm pour la même demande"
+    .format(_larg_contour, _w18b))
+
+# ET LE REPÈRE DE RETOURNEMENT N'EST PLUS LA TAILLE ANNONCÉE. Les deux
+# vivaient sous la même clé : l'une des deux était forcément fausse.
+assert _i18b["hauteur_image_mm"] > _i18b["hauteur_mm"], (
+    "la hauteur de l'image doit dépasser celle de l'encre (marges)")
+print("18. taille tenue en largeur comme en hauteur, les deux modes "
+      "d'accord, repère de retournement séparé OK")
+
+
+# ==========================================================================
+# 19. LE BORD DE L'IMAGE N'EST PAS DE L'ENCRE
+# ==========================================================================
+# `_decale` reboucle par `np.roll` : le voisin « au-dessus » de la ligne 0
+# était la DERNIÈRE ligne. Et la transformée de distance ne connaît que le
+# tableau : une encre collée au bord n'a pas de fond de ce côté-là et se
+# lit plus large qu'elle n'est -- 6,0 px pour une barre de 4, soit 50 % de
+# trop sur la largeur même qui commande le fuseau Z.
+#
+# AUCUNE POLICE NE LE DÉCLENCHE : la marge de 15 % de `rendre_texte` tient,
+# 40 polices essayées. Le contrôle doit donc FABRIQUER le cas -- sans quoi
+# le correctif n'est gardé par rien, et c'est ce que le sabotage a montré.
+# `marge` est un paramètre, et `amincir`/`largeur_locale`/`contraste_encre`
+# sont publiques : ce fichier les appelle lui-même sur des tableaux nus.
+
+_barre_bord = np.zeros((20, 40), dtype=bool)
+_barre_bord[0:4, 5:35] = True              # collée à la ligne 0
+_barre_libre = np.zeros((20, 40), dtype=bool)
+_barre_libre[8:12, 5:35] = True            # la même, au large
+
+_l_bord = float(cal.largeur_locale(_barre_bord)[1, 20])
+_l_libre = float(cal.largeur_locale(_barre_libre)[9, 20])
+print()
+print("=" * 62)
+print("§19  Le bord de l'image n'est pas de l'encre")
+print("=" * 62)
+print("   barre de 4 px : {:.1f} px au bord, {:.1f} px au large"
+      .format(_l_bord, _l_libre))
+assert abs(_l_bord - 4.0) < 0.51, (
+    "une barre de 4 px collée au bord se lit {:.1f} px : la transformée de "
+    "distance prend le bord du tableau pour de l'encre".format(_l_bord))
+assert abs(_l_bord - _l_libre) < 0.51, (
+    "la même barre se mesure {:.1f} px au bord et {:.1f} px au large"
+    .format(_l_bord, _l_libre))
+
+# Et le rebouclage : deux barres aux bords opposés ne se touchent PAS.
+_deux = np.zeros((21, 40), dtype=bool)
+_deux[0, 10:30] = True
+_deux[20, 10:30] = True
+_haut = cal._decale(_deux, 1, 0)           # ce qui devient le voisin du dessus
+assert not _haut[1, 20] or True, "garde-fou de lecture"
+assert not cal._decale(_deux, -1, 0)[20, 20], (
+    "la ligne du haut est vue comme voisine de celle du bas : np.roll "
+    "reboucle, et l'encre du bord se croit raccordée au bord opposé")
+assert cal._decale(_deux, 1, 0)[1, 20], (
+    "un décalage ordinaire doit continuer de décaler")
+print("   deux barres aux bords opposés ne se voient plus : OK")
+print("19. bord : largeur juste au bord, aucun rebouclage OK")
