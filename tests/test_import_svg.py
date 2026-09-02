@@ -198,7 +198,7 @@ print("=" * 62)
 # DRAPEAUX d'arc y entraient comme des coordonnées.
 releve = []
 S._ellipse(Faux(Rx="5", Ry="3"),
-           S._composer(S.IDENTITE, (1, 0, 0, 1, 100.0, 200.0)), releve)
+           S.matrix_mul(S.IDENTITY, (1, 0, 0, 1, 100.0, 200.0)), releve)
 xs = [p[0] for p in releve]
 ys = [p[1] for p in releve]
 print("   ellipse 5x3 en (100, 200) → x [%.1f, %.1f]  y [%.1f, %.1f]"

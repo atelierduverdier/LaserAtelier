@@ -10906,8 +10906,13 @@ class TaskPanelImportSVG:
         # d'origine : il reste consultable, et un import rejoué ne
         # reconvertit pas.
         if svg_import.est_lightburn(path):
+            # CE QUE LA TRADUCTION N'A PAS SU RENDRE SE DIT ICI. Un type de
+            # forme inconnu disparaissait entre le .lbrn2 et le SVG, et
+            # l'import annonçait ensuite un compte parfaitement crédible.
+            from collections import Counter as _Compteur
+            ignores_lb = _Compteur()
             try:
-                path = svg_import.lightburn_vers_svg(path)
+                path = svg_import.lightburn_vers_svg(path, ignores=ignores_lb)
             except Exception as exc:
                 QtWidgets.QMessageBox.critical(
                     self.form, "Import LightBurn",
@@ -10915,6 +10920,10 @@ class TaskPanelImportSVG:
                 return False
             FreeCAD.Console.PrintMessage(
                 "LightBurn traduit en SVG : {}\n".format(path))
+            for genre, n in sorted(ignores_lb.items()):
+                FreeCAD.Console.PrintWarning(
+                    "LightBurn : {} forme(s) « {} » non traduite(s).\n"
+                    .format(n, genre))
         count, warnings = svg_import.import_svg_file(path)
         for w in warnings:
             FreeCAD.Console.PrintWarning("Import SVG : {}\n".format(w))

@@ -484,7 +484,20 @@ def compute_svg_scale(root):
     default = 25.4 / 96.0
     vb = parse_viewbox(root.get("viewBox"))
     if vb is None:
-        return default, 0.0, 0.0, None
+        # SANS viewBox, LA HAUTEUR SE LIT QUAND MÊME dans `height`, et sans
+        # elle le retournement de l'axe Y n'avait aucun repère : le dessin
+        # atterrissait SOUS l'origine, en Y négatif, alors que le même
+        # fichier réenregistré avec un viewBox arrivait dans le quadrant
+        # positif. Mesuré sur un 100 × 50 mm : y de -7,94 à -2,65 mm au lieu
+        # de 42,06 à 47,35 -- deux placements pour un seul dessin, et l'un
+        # des deux hors table. Le repli sur None ne vaut plus que pour un
+        # SVG qui ne dit ni viewBox ni hauteur : là, on ne SAIT pas.
+        try:
+            hauteur = parse_length_mm(root.get("height") or "")
+        except SvgParseError:
+            hauteur = None
+        return (default, 0.0, 0.0,
+                hauteur / default if hauteur and hauteur > 0 else None)
     minx, miny, vbw, vbh = vb
     # LE PLUS PETIT DES DEUX RAPPORTS, et non le premier trouvé. Quand
     # width et height ne concordent pas avec le viewBox, le SVG applique
@@ -544,7 +557,11 @@ def parse_color(value):
         return None
     m = _RGB_FUNC_RE.match(v)
     if m:
-        parts = [p.strip() for p in m.group(1).split(",")]
+        # VIRGULES OU ESPACES : « rgb(255 0 0) » est la forme moderne
+        # (CSS Color 4), et le découpage sur la seule virgule en faisait un
+        # seul morceau -- couleur illisible, repli sur le NOIR. Un tracé
+        # rouge arrivait noir dans l'arbre.
+        parts = [p for p in re.split(r"[,\s]+", m.group(1).strip()) if p]
         if len(parts) == 3:
             try:
                 out = []
@@ -570,19 +587,56 @@ def _style_prop(style_attr, prop):
     return None
 
 
-def own_fill_string(elem):
-    """Remplissage propre à l'élément (style= prioritaire sur fill=).
+def _propriete(elem, nom):
+    """La valeur d'une propriété de présentation portée par l'élément :
+    `style=` d'abord, l'attribut de même nom ensuite.
 
-    Une valeur VIDE (`fill=""`) n'est pas une valeur : sans ce filtre,
-    le `or` la confondait avec l'absence et faisait hériter du parent."""
-    for v in (_style_prop(elem.get("style"), "fill"), elem.get("fill")):
+    Une valeur VIDE (`fill=""`) n'est pas une valeur : sans ce filtre, le
+    `or` la confondait avec l'absence et faisait hériter du parent. La
+    règle valait pour `fill` seul ; elle vaut pour toutes."""
+    for v in (_style_prop(elem.get("style"), nom), elem.get(nom)):
         if v is not None and str(v).strip():
             return v
     return None
 
 
+def own_fill_string(elem):
+    """Remplissage propre à l'élément (style= prioritaire sur fill=)."""
+    return _propriete(elem, "fill")
+
+
 def own_stroke_string(elem):
-    return _style_prop(elem.get("style"), "stroke") or elem.get("stroke")
+    return _propriete(elem, "stroke")
+
+
+# CE QUI EST MASQUÉ DANS INKSCAPE NE DOIT PAS PARTIR SUR LE BOIS.
+# `display:none` et `visibility:hidden` n'étaient pas lus : un calque
+# masqué -- le geste le plus ordinaire d'Inkscape, le calque de
+# construction qu'on éteint avant d'exporter -- revenait entier dans le
+# document et se gravait. Mesuré sur un fichier montrant UN rectangle à
+# l'écran : quatre tracés importés, zéro avertissement. L'en-tête de ce
+# module promet de ne jamais amputer en silence ; ajouter en silence est
+# le même défaut par l'autre bout, et celui-là se paie sur la planche.
+#
+# LES DEUX RÈGLES NE SONT PAS LA MÊME, et les confondre ferait disparaître
+# du dessin légitime : `display:none` retire l'élément ET tout son
+# sous-arbre, sans recours ; `visibility` s'hérite mais un descendant peut
+# la reprendre (`visibility:visible`).
+
+
+def est_hors_rendu(elem):
+    """`display:none` : l'élément et tout son sous-arbre sortent du rendu."""
+    return (_propriete(elem, "display") or "").strip().lower() == "none"
+
+
+def visibilite(elem, heritee=True):
+    """`visibility` résolue pour cet élément : héritée, mais reprenable."""
+    v = (_propriete(elem, "visibility") or "").strip().lower()
+    if v in ("hidden", "collapse"):
+        return False
+    if v == "visible":
+        return True
+    return heritee
 
 
 def resolve_fill_color(elem, inherited_fill):
@@ -627,7 +681,14 @@ def _nombre_attr(elem, nom, defaut=0.0):
     brut = elem.get(nom)
     if brut is None or not str(brut).strip():
         return defaut
-    m = _NUMBER_RE.match(str(brut).strip())
+    brut = str(brut).strip()
+    # UN POURCENTAGE N'EST PAS UNE LONGUEUR. `width="100%"` rendait 100
+    # unités utilisateur : un rectangle inventé, gravé sans un mot. On rend
+    # le défaut -- la forme devient dégénérée, donc COMPTÉE et annoncée,
+    # ce que ce module promet de faire de tout ce qu'il ne sait pas lire.
+    if brut.endswith("%"):
+        return defaut
+    m = _NUMBER_RE.match(brut)
     return float(m.group(0)) if m else defaut
 
 
@@ -739,7 +800,7 @@ def _local_tag(elem):
 
 
 def _walk(elem, matrix, inherited_fill, tol, records, skipped,
-          groupe=None):
+          groupe=None, visible=True):
     for child in elem:
         tag = _local_tag(child)
         if tag in _SKIP_DESCEND:
@@ -747,6 +808,12 @@ def _walk(elem, matrix, inherited_fill, tol, records, skipped,
         if tag in _UNSUPPORTED:
             skipped[tag] += 1
             continue
+        if est_hors_rendu(child):
+            # `display:none` emporte le sous-arbre entier : on ne descend
+            # même pas, la norme ne laisse aucun descendant le reprendre.
+            skipped["_masque"] += 1
+            continue
+        vu = visibilite(child, visible)
         child_matrix = matrix_mul(matrix, parse_transform(child.get("transform")))
         # Les formes de base deviennent un `d` : la grammaire du chemin est
         # déjà là et éprouvée, et un rectangle rendu en quatre segments EST
@@ -756,7 +823,9 @@ def _walk(elem, matrix, inherited_fill, tol, records, skipped,
         d_forme = child.get("d") if tag == "path" else forme_en_d(tag, child)
         if tag in FORMES_DE_BASE and not d_forme:
             skipped["_degenere"] += 1
-        if d_forme:
+        if d_forme and not vu:
+            skipped["_masque"] += 1
+        elif d_forme:
             subpaths, warns = path_d_to_subpaths(d_forme, tol)
             if warns:
                 skipped["_malformed"] += len(warns)
@@ -781,7 +850,7 @@ def _walk(elem, matrix, inherited_fill, tol, records, skipped,
             # pour ne jamais perdre de géométrie par excès de rigueur.
             child_fill = own_fill_string(child) or inherited_fill
             _walk(child, child_matrix, child_fill, tol, records, skipped,
-                  child.get("id") or groupe)
+                  child.get("id") or groupe, vu)
 
 
 def parse_svg_root(root):
@@ -802,6 +871,16 @@ def parse_svg_root(root):
     skipped = Counter()
     _walk(root, initial, own_fill_string(root), tol_user_units, records, skipped)
     warnings = []
+    # preserveAspectRatio="none" DEMANDE DEUX ÉCHELLES, une par axe : le
+    # dessin est alors ÉTIRÉ pour remplir le cadre. On n'en applique qu'une
+    # (le plus petit rapport, la règle « meet » par défaut), donc le dessin
+    # arrive au bon rapport mais pas à la taille demandée. Ce module ne
+    # devine rien en silence : on le dit, comme les autres hors-périmètre.
+    if (root.get("preserveAspectRatio") or "").strip().lower().startswith("none"):
+        warnings.append(
+            "preserveAspectRatio=\"none\" (étirement par axe) non pris en "
+            "charge : le dessin garde ses proportions, sa taille peut "
+            "différer du cadre annoncé")
     for tag, count in sorted(skipped.items()):
         if tag == "_malformed":
             warnings.append(
@@ -809,6 +888,10 @@ def parse_svg_root(root):
         elif tag == "_degenere":
             warnings.append(
                 "{} forme(s) sans géométrie (rayon nul, largeur nulle…)".format(count))
+        elif tag == "_masque":
+            warnings.append(
+                "{} élément(s) masqué(s) dans le dessin (display:none / "
+                "visibility:hidden) : non importés, comme à l'écran".format(count))
         else:
             warnings.append("{} élément(s) <{}> ignoré(s) : {}".format(
                 count, tag, _UNSUPPORTED_LABELS.get(tag, "non pris en charge")))
@@ -884,15 +967,25 @@ def import_svg_file(filepath):
     if not records:
         return 0, warnings + ["Aucun tracé <path> exploitable dans ce fichier."]
     count = 0
+    vides = 0
     par_lot = {}
     for i, rec in enumerate(records, start=1):
         obj = _record_to_object(doc, rec, i)
         if obj is None:
+            # Des points, mais tous confondus : un <line> de longueur nulle,
+            # un tracé réduit à un point. Aucune arête n'en sort, et l'objet
+            # ne se créait pas -- sans un mot, alors que le compte annoncé
+            # baissait d'autant.
+            vides += 1
             continue
         count += 1
         par_lot.setdefault(_nom_de_lot(rec), []).append(obj)
     _ranger_par_lot(doc, par_lot)
     doc.recompute()
+    if vides:
+        warnings = warnings + [
+            "{} tracé(s) sans longueur (points confondus) : rien à "
+            "graver".format(vides)]
     return count, warnings
 
 
@@ -974,29 +1067,19 @@ _SOMMET = re.compile(
     r"(?:c1x(?P<c1x>{n}))?(?:c1y(?P<c1y>{n}))?".format(n=_NOMBRE))
 _PRIMITIVE = re.compile(r"(?P<t>[LB])(?P<a>\d+)\s+(?P<b>\d+)")
 
-IDENTITE = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
-
-
-def _composer(m, n):
-    """m ∘ n : on applique n, puis m (convention SVG `matrix`)."""
-    a1, b1, c1, d1, e1, f1 = m
-    a2, b2, c2, d2, e2, f2 = n
-    return (a1 * a2 + c1 * b2, b1 * a2 + d1 * b2,
-            a1 * c2 + c1 * d2, b1 * c2 + d1 * d2,
-            a1 * e2 + c1 * f2 + e1, b1 * e2 + d1 * f2 + f1)
-
-
-def _appliquer(m, x, y):
-    a, b, c, d, e, f = m
-    return a * x + c * y + e, b * x + d * y + f
+# LES MATRICES DE LA SECTION C SERVENT ICI AUSSI. Ce bloc en portait un
+# second exemplaire -- une identité, un produit et une application, mot pour
+# mot ceux d'IDENTITY / matrix_mul / matrix_apply, cent lignes plus haut.
+# Deux copies de la même arithmétique dans un seul fichier : le jour où l'une
+# se corrige, l'autre ment. Il n'en reste qu'une.
 
 
 def _xform(forme):
     txt = (forme.findtext("XForm") or "").strip()
     if not txt:
-        return IDENTITE
+        return IDENTITY
     bouts = [float(v) for v in txt.split()]
-    return tuple(bouts[:6]) if len(bouts) >= 6 else IDENTITE
+    return tuple(bouts[:6]) if len(bouts) >= 6 else IDENTITY
 
 
 def _sommets(texte):
@@ -1045,7 +1128,7 @@ def _chemin(forme, matrice, releve=None):
             prims.append(("B" if courbe else "L", i, j))
 
     def pt(i):
-        return _appliquer(matrice, sommets[i][0], sommets[i][1])
+        return matrix_apply(matrice, sommets[i][0], sommets[i][1])
 
     morceaux = []
     precedent = None
@@ -1065,8 +1148,8 @@ def _chemin(forme, matrice, releve=None):
         else:
             sortant = sommets[i][2] or (sommets[i][0], sommets[i][1])
             entrant = sommets[j][3] or (sommets[j][0], sommets[j][1])
-            c1 = _appliquer(matrice, sortant[0], sortant[1])
-            c2 = _appliquer(matrice, entrant[0], entrant[1])
+            c1 = matrix_apply(matrice, sortant[0], sortant[1])
+            c2 = matrix_apply(matrice, entrant[0], entrant[1])
             morceaux.append("C{:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f}"
                             .format(c1[0], c1[1], c2[0], c2[1], x, y))
         precedent = j
@@ -1079,8 +1162,25 @@ def _chemin(forme, matrice, releve=None):
 
 
 def _ellipse(forme, matrice, releve=None):
-    """Une ellipse, rendue en deux arcs -- `transform` suffirait, mais un
-    `d` autonome traverse mieux les lecteurs SVG minimalistes."""
+    """Une ellipse LightBurn, échantillonnée dans le repère FINAL.
+
+    ELLE ÉTAIT ÉCRITE EN DEUX ARCS de rayons Rx/Ry avec une rotation d'axe
+    ZÉRO. Or la `XForm` d'un shape peut TOURNER la forme : seuls les deux
+    sommets suivaient la rotation, le ventre des arcs non. Mesuré sur une
+    ellipse 20×5 tournée de 45° : 116,6 mm de large au lieu de 29,2 --
+    quatre fois trop, et de travers, sans un mot. Un arc SVG ne saurait de
+    toute façon pas dire « ellipse cisaillée », ce qu'une XForm peut
+    parfaitement produire.
+
+    La paramétrique, elle, traverse n'importe quelle matrice affine sans
+    rien décomposer : on transforme les POINTS. Et l'atelier aplatit tout
+    en segments un cran plus bas (les courbes OCCT n'existent nulle part
+    ici), donc on ne perd rien à le faire dès la traduction. Le `d` reste
+    autonome et lisible par n'importe quel navigateur.
+
+    Le pas suit la même flèche que le reste de l'import (FLATTEN_TOL_MM,
+    en mm : LightBurn travaille en mm), mesurée sur le plus grand
+    demi-diamètre APRÈS transformation."""
     try:
         # LightBurn écrit `Rx`/`Ry` en CAPITALE : chercher "rx" ne trouvait
         # rien et les deux ellipses du fichier passaient à la trappe.
@@ -1090,43 +1190,66 @@ def _ellipse(forme, matrice, releve=None):
         return None
     if rx <= 0 or ry <= 0:
         return None
-    pts = [_appliquer(matrice, rx, 0.0), _appliquer(matrice, -rx, 0.0)]
-    # Rayons transformés : on mesure ce que devient un rayon unitaire.
-    ox, oy = _appliquer(matrice, 0.0, 0.0)
-    ax, ay = _appliquer(matrice, rx, 0.0)
-    bx, by = _appliquer(matrice, 0.0, ry)
-    rx2 = ((ax - ox) ** 2 + (ay - oy) ** 2) ** 0.5
-    ry2 = ((bx - ox) ** 2 + (by - oy) ** 2) ** 0.5
-    (x1, y1), (x2, y2) = pts
+    ox, oy = matrix_apply(matrice, 0.0, 0.0)
+    ax, ay = matrix_apply(matrice, rx, 0.0)
+    bx, by = matrix_apply(matrice, 0.0, ry)
+    r = max(math.hypot(ax - ox, ay - oy), math.hypot(bx - ox, by - oy), 1e-6)
+    pas = 2.0 * math.acos(max(-1.0, min(1.0, 1.0 - FLATTEN_TOL_MM / r)))
+    n = int(math.ceil(2 * math.pi / max(pas, 1e-6)))
+    # MULTIPLE DE 4 : les quatre extrémités de l'ellipse locale tombent
+    # alors sur des points échantillonnés, donc l'emprise relevée est
+    # exacte au lieu d'être rognée d'une flèche.
+    n = 4 * max(2, min(500, (n + 3) // 4))
+    pts = [matrix_apply(matrice, rx * math.cos(2 * math.pi * k / n),
+                        ry * math.sin(2 * math.pi * k / n))
+           for k in range(n)]
     if releve is not None:
-        # l'emprise réelle de l'ellipse transformée, pas ses paramètres
-        releve.extend([(ox - rx2, oy - ry2), (ox + rx2, oy + ry2)])
-    return ("M{:.4f} {:.4f}A{:.4f} {:.4f} 0 1 0 {:.4f} {:.4f}"
-            "A{:.4f} {:.4f} 0 1 0 {:.4f} {:.4f}Z"
-            .format(x1, y1, rx2, ry2, x2, y2, rx2, ry2, x1, y1))
+        releve.extend(pts)
+    return ("M{:.4f} {:.4f}".format(*pts[0])
+            + "".join("L{:.4f} {:.4f}".format(x, y) for x, y in pts[1:])
+            + "Z")
 
 
-def _parcourir(noeud, matrice, sortie, releve=None):
+def _parcourir(noeud, matrice, sortie, releve=None, ignores=None):
+    """Parcourt les <Shape> du projet. `ignores` (un Counter) reçoit ce qui
+    n'a pas été traduit -- par TYPE.
+
+    CE QUI N'EST PAS TRADUIT DOIT SE DIRE. Tout `Type` autre que Path,
+    Ellipse et Group disparaissait sans un mot, exactement le défaut déjà
+    payé côté SVG (« 1 tracé importé sur 7, zéro avertissement ») : le
+    dessin arrivait amputé et rien ne le signalait. On ne prétend pas
+    savoir quels types LightBurn écrit -- inventer cette liste serait la
+    table fabriquée que ce dépôt traque -- on compte ce qu'on n'a pas su
+    lire, et on le nomme tel que le fichier l'écrit."""
     for forme in noeud.findall("Shape"):
-        m = _composer(matrice, _xform(forme))
+        m = matrix_mul(matrice, _xform(forme))
         genre = forme.get("Type")
         if genre == "Group":
             enfants = forme.find("Children")
             _parcourir(enfants if enfants is not None else forme, m, sortie,
-                       releve)
+                       releve, ignores)
         elif genre in ("Path", "Ellipse"):
             d = (_chemin(forme, m, releve) if genre == "Path"
                  else _ellipse(forme, m, releve))
             if d:
                 sortie.append((forme.get("CutIndex") or "0", d))
+            elif ignores is not None:
+                ignores["{} sans géométrie".format(genre)] += 1
+        elif ignores is not None:
+            ignores[genre or "Shape sans Type"] += 1
 
 
-def convertir_lightburn(chemin_lbrn):
-    """Renvoie (liste des `d`, (xmin, ymin, xmax, ymax))."""
+def convertir_lightburn(chemin_lbrn, ignores=None):
+    """Renvoie (liste des `d`, (xmin, ymin, xmax, ymax)).
+
+    `ignores` est un Counter facultatif -- même idiome que `releve` :
+    il reçoit, par type, les formes que la traduction n'a pas su rendre.
+    Facultatif pour ne rien casser chez les deux appelants existants,
+    renseigné pour que rien ne se perde en silence."""
     racine = ET.parse(chemin_lbrn).getroot()
     chemins = []
     points = []
-    _parcourir(racine, IDENTITE, chemins, points)
+    _parcourir(racine, IDENTITY, chemins, points, ignores)
     if not points:
         return chemins, (0.0, 0.0, 1.0, 1.0)
     xs = [x for x, _ in points]
@@ -1204,12 +1327,14 @@ def est_lightburn(chemin):
     return os.path.splitext(chemin or "")[1].lower() in (".lbrn", ".lbrn2")
 
 
-def lightburn_vers_svg(chemin_lbrn, destination=None):
+def lightburn_vers_svg(chemin_lbrn, destination=None, ignores=None):
     """Traduit un projet LightBurn en SVG et renvoie le chemin écrit.
 
     Sans `destination`, le SVG est posé à côté du fichier d'origine : il
-    reste consultable, et un import raté peut être rejoué sans reconvertir."""
-    chemins, bornes = convertir_lightburn(chemin_lbrn)
+    reste consultable, et un import raté peut être rejoué sans reconvertir.
+    `ignores` (Counter facultatif) recueille ce que la traduction n'a pas
+    su rendre, pour que l'appelant puisse le dire."""
+    chemins, bornes = convertir_lightburn(chemin_lbrn, ignores)
     if not chemins:
         raise ValueError("aucune forme trouvée dans {}".format(
             os.path.basename(chemin_lbrn)))
