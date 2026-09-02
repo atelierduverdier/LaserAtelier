@@ -179,8 +179,14 @@ class LaserAtelierWorkbench(Workbench):
                 return
             import laser_core
             fond = fen.palette().color(QtGui.QPalette.Window)
-            for (nom, _cmds), teinte in zip(self._barres,
-                                            laser_core.TEINTES_ATELIER):
+            # `zip` TRONQUAIT EN SILENCE : neuf barres pour neuf teintes
+            # aujourd'hui, mais ajouter un mode -- manœuvre courante, décrite
+            # dans CLAUDE.md -- peut ajouter une barre, et la dixième serait
+            # restée grise sans un mot. `laser_core.teinte_atelier` a déjà la
+            # convention : on reprend au début de la roue.
+            roue = laser_core.TEINTES_ATELIER
+            for i, (nom, _cmds) in enumerate(self._barres):
+                teinte = roue[i % len(roue)]
                 barre = None
                 for b in fen.findChildren(QtWidgets.QToolBar):
                     if b.windowTitle() == nom or b.objectName() == nom:

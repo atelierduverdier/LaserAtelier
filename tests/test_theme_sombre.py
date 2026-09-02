@@ -327,3 +327,111 @@ icones._fond_du_theme = lambda: FOND_CLAIR
 assert icones.dossier() == SOURCE, (
     "sur thème clair, rien ne doit être fabriqué", icones.dossier())
 print("thème clair : aucun cache fabriqué, on lit le dépôt OK")
+
+
+# ==========================================================================
+# LE CACHE SUIT LA RECETTE, PAS SEULEMENT LA DATE DES SOURCES
+# ==========================================================================
+# Trouvé à l'audit du 02/09/2026. `fabriquer` ne réécrivait un fichier que
+# s'il était plus vieux que sa SOURCE : changer la règle de substitution --
+# les couleurs, les listes d'exclusion, ou le code d'`_eclaircir` -- ne
+# périmait rien, et l'ancien jeu survivait indéfiniment.
+#
+# Ce n'est pas théorique. La v2.99.42 a modifié `_eclaircir` pour épargner
+# le chapeau : quiconque avait déjà un cache gardait son melon blanc APRÈS
+# le correctif, sans un mot. Le défaut que Christophe avait signalé serait
+# resté sous ses yeux, et la version l'annonçait corrigé.
+
+import shutil as _sh                                          # noqa: E402
+import tempfile as _tf                                        # noqa: E402
+
+_src = _tf.mkdtemp(prefix="essai-icones-src-")
+_cache = _tf.mkdtemp(prefix="essai-icones-cache-")
+try:
+    _SVG = ('<svg xmlns="http://www.w3.org/2000/svg">'
+            '<path fill="#2f3540" d="M0 0"/>'
+            '<g class="chapeau-verdier"><path fill="#2f3540" d="M1 1"/></g>'
+            '</svg>')
+    with open(os.path.join(_src, "essai.svg"), "w", encoding="utf-8") as _f:
+        _f.write(_SVG)
+
+    icones.fabriquer(_cache, _src)
+    _fait = os.path.join(_cache, "essai.svg")
+    assert os.path.exists(os.path.join(_cache, icones.NOM_RECETTE)), (
+        "aucune marque de recette : le cache ne saura pas se périmer")
+    _lu = open(_fait, encoding="utf-8").read()
+    assert icones.ENCRE_SOMBRE in _lu, "l'encre n'a pas été éclaircie"
+    assert _lu.count(icones.ENCRE_CLAIRE) == 1, (
+        "le chapeau doit garder son ardoise, et lui seul")
+
+    # LA RECETTE CHANGE, LES SOURCES NON : le cache doit se refaire.
+    _vraie = icones.ENCRE_SOMBRE
+    icones.ENCRE_SOMBRE = "#112233"
+    try:
+        icones.fabriquer(_cache, _src)
+        _lu2 = open(_fait, encoding="utf-8").read()
+        assert "#112233" in _lu2, (
+            "la recette a changé et le cache n'a pas été refait : un "
+            "correctif de substitution n'atteindrait jamais ceux qui ont "
+            "déjà un cache")
+    finally:
+        icones.ENCRE_SOMBRE = _vraie
+    icones.fabriquer(_cache, _src)
+    assert _vraie in open(_fait, encoding="utf-8").read(), (
+        "retour à la recette d'origine non pris")
+
+    # ET LE CODE COMPTE AUTANT QUE LES CONSTANTES. C'est un changement de
+    # CODE -- `_eclaircir` épargnant le chapeau -- qui a motivé ce garde-fou :
+    # une empreinte qui ne regarderait que les couleurs le manquerait, et
+    # c'est exactement ce que le sabotage a montré la première fois.
+    _vrai_ecl = icones._eclaircir
+
+    def _autre_eclaircir(svg):
+        return svg.replace(icones.ENCRE_CLAIRE, "#445566")
+
+    icones._eclaircir = _autre_eclaircir
+    try:
+        icones.fabriquer(_cache, _src)
+        assert "#445566" in open(_fait, encoding="utf-8").read(), (
+            "la RÈGLE a changé, pas les couleurs : l'empreinte doit suivre "
+            "le code, sinon un correctif de substitution n'atteint jamais "
+            "ceux qui ont déjà un cache")
+    finally:
+        icones._eclaircir = _vrai_ecl
+    icones.fabriquer(_cache, _src)
+    assert "#445566" not in open(_fait, encoding="utf-8").read(), (
+        "retour à la règle d'origine non pris")
+
+    # ET RIEN N'EST RÉÉCRIT POUR RIEN : à recette et sources inchangées, on
+    # ne touche plus au disque -- c'est tout l'intérêt du cache.
+    _avant = os.path.getmtime(_fait)
+    icones.fabriquer(_cache, _src)
+    assert os.path.getmtime(_fait) == _avant, (
+        "le cache se réécrit à chaque appel alors que rien n'a changé")
+
+    # UNE FABRICATION INTERROMPUE NE DOIT PAS SE CROIRE VALIDE : sans la
+    # marque, tout se refait.
+    os.remove(os.path.join(_cache, icones.NOM_RECETTE))
+    _avant = os.path.getmtime(_fait)
+    icones.fabriquer(_cache, _src)
+    assert os.path.getmtime(_fait) != _avant, (
+        "marque absente : le cache aurait dû se refaire")
+
+    # Le thème n'est pas RETENU quand on n'a pas pu le lire : mémoriser une
+    # non-réponse fixerait l'apparence pour toute la session.
+    icones.oublier_le_theme()
+    _vrai_fond = icones._fond_du_theme
+    icones._fond_du_theme = lambda: None
+    try:
+        assert icones.theme_sombre() is False, "sans palette, on rend clair"
+        assert icones._theme_sombre is None, (
+            "une lecture ratée a été mémorisée : le thème restera figé "
+            "jusqu'au redémarrage")
+    finally:
+        icones._fond_du_theme = _vrai_fond
+        icones.oublier_le_theme()
+    print("cache d'icônes : recette empreinte, refait quand elle change, "
+          "muet quand rien ne bouge OK")
+finally:
+    _sh.rmtree(_src, ignore_errors=True)
+    _sh.rmtree(_cache, ignore_errors=True)

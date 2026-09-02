@@ -178,7 +178,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.45"
+VERSION = "2.99.46"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -7448,16 +7448,21 @@ def largeur_max_mesuree(material, feed, power_max=None):
 
     C'est la borne HAUTE du fuseau, et elle est mesurée et non calculée :
     le cône optique, extrapolé, annonce des largeurs que le bois ne fait
-    pas (0,50 mm mesuré contre 1,18 optique à S200 sur hêtre)."""
-    mat = _burn_width_material(material)
-    if not mat:
-        return None
-    table = load_burn_widths(mat)
-    niveaux = niveaux_defocus_mesures(mat)
-    if not niveaux:
-        return None
-    s = float(power_max) if power_max else S_MAX
-    return _largeur_defocus(table, s, feed, max(float(n) for n in niveaux))
+    pas (0,50 mm mesuré contre 1,18 optique à S200 sur hêtre).
+
+    UNE SEULE FAÇON DE RÉPONDRE. Cette fonction recalculait le plafond de
+    son côté ; `echelle_fuseau_z` le recalcule aussi, pour son propre haut
+    de fuseau, et c'est CE chiffre-là que le panneau annonce. Deux calculs
+    pour une même question, c'est la manière connue, dans ce dépôt, de
+    laisser deux vérités diverger au premier ajustement -- même si elles
+    s'accordent aujourd'hui : mesuré sur les trois matériaux de l'établi,
+    hêtre, MDF et sapin, à F200 comme à F800, écart 0,0000 mm.
+
+    On délègue donc, et il ne reste qu'un endroit à corriger le jour où le
+    plafond change.
+    """
+    echelle = echelle_fuseau_z(material, feed, power_max=power_max)
+    return echelle[2] if echelle else None
 
 
 _MEMO_FUSEAU = {}

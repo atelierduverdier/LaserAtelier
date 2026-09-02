@@ -252,3 +252,32 @@ assert not _illisibles, (
     "SVG invalide -- QtSvg ne rendra RIEN, en silence, et le bouton "
     "s'affichera vide sans qu'aucune erreur ne le dise", _illisibles)
 print("7. les {} icônes existent et se parsent OK".format(len(_ENREGISTREES)))
+
+
+# --- TOUTE BARRE REÇOIT UNE TEINTE, MÊME LA DIXIÈME ---------------------
+# `_colorer_barres` appariait barres et teintes par `zip` : neuf de chaque
+# aujourd'hui, mais ajouter un mode -- manœuvre courante, décrite dans
+# CLAUDE.md -- peut ajouter une barre, et la dixième serait restée grise
+# sans un mot. Trouvé à l'audit du 02/09/2026.
+import laser_core as _lc                                      # noqa: E402
+
+_roue = _lc.TEINTES_ATELIER
+assert _roue, "la roue de teintes est vide"
+_teintes = [_roue[_i % len(_roue)] for _i in range(len(_barres))]
+assert len(_teintes) == len(_barres), "une barre sans teinte"
+assert all(isinstance(_t, int) for _t in _teintes), "teinte non numérique"
+
+# ET LA ONZIÈME AUSSI : on simule une barre de plus, la roue doit reprendre
+# au début plutôt que de laisser la barre sans couleur.
+_faux = list(_barres) + [("Atelier — barre d'essai", ["LaserAtelier_Guide"])]
+_teintes2 = [_roue[_i % len(_roue)] for _i in range(len(_faux))]
+assert len(_teintes2) == len(_faux), (
+    "une barre ajoutée resterait sans teinte : le repli sur la roue ne joue "
+    "pas")
+import inspect as _insp2                                      # noqa: E402
+_src_col = _insp2.getsource(_w._colorer_barres)
+assert "zip(self._barres" not in _src_col, (
+    "les barres sont de nouveau appariées par zip : une barre de plus que "
+    "de teintes serait tronquée en silence")
+print("teintes : {} barres, {} teintes, repli sur la roue OK".format(
+    len(_barres), len(_roue)))

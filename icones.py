@@ -58,6 +58,8 @@ Rien ici n'a le droit d'empêcher l'atelier de s'ouvrir : à la moindre
 exception on retombe sur le jeu d'origine (icônes peu lisibles, mais
 présentes), jamais sur une erreur.
 """
+import hashlib
+import inspect
 import os
 import re
 
@@ -133,8 +135,14 @@ def theme_sombre():
     global _theme_sombre
     if _theme_sombre is None:
         fond = _fond_du_theme()
-        _theme_sombre = (fond is not None
-                         and _luminance(*fond) < SEUIL_SOMBRE)
+        if fond is None:
+            # ON NE RETIENT PAS UNE RÉPONSE QU'ON N'A PAS EUE. Sans palette
+            # lisible -- Qt pas encore levé, exécution sans interface -- on
+            # rend « clair » pour cette fois, mais on regardera de nouveau
+            # au prochain appel : mémoriser cette non-réponse fixerait le
+            # thème pour toute la session sur une lecture qui a échoué.
+            return False
+        _theme_sombre = _luminance(*fond) < SEUIL_SOMBRE
     return _theme_sombre
 
 
@@ -159,6 +167,31 @@ def _dossier_cache():
     except Exception:
         import tempfile
         return os.path.join(tempfile.gettempdir(), "laseratelier-icones-sombres")
+
+
+# L'EMPREINTE DE LA RECETTE, et non des seules sources. Le cache ne se
+# refaisait qu'au vu de la DATE des SVG : changer la règle de substitution
+# -- les couleurs, les listes d'exclusion, ou le code d'`_eclaircir` -- ne
+# le périmait pas, et l'ancien jeu survivait indéfiniment.
+#
+# Ce n'est pas théorique : la v2.99.42 a précisément modifié `_eclaircir`
+# pour épargner le chapeau. Quiconque avait déjà un cache gardait donc son
+# melon blanc APRÈS le correctif, sans que rien ne le dise -- le défaut que
+# Christophe avait signalé serait resté sous ses yeux.
+#
+# On prend l'empreinte du CODE lui-même : toute retouche de la règle
+# invalide le cache, sans qu'on ait à y penser.
+NOM_RECETTE = "recette.txt"
+
+
+def _empreinte_recette():
+    morceaux = [ENCRE_CLAIRE, ENCRE_SOMBRE, repr(SANS_RETOUCHE), repr(SIGNATURE)]
+    for fonction in (_eclaircir, _bornes_chapeau):
+        try:
+            morceaux.append(inspect.getsource(fonction))
+        except (OSError, TypeError):
+            morceaux.append(fonction.__name__)
+    return hashlib.sha256("\n".join(morceaux).encode("utf-8")).hexdigest()[:16]
 
 
 _MARQUE_CHAPEAU = 'class="chapeau-verdier"'
@@ -223,12 +256,19 @@ def fabriquer(destination, source=None):
     doivent exister dans le jeu sombre aussi, sinon le bouton s'affiche vide."""
     source = source or _DOSSIER_SOURCE
     os.makedirs(destination, exist_ok=True)
+    empreinte = _empreinte_recette()
+    marque = os.path.join(destination, NOM_RECETTE)
+    try:
+        with open(marque, "r", encoding="utf-8") as f:
+            meme_recette = f.read().strip() == empreinte
+    except OSError:
+        meme_recette = False
     for nom in sorted(os.listdir(source)):
         if not nom.endswith(".svg"):
             continue
         src = os.path.join(source, nom)
         dst = os.path.join(destination, nom)
-        if (os.path.exists(dst)
+        if (meme_recette and os.path.exists(dst)
                 and os.path.getmtime(dst) >= os.path.getmtime(src)):
             continue
         with open(src, "r", encoding="utf-8") as f:
@@ -242,6 +282,12 @@ def fabriquer(destination, source=None):
         with open(temporaire, "w", encoding="utf-8") as f:
             f.write(svg)
         os.replace(temporaire, dst)
+    # La marque est posée EN DERNIER : une fabrication interrompue laisse
+    # une recette absente ou périmée, donc un cache qui se refera.
+    temporaire = marque + ".part"
+    with open(temporaire, "w", encoding="utf-8") as f:
+        f.write(empreinte)
+    os.replace(temporaire, marque)
     return destination
 
 
