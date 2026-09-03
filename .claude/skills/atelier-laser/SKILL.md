@@ -50,6 +50,9 @@ puis attends sa réponse :
 
 ## 4. Si tu changes de version
 
-Bumper `VERSION` (dans `laser_core.py`) **ensemble** avec : `<version>` / `<date>` de
-`package.xml`, le badge de `docs/index.html`, et la ligne de version du `README`.
-Une modification purement doc ne bumpe pas.
+Charge le skill `version` : il liste les **six** estampilles à bumper ensemble en un
+commit (`laser_core.py`, `package.xml` version + date, `docs/index.html`, `README.md`,
+`docs/manuel.html` ×3, le PDF régénéré par weasyprint), le tag, et les chiffres
+d'effort recalculés aux versions mineures. Ce paragraphe n'en citait que quatre et
+avait divergé du `CLAUDE.md` (vu le 03/09/2026) — c'est pour ça qu'il renvoie
+désormais au lieu de recopier. Une modification purement doc ne bumpe pas.
