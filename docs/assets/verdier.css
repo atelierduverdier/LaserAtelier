@@ -46,13 +46,25 @@
      fonds où il se pose — blanc 4,94, --orange-soft 4,51, --bg-2 4,61 —
      à la teinte exacte de la marque (31,8°), qui ne bouge pas. */
   --orange-encre:#ac5b00;
+  /* L'encre d'un LIEN Ko-fi en texte : le rouge de la marque ne tient pas sur blanc (voir .btn-kofi). */
+  --kofi-encre:#bf4644;
   --slate:#2f3540; --slate-2:#3c434f;
   --bg:#ffffff; --bg-2:#f6f7f9; --bg-3:#eef0f3;
   --fg:#23272e; --fg-2:#5a626e; --fg-3:#858d99;
   --line:#e2e5ea; --line-2:#d3d8df;
   --card:#ffffff; --shadow:0 1px 2px rgba(20,25,35,.06),0 8px 24px rgba(20,25,35,.06);
-  --tip:#eaf6ee; --tip-b:#3f9d5a; --warn:#fdf0e6; --warn-b:#e07a1f; --note:#eaf0fb; --note-b:#3f6fd1;
+  --tip:#eaf6ee; --tip-b:#3f9d5a; --warn:#fdf0e6; --warn-b:#e07a1f; --note:#f1f3f6; --note-b:#5a626e;
   --radius:14px; --maxw:1180px;
+  /* LA LARGEUR MINIMALE D'UNE CARTE, et c'est elle qui décide du nombre de
+     colonnes — pas une requête de média. Elle valait 290 px : la grille
+     posait donc TROIS colonnes dès 950 px de fenêtre, à 293 px pièce.
+     Mesuré le 31/08/2026 sur une fenêtre de 980 : trois cartes de 293, des
+     paragraphes qui finissaient sur un mot seul, et Christophe qui a lu
+     « 900 px de conteneur, cartes écrasées à 285 ». Le conteneur faisait
+     bien ses 1180 px — c'est la grille qui se serrait trop tôt.
+     À 340, la troisième colonne attend 1104 px de fenêtre : trois de front
+     sur un écran de bureau, deux sur une tablette, une sur un téléphone. */
+  --carte-min:340px;
   /* LA MESURE : la largeur d'une ligne de TEXTE, qui n'est pas celle de la
      page. Sans elle, un paragraphe prenait les 1136 px de la colonne, soit
      154 signes par ligne (mesuré le 29/08/2026 sur la fiche du sabot,
@@ -71,24 +83,28 @@
     --orange:#ff9a1f; --orange-d:#ffab45; --orange-soft:#3a2b12;
   /* Sur fond sombre l'encre n'a jamais manqué : 8,79:1 sur --card. */
   --orange-encre:#ffab45;
+  /* Sur fond sombre le rouge de la marque Ko-fi se lit tel quel : 5,52:1 sur --card. */
+  --kofi-encre:#ff5e5b;
     --slate:#0f1215; --slate-2:#191d23;
     --bg:#14171b; --bg-2:#1a1e23; --bg-3:#22272e;
     --fg:#e6e9ee; --fg-2:#a8b0bc; --fg-3:#7c8592;
     --line:#2a3038; --line-2:#353c46;
     --card:#1b1f25; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
-    --tip:#17281c; --tip-b:#48a765; --warn:#2e2113; --warn-b:#e08b3a; --note:#161f30; --note-b:#5183e0;
+    --tip:#17281c; --tip-b:#48a765; --warn:#2e2113; --warn-b:#e08b3a; --note:#20242b; --note-b:#a8b0bc;
   }
 }
 :root[data-theme="dark"]{
   --orange:#ff9a1f; --orange-d:#ffab45; --orange-soft:#3a2b12;
   /* Sur fond sombre l'encre n'a jamais manqué : 8,79:1 sur --card. */
   --orange-encre:#ffab45;
+  /* Sur fond sombre le rouge de la marque Ko-fi se lit tel quel : 5,52:1 sur --card. */
+  --kofi-encre:#ff5e5b;
   --slate:#0f1215; --slate-2:#191d23;
   --bg:#14171b; --bg-2:#1a1e23; --bg-3:#22272e;
   --fg:#e6e9ee; --fg-2:#a8b0bc; --fg-3:#7c8592;
   --line:#2a3038; --line-2:#353c46;
   --card:#1b1f25; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
-  --tip:#17281c; --tip-b:#48a765; --warn:#2e2113; --warn-b:#e08b3a; --note:#161f30; --note-b:#5183e0;
+  --tip:#17281c; --tip-b:#48a765; --warn:#2e2113; --warn-b:#e08b3a; --note:#20242b; --note-b:#a8b0bc;
 }
 :root[data-theme="light"]{
   --orange:#ff8a00; --orange-d:#e67a00; --orange-soft:#fff3e2;
@@ -106,12 +122,14 @@
      fonds où il se pose — blanc 4,94, --orange-soft 4,51, --bg-2 4,61 —
      à la teinte exacte de la marque (31,8°), qui ne bouge pas. */
   --orange-encre:#ac5b00;
+  /* L'encre d'un LIEN Ko-fi en texte : le rouge de la marque ne tient pas sur blanc (voir .btn-kofi). */
+  --kofi-encre:#bf4644;
   --slate:#2f3540; --slate-2:#3c434f;
   --bg:#ffffff; --bg-2:#f6f7f9; --bg-3:#eef0f3;
   --fg:#23272e; --fg-2:#5a626e; --fg-3:#858d99;
   --line:#e2e5ea; --line-2:#d3d8df;
   --card:#ffffff; --shadow:0 1px 2px rgba(20,25,35,.06),0 8px 24px rgba(20,25,35,.06);
-  --tip:#eaf6ee; --tip-b:#3f9d5a; --warn:#fdf0e6; --warn-b:#e07a1f; --note:#eaf0fb; --note-b:#3f6fd1;
+  --tip:#eaf6ee; --tip-b:#3f9d5a; --warn:#fdf0e6; --warn-b:#e07a1f; --note:#f1f3f6; --note-b:#5a626e;
 }
 
 /* ---------- 2. Base ---------------------------------------------------- */
@@ -220,7 +238,16 @@ header.topbar{
 .navlinks a[aria-current]{color:var(--orange-encre); background:var(--orange-soft)}
 
 .theme-btn,.nav-btn{border:1px solid var(--line-2); background:var(--card); color:var(--fg-2);
-  width:38px;height:38px;border-radius:9px;cursor:pointer;font-size:1.05rem; flex:none}
+  width:38px;height:38px;border-radius:9px;cursor:pointer;font-size:1.05rem; flex:none;
+  display:grid; place-items:center}
+/* LE BOUTON DE THÈME PORTAIT UN CARACTÈRE, « ◐ », ET C'ÉTAIT LE PROBLÈME.
+   Il a le titre et l'aria-label qu'il faut depuis le début — mais dessiné
+   par la police de texte, à 17 px, il sort en petit demi-cercle maigre que
+   Christophe a lu comme un chevron « ‹ » le 31/08/2026 : un bouton dont on
+   ne devine pas la fonction n'invite personne à cliquer. Un tracé, lui, est
+   dessiné par la page et pas par le système : même trait, même épaisseur et
+   même taille partout, comme les pictos des cartes. */
+.theme-btn svg,.nav-btn svg{width:18px;height:18px;display:block}
 .theme-btn{margin-left:6px}
 .theme-btn:hover,.nav-btn:hover{color:var(--fg); border-color:var(--orange)}
 .nav-btn{display:none; margin-left:auto}   /* montré seulement en étroit */
@@ -231,7 +258,7 @@ header.topbar{
    Le menu est un panneau déroulant, sans dépendance : si le JS ne se charge
    pas, le bouton reste inerte mais rien d'autre ne casse. */
 @media(max-width:860px){
-  .nav-btn{display:block}
+  .nav-btn{display:grid}
   .theme-btn{margin-left:0}
   .navlinks{
     display:none; position:absolute; left:0; right:0; top:60px;
@@ -256,6 +283,27 @@ header.topbar{
 .hero-art{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
   box-shadow:var(--shadow); padding:26px; display:grid; place-items:center}
 
+/* --- La PHOTO du héros --------------------------------------------------
+   L'accueil montrait le logo et le nom du site dans le bloc de droite —
+   les deux déjà dans la barre du haut, à 40 px de là. La zone la plus vue
+   de la page ne disait donc rien de neuf. Elle porte maintenant une photo
+   de l'atelier, posée par le générateur (PHOTOS_HEROS dans generer.py).
+
+   RATIO FIXE plutôt que hauteur libre : la page ne doit pas se recomposer
+   quand la photo change, ni sauter au chargement de l'image. `cover` avec
+   un ratio imposé recadre au lieu de déformer — une photo d'atelier n'a
+   pas à être étirée pour tenir dans une case.
+
+   `--photo-ratio` est réglable au cas par cas depuis la page, sans
+   toucher au kit : `style="--photo-ratio:16/9"` sur la figure. */
+.hero-photo{margin:0; border-radius:var(--radius); overflow:hidden;
+  aspect-ratio:var(--photo-ratio,3/2);
+  /* Le fond neutre EST l'état d'attente : tant que la photo n'est pas
+     fournie, la case garde sa place et sa forme, et rien d'autre n'est
+     dessiné à sa place. */
+  background:var(--bg-3); border:1px solid var(--line); box-shadow:var(--shadow)}
+.hero-photo img{display:block; width:100%; height:100%; object-fit:cover}
+
 .badges{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px}
 .badge{font-size:.8rem; font-weight:600; padding:5px 11px; border-radius:20px;
   background:var(--bg-3); color:var(--fg-2); border:1px solid var(--line)}
@@ -278,8 +326,22 @@ header.topbar{
 .btn-primary:hover{background:var(--orange-d); text-decoration:none}
 .btn-ghost{background:var(--card); color:var(--fg); border-color:var(--line-2)}
 .btn-ghost:hover{border-color:var(--orange); text-decoration:none}
-.btn-kofi{background:var(--card); color:#ff5e5b; border-color:#ff5e5b; font-weight:600}
-.btn-kofi:hover{background:#ff5e5b; color:#fff; text-decoration:none}
+/* LE BOUTON KO-FI EST PLEIN, ET EN GRAS. En contour rouge sur blanc il
+   s'effaçait entre le bouton principal orange et le bouton GitHub noir :
+   « ça ne se voit pas assez », Christophe, 15/09/2026. Il porte donc le
+   rouge de la marque en FOND, sous l'encre foncée du bouton principal —
+   5,93:1 dans les deux thèmes, puisque ni le fond ni l'encre ne changent.
+   Le blanc qui s'y posait autrefois ne tenait que 3,00.
+   Contre la page, le bouton tient 3,00:1 sur blanc et 5,52 sur la carte
+   sombre : le seuil d'un élément d'interface est 3. Au survol, le même
+   rouge assombri à 92 % garde 5,08 sous l'encre.
+   --kofi-encre ne sert donc plus au bouton : c'est l'encre d'un LIEN Ko-fi
+   en texte courant, où le rouge de la marque ne tient pas sur blanc —
+   #bf4644 en thème clair, le plus CLAIR qui tienne 4,5 à la même teinte
+   (1°) : blanc 5,03, --bg-2 4,69, --note 4,53. */
+.btn-kofi{background:#ff5e5b; color:#20160a; border-color:#ff5e5b; font-weight:800}
+.btn-kofi:hover{background:#eb5654; color:#20160a; border-color:#eb5654; text-decoration:none}
+.btn-kofi svg{width:1.15em; height:1.15em; flex:none}
 /* --- Le dépôt, en évidence --------------------------------------------
    Les liens vers le code étaient noyés : « Dépôt » au bout d'une rangée de
    quatre liens sur l'accueil, une ligne de texte en bas des fiches.
@@ -324,25 +386,47 @@ section{padding:52px 0; border-bottom:1px solid var(--line)}
    grilles y échappaient de justesse : à 320 px de large, une carte de 290
    dépasse sa grille de 14 px, mais les 22 px de marge du `.wrap` les
    absorbent. De justesse n'est pas une garantie. */
-.cartes{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr)); gap:20px; margin-top:26px}
+.cartes{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(var(--carte-min),100%),1fr)); gap:20px; margin-top:26px}
 .carte{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
   box-shadow:var(--shadow); padding:20px 22px; display:flex; flex-direction:column}
 .carte:hover{border-color:var(--orange)}
-.carte .head{display:flex; align-items:center; gap:11px; margin-bottom:8px}
+/* EN HAUT, PAS AU MILIEU. Alignés au centre, la pastille d'état et le titre
+   se recentraient dès que le titre passait à deux lignes — « Attache de
+   descente Ø 80 » sur /projets/ — et la rangée se décalait d'une carte à
+   l'autre. Le décalage de 6 px remet le titre et la pastille en face du
+   MILIEU du carré de 34 px, là où l'œil les attend sur une seule ligne ;
+   sur deux lignes, ils restent accrochés à la première. */
+.carte .head{display:flex; align-items:flex-start; gap:11px; margin-bottom:8px}
+.carte .head>h3,.carte .head>.etat{padding-top:6px}
 .carte .ci{width:34px;height:34px;border-radius:9px;background:var(--orange-soft);
+  color:var(--orange-encre);
   display:grid;place-items:center;flex:none;font-size:1.1rem}
 .carte .ci img{width:21px;height:21px}
+/* Les pictos du jeu maison (site/pictos.py) : au trait, en `currentColor`,
+   donc teintés par la ligne `color` ci-dessus et suivant le thème sans
+   qu'aucun dessin ne soit retouché. */
+.carte .ci svg{width:21px;height:21px;display:block}
 .carte h3{margin:0; font-size:1.12rem}
-.carte p{margin:.35em 0 0; font-size:.93rem; color:var(--fg-2); line-height:1.55}
+/* `text-wrap:pretty` interdit l'orpheline — le mot seul en dernière ligne.
+   Il ne se voyait pas sur la maquette large : c'est dans une colonne de
+   300 px qu'un paragraphe sur deux finissait ainsi. */
+.carte p{margin:.35em 0 0; font-size:.93rem; color:var(--fg-2); line-height:1.55;
+  text-wrap:pretty}
 .carte .liens{margin-top:auto; padding-top:14px; display:flex; gap:14px; flex-wrap:wrap; font-size:.88rem}
 
-/* État d'un projet : le point de couleur qui dit « publié / privé / en cours ». */
+/* État d'un projet : le point de couleur qui dit où en est la chose.
+   TROIS COULEURS, ET PAS DE BLEU. Le bleu venait du jeu d'encarts par
+   défaut (`--note-b`), pas d'une décision : il ne dit rien dans une charte
+   dont l'accent est orange, et il faisait une quatrième teinte de plus que
+   le reste de la page. L'échelle est maintenant une progression lisible —
+   vert : c'est fait et c'est public · orange : c'est en cours · gris :
+   ça n'a pas commencé. */
 .etat{display:inline-flex; align-items:center; gap:6px; font-size:.8rem; font-weight:600;
   color:var(--fg-2); margin-left:auto; flex:none}
 .etat::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--fg-3)}
 .etat.public::before{background:var(--tip-b)}
-.etat.prive::before{background:var(--warn-b)}
-.etat.chantier::before{background:var(--note-b)}
+.etat.chantier::before{background:var(--warn-b)}
+.etat.prive::before{background:var(--fg-3)}
 
 .cols{display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:8px}
 @media(max-width:760px){ .cols{grid-template-columns:1fr} }
