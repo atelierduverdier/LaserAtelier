@@ -105,6 +105,17 @@ and the config's bench measurements, and prints its estimating assumptions along
 
 ## Verifying changes
 
+**Before changing a function's signature or behaviour, list its callers** — every one gets the fix:
+
+```bash
+python3 outils/appelants.py save_burn_widths
+```
+
+It uses Python's own `ast`: calls (`core.f(...)` from panels and tests included, with the enclosing
+function and line), callbacks passed without a call (`connect(self._on_save)`), and string
+references (`getattr(core, "f")`) — never docstrings or comments. CodeGraph was tried on 2026-09-30
+and found 0 of the 14 callers of `save_burn_widths`: it does not follow `import laser_core as core`.
+
 ```bash
 python3 -c "import ast; [ast.parse(open(f).read()) for f in ('laser_core.py','task_panels.py','commands.py','InitGui.py','svg_import.py')]"
 ```
