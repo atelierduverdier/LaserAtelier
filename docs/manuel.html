@@ -209,7 +209,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.51</span><br>
+      <span class="ver">Version 2.99.52</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -260,7 +260,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : huit modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.51</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : huit modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.52</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1150,7 +1150,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.51 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.52 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1166,7 +1166,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 79 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 80 entrées</span></h3>
+
+  <p><b>«&nbsp;Quelle planche&nbsp;?&nbsp;» tombait dès qu’une planche était par bande (v2.99.52, recopie de l’atelier dans VerdierCAM).</b> En refaisant la photo cliquable du nuancier dans VerdierCAM, la fiche d’une planche gravée par bande s’est révélée porter sa bande en <b>entier</b> — l’index dans <code>_BANDES_NOIRCEUR</code> —, là où <code>_resume_fiche</code> l’attendait en texte et faisait <code>.strip()</code> dessus. Dès deux planches d’un même bois dont une par bande, une photo pas encore calée levait <code>AttributeError</code> au lieu de demander laquelle elle montre&nbsp;: «&nbsp;Voir la planche, cliquer un ton…&nbsp;» ne s’ouvrait plus, sans un mot dans le panneau. Et <code>bande or ""</code> effaçait la bande 0, «&nbsp;Clair&nbsp;». La liste nomme maintenant la bande («&nbsp;2026-10-16 — 1 tons (Noir (90-100 %)) — 97 × 57 mm&nbsp;»). <code>test_nuancier_picker</code> §7 rejoue le vrai chemin — trois planches, le bouton cliqué, le choix du dialogue — et tombait sur l’erreur avant le correctif.</p>
 
   <p><b>Le fuseau débordait du tampon de GRBL (v2.99.51, recopie de l’atelier dans VerdierCAM).</b> En recopiant les tramages photo à l’octet près, le contrôle de VerdierCAM a relevé ce que <code>test_dialectes</code> ne voyait pas, faute d’y faire tourner un fuseau&nbsp;: en GRBL, les lignes «&nbsp;(NOTE&nbsp;: …)&nbsp;» du fuseau en spirale et en rangées faisaient <b>138 à 143 octets</b>, pour un tampon de réception de 128. Des commentaires seulement — mais un envoyeur qui compte les caractères pour remplir ce tampon peut se bloquer sur la ligne, et le job s’arrêter au milieu sans un mot. La coupure est posée dans l’assainisseur, le passage obligé des dix familles de générateurs&nbsp;: en GRBL et grblHAL, un commentaire trop long devient plusieurs lignes de commentaire, coupées aux espaces, et une ligne de code n’est jamais coupée. <code>test_dialectes</code> relit désormais les deux fuseaux, et tombe sur la ligne de 143 octets dès que la coupure est retirée.</p>
 

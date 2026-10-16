@@ -221,3 +221,67 @@ for _nom, _fn in ((u"load_shades", core.load_shades),
 # Et les tons SAINS restent exploitables : on n'a pas jeté le matériau.
 assert core.load_shades(u"EssaiCassé"), u"le matériau est devenu vide"
 print(u"6. un ton à champ nul ne fait plus tomber le nuancier entier OK")
+
+# ==========================================================================
+# 7. « QUELLE PLANCHE ? » QUAND UNE PLANCHE EST PAR BANDE
+# ==========================================================================
+# La fiche d'une planche gravée par bande range sa bande en ENTIER -- l'index
+# dans `_BANDES_NOIRCEUR` (`"bande": bande` dans
+# `_construire_nuancier_preregles`). `_resume_fiche` faisait `.strip()`
+# dessus : dès deux planches d'un même bois dont une par bande, une photo pas
+# encore calée faisait lever AttributeError au lieu de demander quelle planche
+# elle montre -- le clic sur la photo ne s'ouvrait plus du tout, sans un mot
+# dans le panneau. Vu le 16/10/2026 en refaisant ce dialogue dans VerdierCAM.
+# Et la bande 0 (« Clair ») passait pour « pas de bande » : `0 or ""`.
+_fiches_essai = [
+    {"date": "2026-10-16", "bande": 3, "board_w": 97.1, "board_h": 57.1,
+     "cases": [{"cx": 17.0, "cy": 30.1, "r": 7.0, "power": 1000.0, "feed": 800.0}]},
+    {"date": "2026-10-15", "bande": None, "board_w": 122.0, "board_h": 57.1,
+     "cases": [{"cx": 17.0, "cy": 30.1, "r": 7.0, "power": 360.0, "feed": 1840.0},
+               {"cx": 39.0, "cy": 30.1, "r": 7.0, "power": 1000.0, "feed": 800.0}]},
+    {"date": "2026-10-14", "bande": 0, "board_w": 56.0, "board_h": 57.1,
+     "cases": [{"cx": 17.0, "cy": 30.1, "r": 7.0, "power": 360.0, "feed": 1840.0}]},
+]
+_proposes, _ouverts = [], []
+
+
+class _FauxDialogueClic:
+    """Le dialogue de clic, sans son `exec()` (qui attendrait un humain) :
+    on note seulement la planche qu'on lui a confiée."""
+
+    def __init__(self, parent, material, photo_path, fiche, on_ton, index=0):
+        self.ok = False
+        _ouverts.append((fiche, index))
+
+
+def _get_item(parent, titre, texte, libelles, *a, **k):
+    _proposes.extend(libelles)
+    return libelles[1], True                  # « cette photo montre la 2e »
+
+
+_vrai_dialogue = tp._DialogueClicNuancier
+_vrai_get_item = QtWidgets.QInputDialog.getItem
+try:
+    core.result_photos = lambda cle: [{"path": "/tmp/planche-de-biais.png",
+                                       "description": ""}]
+    core.load_fiches_nuancier_planche = lambda m: _fiches_essai
+    tp._DialogueClicNuancier = _FauxDialogueClic
+    QtWidgets.QInputDialog.getItem = staticmethod(_get_item)
+    _p7 = tp.TaskPanelCurved([])
+    _p7._shade_picker["reload"]()
+    assert _p7._shade_picker["clic"].isEnabled(), "le bouton photo est grisé"
+    _p7._shade_picker["clic"].click()
+finally:
+    core.result_photos = _vraies_photos
+    core.load_fiches_nuancier_planche = _vraies_fiches
+    tp._DialogueClicNuancier = _vrai_dialogue
+    QtWidgets.QInputDialog.getItem = _vrai_get_item
+_attendus = [u"2026-10-16 — 1 tons (Noir (90-100 %)) — 97 × 57 mm",
+             u"2026-10-15 — 2 tons — 122 × 57 mm",
+             u"2026-10-14 — 1 tons (Clair (0-25 %)) — 56 × 57 mm"]
+assert _proposes == _attendus, (
+    u"« Quelle planche ? » ne propose pas les trois planches, bande nommée "
+    u"(une bande ENTIÈRE faisait lever AttributeError) : {}".format(_proposes))
+assert _ouverts == [(_fiches_essai[1], 1)], (
+    u"la planche choisie n'est pas celle confiée au clic : {}".format(_ouverts))
+print(u"7. « Quelle planche ? » nomme la bande d'une planche par bande OK")

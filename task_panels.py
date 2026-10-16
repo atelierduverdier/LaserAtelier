@@ -7439,7 +7439,15 @@ def _make_shade_picker(form, on_apply):
         on_apply(ton)
 
     def _resume_fiche(f):
-        bande = (f.get("bande") or "").strip()
+        # La bande d'une planche par bande est un ENTIER, l'index dans
+        # `_BANDES_NOIRCEUR` (`"bande": bande`, _construire_nuancier_preregles) :
+        # `.strip()` dessus levait AttributeError, et le clic sur la photo ne
+        # s'ouvrait plus dès deux planches d'un bois dont une par bande. Et
+        # `bande or ""` effaçait la bande 0, « Clair ». On nomme la bande.
+        bande = f.get("bande")
+        if isinstance(bande, int) and 0 <= bande < len(core._BANDES_NOIRCEUR):
+            bande = core._BANDES_NOIRCEUR[bande][1]
+        bande = "" if bande is None else str(bande).strip()
         return "{} — {} tons{} — {:.0f} × {:.0f} mm".format(
             f.get("date") or "sans date", len(f.get("cases") or []),
             " (" + bande + ")" if bande else "",
