@@ -4,8 +4,8 @@ description: >-
   Développement du workbench FreeCAD « LaserAtelier ». À utiliser dès qu'on
   modifie le code de l'atelier (laser_core.py, task_panels.py, commands.py,
   InitGui.py, docs, README). Rappelle les règles non négociables (tout en
-  français, jamais de G4 faisceau allumé, commit+push direct, pas de trailer
-  Co-Authored-By) et impose un garde-fou anti-superflu AVANT d'ajouter une
+  français, jamais de G4 faisceau allumé, commit+push direct, trailer
+  Co-Authored-By gardé) et impose un garde-fou anti-superflu AVANT d'ajouter une
   fonctionnalité.
 ---
 
@@ -38,7 +38,8 @@ puis attends sa réponse :
   d'exposition).
 - **Commit + push direct sur `main`, sans demander** (dépôt perso
   `github.com/atelierduverdier/LaserAtelier`).
-- **Jamais** de trailer `Co-Authored-By`.
+- Le trailer `Co-Authored-By` du harnais **reste** (accepté le 03/09/2026, confirmé le
+  16/10/2026 : « garde le trailer ») — comme dans le `CLAUDE.md`, qui fait foi.
 
 ## 3. Après chaque édition : vérifie
 

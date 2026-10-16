@@ -69,7 +69,9 @@ AppImage's own python when one is mounted.
 
 ### 6. Commits
 
-Commit + push directly to `main` (personal repo), no `Co-Authored-By` trailer, message in French.
+Commit + push directly to `main` (personal repo), message in French, **with the harness's
+`Co-Authored-By` trailer** — Christophe accepted it on 2026-09-03 and confirmed it on 2026-10-16
+(*"garde le trailer"*), after this line had kept saying the opposite while every commit carried it.
 **Check `git status` first** — concurrent Claude sessions share this working directory, so stage
 your own files explicitly rather than `git add -A`.
 
