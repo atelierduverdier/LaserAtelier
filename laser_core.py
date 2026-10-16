@@ -178,7 +178,7 @@ from collections import defaultdict
 # panneaux et l'en-tête des G-codes. À incrémenter à chaque publication,
 # EN MÊME TEMPS que <version> dans package.xml (gestionnaire d'extensions
 # FreeCAD), le badge du site (docs/index.html) et la ligne du README.
-VERSION = "2.99.50"
+VERSION = "2.99.51"
 
 # Translittérations non gérées par la décomposition NFKD (qui ne sépare
 # pas ces caractères en base ASCII + accent), pour l'assainisseur LinuxCNC.
@@ -260,6 +260,51 @@ def _assainir_commentaires(line):
     return "".join(rendu)
 
 
+# LE TAMPON DE RÉCEPTION DE GRBL : 128 octets par ligne (GRBL 1.1 ; tests/test_dialectes.py impose la même
+# limite à grblHAL). Au-delà, l'envoyeur qui compte les caractères pour remplir ce tampon peut se bloquer
+# sur la ligne, et le job s'arrête au milieu sans un mot. Le 16/10/2026, la recopie de l'atelier dans
+# VerdierCAM (cam/LaserControle, sur le G-code des tramages photo) a relevé ce que test_dialectes ne
+# voyait pas, faute d'y faire tourner un fuseau : les lignes « (NOTE : …) » du fuseau en spirale et en
+# rangées font 138 à 143 octets.
+LIMITE_LIGNE_GRBL = 128
+
+
+def _couper_ligne_grbl(ligne, limite=LIMITE_LIGNE_GRBL):
+    """Les lignes qui remplacent `ligne` pour qu'aucune ne dépasse `limite`.
+
+    Seul le COMMENTAIRE se coupe, aux espaces, en plusieurs lignes de
+    commentaire -- RS274 n'a pas de commentaire sur plusieurs lignes, chaque
+    morceau se referme donc sur la sienne. S'il suivait du code, il passe
+    AVANT lui, et le code reste intact sur sa ligne. Une ligne de CODE trop
+    longue est rendue telle quelle : la couper en changerait le sens. Un mot
+    plus long que la ligne entière est coupé net (aucun ne l'est
+    aujourd'hui). Idempotent : les morceaux tiennent tous dans la limite."""
+    if len(ligne) <= limite:
+        return [ligne]
+    code = _gcode_code_part(ligne)
+    commentaire = ligne[len(code):].strip()
+    if not (commentaire.startswith("(") and commentaire.endswith(")")
+            and commentaire.count("(") == 1 and commentaire.count(")") == 1):
+        return [ligne]
+    lignes, courant = [], ""
+    for mot in commentaire[1:-1].split():
+        essai = courant + " " + mot if courant else mot
+        if len(essai) + 2 <= limite:
+            courant = essai
+            continue
+        if courant:
+            lignes.append("(" + courant + ")")
+        while len(mot) + 2 > limite:
+            lignes.append("(" + mot[:limite - 2] + ")")
+            mot = mot[limite - 2:]
+        courant = mot
+    if courant:
+        lignes.append("(" + courant + ")")
+    if code.strip():
+        lignes.append(code.rstrip())
+    return lignes
+
+
 def sanitize_gcode_for_linuxcnc(text):
     """Rend le G-code digeste pour l'interpréteur RS274 de LinuxCNC :
 
@@ -285,6 +330,9 @@ def sanitize_gcode_for_linuxcnc(text):
     4. Machine SANS AXE Z (réglage `machine_sans_axe_z`) : les mots Z sont
        retirés et les mouvements qui n'étaient QUE du Z disparaissent (cf.
        `retirer_axe_z`).
+    5. Dialectes GRBL et grblHAL : aucune ligne au-delà du tampon de
+       réception de 128 octets -- un commentaire plus long est coupé en
+       plusieurs lignes de commentaire (cf. `_couper_ligne_grbl`).
 
     Idempotent (ré-assainir un texte déjà propre ne change rien), donc sûr
     à appliquer plusieurs fois (job combiné = corps déjà assainis)."""
@@ -295,7 +343,10 @@ def sanitize_gcode_for_linuxcnc(text):
     out = [_assainir_commentaires(l) for l in text.split("\n")]
     # Espaces de fin de ligne : sans effet pour LinuxCNC, mais le dialecte
     # GRBL (sélecteur de broche vide) en laisserait après S/M3/M5.
-    return "\n".join(l.rstrip() for l in out)
+    out = [l.rstrip() for l in out]
+    if GCODE_DIALECT in ("grbl", "grblhal"):
+        out = [m for l in out for m in _couper_ligne_grbl(l)]
+    return "\n".join(out)
 
 
 _GCODE_XY_RX = re.compile(r'([XY])(-?\d+\.?\d*)')

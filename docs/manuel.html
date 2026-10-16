@@ -209,7 +209,7 @@
   </div>
   <div class="foot">
     <div class="meta">
-      <span class="ver">Version 2.99.50</span><br>
+      <span class="ver">Version 2.99.51</span><br>
       <b>Manuel complet</b> — installation &amp; utilisation<br>
       Juillet 2026 · licence LGPL-2.1-or-later<br>
       laser.atelierduverdier.fr
@@ -260,7 +260,7 @@
     <div class="ev"><span class="d">13 juillet 2026</span><p>La toute première macro, <code>texte_hachures_laser</code> : générer le G-code d'un marquage (contour + remplissage par hachures) à partir d'un motif FreeCAD, avec déjà la stratégie « relais » qui deviendra une signature de l'atelier — armer le laser <em>une seule fois</em> par travail et ne moduler que la puissance.</p></div>
     <div class="ev"><span class="d">14 juillet 2026</span><p>Une grappe de macros spécialisées apparaît en une journée : projection d'un motif sur une surface 3D, suivi de hauteur <em>continu</em> pendant les déplacements, découpe multi-passes à plat, collage de hachures sur un solide. Chaque idée testée dans son coin.</p></div>
     <div class="ev"><span class="d">15 juillet 2026</span><p><code>laser_atelier</code> (1 777 lignes) réunit tout dans un seul script à cinq modes. C'est le brouillon grandeur nature du futur atelier.</p></div>
-    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : huit modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.50</strong>.</p></div>
+    <div class="ev"><span class="d">… puis le workbench</span><p>Le script devient un <strong>atelier FreeCAD</strong> à part entière : huit modules propres, vingt et un modes, un système de calibration, des profils par laser, une documentation. La version décrite ici est la <strong>2.99.51</strong>.</p></div>
   </div>
 
   <div class="box pourquoi">
@@ -1150,7 +1150,7 @@
 
   <div class="signature">
     <img src="../resources/icons/chapeau.svg" alt="">
-    <p>LaserAtelier v2.99.50 — Atelier du Verdier<br>
+    <p>LaserAtelier v2.99.51 — Atelier du Verdier<br>
     Le petit chapeau en coin de chaque icône est la signature de l'atelier.<br>
     Manuel généré en juillet 2026 · licence LGPL-2.1-or-later.</p>
   </div>
@@ -1166,7 +1166,9 @@
 
   <p>Ces entrées étaient auparavant dispersées dans les chapitres de modes, au fil des livraisons&nbsp;: quarante-cinq s'étaient empilées dans la seule section «&nbsp;Mesurer sur la photo&nbsp;», et six racontaient sous <em>Calligraphie</em> des changements qui concernaient le Nuancier ou la Grille de test. Le mode d'emploi y perdait son fil. Elles sont ici telles quelles, de la plus récente à la plus ancienne&nbsp;; le titre en gras de chaque entrée nomme son sujet.</p>
 
-  <h3>Versions 2.80 et au-delà <span class="jcompte">— 78 entrées</span></h3>
+  <h3>Versions 2.80 et au-delà <span class="jcompte">— 79 entrées</span></h3>
+
+  <p><b>Le fuseau débordait du tampon de GRBL (v2.99.51, recopie de l’atelier dans VerdierCAM).</b> En recopiant les tramages photo à l’octet près, le contrôle de VerdierCAM a relevé ce que <code>test_dialectes</code> ne voyait pas, faute d’y faire tourner un fuseau&nbsp;: en GRBL, les lignes «&nbsp;(NOTE&nbsp;: …)&nbsp;» du fuseau en spirale et en rangées faisaient <b>138 à 143 octets</b>, pour un tampon de réception de 128. Des commentaires seulement — mais un envoyeur qui compte les caractères pour remplir ce tampon peut se bloquer sur la ligne, et le job s’arrêter au milieu sans un mot. La coupure est posée dans l’assainisseur, le passage obligé des dix familles de générateurs&nbsp;: en GRBL et grblHAL, un commentaire trop long devient plusieurs lignes de commentaire, coupées aux espaces, et une ligne de code n’est jamais coupée. <code>test_dialectes</code> relit désormais les deux fuseaux, et tombe sur la ligne de 143 octets dès que la coupure est retirée.</p>
 
   <p><b>Le calque masqué d’Inkscape partait sur le bois (v2.99.50, lecture ligne à ligne de <code>svg_import</code>).</b> Christophe&nbsp;: «&nbsp;fais la même lecture ligne à ligne de <code>svg_import.py</code>&nbsp;». Le fichier avait déjà été audité le matin même&nbsp;; <b>1 218 lignes relues en suivant en ont rendu cinq de plus</b>, tous reproduits avant d’être décrits. <b>Le plus cher se paie sur la planche</b>&nbsp;: <code>display:none</code> et <code>visibility:hidden</code> n’étaient pas lus. Éteindre un calque de construction avant d’exporter est pourtant le geste le plus ordinaire d’Inkscape&nbsp;: son contenu revenait entier dans le document et se gravait. Mesuré sur un fichier montrant UN rectangle à l’écran&nbsp;: <b>quatre tracés importés, zéro avertissement</b>. Le module promet en en-tête de ne jamais amputer en silence — ajouter en silence est le même défaut par l’autre bout. Les deux règles sont maintenant distinguées comme la norme le veut, sans quoi on ferait disparaître du dessin légitime&nbsp;: <code>display:none</code> emporte tout son sous-arbre, <code>visibility</code> s’hérite mais un descendant peut la reprendre. <b>Une ellipse LightBurn ne suivait pas sa <code>XForm</code></b>&nbsp;: écrite en deux arcs de rayons Rx/Ry avec une rotation d’axe ZÉRO, seuls ses deux sommets tournaient, le ventre des arcs non. Mesuré sur une 20×5 tournée de 45°&nbsp;: <b>116,6&nbsp;mm de large au lieu de 29,2</b>, quatre fois trop et de travers. Un arc SVG ne saurait de toute façon pas dire «&nbsp;ellipse cisaillée&nbsp;», ce qu’une XForm produit parfaitement&nbsp;; l’ellipse est désormais échantillonnée dans le repère final, ce qui traverse n’importe quelle matrice affine sans rien décomposer — et l’atelier aplatit tout en segments un cran plus bas, donc rien n’est perdu. <b>Le même dessin atterrissait à deux endroits</b> selon qu’il portait un viewBox ou non&nbsp;: sans lui, le retournement de l’axe Y n’avait aucun repère et le dessin partait SOUS l’origine — y de −7,94 à −2,65&nbsp;mm au lieu de 42,06 à 47,35, donc hors table. La hauteur se lit pourtant dans <code>height</code>. <b>Trois silences pour finir</b>&nbsp;: <code>width="100%"</code> devenait 100 unités utilisateur, un rectangle FABRIQUÉ et gravé&nbsp;; <code>preserveAspectRatio="none"</code> était ignoré sans un mot alors qu’il demande deux échelles&nbsp;; et tout <code>Type</code> de forme LightBurn autre que Path, Ellipse ou Group s’évaporait entre le .lbrn2 et le SVG — le défaut déjà payé côté SVG («&nbsp;1 tracé importé sur 7&nbsp;»), intact de l’autre côté. On ne prétend pas savoir quels types LightBurn écrit — inventer cette liste serait la table fabriquée que ce dépôt traque —, on compte et on nomme ce qu’on n’a pas su lire. <b>Et le fichier portait deux jeux de matrices</b>, une identité, un produit et une application recopiés mot pour mot cent lignes plus bas&nbsp;: il n’en reste qu’un. <b>Dix sabotages, dix essais qui rougissent</b>&nbsp;: l’ellipse est vérifiée en ramenant chaque point produit dans le repère local par la matrice INVERSE et en le posant sur <i>x²/rx² + y²/ry² = 1</i> — la définition, pas le code.</p>
 

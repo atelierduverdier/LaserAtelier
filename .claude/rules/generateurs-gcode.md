@@ -137,6 +137,12 @@ hand-built measurement board split a header sentence across two lines. **When bu
 by hand, keep each comment on its own line** and assert `line.count("(") == line.count(")")` before
 writing — don't lean on the sanitizer to paper over malformed text.
 
+**GRBL's 128-byte line buffer** (v2.99.51). In the `grbl`/`grblhal` dialects the sanitizer also cuts
+any comment longer than `LIMITE_LIGNE_GRBL` (128) into several comment lines at spaces
+(`_couper_ligne_grbl`); a trailing comment moves before its code line, and a CODE line is never cut.
+Found on 2026-10-16 by VerdierCAM's byte-for-byte port, not by `test_dialectes`: the spindle-stroke
+(fuseau) `(NOTE : …)` lines were 138–143 bytes, and no fuseau job was in that test's list. It is now.
+
 `sanitize_gcode_for_linuxcnc(text)` at every generator's return. LinuxCNC rejects **nested
 parentheses** in comments (`passe(s)`, `(par bande de Z)`) and **non-ASCII bytes** (French accents);
 the sanitizer brackets inner parens and transliterates. It is **idempotent**, so it's safe for

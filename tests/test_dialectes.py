@@ -39,6 +39,15 @@ def jobs():
             line_length=60.0, n_lines=3, feed_min=200.0, feed_max=800.0,
             power_min=200.0, power_max=1000.0, z_work=core.Z_WORK_MM,
             line_gap=10.0, z_end=core.Z_WORK_MM + 20.0, quiet=True),
+        # LE FUSEAU, absent d'ici jusqu'au 16/10/2026 -- et c'est lui qui
+        # dépassait : ses lignes « (NOTE : …) » faisaient 138 à 143 octets,
+        # relevées par la recopie de l'atelier dans VerdierCAM.
+        "fuseau-spirale": core.generate_gcode_photo_spirale(
+            img, 1.0, core.Z_WORK_MM, 300.0, MAT, fuseau_z=True,
+            cellule_mm=0.25, quiet=True),
+        "fuseau-rangees": core.generate_gcode_photo_swell_lines(
+            img, 1.0, core.Z_WORK_MM, 400.0, MAT, fuseau_z=True,
+            cellule_mm=0.25, angle_trame=30.0, quiet=True),
     }
     return {k: v for k, v in out.items() if v}
 
@@ -107,6 +116,34 @@ for dialecte in ("grbl", "grblhal"):
           .format(dialecte, "commenté" if dialecte == "grbl" else "T/M6+G43"))
 print("1. {} jobs relus sur les 2 dialectes GRBL : aucune commande inconnue, "
       "tout ASCII, aucune ligne > {} octets OK".format(essais, LIMITE_LIGNE))
+
+# --- La coupure elle-même ----------------------------------------------
+# Le fuseau doit être LÀ, sans quoi la section 1 ne prouverait rien sur lui.
+assert {"fuseau-spirale", "fuseau-rangees"} <= set(jobs()), sorted(jobs())
+_note = "(NOTE : " + "le trait ne descend pas sous 0.14 mm " * 5 + "fin)"
+assert len(_note) > LIMITE_LIGNE
+_morceaux = core._couper_ligne_grbl(_note)
+assert len(_morceaux) > 1 and all(len(m) <= LIMITE_LIGNE for m in _morceaux), _morceaux
+assert all(m.startswith("(") and m.endswith(")") and m.count("(") == 1 for m in _morceaux)
+# Rien de perdu : les mots, dans l'ordre.
+assert " ".join(m[1:-1] for m in _morceaux).split() == _note[1:-1].split()
+# Le commentaire d'une ligne de code passe AVANT elle ; le code reste entier.
+_avec_code = core._couper_ligne_grbl("G1 X10.0000 Y20.0000 F800 " + _note)
+assert _avec_code[-1] == "G1 X10.0000 Y20.0000 F800", _avec_code
+assert all(len(m) <= LIMITE_LIGNE for m in _avec_code), _avec_code
+# Une ligne de CODE trop longue n'est pas coupée : ce serait en changer le sens.
+_code = "G1 " + " ".join("X{}.0000".format(i) for i in range(30))
+assert core._couper_ligne_grbl(_code) == [_code]
+# En GRBL l'assainisseur coupe, et il reste idempotent ; en LinuxCNC (256
+# octets) il ne touche à rien.
+poser("grbl")
+_coupe = core.sanitize_gcode_for_linuxcnc(_note)
+assert _coupe.split("\n") == _morceaux, _coupe
+assert core.sanitize_gcode_for_linuxcnc(_coupe) == _coupe, "non idempotent"
+poser("linuxcnc", m67=False)
+assert core.sanitize_gcode_for_linuxcnc(_note) == _note
+print("1b. coupure GRBL : {} lignes de commentaire, mots intacts, code "
+      "jamais coupé, idempotente, LinuxCNC intact OK".format(len(_morceaux)))
 
 # --- LinuxCNC : l'inverse doit être vrai --------------------------------
 poser("linuxcnc", m67=False)
